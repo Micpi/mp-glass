@@ -1,0 +1,9 @@
+node_modules/
+test-results/
+playwright-report/
+.dev-ha/
+__pycache__/
+.pytest_cache/
+*.log
+.env*
+artifacts/

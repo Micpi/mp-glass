@@ -1,0 +1,12 @@
+services:
+  homeassistant:
+    image: ghcr.io/home-assistant/home-assistant:2026.9.1
+    container_name: mp-glass-dev
+    ports:
+      - "127.0.0.1:8124:8123"
+    volumes:
+      - ./.dev-ha:/config
+      - ./custom_components/mp_glass:/config/custom_components/mp_glass:ro
+    environment:
+      TZ: Europe/Paris
+    restart: "no"

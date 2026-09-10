@@ -1,0 +1,25 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "MP Glass Project v1",
+  "type": "object", "additionalProperties": false,
+  "required": ["schema_version", "project", "appearance", "roles", "overrides"],
+  "properties": {
+    "schema_version": {"const": 1},
+    "project": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}}},
+    "appearance": {"type": "object", "additionalProperties": false, "required": ["preset"], "properties": {"preset": {"enum": ["glass-blue", "glass-warm", "glass-dark", "glass-light", "glass-oled", "glass-neutral"]}}},
+    "roles": {"type": "object", "maxProperties": 500, "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"}, "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 255}},
+    "overrides": {
+      "type": "object", "maxProperties": 5000,
+      "propertyNames": {"maxLength": 255, "not": {"enum": ["__proto__", "constructor", "prototype"]}},
+      "additionalProperties": {
+        "type": "object", "additionalProperties": false,
+        "properties": {
+          "name": {"type": "string", "minLength": 1, "maxLength": 100},
+          "areaId": {"type": "string", "minLength": 1, "maxLength": 255},
+          "hidden": {"type": "boolean"},
+          "presentation": {"enum": ["light", "generic"]}
+        }
+      }
+    }
+  }
+}

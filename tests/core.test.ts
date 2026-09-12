@@ -42,13 +42,23 @@ describe('discovery and presentation contract',()=>{
     const project=defaultProject();project.overrides.odd={presentation:'light'};
     const graph=MPDiscoveryEngine.discover(snapshot,project);
     expect(graph.warnings).toContain('incompatible_override:odd');
-    expect(MPDashboardComposer.compose(graph,project).views[0]?.cards[0]?.type).toBe('custom:mp-glass-generic');
+    const dashboard=MPDashboardComposer.compose(graph,project);
+    expect(dashboard.views[0]?.cards).toEqual([]);
+    expect(dashboard.views.find(v=>v.path==='inventory')?.cards[0]?.type).toBe('custom:mp-glass-generic');
   });
   it('does not expose hidden or disabled entities by default',()=>{
     const snapshot=home();snapshot.entities[0]!.hidden_by='user';snapshot.entities[1]!.disabled_by='integration';
     const graph=MPDiscoveryEngine.discover(snapshot,defaultProject());
     expect(graph.devices).toHaveLength(3);
     expect(MPDashboardComposer.compose(graph,defaultProject()).views[0]?.cards).toHaveLength(1);
+  });
+  it('keeps a large technical inventory out of the home and room views',()=>{
+    const snapshot=home(1);
+    for(let i=0;i<600;i++) snapshot.entities.push({id:`technical-${i}`,entity_id:`sensor.technical_${i}`,area_id:'salon'});
+    const dashboard=MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,defaultProject()),defaultProject());
+    expect(dashboard.views[0]?.cards).toHaveLength(1);
+    expect(dashboard.views.find(v=>v.path==='area-salon')?.cards).toHaveLength(1);
+    expect(dashboard.views.find(v=>v.path==='inventory')?.cards).toHaveLength(600);
   });
 });
 describe('capabilities',()=>{

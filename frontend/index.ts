@@ -4,6 +4,7 @@ import { MPGlassView } from './view';
 import { MPGlassStrategy } from './strategy';
 import { MPGlassSettings } from './settings';
 import type { Hass } from './ha/client';
+export const generateMPGlassDashboard = (config: { debug?: boolean }, hass: Hass) => MPGlassStrategy.generate(config, hass);
 declare global {
   interface Window { customCards?: Record<string, unknown>[]; customStrategies?: Record<string, unknown>[] }
 }

@@ -7,6 +7,6 @@
 5. Analyser, corriger les pièces si nécessaire, enregistrer.
 6. Paramètres → Tableaux de bord → Ajouter → dashboards communautaires → MP Glass Dashboard.
 
-Si le module n'apparaît pas après installation : recharger complètement le navigateur. Le module s'enregistre via le backend ; les ressources manuelles en double sont inutiles. Pour utiliser seulement la carte en mode MANUAL, charger `/mp_glass_static/mp-glass.js?v=0.1.0` comme ressource module dans l'UI Lovelace après installation du composant.
+Si le module n'apparaît pas après installation : recharger complètement le navigateur. Le backend charge le bootstrap de strategy avant Lovelace, puis le bundle principal à la demande. Pour utiliser seulement la carte en mode MANUAL, charger `/mp_glass_static/mp-glass.js?v=0.1.0` comme ressource module dans l'UI Lovelace après installation du composant.
 
 Le paquet HACS unique est préparé structurellement. Aucune URL d'installation HACS fonctionnelle n'est encore promise : dépôt de publication, hassfest et HACS validation doivent être vérifiés avant release. Le `documentation` du manifest indique la destination proposée `Micpi/mp-glass`, à confirmer avant publication.

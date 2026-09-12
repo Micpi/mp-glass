@@ -1,4 +1,13 @@
 import { test, expect } from '@playwright/test';
+test('custom view fills the Home Assistant flex container',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(()=>{
+    const parent=document.createElement('div');parent.style.cssText='display:flex;width:900px;max-width:100%';
+    const view=document.createElement('mp-glass-view');parent.append(view);document.body.replaceChildren(parent);
+  });
+  const bounds=await page.locator('mp-glass-view').boundingBox();
+  expect(bounds?.width).toBeGreaterThan(800);
+});
 test('strategy and settings use registry/project contracts and retain manual overrides',async({page})=>{
   await page.goto('/');
   await page.evaluate(async()=>{

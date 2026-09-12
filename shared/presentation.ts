@@ -21,14 +21,17 @@ export class MPPresentationResolver {
   static resolve(device: LogicalDevice) { return { card: cardRegistry.resolve(device), evidence: device.evidence, capabilities: device.capabilities }; }
 }
 export class MPDashboardComposer {
-  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false) {
-    const devices = graph.devices.filter(d => !d.hidden && !d.disabled);
+  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory') {
+    const visible = graph.devices.filter(d => !d.hidden && !d.disabled);
+    const devices = visible.filter(d => d.category !== 'generic');
+    const inventory = visible.filter(d => d.category === 'generic');
     const cards = (items: LogicalDevice[]) => items.map(d => ({ type: cardRegistry.resolve(d).type, entity: d.entityId, name: d.name, preset: project.appearance.preset, debug }));
     return {
       title: project.project.name,
       views: [
         { title: project.project.name, path: 'home', icon: 'mdi:home', type: 'custom:mp-glass-view', cards: cards(devices) },
         ...graph.areas.filter(a => devices.some(d => d.areaId === a.area_id)).map(a => ({ title: a.name, path: `area-${a.area_id}`, icon: a.icon ?? 'mdi:floor-plan', type: 'custom:mp-glass-view', cards: cards(devices.filter(d => d.areaId === a.area_id)) })),
+        ...(inventory.length ? [{title: inventoryTitle, path: 'inventory', icon: 'mdi:archive-search', type: 'custom:mp-glass-view', cards: cards(inventory)}] : []),
       ],
     };
   }

@@ -29,9 +29,9 @@ export class MPDashboardComposer {
     return {
       title: project.project.name,
       views: [
-        { title: project.project.name, path: 'home', icon: 'mdi:home', type: 'custom:mp-glass-view', cards: cards(devices) },
-        ...graph.areas.filter(a => devices.some(d => d.areaId === a.area_id)).map(a => ({ title: a.name, path: `area-${a.area_id}`, icon: a.icon ?? 'mdi:floor-plan', type: 'custom:mp-glass-view', cards: cards(devices.filter(d => d.areaId === a.area_id)) })),
-        ...(inventory.length ? [{title: inventoryTitle, path: 'inventory', icon: 'mdi:archive-search', type: 'custom:mp-glass-view', cards: cards(inventory)}] : []),
+        { title: project.project.name, mp_project_name: project.project.name, path: 'home', icon: 'mdi:home', type: 'custom:mp-glass-view', cards: cards(devices) },
+        ...graph.areas.filter(a => devices.some(d => d.areaId === a.area_id)).map(a => ({ title: a.name, mp_project_name: project.project.name, path: `area-${a.area_id}`, icon: a.icon ?? 'mdi:floor-plan', type: 'custom:mp-glass-view', cards: cards(devices.filter(d => d.areaId === a.area_id)) })),
+        ...(inventory.length ? [{title: inventoryTitle, mp_project_name: project.project.name, path: 'inventory', icon: 'mdi:archive-search', type: 'custom:mp-glass-view', cards: cards(inventory)}] : []),
       ],
     };
   }

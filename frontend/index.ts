@@ -8,7 +8,10 @@ export const generateMPGlassDashboard = (config: { debug?: boolean }, hass: Hass
 declare global {
   interface Window { customCards?: Record<string, unknown>[]; customStrategies?: Record<string, unknown>[] }
 }
-for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 'mp-glass-generic':MPGlassGeneric, 'mp-glass-card-editor':MPGlassCardEditor, 'mp-glass-view':MPGlassView, 'll-strategy-dashboard-mp-glass':MPGlassStrategy, 'mp-glass-settings':MPGlassSettings })) {
+class MPGlassLightV2 extends MPGlassLight {}
+class MPGlassGenericV2 extends MPGlassGeneric {}
+class MPGlassViewV2 extends MPGlassView {}
+for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 'mp-glass-light-v2':MPGlassLightV2, 'mp-glass-generic':MPGlassGeneric, 'mp-glass-generic-v2':MPGlassGenericV2, 'mp-glass-card-editor':MPGlassCardEditor, 'mp-glass-view':MPGlassView, 'mp-glass-view-v2':MPGlassViewV2, 'll-strategy-dashboard-mp-glass':MPGlassStrategy, 'mp-glass-settings':MPGlassSettings })) {
   if (!customElements.get(name)) customElements.define(name, component);
 }
 window.customStrategies ??= [];

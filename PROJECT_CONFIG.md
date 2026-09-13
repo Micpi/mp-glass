@@ -6,11 +6,27 @@ Schéma initial version 1, validé avec le même JSON Schema côté TypeScript e
 {
   "schema_version": 1,
   "project": {"name": "Maison"},
-  "appearance": {"preset": "glass-blue"},
+  "appearance": {
+    "preset": "glass-blue",
+    "accent": "#69b7ff",
+    "glassOpacity": 0.62,
+    "glassBlur": 22,
+    "radius": 22,
+    "backgroundDim": 0.44,
+    "backgroundPosition": "right",
+    "density": "comfortable",
+    "motion": true,
+    "showHero": true,
+    "eyebrow": "Une maison plus simple à vivre",
+    "subtitle": "Vos équipements sont prêts, pièce par pièce.",
+    "quote": "Les plus beaux moments commencent à la maison."
+  },
   "roles": {},
   "overrides": {}
 }
 ```
+
+`appearance` reste une configuration partagée du chantier. `backgroundUrl` est optionnel et accepte uniquement les images servies localement par Home Assistant (`/local/...` ou `/api/image/...`). Les valeurs de transparence, flou, rayon et assombrissement sont bornées par le schéma. Les préférences personnelles futures restent séparées de ce bloc.
 
 `roles` mappe un identifiant choisi à une référence stable. `overrides` mappe l'identifiant stable d'entité à `{name?, areaId?, hidden?, presentation?}` ; `presentation` vaut light ou generic dans ce premier incrément. Une présentation light sur un domaine incompatible est ignorée avec diagnostic. Aucun override ne crée un service ou une capability.
 

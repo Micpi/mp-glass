@@ -18,5 +18,5 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
 for(const config of MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project).views[0]!.cards) {
   const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config);card.hass={...hass};cards.push(card);
 }
-(document.querySelector('mp-glass-view') as MPGlassView).cards=cards;
+(document.querySelector('mp-glass-view-v2') as MPGlassView).cards=cards;
 Object.assign(window,{demo:{hass,cards,calls}});

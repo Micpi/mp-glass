@@ -6,7 +6,22 @@
   "properties": {
     "schema_version": {"const": 1},
     "project": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}}},
-    "appearance": {"type": "object", "additionalProperties": false, "required": ["preset"], "properties": {"preset": {"enum": ["glass-blue", "glass-warm", "glass-dark", "glass-light", "glass-oled", "glass-neutral"]}}},
+    "appearance": {"type": "object", "additionalProperties": false, "required": ["preset"], "properties": {
+      "preset": {"enum": ["glass-blue", "glass-warm", "glass-dark", "glass-light", "glass-oled", "glass-neutral"]},
+      "accent": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
+      "glassOpacity": {"type": "number", "minimum": 0.25, "maximum": 0.9},
+      "glassBlur": {"type": "integer", "minimum": 0, "maximum": 40},
+      "radius": {"type": "integer", "minimum": 10, "maximum": 38},
+      "backgroundDim": {"type": "number", "minimum": 0, "maximum": 0.8},
+      "backgroundPosition": {"enum": ["left", "center", "right"]},
+      "backgroundUrl": {"type": "string", "maxLength": 2048, "pattern": "^/(local|api/image)/"},
+      "density": {"enum": ["compact", "comfortable"]},
+      "motion": {"type": "boolean"},
+      "showHero": {"type": "boolean"},
+      "eyebrow": {"type": "string", "maxLength": 100},
+      "subtitle": {"type": "string", "maxLength": 160},
+      "quote": {"type": "string", "maxLength": 180}
+    }},
     "roles": {"type": "object", "maxProperties": 500, "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"}, "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 255}},
     "overrides": {
       "type": "object", "maxProperties": 5000,

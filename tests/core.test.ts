@@ -10,7 +10,7 @@ describe('discovery and presentation contract',()=>{
   it('discovers Salon lights and produces the corresponding card without brand signals',()=>{
     const graph=MPDiscoveryEngine.discover(home(),defaultProject());
     expect(graph.devices[0]).toMatchObject({id:'logical:stable-0',areaId:'salon',floorId:'ground',category:'light',confidence:.99});
-    expect(MPDashboardComposer.compose(graph,defaultProject()).views[1]?.cards[0]).toMatchObject({type:'custom:mp-glass-light',entity:'light.circuit_0'});
+    expect(MPDashboardComposer.compose(graph,defaultProject()).views[1]?.cards[0]).toMatchObject({type:'custom:mp-glass-light-v2',entity:'light.circuit_0'});
   });
   it('keeps independent circuits on one device and parent relationships',()=>{
     const graph=MPDiscoveryEngine.discover(home(),defaultProject());
@@ -44,7 +44,7 @@ describe('discovery and presentation contract',()=>{
     expect(graph.warnings).toContain('incompatible_override:odd');
     const dashboard=MPDashboardComposer.compose(graph,project);
     expect(dashboard.views[0]?.cards).toEqual([]);
-    expect(dashboard.views.find(v=>v.path==='inventory')?.cards[0]?.type).toBe('custom:mp-glass-generic');
+    expect(dashboard.views.find(v=>v.path==='inventory')?.cards[0]?.type).toBe('custom:mp-glass-generic-v2');
   });
   it('does not expose hidden or disabled entities by default',()=>{
     const snapshot=home();snapshot.entities[0]!.hidden_by='user';snapshot.entities[1]!.disabled_by='integration';

@@ -8,8 +8,24 @@ export type Capability = 'POWER' | 'DIM' | 'COLOR_TEMP' | 'RGB' | 'RGBW' | 'RGBW
 export interface CapabilityBinding { capability: Capability; entityId: string; evidence: string }
 export type Category = 'light' | 'generic';
 export type Preset = 'glass-blue' | 'glass-warm' | 'glass-dark' | 'glass-light' | 'glass-oled' | 'glass-neutral';
+export interface AppearanceConfig {
+  preset: Preset;
+  accent?: string;
+  glassOpacity?: number;
+  glassBlur?: number;
+  radius?: number;
+  backgroundDim?: number;
+  backgroundPosition?: 'left' | 'center' | 'right';
+  backgroundUrl?: string;
+  density?: 'compact' | 'comfortable';
+  motion?: boolean;
+  showHero?: boolean;
+  eyebrow?: string;
+  subtitle?: string;
+  quote?: string;
+}
 export interface Override { name?: string; areaId?: string; hidden?: boolean; presentation?: Category }
-export interface ProjectConfig { schema_version: 1; project: { name: string }; appearance: { preset: Preset }; roles: Record<string, string>; overrides: Record<string, Override> }
+export interface ProjectConfig { schema_version: 1; project: { name: string }; appearance: AppearanceConfig; roles: Record<string, string>; overrides: Record<string, Override> }
 export interface LogicalDevice {
   id: string; entityKey: string; entityId: string; name: string; sourceDeviceIds: string[];
   areaId?: string; floorId?: string; category: Category; presentation?: Category;
@@ -17,5 +33,5 @@ export interface LogicalDevice {
   hidden: boolean; disabled: boolean;
 }
 export interface MPHomeGraph { floors: HAFloor[]; areas: HAArea[]; sourceDevices: HADevice[]; devices: LogicalDevice[]; warnings: string[] }
-export interface CardConfig { type: string; entity: string; name?: string; preset?: Preset; debug?: boolean }
+export interface CardConfig { type: string; entity: string; name?: string; preset?: Preset; appearance?: AppearanceConfig; debug?: boolean }
 export interface CardDefinition { type: string; categories: Category[]; requires: Capability[]; priority: number; variants: string[] }

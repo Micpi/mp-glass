@@ -3,9 +3,9 @@ test('custom view fills the Home Assistant flex container',async({page})=>{
   await page.goto('/');
   await page.evaluate(()=>{
     const parent=document.createElement('div');parent.style.cssText='display:flex;width:900px;max-width:100%';
-    const view=document.createElement('mp-glass-view');parent.append(view);document.body.replaceChildren(parent);
+    const view=document.createElement('mp-glass-view-v2');parent.append(view);document.body.replaceChildren(parent);
   });
-  const bounds=await page.locator('mp-glass-view').boundingBox();
+  const bounds=await page.locator('mp-glass-view-v2').boundingBox();
   expect(bounds?.width).toBeGreaterThan(800);
 });
 test('strategy and settings use registry/project contracts and retain manual overrides',async({page})=>{
@@ -43,7 +43,7 @@ test('strategy and settings use registry/project contracts and retain manual ove
     const strategy=customElements.get('ll-strategy-dashboard-mp-glass') as unknown as {generate:(config:object,hass:unknown)=>Promise<unknown>};
     return strategy.generate({},hass);
   });
-  expect(dashboard).toMatchObject({title:'Maison test',views:[{cards:[{type:'custom:mp-glass-light',name:'Éclairage principal'}]},{title:'Salon'}]});
+  expect(dashboard).toMatchObject({title:'Maison test',views:[{cards:[{type:'custom:mp-glass-light-v2',name:'Éclairage principal'}]},{title:'Salon'}]});
   await page.getByRole('button',{name:'Analyser l’installation'}).click();
   await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeEnabled();
 });

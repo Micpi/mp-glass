@@ -15,7 +15,7 @@ def load_validator():
 
 
 def default_project(name="MP Glass"):
-    return {"schema_version": 1, "project": {"name": name}, "appearance": {"preset": "glass-blue"}, "roles": {}, "overrides": {}}
+    return {"schema_version": 1, "project": {"name": name}, "appearance": {"preset": "glass-blue", "accent": "#69b7ff", "glassOpacity": 0.62, "glassBlur": 22, "radius": 22, "backgroundDim": 0.44, "backgroundPosition": "right", "density": "comfortable", "motion": True, "showHero": True, "eyebrow": "Une maison plus simple à vivre", "subtitle": "Vos équipements sont prêts, pièce par pièce.", "quote": "Les plus beaux moments commencent à la maison."}, "roles": {}, "overrides": {}}
 
 
 def validate_project(validator, value):

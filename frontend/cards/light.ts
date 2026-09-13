@@ -4,6 +4,7 @@ import type { CardConfig } from '../../shared/models';
 import type { Hass } from '../ha/client';
 import { t } from '../i18n';
 import { glassStyles } from '../styles';
+import { mpIcon } from '../icons';
 export class MPGlassLight extends LitElement {
   static styles = glassStyles;
   static properties = { config: { state: true }, busy: { state: true }, failure: { state: true } };
@@ -19,6 +20,12 @@ export class MPGlassLight extends LitElement {
   setConfig(config: CardConfig) {
     if (typeof config.entity !== 'string' || !config.entity.includes('.')) throw new Error('invalid_entity');
     this.config = { ...config }; this.setAttribute('preset', config.preset ?? 'glass-blue');
+    const a = config.appearance;
+    this.style.setProperty('--mp-accent', a?.accent ?? '#72b9ff');
+    this.style.setProperty('--mp-opacity', String(a?.glassOpacity ?? .62));
+    this.style.setProperty('--mp-blur', `${a?.glassBlur ?? 22}px`);
+    this.style.setProperty('--mp-glass-radius', `${a?.radius ?? 22}px`);
+    this.toggleAttribute('motion', a?.motion !== false);
   }
   static getConfigElement() { return document.createElement('mp-glass-card-editor'); }
   static getStubConfig(hass: Hass) { return { entity: Object.keys(hass.states).find(id => id.startsWith('light.')) }; }
@@ -41,11 +48,11 @@ export class MPGlassLight extends LitElement {
     const enabled = available(state);
     const isOn = state?.state === 'on';
     const capabilities = MPCapabilityEngine.detect(this.config.entity, state);
-    const light = this.config.type !== 'custom:mp-glass-generic' && capabilities.some(b => b.capability === 'POWER');
+    const light = !this.config.type.includes('mp-glass-generic') && capabilities.some(b => b.capability === 'POWER');
     const percent = brightnessPercent(state?.attributes.brightness);
     const name = this.config.name ?? state?.attributes.friendly_name ?? this.config.entity;
     return html`<article aria-busy=${this.busy}>
-      <div class="row"><h2>${String(name)}</h2><span class=${isOn && light ? 'active' : ''}>${!enabled ? t(lang,'unavailable') : light ? t(lang,isOn ? 'on' : 'off') : state?.state}</span></div>
+      <div class="row"><span class=${`device-icon ${isOn && light ? 'on' : ''}`}>${mpIcon(light ? 'bulb' : 'tune',28)}</span><h2>${String(name)}</h2><span class=${`status ${isOn && light ? 'active' : ''}`}>${!enabled ? t(lang,'unavailable') : light ? t(lang,isOn ? 'on' : 'off') : state?.state}</span></div>
       <div class="row">${light ? html`<button class="primary" ?disabled=${!enabled || this.busy} @click=${() => this.act(isOn ? 'turn_off' : 'turn_on')}>${t(lang,isOn ? 'turnOff' : 'turnOn')}</button>` : nothing}
       <button @click=${this.moreInfo}>${t(lang,'details')}</button></div>
       ${light && capabilities.some(b => b.capability === 'DIM') ? html`<label>${t(lang,'brightness')} ${percent === undefined ? '' : new Intl.NumberFormat(lang).format(percent) + ' %'}<input aria-label=${t(lang,'brightness')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : nothing}

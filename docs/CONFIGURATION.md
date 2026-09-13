@@ -1,6 +1,8 @@
 # Configuration
 
-Le panneau **MP Glass Studio** permet de personnaliser le dashboard sans YAML. La colonne Apparence propose le nom de la maison, le preset, la couleur d'accent, la transparence du verre, le flou, les arrondis, l'assombrissement et la position du fond, la densité, les animations et les textes du bandeau. Une image Home Assistant peut être utilisée avec une URL locale `/local/...` ou `/api/image/...`. L'aperçu reste visible pendant les réglages et reflète immédiatement les changements.
+Le panneau **MP Glass Studio** est accessible dans la barre latérale Home Assistant et depuis le bouton **Personnaliser** du dashboard. Il configure sans YAML l'identité, les presets, les deux accents, la teinte et la transparence du verre, les bordures, les ombres, la typographie, le fond, la grille, les espacements, les dimensions, les icônes, les contrôles visibles, le contenu et l'ordre de navigation. Une image Home Assistant peut être utilisée avec une URL locale `/local/...` ou `/api/image/...`. L'aperçu reste visible et réagit avant la sauvegarde.
+
+La navigation du projet crée des destinations réelles et stables : `home`, `lights`, `rooms`, puis une page `area-<id>` par pièce utile. Le Studio permet d'afficher, masquer et ordonner les trois destinations principales.
 
 La section Installation analyse les registries Home Assistant, affiche les éléments à vérifier et permet d'affecter une pièce, renommer ou masquer un équipement. Enregistrer valide le schéma côté serveur. Seuls les administrateurs peuvent écrire.
 

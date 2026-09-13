@@ -8,7 +8,7 @@ from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN
 from .frontend import async_register, async_unregister
-from .project import ProjectRepository, RevisionConflict, default_project, load_validator
+from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
 
 
 async def async_setup_entry(hass, entry):
@@ -18,6 +18,11 @@ async def async_setup_entry(hass, entry):
     if record is None:
         record = {"revision": 0, "project": default_project(entry.data["name"])}
         await store.async_save(record)
+    else:
+        migrated = migrate_project(record["project"])
+        if migrated != record["project"]:
+            record = {"revision": record["revision"] + 1, "project": migrated}
+            await store.async_save(record)
     hass.data[DOMAIN] = ProjectRepository(store, validator, record)
     if not hass.data.get("mp_glass_ws_registered"):
         websocket_api.async_register_command(hass, websocket_get)

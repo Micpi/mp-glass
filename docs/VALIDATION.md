@@ -1,5 +1,15 @@
 # Validation — incrément lumière 0.1.0
 
+## Navigation et Studio de personnalisation — 13–14 septembre 2026
+
+La révision frontend r14 a été déployée sur l'instance Home Assistant 2026.9.1. Les routes `home`, `lights`, `rooms` et `area-<area_id>` ont été ouvertes depuis l'interface réelle. Les onglets Accueil, Lumières et Pièces changent bien de vue, la liste des pièces détectées est générée, et la page Cuisine affiche uniquement son équipement associé.
+
+Le raccourci Personnaliser ouvre désormais MP Glass Studio. Les rubriques Identité, Style & matière, Arrière-plan, Disposition, Contenu, Navigation et Équipements ont été chargées et parcourues sur l'instance réelle. Les presets, couleurs, transparence, flou, bordures, ombres, typographie, image, cadrage, densité, grille, espacements, dimensions, visibilité des sections et ordre de navigation sont exposés avec un aperçu direct. Aucun réglage du chantier n'a été modifié pendant cette vérification.
+
+Le chargement réel a révélé un conflit avec la propriété `panel` que Home Assistant assigne aux custom panels. La méthode interne du Studio a été renommée `renderSectionPanel` et un test navigateur reproduit désormais ce contexte Home Assistant. La ressource Lovelace active pointe sur `/mp_glass_static/mp-glass-r14.js?v=0.1.0`. Après remplacement du bundle et fin de propagation, le dashboard et le Studio ont été rechargés avec succès ; le lien Personnaliser est visible dans la navigation du dashboard.
+
+Validation locale associée : ESLint, TypeScript, 24 tests Vitest et build Vite réussis ; les 3 scénarios Playwright du Studio réussissent, y compris le conflit de propriété du custom panel. L'architecture reste une intégration Home Assistant unique. Un add-on est réservé à de futurs traitements lourds (par exemple conversion ou optimisation de plans), car la navigation, le stockage, la découverte et la personnalisation n'en ont pas besoin.
+
 ## Reprise sur instance utilisateur — 11 septembre 2026
 
 Session navigateur authentifiée accessible. Version constatée dans l'interface : Core 2026.9.1, Supervisor 2026.09.0, frontend 20260826.6, installation Supervised. Le vertical slice lumière a été validé sur cette instance réelle.

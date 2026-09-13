@@ -22,9 +22,20 @@ class ProjectContractTest(unittest.TestCase):
         self.assertEqual(source["project"]["name"], "Salon")
 
     def test_reject_secrets_and_future_schema(self):
-        for patch in ({"schema_version": 2}, {"token": "secret"}, {"overrides": {"x": {"pin": "1234"}}}):
+        for patch in ({"schema_version": 3}, {"token": "secret"}, {"overrides": {"x": {"pin": "1234"}}}):
             with self.assertRaises(ValidationError):
                 module.validate_project(self.validator, module.default_project() | patch)
+
+    def test_migrates_v1_and_preserves_user_choices(self):
+        old = module.default_project("Maison")
+        old["schema_version"] = 1
+        old.pop("navigation")
+        old["appearance"] = {"preset": "glass-warm", "accent": "#112233"}
+        migrated = module.migrate_project(old)
+        self.assertEqual(migrated["schema_version"], 2)
+        self.assertEqual(migrated["appearance"]["accent"], "#112233")
+        self.assertEqual(migrated["navigation"]["items"], ["home", "lights", "rooms"])
+        module.validate_project(self.validator, migrated)
 
 
 class MemoryStore:

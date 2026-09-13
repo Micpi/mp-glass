@@ -5,10 +5,13 @@ export const glassStyles = css`
     --mp-background: #061421;
     --mp-opacity: .66;
     --mp-blur: 24px;
+    --mp-tint: #12344f;
+    --mp-border-strength: .2;
+    --mp-shadow-strength: .35;
     --mp-glass-background:
-      linear-gradient(145deg, rgba(31, 61, 86, var(--mp-opacity)), rgba(8, 29, 48, calc(var(--mp-opacity) + .02)) 72%),
+      linear-gradient(145deg, rgb(from var(--mp-tint) r g b / var(--mp-opacity)), rgba(8, 29, 48, calc(var(--mp-opacity) + .02)) 72%),
       linear-gradient(180deg, rgba(255, 255, 255, .08), transparent 28%);
-    --mp-glass-border: color-mix(in srgb, var(--mp-accent) 20%, rgba(220, 237, 255, .38));
+    --mp-glass-border: color-mix(in srgb, var(--mp-accent) calc(var(--mp-border-strength) * 100%), rgba(220, 237, 255, .38));
     --mp-accent: #70b9ff;
     --mp-text-primary: #f7fbff;
     --mp-text-secondary: #aebfd0;
@@ -31,7 +34,7 @@ export const glassStyles = css`
     background: var(--mp-glass-background);
     border: 1px solid var(--mp-glass-border);
     border-radius: var(--mp-glass-radius);
-    box-shadow: 0 20px 50px rgba(0, 8, 18, .24), inset 0 1px rgba(255,255,255,.12);
+    box-shadow: 0 20px 50px rgba(0, 8, 18, var(--mp-shadow-strength)), inset 0 1px rgba(255,255,255,.12);
     min-width: 0;
   }
   article::before, .surface::before {
@@ -65,6 +68,10 @@ export const glassStyles = css`
   .card-head { display:flex; align-items:center; gap:12px; min-width:0; }
   .device-icon { display:grid; place-items:center; width:44px; height:44px; flex:0 0 auto; border-radius:14px; color:#dbe8f5; background:rgba(197,220,243,.1); border:1px solid rgba(220,237,255,.12); box-shadow:inset 0 1px rgba(255,255,255,.06); transition:.25s ease; }
   .device-icon.on { color:#ffe175; background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.09)); border-color:rgba(255,225,138,.3); box-shadow:0 0 28px rgba(255,192,45,.28),inset 0 1px rgba(255,255,255,.14); }
+  :host([icon-style=orb]) .device-icon { border-radius:50%; }
+  :host([icon-style=minimal]) .device-icon { border-radius:6px; background:transparent; border-color:transparent; box-shadow:none; }
+  :host([card-style=compact]) .device-card { min-height:128px; padding:14px; gap:8px; }
+  :host([card-style=spacious]) .device-card { min-height:178px; padding:23px; gap:18px; }
   .identity { min-width:0; margin-right:auto; }
   .identity h2 { font-size:16px; line-height:1.2; font-weight:650; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .identity p { color:var(--mp-text-secondary); font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }

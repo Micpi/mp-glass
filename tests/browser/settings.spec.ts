@@ -3,10 +3,14 @@ test('custom view fills the Home Assistant flex container',async({page})=>{
   await page.goto('/');
   await page.evaluate(()=>{
     const parent=document.createElement('div');parent.style.cssText='display:flex;width:900px;max-width:100%';
-    const view=document.createElement('mp-glass-view-v3');parent.append(view);document.body.replaceChildren(parent);
+    const view=document.createElement('mp-glass-view-v4');parent.append(view);document.body.replaceChildren(parent);
   });
-  const bounds=await page.locator('mp-glass-view-v3').boundingBox();
+  const bounds=await page.locator('mp-glass-view-v4').boundingBox();
   expect(bounds?.width).toBeGreaterThan(800);
+  await expect(page.getByRole('link',{name:'Accueil'})).toHaveAttribute('href','/home');
+  await expect(page.getByRole('link',{name:'Lumières'})).toHaveAttribute('href','/lights');
+  await expect(page.getByRole('link',{name:'Pièces'})).toHaveAttribute('href','/rooms');
+  await expect(page.getByRole('link',{name:'Personnaliser'})).toHaveAttribute('href','/mp-glass-settings');
 });
 test('strategy and settings use registry/project contracts and retain manual overrides',async({page})=>{
   await page.goto('/');
@@ -31,9 +35,12 @@ test('strategy and settings use registry/project contracts and retain manual ove
         default:throw Error('unexpected command');
       }
     }};
-    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};panel.hass=hass;document.body.replaceChildren(panel);
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass;panel?:unknown};
+    panel.panel={component_name:'mp-glass-settings'};
+    panel.hass=hass;document.body.replaceChildren(panel);
     Object.assign(window,{settingsTest:{hass,requests}});
   });
+  await page.getByRole('button',{name:/Équipements/}).click();
   await expect(page.getByText('Éclairage principal',{exact:true})).toBeVisible();
   await page.getByRole('combobox',{name:'Pièce',exact:true}).selectOption('salon');
   await page.getByRole('button',{name:'Enregistrer',exact:true}).click();
@@ -43,7 +50,7 @@ test('strategy and settings use registry/project contracts and retain manual ove
     const strategy=customElements.get('ll-strategy-dashboard-mp-glass') as unknown as {generate:(config:object,hass:unknown)=>Promise<unknown>};
     return strategy.generate({},hass);
   });
-  expect(dashboard).toMatchObject({title:'Maison test',views:[{cards:[{type:'custom:mp-glass-light-v3',name:'Éclairage principal'}]},{title:'Salon'}]});
+  expect(dashboard).toMatchObject({title:'Maison test',views:[{path:'home',cards:[{type:'custom:mp-glass-light-v4',name:'Éclairage principal'}]},{path:'lights'},{path:'rooms'},{title:'Salon'}]});
   await page.getByRole('button',{name:'Analyser l’installation'}).click();
   await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeEnabled();
 });

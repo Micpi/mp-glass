@@ -8,6 +8,7 @@ export type Capability = 'POWER' | 'DIM' | 'COLOR_TEMP' | 'RGB' | 'RGBW' | 'RGBW
 export interface CapabilityBinding { capability: Capability; entityId: string; evidence: string }
 export type Category = 'light' | 'generic';
 export type Preset = 'glass-blue' | 'glass-warm' | 'glass-dark' | 'glass-light' | 'glass-oled' | 'glass-neutral';
+export type NavigationItem = 'home' | 'lights' | 'rooms';
 export interface AppearanceConfig {
   preset: Preset;
   accent?: string;
@@ -23,9 +24,31 @@ export interface AppearanceConfig {
   eyebrow?: string;
   subtitle?: string;
   quote?: string;
+  secondaryAccent?: string;
+  glassTint?: string;
+  borderStrength?: number;
+  shadowStrength?: number;
+  fontStyle?: 'elegant' | 'modern' | 'soft';
+  iconStyle?: 'tile' | 'orb' | 'minimal';
+  cardStyle?: 'compact' | 'standard' | 'spacious';
+  cardColumns?: number;
+  cardGap?: number;
+  maxWidth?: number;
+  heroHeight?: number;
+  backgroundBlur?: number;
+  backgroundSaturation?: number;
+  showClock?: boolean;
+  showOverview?: boolean;
+  showFooter?: boolean;
+  showSettingsShortcut?: boolean;
+  showCardDetails?: boolean;
+  showBrightness?: boolean;
+  sectionTitle?: string;
+  sectionSubtitle?: string;
 }
+export interface NavigationConfig { items: NavigationItem[]; showLabels: boolean }
 export interface Override { name?: string; areaId?: string; hidden?: boolean; presentation?: Category }
-export interface ProjectConfig { schema_version: 1; project: { name: string }; appearance: AppearanceConfig; roles: Record<string, string>; overrides: Record<string, Override> }
+export interface ProjectConfig { schema_version: 2; project: { name: string }; appearance: AppearanceConfig; navigation: NavigationConfig; roles: Record<string, string>; overrides: Record<string, Override> }
 export interface LogicalDevice {
   id: string; entityKey: string; entityId: string; name: string; sourceDeviceIds: string[];
   areaId?: string; floorId?: string; category: Category; presentation?: Category;
@@ -35,3 +58,4 @@ export interface LogicalDevice {
 export interface MPHomeGraph { floors: HAFloor[]; areas: HAArea[]; sourceDevices: HADevice[]; devices: LogicalDevice[]; warnings: string[] }
 export interface CardConfig { type: string; entity: string; name?: string; preset?: Preset; appearance?: AppearanceConfig; debug?: boolean }
 export interface CardDefinition { type: string; categories: Category[]; requires: Capability[]; priority: number; variants: string[] }
+export interface MPAreaSummary { id: string; name: string; icon?: string | null; picture?: string | null; deviceCount: number; lightCount: number; activeCount: number }

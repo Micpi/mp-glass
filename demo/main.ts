@@ -15,8 +15,11 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
   hass.states={...hass.states,[entityId]:{...old,state:service==='turn_off'?'off':'on',attributes:{...old.attributes,...('brightness_pct' in data?{brightness:Number(data.brightness_pct)*255/100}:{})}}};
   for(const card of cards) card.hass={...hass};
 } };
-for(const config of MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project).views[0]!.cards) {
+const dashboard = MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project);
+for(const config of dashboard.views[0]!.cards) {
   const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config);card.hass={...hass};cards.push(card);
 }
-(document.querySelector('mp-glass-view-v3') as MPGlassView).cards=cards;
+const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
+view.setConfig(dashboard.views[0]!);
+view.cards=cards;
 Object.assign(window,{demo:{hass,cards,calls}});

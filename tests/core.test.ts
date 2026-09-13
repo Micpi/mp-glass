@@ -10,7 +10,13 @@ describe('discovery and presentation contract',()=>{
   it('discovers Salon lights and produces the corresponding card without brand signals',()=>{
     const graph=MPDiscoveryEngine.discover(home(),defaultProject());
     expect(graph.devices[0]).toMatchObject({id:'logical:stable-0',areaId:'salon',floorId:'ground',category:'light',confidence:.99});
-    expect(MPDashboardComposer.compose(graph,defaultProject()).views[1]?.cards[0]).toMatchObject({type:'custom:mp-glass-light-v3',entity:'light.circuit_0'});
+    expect(MPDashboardComposer.compose(graph,defaultProject()).views[1]?.cards[0]).toMatchObject({type:'custom:mp-glass-light-v4',entity:'light.circuit_0'});
+  });
+  it('generates functional home, lights, rooms and area destinations',()=>{
+    const dashboard=MPDashboardComposer.compose(MPDiscoveryEngine.discover(home(),defaultProject()),defaultProject());
+    expect(dashboard.views.slice(0,4).map(view=>view.path)).toEqual(['home','lights','rooms','area-salon']);
+    expect(dashboard.views[2]).toMatchObject({mp_view_kind:'rooms',cards:[]});
+    expect(dashboard.views[0]?.mp_navigation.items).toEqual(['home','lights','rooms']);
   });
   it('keeps independent circuits on one device and parent relationships',()=>{
     const graph=MPDiscoveryEngine.discover(home(),defaultProject());
@@ -44,7 +50,7 @@ describe('discovery and presentation contract',()=>{
     expect(graph.warnings).toContain('incompatible_override:odd');
     const dashboard=MPDashboardComposer.compose(graph,project);
     expect(dashboard.views[0]?.cards).toEqual([]);
-    expect(dashboard.views.find(v=>v.path==='inventory')?.cards[0]?.type).toBe('custom:mp-glass-generic-v3');
+    expect(dashboard.views.find(v=>v.path==='inventory')?.cards[0]?.type).toBe('custom:mp-glass-generic-v4');
   });
   it('does not expose hidden or disabled entities by default',()=>{
     const snapshot=home();snapshot.entities[0]!.hidden_by='user';snapshot.entities[1]!.disabled_by='integration';
@@ -79,7 +85,7 @@ describe('project contract',()=>{
     expect(migrateProject(JSON.parse(JSON.stringify(project)))).toEqual(project);
     const copy=parseProject(project);copy.project.name='Different';expect(project.project.name).toBe('MP Glass');
   });
-  it.each([{...defaultProject(),schema_version:2},{...defaultProject(),token:'secret'},{...defaultProject(),appearance:{preset:'invalid'}},{...defaultProject(),overrides:{x:{pin:'1234'}}}])('rejects unsupported or secret-bearing data',value=>expect(()=>parseProject(value)).toThrow('invalid_project'));
+  it.each([{...defaultProject(),schema_version:3},{...defaultProject(),token:'secret'},{...defaultProject(),appearance:{preset:'invalid'}},{...defaultProject(),overrides:{x:{pin:'1234'}}}])('rejects unsupported or secret-bearing data',value=>expect(()=>parseProject(value)).toThrow('invalid_project'));
   it('requires a fallback and rejects duplicate card registrations',()=>{
     const registry=new MPCardRegistry();const graph=MPDiscoveryEngine.discover(home(),defaultProject());
     expect(()=>registry.resolve(graph.devices[0]!)).toThrow('missing_fallback');

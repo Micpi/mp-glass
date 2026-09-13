@@ -1,4 +1,5 @@
 import type { CardDefinition, LogicalDevice, MPHomeGraph, ProjectConfig } from './models';
+
 export class MPCardRegistry {
   private definitions: CardDefinition[] = [];
   register(definition: CardDefinition) {
@@ -9,29 +10,69 @@ export class MPCardRegistry {
     const category = device.presentation ?? device.category;
     const candidates = this.definitions.filter(d => d.categories.includes(category) && d.requires.every(c => device.capabilities.some(b => b.capability === c)));
     const selected = candidates.sort((a,b) => b.priority - a.priority || (a.type < b.type ? -1 : 1))[0];
-    const fallback = this.definitions.find(d => d.type === 'custom:mp-glass-generic-v3');
+    const fallback = this.definitions.find(d => d.type === 'custom:mp-glass-generic-v4');
     if (!selected && !fallback) throw new Error('missing_fallback');
     return selected ?? fallback!;
   }
 }
+
 export const cardRegistry = new MPCardRegistry();
-cardRegistry.register({ type: 'custom:mp-glass-light-v3', categories: ['light'], requires: ['POWER'], priority: 100, variants: ['standard'] });
-cardRegistry.register({ type: 'custom:mp-glass-generic-v3', categories: ['generic'], requires: [], priority: 0, variants: ['standard'] });
+cardRegistry.register({ type: 'custom:mp-glass-light-v4', categories: ['light'], requires: ['POWER'], priority: 100, variants: ['compact','standard','spacious'] });
+cardRegistry.register({ type: 'custom:mp-glass-generic-v4', categories: ['generic'], requires: [], priority: 0, variants: ['standard'] });
+
 export class MPPresentationResolver {
   static resolve(device: LogicalDevice) { return { card: cardRegistry.resolve(device), evidence: device.evidence, capabilities: device.capabilities }; }
 }
+
 export class MPDashboardComposer {
   static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory') {
     const visible = graph.devices.filter(d => !d.hidden && !d.disabled);
     const devices = visible.filter(d => d.category !== 'generic');
+    const lights = devices.filter(d => d.category === 'light');
     const inventory = visible.filter(d => d.category === 'generic');
-    const cards = (items: LogicalDevice[]) => items.map(d => ({ type: cardRegistry.resolve(d).type, entity: d.entityId, name: d.name, preset: project.appearance.preset, appearance: project.appearance, debug }));
+    const cards = (items: LogicalDevice[]) => items.map(d => ({
+      type: cardRegistry.resolve(d).type,
+      entity: d.entityId,
+      name: d.name,
+      preset: project.appearance.preset,
+      appearance: project.appearance,
+      debug,
+    }));
+    const areas = graph.areas
+      .filter(a => devices.some(d => d.areaId === a.area_id))
+      .map(a => {
+        const members = devices.filter(d => d.areaId === a.area_id);
+        return {
+          id: a.area_id,
+          name: a.name,
+          icon: a.icon ?? undefined,
+          picture: a.picture ?? undefined,
+          deviceCount: members.length,
+          lightCount: members.filter(d => d.category === 'light').length,
+        };
+      });
+    const view = (path: string, title: string, kind: 'home'|'lights'|'rooms'|'area'|'inventory', viewCards: ReturnType<typeof cards>, icon: string) => ({
+      title,
+      path,
+      icon,
+      type: 'custom:mp-glass-view-v4',
+      mp_project_name: project.project.name,
+      mp_appearance: project.appearance,
+      mp_navigation: project.navigation,
+      mp_view_kind: kind,
+      mp_view_path: path,
+      mp_view_title: title,
+      mp_areas: areas,
+      cards: viewCards,
+    });
     return {
       title: project.project.name,
       views: [
-        { title: project.project.name, mp_project_name: project.project.name, mp_appearance: project.appearance, path: 'home', icon: 'mdi:home', type: 'custom:mp-glass-view-v3', cards: cards(devices) },
-        ...graph.areas.filter(a => devices.some(d => d.areaId === a.area_id)).map(a => ({ title: a.name, mp_project_name: project.project.name, mp_appearance: project.appearance, path: `area-${a.area_id}`, icon: a.icon ?? 'mdi:floor-plan', type: 'custom:mp-glass-view-v3', cards: cards(devices.filter(d => d.areaId === a.area_id)) })),
-        ...(inventory.length ? [{title: inventoryTitle, mp_project_name: project.project.name, mp_appearance: project.appearance, path: 'inventory', icon: 'mdi:archive-search', type: 'custom:mp-glass-view-v3', cards: cards(inventory)}] : []),
+        view('home', project.project.name, 'home', cards(devices), 'mdi:home'),
+        view('lights', 'Lumières', 'lights', cards(lights), 'mdi:lightbulb-group'),
+        view('rooms', 'Pièces', 'rooms', [], 'mdi:floor-plan'),
+        ...areas.map(a => view(`area-${a.id}`, a.name, 'area', cards(devices.filter(d => d.areaId === a.id)), a.icon ?? 'mdi:floor-plan')),
+        ...(inventory.length ? [view('inventory', inventoryTitle, 'inventory', cards(inventory), 'mdi:archive-search')] : []),
       ],
     };
   }

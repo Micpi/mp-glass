@@ -51,11 +51,19 @@ export class MPGlassLight extends LitElement {
     const light = !this.config.type.includes('mp-glass-generic') && capabilities.some(b => b.capability === 'POWER');
     const percent = brightnessPercent(state?.attributes.brightness);
     const name = this.config.name ?? state?.attributes.friendly_name ?? this.config.entity;
-    return html`<article aria-busy=${this.busy}>
-      <div class="row"><span class=${`device-icon ${isOn && light ? 'on' : ''}`}>${mpIcon(light ? 'bulb' : 'tune',28)}</span><h2>${String(name)}</h2><span class=${`status ${isOn && light ? 'active' : ''}`}>${!enabled ? t(lang,'unavailable') : light ? t(lang,isOn ? 'on' : 'off') : state?.state}</span></div>
-      <div class="row">${light ? html`<button class="primary" ?disabled=${!enabled || this.busy} @click=${() => this.act(isOn ? 'turn_off' : 'turn_on')}>${t(lang,isOn ? 'turnOff' : 'turnOn')}</button>` : nothing}
-      <button @click=${this.moreInfo}>${t(lang,'details')}</button></div>
-      ${light && capabilities.some(b => b.capability === 'DIM') ? html`<label>${t(lang,'brightness')} ${percent === undefined ? '' : new Intl.NumberFormat(lang).format(percent) + ' %'}<input aria-label=${t(lang,'brightness')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : nothing}
+    const dimmable = light && capabilities.some(b => b.capability === 'DIM');
+    const stateLabel = !enabled ? t(lang,'unavailable') : light ? t(lang,isOn ? 'on' : 'off') : String(state?.state ?? '—');
+    return html`<article class="device-card" data-on=${String(isOn && light)} data-available=${String(enabled)} aria-busy=${this.busy}>
+      <div class="card-head">
+        <span class=${`device-icon ${isOn && light ? 'on' : ''}`}>${mpIcon(light ? 'bulb' : 'tune',23)}</span>
+        <div class="identity"><h2>${String(name)}</h2><p>${light ? (dimmable ? 'Éclairage variable' : 'Éclairage') : 'Équipement'}</p></div>
+        <button class="icon-button" title=${t(lang,'details')} aria-label=${t(lang,'details')} @click=${this.moreInfo}>${mpIcon('arrow',18)}</button>
+      </div>
+      <div class="control-row">
+        <div class="state-copy"><strong>${stateLabel}</strong><small>${dimmable && enabled ? `${percent ?? 0} %` : enabled ? 'Prêt' : 'Hors ligne'}</small></div>
+        ${light ? html`<button class=${`power-button ${isOn ? 'on' : ''}`} ?disabled=${!enabled || this.busy} @click=${() => this.act(isOn ? 'turn_off' : 'turn_on')}>${mpIcon('power',17)} ${t(lang,isOn ? 'turnOff' : 'turnOn')}</button>` : nothing}
+      </div>
+      ${dimmable ? html`<label class="dimmer"><span>${t(lang,'brightness')} ${percent === undefined ? '—' : new Intl.NumberFormat(lang).format(percent) + ' %'}</span><input aria-label=${t(lang,'brightness')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : html`<div class="no-dimmer" aria-hidden="true"></div>`}
       ${this.failure ? html`<p class="error" role="alert">${t(lang,'error')}</p>` : nothing}
       ${this.config.debug ? html`<details><summary>${t(lang,'why')}</summary><pre>${JSON.stringify({ entity: this.config.entity, evidence: light ? 'domain:light' : 'fallback', capabilities, presentation: this.config.type }, null, 2)}</pre></details>` : nothing}
     </article>`;

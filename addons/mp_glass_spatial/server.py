@@ -8,7 +8,7 @@ import sys
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
 
-from spatial_gemini import DEFAULT_MODEL, normalize_result, request_gemini
+from spatial_gemini import DEFAULT_MODEL, normalize_result, quota_info, request_gemini
 
 ROOT = Path(__file__).parent
 MAX_FILE = 8 * 1024 * 1024
@@ -72,7 +72,8 @@ def create_app(options, analyze_fn=call_gemini, decode_fn=decode_source):
                            "model_unavailable", "quota", "analysis_failed", "invalid_geometry", "no_rooms", "truncated"}
                 code = str(error) if str(error) in allowed else "invalid_geometry"
                 detail = getattr(error, "detail", "")
-                return web.json_response({"error": code, **({"detail": detail} if detail else {})}, status=422)
+                quota = quota_info(getattr(error, "quota", None)) if code == "quota" else None
+                return web.json_response({"error": code, **({"detail": detail} if detail else {}), **({"quota": quota} if quota else {})}, status=422)
             except Exception:
                 return web.json_response({"error": "invalid_geometry"}, status=422)
 

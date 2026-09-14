@@ -6,12 +6,22 @@ import { mpIcon } from '../icons';
 import './viewer';
 import { detectWalls, snapBox, type DetectionRoom, type Source, type Walls } from './zones';
 
-interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string; detection?:DetectionRoom[] }
+/** Exhausted Gemini quota, as read by Home Assistant in Google's answer. */
+interface Quota { period:'day'|'minute'|''; unit:'requests'|'tokens'; limit:number|null; model:string; retry:number|null }
+interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string; detection?:DetectionRoom[]; quota?:Quota }
 type Quality='precise'|'fast';
 /** Models offered in the integration options; the other one is proposed when Gemini is overloaded. */
 const MODELS:Record<string,{label:string;quality:Quality}>={'gemini-3.8-flash':{label:'Gemini 3.8 Flash',quality:'precise'},'gemini-3.5-flash-lite':{label:'Gemini 3.5 Flash-Lite',quality:'fast'}};
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
+/** Google renews daily quotas at midnight in California: that moment in the viewer's time, "demain à 9 h". */
+function quotaReset(now=new Date()){
+  const parts=new Intl.DateTimeFormat('en-US',{timeZone:'America/Los_Angeles',hour:'numeric',minute:'numeric',second:'numeric',hourCycle:'h23'}).formatToParts(now);
+  const part=(type:string)=>Number(parts.find(p=>p.type===type)?.value??0);
+  const reset=new Date(now.getTime()-((part('hour')*60+part('minute'))*60+part('second'))*1000-now.getMilliseconds()+86_400_000);
+  const minutes=reset.getMinutes();
+  return `${reset.toDateString()===now.toDateString()?'aujourd’hui':'demain'} à ${reset.getHours()} h${minutes?` ${String(minutes).padStart(2,'0')}`:''}`;
+}
 const MESSAGES:Record<string,string>={
   not_configured:'Ouvrez Configurer Gemini et collez votre clé API dans les options de MP Glass. Aucun add-on nécessaire en mode direct.',
   not_installed:'Service d’import introuvable : mettez à jour l’intégration MP Glass, puis redémarrez Home Assistant.',
@@ -110,6 +120,8 @@ export class MPSpatialEditor extends LitElement {
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
   /** Model of the running or last analysis, as reported by Home Assistant (direct mode only). */
   private model='';private quality?:Quality;private errorCode='';
+  /** Quota refused by Google, and when a per-minute limit lets "Réessayer" through again. */
+  private quotaInfo?:Quota;private retryAt=0;
   private get modelLabel(){return MODELS[this.model]?.label??'Gemini';}
   private get alternative(){const current=MODELS[this.model];return current?Object.values(MODELS).find(m=>m.quality!==current.quality):undefined;}
   /** Image sent to Gemini and the mapping of the draft onto it, for the rooms drawn over the plan. */
@@ -144,7 +156,7 @@ export class MPSpatialEditor extends LitElement {
   /** `quality`: the other offered model for this analysis only (after an overload); none: the one in the options. */
   private async analyze(quality?:Quality){
     if(!this.file||!this.hass?.fetchWithAuth||!this.confirmed||this.busy)return;
-    this.quality=quality;this.model='';this.errorCode='';
+    this.quality=quality;this.model='';this.errorCode='';this.quotaInfo=undefined;this.retryAt=0;
     this.busy=true;this.candidate=undefined;this.source=undefined;this.setSource();this.detail='';this.warnings=[];this.jobId='';this.phase='preparing';this.dialogOpen=true;this.startedAt=Date.now();this.message='Préparation du fichier…';
     clearInterval(this.ticker);this.ticker=setInterval(()=>{this.tick++;},1000);
     const generation=++this.generation;
@@ -166,12 +178,26 @@ export class MPSpatialEditor extends LitElement {
     }catch(error){if(generation===this.generation)this.fail(error);}
   }
   private finish(phase:'done'|'error'){this.busy=false;this.phase=phase;this.jobId='';this.elapsed=Date.now()-this.startedAt;clearInterval(this.ticker);if(!this.disposed)this.dialogOpen=true;}
-  private fail(error:unknown,detail=''){
+  private fail(error:unknown,detail='',quota?:Quota){
     const code=error instanceof TypeError?'network':error instanceof Error?error.message:String((error as {code?:string})?.code??error);
     const pages=Number(/^page_missing:(\d+)$/.exec(code)?.[1]);
-    this.errorCode=code;
+    this.errorCode=code;this.quotaInfo=code==='quota'?quota:undefined;
     const overloaded=code==='provider_unavailable'&&this.alternative?`${this.modelLabel} est momentanément surchargé ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec ${this.alternative.label}.`:'';
-    this.message=pages?`La page ${this.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:overloaded||MESSAGES[code]||`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
+    this.message=pages?`La page ${this.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:overloaded||this.quotaMessage()||MESSAGES[code]||`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
+    // A per-minute limit: "Réessayer" counts down the delay advised by Google.
+    this.retryAt=this.quotaInfo?.period==='minute'?Date.now()+(this.quotaInfo.retry??60)*1000:0;
+    if(this.retryAt)this.ticker=setInterval(()=>{this.tick++;if(Date.now()>=this.retryAt)clearInterval(this.ticker);},1000);
+  }
+  /** Which quota is exhausted, when it comes back, and that the other model has its own. */
+  private quotaMessage(){
+    const quota=this.quotaInfo;
+    if(!quota)return '';
+    const label=MODELS[quota.model]?.label??(quota.model||this.modelLabel),unit=quota.unit==='tokens'?'jetons':'requêtes';
+    const other=this.alternative?` ${this.alternative.label} a son propre quota : vous pouvez l’essayer tout de suite.`:'';
+    if(quota.limit===0)return `${label} n’a pas de quota gratuit dans ce projet Google (limite 0).${other}`;
+    if(quota.period==='day')return `Quota gratuit du jour épuisé pour ${label}${quota.limit?` (${quota.limit} ${unit} par jour)`:''}. Google le renouvelle à minuit, heure de Californie, soit ${quotaReset()}.${other}`;
+    if(quota.period==='minute')return `Limite par minute de ${label} atteinte${quota.limit?` (${quota.limit} ${unit} par minute)`:''} : réessayez dans ${quota.retry??60} secondes.`;
+    return '';
   }
   private async poll(id:string,generation:number){
     try{
@@ -181,7 +207,7 @@ export class MPSpatialEditor extends LitElement {
         if(Date.now()-this.startedAt>MAX_WAIT)throw Error('timeout');
         this.timer=setTimeout(()=>void this.poll(id,generation),2000);return;
       }
-      if(job.status==='error'){this.fail(Error(job.error??'analysis_failed'),job.detail);return;}
+      if(job.status==='error'){this.fail(Error(job.error??'analysis_failed'),job.detail,job.quota);return;}
       this.candidate=parseSpatial(job.plan);this.warnings=job.warnings??[];
       const source=job.source,numbers=source?[source.width,source.height,...source.scale,...source.origin]:[];
       this.source=numbers.length===6&&numbers.every(Number.isFinite)?source:undefined;
@@ -271,9 +297,14 @@ export class MPSpatialEditor extends LitElement {
         <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises.</p>
         <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||this.recomputing||!rooms.length} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
     }else{
+      const quota=this.errorCode==='quota',daily=quota&&(this.quotaInfo?.period==='day'||this.quotaInfo?.limit===0);
+      // The other model on a click, never on its own: after an overload, or a quota that is not a matter of seconds (each model has its own).
+      const other=this.file&&this.confirmed&&(this.errorCode==='provider_unavailable'||(quota&&this.quotaInfo?.period!=='minute'))?this.alternative:undefined;
+      const wait=Math.ceil((this.retryAt-Date.now())/1000);
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse impossible</h3><p>Le plan enregistré est conservé.</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>
-        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${this.file&&this.confirmed&&this.alternative&&this.errorCode==='provider_unavailable'?html`<button @click=${()=>this.analyze(this.alternative!.quality)}>Réessayer avec ${this.alternative.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class="primary" @click=${()=>this.analyze(this.quality)}>Réessayer</button>`:nothing}</div>`;
+        ${quota?html`<p class="muted"><a href="https://ai.dev/rate-limit" target="_blank" rel="noopener noreferrer">Voir vos quotas Gemini</a> · MP Glass ne relance jamais de lui-même une analyse refusée pour quota.</p>`:nothing}
+        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${other?html`<button class=${daily?'primary':''} @click=${()=>this.analyze(other.quality)}>Réessayer avec ${other.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class=${daily?'':'primary'} ?disabled=${wait>0} @click=${()=>this.analyze(this.quality)}>${wait>0?`Réessayer dans ${wait} s`:'Réessayer'}</button>`:nothing}</div>`;
     }
     // Escape does not interrupt a running analysis: only "Annuler l’analyse" does.
     return html`<dialog class="job" aria-labelledby="job-title" @cancel=${(e:Event)=>{if(this.busy)e.preventDefault();}} @close=${()=>{this.dialogOpen=false;}}>${body}</dialog>`;

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.1
+
+Quota Gemini atteint : la réponse d’erreur précise le quota (par minute ou par jour), sa limite, le modèle et le délai conseillé par Google, pour la fenêtre d’échec du Studio.
+
 ## 0.4.0
 
 Contrat Gemini partagé : les pièces détectées sont renvoyées avec leurs murs alignés, en coordonnées 0–1000, pour être ajustées dans le Studio (poignées, ajout, suppression) puis recalculées par Home Assistant.

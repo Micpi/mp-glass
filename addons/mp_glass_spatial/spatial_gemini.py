@@ -104,13 +104,17 @@ TYPICAL_AREAS = [
 
 
 class SpatialError(ValueError):
-    """Stable code for the interface plus an optional technical detail, never a secret."""
+    """Stable code for the interface plus an optional technical detail, never a secret.
 
-    def __init__(self, code, detail="", status=None):
+    `quota` describes an exhausted Gemini quota for the Studio (see `quota_info`).
+    """
+
+    def __init__(self, code, detail="", status=None, quota=None):
         super().__init__(code)
         self.code = code
         self.detail = str(detail)[:300]
         self.status = status
+        self.quota = quota
 
 
 def _cross(a, b, c):
@@ -462,6 +466,50 @@ def build_request(data, mime, model, page=1, structured=True, thinking=None):
     }
 
 
+def quota_info(value):
+    """Exhausted quota, safe to show: period ("day", "minute" or unknown), unit, limit, model, advised delay in seconds."""
+    if not isinstance(value, dict):
+        return None
+
+    def whole(number, top):
+        return number if isinstance(number, int) and not isinstance(number, bool) and 0 <= number <= top else None
+
+    model = value.get("model")
+    return {"period": value.get("period") if value.get("period") in ("day", "minute") else "",
+            "unit": "tokens" if value.get("unit") == "tokens" else "requests",
+            "limit": whole(value.get("limit"), 10**9), "retry": whole(value.get("retry"), 86400),
+            "model": model if isinstance(model, str) and re.fullmatch(r"[a-z0-9.-]{1,60}", model) else ""}
+
+
+def _quota(message, details):
+    """What Google says about an exhausted quota (QuotaFailure and RetryInfo details, else its message), and a short detail.
+
+    Its message alone is long and generic: cut at 300 characters, it lost the quota, the limit and the delay.
+    """
+    violations = [v for d in details if isinstance(d, dict) and isinstance(d.get("violations"), list) for v in d["violations"] if isinstance(v, dict)]
+    quotas = [{"name": str(v.get("quotaId") or v.get("quotaMetric") or ""), "limit": str(v.get("quotaValue", "")),
+               "model": str(v["quotaDimensions"].get("model", "")) if isinstance(v.get("quotaDimensions"), dict) else ""} for v in violations]
+    written = re.search(r"Quota exceeded for metric: ([^\s,]+), limit: (\d+)(?:, model: ([\w.-]+))?", message)
+    if not quotas and written:
+        quotas = [{"name": written.group(1), "limit": written.group(2), "model": written.group(3) or ""}]
+    delay = next((str(d["retryDelay"]) for d in details if isinstance(d, dict) and "retryDelay" in d), "")
+    delay = re.fullmatch(r"(\d+(?:\.\d+)?)s", delay) or re.search(r"retry in (\d+(?:\.\d+)?)s", message)
+    if not quotas and not delay:
+        return None, ""
+    # Once the daily quota is exhausted, it is the one to wait for.
+    chosen = next((q for q in quotas if "PerDay" in q["name"]), quotas[0] if quotas else {"name": "", "limit": "", "model": ""})
+    info = quota_info({
+        "period": "day" if "PerDay" in chosen["name"] else "minute" if "PerMinute" in chosen["name"] else "",
+        "unit": "tokens" if "token" in chosen["name"].lower() else "requests",
+        "limit": int(chosen["limit"]) if chosen["limit"].isdigit() else None, "model": chosen["model"],
+        "retry": min(86400, math.ceil(float(delay.group(1)))) if delay else None,
+    })
+    # Google advises a delay of seconds even for a daily quota: only worth showing for the others.
+    parts = [chosen["name"][:90], info["limit"] is not None and f"limite {info['limit']}", info["model"],
+             info["retry"] is not None and info["period"] != "day" and f"nouvel essai conseillé dans {info['retry']} s"]
+    return info, " · ".join(p for p in parts if p)
+
+
 def provider_error(status, body, api_key=""):
     """Map a Google error response to a stable code, keeping Google's explanation as detail."""
     try:
@@ -491,7 +539,10 @@ def provider_error(status, body, api_key=""):
     else:
         code = "analysis_failed"
     detail = " ".join(f"HTTP {status} {state} {message} {' ; '.join(violations)}".split())
-    return SpatialError(code, detail.replace(api_key, "***") if api_key else detail, status)
+    quota, summary = _quota(message, details) if code == "quota" else (None, "")
+    if summary:
+        detail = f"HTTP {status} {state} · {summary}"
+    return SpatialError(code, detail.replace(api_key, "***") if api_key else detail, status, quota)
 
 
 async def _send(session, payload, model, api_key):

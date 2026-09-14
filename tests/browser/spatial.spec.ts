@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean; model?:string }
+interface MountOptions { jobError?:{error:string;detail?:string;quota?:Record<string,unknown>}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean; model?:string }
 /** One-page PDF (600 x 400 pt) with a few walls, built by hand so the test needs no fixture file. */
 function pdfPlan():Buffer{
   const stream='4 w 20 20 560 360 re S 300 20 m 300 380 l S 300 200 m 580 200 l S';
@@ -268,6 +268,38 @@ test('an overloaded model can be swapped for the other one for this analysis',as
   await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url)))
     .toEqual(['/api/mp_glass/spatial/analyze?page=1','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+});
+
+test.describe('quota',()=>{
+  test.use({timezoneId:'Europe/Paris'});
+  const uploadedUrls=(page:Page)=>page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url));
+  test('an exhausted daily quota says when it comes back and offers the other model',async({page})=>{
+    // 17:50 in Paris, 8:50 in California: the quotas come back at midnight there, 9:00 tomorrow here.
+    await page.clock.setFixedTime(new Date('2026-09-14T15:50:00Z'));
+    await mountEditor(page,true,false,{model:'gemini-3.8-flash',jobError:{error:'quota',detail:'HTTP 429 RESOURCE_EXHAUSTED · GenerateRequestsPerDayPerProjectPerModel-FreeTier · limite 20 · gemini-3.8-flash',
+      quota:{period:'day',unit:'requests',limit:20,model:'gemini-3.8-flash',retry:37}}});
+    await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+    await consentAndGenerate(page);
+    const dialog=page.getByRole('dialog',{name:'Analyse impossible'});
+    await expect(dialog.getByRole('status')).toContainText('Quota gratuit du jour épuisé pour Gemini 3.8 Flash (20 requêtes par jour). Google le renouvelle à minuit, heure de Californie, soit demain à 9 h. Gemini 3.5 Flash-Lite a son propre quota : vous pouvez l’essayer tout de suite.');
+    await expect(dialog.getByRole('status')).toContainText('GenerateRequestsPerDayPerProjectPerModel-FreeTier · limite 20');
+    await expect(dialog.getByRole('link',{name:'Voir vos quotas Gemini'})).toHaveAttribute('href','https://ai.dev/rate-limit');
+    await expect(dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'})).toHaveClass('primary');
+    expect(await uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1']);  // nothing sent again on its own
+    await page.screenshot({path:'artifacts/spatial-quota.png'});
+    await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
+    await expect.poll(()=>uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+  });
+  test('a per-minute limit counts down before retrying the same model',async({page})=>{
+    await mountEditor(page,true,false,{model:'gemini-3.8-flash',jobError:{error:'quota',quota:{period:'minute',unit:'requests',limit:5,model:'gemini-3.8-flash',retry:2}}});
+    await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+    await consentAndGenerate(page);
+    const dialog=page.getByRole('dialog',{name:'Analyse impossible'});
+    await expect(dialog.getByRole('status')).toContainText('Limite par minute de Gemini 3.8 Flash atteinte (5 requêtes par minute) : réessayez dans 2 secondes.');
+    await expect(dialog.getByRole('button',{name:/^Réessayer dans \d s$/})).toBeDisabled();
+    await expect(dialog.getByRole('button',{name:/Réessayer avec/})).toHaveCount(0);
+    await expect(dialog.getByRole('button',{name:'Réessayer',exact:true})).toBeEnabled({timeout:5000});
+  });
 });
 
 test('analysis window shows progress and cancels the running job',async({page})=>{

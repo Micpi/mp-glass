@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Quota Gemini expliqué 0.4.1 — 14 septembre 2026
+
+Essai réel de la 0.4.0 : `HTTP 429 RESOURCE_EXHAUSTED` avec Gemini 3.8 Flash, après une journée d’imports d’essai. Le détail, limité à 300 caractères, s’arrêtait sur « Quota exceeded for metric: gen » : impossible de savoir s’il fallait attendre une minute ou le lendemain. Réponse : lecture des détails `QuotaFailure` et `RetryInfo` de Google (ou, à défaut, de son message), message précis, heure de renouvellement du quota journalier, autre modèle proposé d’un clic, compte à rebours pour une limite par minute.
+
+Validé localement : 44 tests Python (quota journalier retenu parmi plusieurs dépassements, limite 0 lue dans le message seul, quota de jetons par minute, informations du worker revérifiées, réponse du worker complétée), 34 tests Vitest, 31 scénarios Playwright (Europe/Paris à 17 h 50 : « demain à 9 h », bouton de l’autre modèle mis en avant, rien renvoyé sans clic ; décompte de 2 s puis **Réessayer** actif), build. Non validé : format exact des détails renvoyés par Google pour Gemini 3.8 Flash, à confirmer au prochain dépassement.
+
 ## Pièces détectées modifiables 0.4.0 — 14 septembre 2026
 
 Retour utilisateur sur l’import réel de la 0.3.1 (13 pièces, 136 m², 19 × 8,7 m) : améliorer encore la détection, pouvoir modifier les zones détectées, en ajouter et en supprimer. Réponse : éditeur de zones sur le plan d’origine (poignées, déplacement, tracé, suppression, renommage, annulation), murs dessinés repérés dans le navigateur et bords des pièces posés sur leur axe, plan recalculé par Home Assistant (`mp_glass/spatial/normalize`, administrateur) avec la géométrie de l’analyse.

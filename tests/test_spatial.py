@@ -370,6 +370,38 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
         leaked = gemini.provider_error(400, google(400, "INVALID_ARGUMENT", "bad key secret-key"), "secret-key")
         self.assertNotIn("secret-key", leaked.detail)
 
+    async def test_an_exhausted_quota_says_which_one_and_when_to_retry(self):
+        message = ("You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: "
+                   "https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \n"
+                   "* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 20, model: gemini-3.8-flash\n"
+                   "Please retry in 37.54s.")
+        def violation(quota_id, value):
+            return {"quotaMetric": "generativelanguage.googleapis.com/generate_content_free_tier_requests", "quotaId": quota_id,
+                    "quotaDimensions": {"location": "global", "model": "gemini-3.8-flash"}, "quotaValue": value}
+        body = json.dumps({"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": message, "details": [
+            {"@type": "type.googleapis.com/google.rpc.QuotaFailure", "violations": [
+                violation("GenerateRequestsPerMinutePerProjectPerModel-FreeTier", "5"), violation("GenerateRequestsPerDayPerProjectPerModel-FreeTier", "20")]},
+            {"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "37s"}]}}).encode()
+        error = gemini.provider_error(429, body, "secret-key")
+        self.assertEqual(error.code, "quota")
+        # The daily quota, once exhausted, is the one to wait for.
+        self.assertEqual(error.quota, {"period": "day", "unit": "requests", "limit": 20, "model": "gemini-3.8-flash", "retry": 37})
+        self.assertEqual(error.detail, "HTTP 429 RESOURCE_EXHAUSTED · GenerateRequestsPerDayPerProjectPerModel-FreeTier · limite 20 · gemini-3.8-flash")
+        minute = body.replace(b"PerDay", b"PerHour")
+        self.assertTrue(gemini.provider_error(429, minute).detail.endswith("· nouvel essai conseillé dans 37 s"))
+        # Without details, the same facts are read in the message: here a model with no free quota at all.
+        bare = json.dumps({"error": {"code": 429, "status": "RESOURCE_EXHAUSTED", "message": message.replace("limit: 20", "limit: 0")}}).encode()
+        self.assertEqual(gemini.provider_error(429, bare).quota, {"period": "", "unit": "requests", "limit": 0, "model": "gemini-3.8-flash", "retry": 38})
+        tokens = json.dumps({"error": {"status": "RESOURCE_EXHAUSTED", "details": [{"violations": [
+            {"quotaId": "GenerateContentInputTokensPerModelPerMinute-FreeTier", "quotaValue": "250000"}]}]}}).encode()
+        self.assertEqual(gemini.provider_error(429, tokens).quota, {"period": "minute", "unit": "tokens", "limit": 250000, "model": "", "retry": None})
+        self.assertIsNone(gemini.provider_error(429, b'{"error": {"status": "RESOURCE_EXHAUSTED", "message": "Quota exceeded"}}').quota)
+        self.assertIsNone(gemini.provider_error(503, body.replace(b"RESOURCE_EXHAUSTED", b"UNAVAILABLE")).quota)
+        # What comes back from the worker is checked again before reaching the Studio.
+        self.assertEqual(gemini.quota_info({"period": "week", "unit": "x", "limit": -1, "retry": True, "model": "<b>"}),
+                         {"period": "", "unit": "requests", "limit": None, "retry": None, "model": ""})
+        self.assertIsNone(gemini.quota_info("day"))
+
     async def test_model_answers_are_classified(self):
         def session_for(answer):
             class Content:
@@ -433,7 +465,7 @@ class WorkerTest(unittest.IsolatedAsyncioTestCase):
             self.calls.append((image[:8], key, model))
             await self.release.wait()
             if self.failure:
-                raise ValueError(self.failure)
+                raise self.failure if isinstance(self.failure, Exception) else ValueError(self.failure)
             return server.normalize_result(deepcopy(RESULT))
         self.client = TestClient(TestServer(server.create_app({"api_token": TOKEN, "gemini_api_key": "test-key"}, analyze_fn=gemini)))
         await self.client.start_server()
@@ -464,6 +496,11 @@ class WorkerTest(unittest.IsolatedAsyncioTestCase):
         response = await self.upload()
         self.assertEqual(await response.json(), {"error": "quota"})
         self.assertEqual(len(self.calls), 1)
+        # Which quota, for the Studio.
+        self.failure = gemini.SpatialError("quota", "HTTP 429 RESOURCE_EXHAUSTED", 429, {"period": "day", "unit": "requests", "limit": 20, "model": "gemini-3.8-flash", "retry": 37})
+        response = await self.upload()
+        self.assertEqual(await response.json(), {"error": "quota", "detail": "HTTP 429 RESOURCE_EXHAUSTED",
+                                                 "quota": {"period": "day", "unit": "requests", "limit": 20, "model": "gemini-3.8-flash", "retry": 37}})
 
     async def test_concurrent_job_is_rejected(self):
         self.release.clear()

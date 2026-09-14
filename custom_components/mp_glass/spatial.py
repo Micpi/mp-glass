@@ -14,7 +14,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .spatial_contract import validate_geometry
-from .spatial_gemini import DEFAULT_MODEL, MAX_ROOMS, QUALITIES, SpatialError, normalize_result, request_gemini, selected_backend, valid_detection
+from .spatial_gemini import DEFAULT_MODEL, MAX_ROOMS, QUALITIES, SpatialError, normalize_result, quota_info, request_gemini, selected_backend, valid_detection
 
 _LOGGER = logging.getLogger(__name__)
 KEY = "mp_glass_spatial"
@@ -72,6 +72,7 @@ class SpatialRuntime:
                 if response.status != 200:
                     error = ValueError(result.get("error") if result.get("error") in ERRORS else "worker_unavailable")
                     error.detail = str(result.get("detail", ""))[:300]
+                    error.quota = quota_info(result.get("quota"))
                     raise error
                 plan = result["plan"]
                 repo = self.hass.data["mp_glass"]
@@ -93,7 +94,7 @@ class SpatialRuntime:
             self._fail(job, "provider_unreachable" if self.backend == "gemini" else "worker_unavailable", type(err).__name__)
         except ValueError as err:
             code = getattr(err, "code", str(err))
-            self._fail(job, code if code in ERRORS or code == "worker_unavailable" else "invalid_geometry", getattr(err, "detail", ""))
+            self._fail(job, code if code in ERRORS or code == "worker_unavailable" else "invalid_geometry", getattr(err, "detail", ""), quota_info(getattr(err, "quota", None)))
         except Exception:
             # Do not log provider payloads, document contents or credentials.
             _LOGGER.exception("MP Glass plan analysis failed unexpectedly")
@@ -102,10 +103,10 @@ class SpatialRuntime:
             self.lock.release()
 
     @staticmethod
-    def _fail(job, code, detail=""):
+    def _fail(job, code, detail="", quota=None):
         # Codes and Google's error message only: never the document, the plan or the key.
         _LOGGER.warning("MP Glass plan analysis failed: %s %s", code, detail)
-        job.update(status="error", error=code, **({"detail": detail} if detail else {}))
+        job.update(status="error", error=code, **({"detail": detail} if detail else {}), **({"quota": quota} if quota and code == "quota" else {}))
 
     async def close(self):
         if self.task and not self.task.done():

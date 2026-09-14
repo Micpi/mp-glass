@@ -38,7 +38,7 @@ Ce fichier de secrets est exclu de Git.
 - `not_configured` : clé de liaison manquante/trop courte ou options de l’intégration incomplètes.
 - `worker_unavailable` : adresse, démarrage ou clé de liaison incorrects.
 - `provider_auth` : clé Gemini absente/refusée.
-- `quota` : quota Google atteint ; aucun nouvel appel automatique.
+- `quota` : quota Google atteint ; aucun nouvel appel automatique. La réponse précise le quota (par minute ou par jour), sa limite, le modèle et le délai conseillé par Google.
 - `invalid_file` : format, signature, page, dimensions ou temps de conversion refusés.
 - `invalid_geometry` : résultat IA incohérent ; essayer une source plus lisible ou corriger manuellement.
 

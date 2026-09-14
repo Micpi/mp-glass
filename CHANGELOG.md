@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.4.1 — quota Gemini expliqué
+
+Retour d’essai de la 0.4.0 : `HTTP 429 RESOURCE_EXHAUSTED You exceeded your current quota…`, détail coupé avant de dire quel quota était atteint.
+
+- Le détail Google du quota est lu (quota par minute ou par jour, en requêtes ou en jetons, limite, modèle, délai conseillé) et affiché en une ligne courte au lieu du message tronqué.
+- Quota du jour épuisé : la fenêtre d’échec donne l’heure locale de son renouvellement (minuit en Californie, par exemple « demain à 9 h ») et met en avant **Réessayer avec** l’autre modèle, qui a son propre quota. Toujours d’un clic, jamais automatiquement.
+- Limite par minute : **Réessayer** décompte le délai conseillé par Google.
+- Modèle sans quota gratuit dans le projet (limite 0) signalé comme tel.
+- Lien **Voir vos quotas Gemini** vers la page de consommation de Google.
+
 ## 0.4.0 — pièces détectées modifiables
 
 Retour sur l’import réel de la 0.3.1 (13 pièces, 136 m², 19 × 8,7 m) : bon résultat, mais des bords de pièces à côté des murs, sans moyen de les reprendre avant l’import.

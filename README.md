@@ -4,7 +4,7 @@
 
 Framework de dashboards Home Assistant : configurer une installation, puis déduire son interface à partir des pièces, des appareils et de leurs capacités.
 
-**État : version de développement 0.2.2, non publiée.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
+**État : version de développement 0.2.3, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
 
 ![Aperçu de la fixture desktop](tests/browser/light.spec.ts-snapshots/desktop-win32.png)
 
@@ -20,9 +20,11 @@ Cette image montre une fixture de développement, pas une maison cliente. [Résu
 
 ## Installer et créer un premier dashboard
 
+**Avec HACS (recommandé, mises à jour depuis l’interface) :** HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/Micpi/mp-glass`, type **Intégration** → Ajouter. Rechercher **MP Glass**, **Télécharger**, puis redémarrer Home Assistant. Les versions suivantes apparaissent ensuite dans **Paramètres → Mises à jour**.
+
 Voir [INSTALL](docs/INSTALL.md) et [QUICKSTART](docs/QUICKSTART.md). Minimum cible HA 2026.6 ; instance de développement épinglée sur 2026.9.1. Il ne s'agit pas encore d'une compatibilité certifiée.
 
-Après copie du composant et redémarrage HA : ajouter l'intégration MP Glass, ouvrir MP Glass, analyser, enregistrer, puis ajouter **MP Glass Dashboard** dans le dialogue des dashboards communautaires. Le module est fourni avec l'intégration. Aucun YAML chantier n'est nécessaire pour ce parcours.
+Après installation et redémarrage HA : ajouter l'intégration MP Glass, ouvrir MP Glass, analyser, enregistrer, puis ajouter **MP Glass Dashboard** dans le dialogue des dashboards communautaires. Le module est fourni avec l'intégration. Aucun YAML chantier n'est nécessaire pour ce parcours.
 
 ## Développement
 

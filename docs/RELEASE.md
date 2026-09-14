@@ -1,11 +1,21 @@
 # Release MP Glass
 
-Le paquet Integration unique contient `custom_components/mp_glass`, frontend compilé et schéma. Le build copie le JSON Schema source pour éviter des variantes divergentes. Les fichiers de projet/runtime et plans ne font jamais partie de l'archive.
+Le dépôt public `Micpi/mp-glass` est la source HACS (catégorie Intégration). HACS installe le dossier `custom_components/mp_glass` de la **dernière release GitHub** : frontend compilé (`www/`), schéma et backend y sont commités. `hacs.json` porte le nom et le minimum HA ; la version proposée est le tag de la release.
 
-Depuis 0.2.0, une seconde archive `mp-glass-spatial-addon-0.2.0.zip` prépare le worker optionnel à extraire sous `/addons`. Ce n’est pas une intégration HACS. Les dépendances de tests Python sont dans `addons/mp_glass_spatial/requirements.txt`. Le build synchronise les schémas et le validateur géométrique entre l’intégration et le worker.
+## Publier une mise à jour
 
-Préparer localement : `pwsh -File scripts/package.ps1 -Python <chemin-python>`. Ce script exige lint, typecheck, tests unitaires, navigateur, tests de stockage et compilation Python, vérifie l'accord package/manifest puis produit une archive ZIP déterministe sans caches/sourcemaps.
+1. Mettre la même version dans `custom_components/mp_glass/manifest.json`, `const.py`, `package.json` (`npm version X.Y.Z --no-git-tag-version`), `frontend/bootstrap.ts` (`mp-glass.js?v=`) et, si le worker change, `addons/mp_glass_spatial/config.yaml` et `Dockerfile`.
+2. Renseigner le `CHANGELOG.md`.
+3. `npm run check`, `npm run test:e2e`, tests Python (`python -m unittest discover -s tests -p 'test_*.py'`) : le build régénère `www/` et synchronise les schémas et le contrat Gemini avec le worker.
+4. Commiter sur `main` et pousser.
+5. `gh release create vX.Y.Z --target main --title "MP Glass X.Y.Z" --notes-file <notes>` : le tag doit correspondre à la version du manifest. HACS signale la mise à jour dans Home Assistant.
 
-Avant GitHub : confirmer le dépôt produit, aligner ses URLs manifest/README, configurer origin, compléter la validation réelle de VALIDATION.md, exécuter CI et hassfest/HACS, mettre à jour changelog et version package/manifest/const.py, rebuild. Créer ensuite le tag correspondant et la release avec artifact depuis ce dépôt seulement.
+Le CI (`.github/workflows/ci.yml`) exécute les contrôles frontend, Python, hassfest et la validation HACS à chaque push. La vérification `brands` de HACS est ignorée : l’intégration n’est pas référencée dans `home-assistant/brands`.
 
-Le script du workspace parent `scripts/release_hacs.ps1` suppose un composant sous custom_cards ou integrations. L'appliquer sans adaptation au présent dossier ou au dépôt parent risquerait d'embarquer d'autres composants. Le packaging produit est donc dédié. Aucun déclenchement de publication stable avant les gates. `hacs.json` porte le minimum HA ; la version de téléchargement HACS est le tag GitHub.
+## Archives
+
+`pwsh -File scripts/package.ps1 -Python <chemin-python>` produit une archive ZIP déterministe sans caches ni sourcemaps, après lint, typecheck, tests unitaires, navigateur, stockage et compilation Python, et vérifie l’accord package/manifest. Utile pour une installation manuelle ; HACS n’en a pas besoin.
+
+Depuis 0.2.0, une seconde archive `mp-glass-spatial-addon-<version>.zip` prépare le worker optionnel à extraire sous `/addons`. Ce n’est pas une intégration HACS. Les dépendances de tests Python sont dans `addons/mp_glass_spatial/requirements.txt`.
+
+Le script du workspace parent `scripts/release_hacs.ps1` suppose un composant sous custom_cards ou integrations : ne pas l’appliquer à ce dépôt, il risquerait d’embarquer d’autres composants.

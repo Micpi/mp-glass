@@ -1,5 +1,13 @@
 # Validation — incrément lumière 0.1.0
 
+## Plan 3D mobile, Gemini 3.5 et HACS 0.2.3 — 14 septembre 2026
+
+Signalements utilisateur : plan 3D difficile à utiliser sur téléphone (le plan capte le défilement) ; import Gemini refusé avec `HTTP 404 NOT_FOUND This model models/gemini-2.5-flash-lite is no longer available to new users`. Modèle de remplacement `gemini-3.5-flash-lite` vérifié sur la documentation Google du jour (stable, PDF et images, sortie JSON structurée, palier gratuit).
+
+Validé localement : ESLint, TypeScript, 30 tests Vitest, build, 22 scénarios Playwright (dont gestes tactiles réels par CDP : défilement de la page à côté de la maison, rotation sans défilement sur la maison ; molette et glisser souris ; fiche de pièce, commandes groupées et variateur ; six références visuelles régénérées) et 28 tests Python (modèle par défaut, température Gemini 3, erreur 404 réelle classée). Les tests tactiles échouent si l’on rétablit l’ancien comportement ou si l’on supprime le blocage du défilement sur la maison.
+
+Non validé : appel Gemini réel avec `gemini-3.5-flash-lite`, installation et mise à jour réelles par HACS, Safari/iOS et matériel tactile réel.
+
 ## Plan par défaut et import Gemini 0.2.2 — 14 septembre 2026
 
 Signalement utilisateur : l’import Gemini échoue sur l’instance réelle, message exact non transmis ; instance et navigateur authentifié non accessibles dans cette session. Causes corrigées d’après le code : mots-clés `minLength`/`maxLength` hors du sous-ensemble documenté de `responseJsonSchema`, rejet complet du plan pour une seule pièce mal tracée, erreurs Google mal classées (clé invalide renvoyée en HTTP 400, surcharge 503, Google injoignable présenté comme add-on inaccessible), absence de détail pour diagnostiquer.

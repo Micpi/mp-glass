@@ -26,25 +26,25 @@ MAX_ROOMS = 60
 MAX_POINTS = 40
 # gemini-2.5-flash-lite is refused to new Google projects (HTTP 404, September 2026).
 DEFAULT_MODEL = "gemini-3.5-flash-lite"
-# Sent to Gemini: only keywords documented for responseJsonSchema. Name lengths and
-# coordinate bounds are enforced locally, where a bad room is repaired or skipped
-# instead of failing the whole plan.
+# Sent to Gemini: only keywords documented for responseJsonSchema, and no array length limits
+# (nested ones are a known cause of schema rejection; gemini-3.5-flash-lite refused the schema
+# that had them). Counts, point pairs, name lengths and coordinates are enforced locally, where
+# a bad room is repaired or skipped instead of failing the whole plan.
 EXTRACTION_SCHEMA = {
     "type": "object", "additionalProperties": False,
     "required": ["rooms", "scaleKnown", "warnings"],
     "properties": {
-        "rooms": {"type": "array", "maxItems": MAX_ROOMS, "items": {
+        "rooms": {"type": "array", "items": {
             "type": "object", "additionalProperties": False, "required": ["name", "polygon"],
             "properties": {
                 "name": {"type": "string", "description": "Nom de la pièce, en français."},
-                "polygon": {"type": "array", "minItems": 3, "maxItems": MAX_POINTS,
-                            "description": "Contour de la pièce : sommets [x, y] en mètres, dans l'ordre du contour.",
-                            "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"}}},
-                "size": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number"},
+                "polygon": {"type": "array", "description": "Contour de la pièce : sommets [x, y] en mètres, dans l'ordre du contour.",
+                            "items": {"type": "array", "items": {"type": "number"}}},
+                "size": {"type": "array", "items": {"type": "number"},
                          "description": "Dimensions écrites sur le plan pour cette pièce, converties en mètres [largeur, profondeur]. Omettre si aucune cote n'est écrite."},
             }}},
         "scaleKnown": {"type": "boolean"},
-        "warnings": {"type": "array", "maxItems": 20, "items": {"type": "string"}},
+        "warnings": {"type": "array", "items": {"type": "string"}},
     },
 }
 # Untrusted model output: same keys, but counts, lengths and geometry are checked below.
@@ -156,6 +156,24 @@ def _calibrate(rings, sizes):
     return factor, count
 
 
+def _overlaps(rooms):
+    """Pairs of rectangular rooms overlapping by more than 0.5 m² (other shapes are not judged)."""
+    boxes = []
+    for room in rooms:
+        ring = room["polygon"]
+        xs, ys = [p[0] for p in ring], [p[1] for p in ring]
+        box = (min(xs), min(ys), max(xs), max(ys))
+        if len(ring) == 4 and abs((box[2] - box[0]) * (box[3] - box[1]) - _area(ring)) < .01:
+            boxes.append((room["name"], box))
+    pairs = []
+    for index, (name, a) in enumerate(boxes):
+        for other, b in boxes[index + 1:]:
+            width, depth = min(a[2], b[2]) - max(a[0], b[0]), min(a[3], b[3]) - max(a[1], b[1])
+            if width > .1 and depth > .1 and width * depth > .5:
+                pairs.append(f"{name} / {other}")
+    return pairs
+
+
 def _snap(values):
     """Map coordinates closer than SNAP to one shared value, the median of their group, so neighbouring walls line up."""
     mapping, group = {}, []
@@ -221,6 +239,9 @@ def normalize_result(value):
     average = sum(_area(room["polygon"]) for room in rooms) / len(rooms)
     if not calibrated and len(rooms) >= 3 and not 3 <= average <= 60:
         warnings.append(f"Surface moyenne de {average:.1f} m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue.".replace(".", ",", 1))
+    overlapping = _overlaps(rooms)
+    if overlapping:
+        warnings.append(f"Pièces qui se chevauchent, à corriger : {', '.join(overlapping)}"[:500])
     if simplified:
         warnings.append(f"Contour simplifié, à vérifier : {', '.join(simplified)}"[:500])
     if skipped:
@@ -244,8 +265,15 @@ def validate_source(data, mime, page=1):
         raise SpatialError("invalid_file")
 
 
-def build_request(data, mime, model, page=1, structured=True):
-    """Structured request by default; `structured=False` is the plainest JSON request, schema given in the prompt."""
+def _legacy(model):
+    return bool(re.match(r"gemini-[12]\.", model))
+
+
+def build_request(data, mime, model, page=1, structured=True, thinking=None):
+    """Structured request by default; `structured=False` gives the schema in the prompt instead.
+
+    `thinking` (default: same as `structured`) asks Gemini 3 for more reasoning than Flash-Lite's "minimal" default.
+    """
     validate_source(data, mime, page)
     if not re.fullmatch(r"gemini-[a-z0-9.-]*flash-lite[a-z0-9.-]*", model):
         raise SpatialError("model_unavailable", f"Modèle non autorisé : {model[:60]}")
@@ -255,13 +283,12 @@ def build_request(data, mime, model, page=1, structured=True):
     config, prompt = {"responseMimeType": "application/json"}, PROMPT
     if structured:
         config.update(maxOutputTokens=MAX_OUTPUT_TOKENS, responseJsonSchema=EXTRACTION_SCHEMA)
-        if not re.match(r"gemini-[12]\.", model):
-            # Flash-Lite thinks at "minimal" by default: too little to lay rooms out consistently.
-            # Left out of the simplified request, which stays the safety net if Google refuses it.
-            config["thinkingConfig"] = {"thinkingLevel": "medium"}
     else:
         prompt += "\nJSON Schema of the answer:\n" + json.dumps(EXTRACTION_SCHEMA, ensure_ascii=False)
-    if re.match(r"gemini-[12]\.", model):
+    if (structured if thinking is None else thinking) and not _legacy(model):
+        # Flash-Lite thinks at "minimal" by default: too little to lay rooms out consistently.
+        config["thinkingConfig"] = {"thinkingLevel": "medium"}
+    if _legacy(model):
         # Deterministic 2.x output. Google advises keeping Gemini 3 at its default temperature: lower values can loop.
         config["temperature"] = 0
     return {
@@ -325,22 +352,25 @@ async def request_gemini(session, data, mime, api_key, model=DEFAULT_MODEL, page
         raise SpatialError("provider_auth", "Aucune clé API Gemini n'est configurée.")
     if re.search(r"[^\x21-\x7e]", api_key):
         raise SpatialError("provider_auth", "La clé API contient des espaces ou des caractères invalides.")
+    # From the most constrained request to the plainest. A request refused as invalid (HTTP 400) is neither
+    # processed nor billed, so the next, lighter one is sent: same model, same document. Any other error
+    # (quota, key, region...) stops at once.
+    # (response schema, extra thinking)
+    attempts = [(True, False), (False, False)] if _legacy(model) else [(True, True), (False, True), (False, False)]
     notes = []
-    try:
-        body = await _send(session, build_request(data, mime, model, page), model, api_key)
-    except SpatialError as refused:
-        if refused.code != "provider_request" or refused.status != 400:
-            raise
-        # Rejected as invalid, so neither processed nor billed: one retry with the plainest JSON request.
-        # Not a quota or model fallback: same model, same document.
-        _LOGGER.warning("Gemini refused the structured request (%s); retrying without response schema", refused.detail)
+    for index, (structured, thinking) in enumerate(attempts):
         try:
-            body = await _send(session, build_request(data, mime, model, page, structured=False), model, api_key)
-        except SpatialError as again:
-            if again.code == "provider_request":
-                raise SpatialError("provider_request", f"Refusée aussi sans schéma de réponse : {again.detail}", again.status) from again
-            raise
-        notes.append("Plan obtenu avec une requête simplifiée : Gemini a refusé le schéma de réponse.")
+            body = await _send(session, build_request(data, mime, model, page, structured, thinking), model, api_key)
+            break
+        except SpatialError as refused:
+            if refused.code != "provider_request" or refused.status != 400:
+                raise
+            _LOGGER.warning("Gemini refused request %s of %s (schema: %s, thinking: %s): %s", index + 1, len(attempts), structured, thinking, refused.detail)
+            if index == len(attempts) - 1:
+                raise SpatialError("provider_request", f"Refusée sous toutes ses formes : {refused.detail}", refused.status) from refused
+    if index:
+        notes.append("Plan obtenu sans schéma de réponse : Gemini a refusé la requête structurée." if thinking
+                     else "Plan obtenu avec une requête simplifiée, sans schéma de réponse ni réflexion approfondie : Gemini a refusé les requêtes plus complètes.")
     try:
         content = json.loads(body)
         candidates = content.get("candidates") or []

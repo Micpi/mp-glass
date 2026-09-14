@@ -6,7 +6,7 @@ from homeassistant.components import websocket_api
 from homeassistant.core import callback
 from homeassistant.helpers.storage import Store
 
-from .const import DOMAIN
+from .const import DOMAIN, VERSION
 from .frontend import async_register, async_unregister
 from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
 from .spatial import KEY as SPATIAL_KEY, SpatialRuntime, SpatialUploadView, websocket_cancel, websocket_job
@@ -58,7 +58,7 @@ def websocket_get(hass, connection, msg):
     if runtime is None:
         connection.send_error(msg["id"], "not_loaded", "MP Glass is not loaded")
         return
-    connection.send_result(msg["id"], runtime.read())
+    connection.send_result(msg["id"], {**runtime.read(), "version": VERSION})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/project/save", vol.Required("revision"): vol.All(int, vol.Range(min=0)), vol.Required("project"): dict})

@@ -1,5 +1,9 @@
+import { readFileSync } from 'node:fs';
 import { defineConfig } from 'vite';
+const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8')) as { version: string };
 export default defineConfig({
+  // Frontend build version: cache key of the bundle and compared with the installed integration.
+  define: { __MP_GLASS_VERSION__: JSON.stringify(version) },
   build: {
     outDir: 'custom_components/mp_glass/www', emptyOutDir: true,
     rollupOptions: {

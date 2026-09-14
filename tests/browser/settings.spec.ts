@@ -47,6 +47,7 @@ test('strategy and settings use registry/project contracts and retain manual ove
     Object.assign(window,{settingsTest:{hass,requests}});
   });
   await expect(page.getByText('Dashboard « MP Glass » créé')).toBeVisible();
+  await expect(page.getByRole('button',{name:'Recharger la page'})).toHaveCount(0);
   await expect(page.getByRole('link',{name:'Voir le dashboard'})).toHaveAttribute('href','/mp-glass/home');
   expect(await page.evaluate(()=>(window as unknown as {settingsTest:{requests:Record<string,unknown>[]}}).settingsTest.requests.filter(r=>String(r.type).startsWith('lovelace/dashboards/create')||r.type==='lovelace/config/save'))).toEqual([
     {type:'lovelace/dashboards/create',url_path:'mp-glass',title:'MP Glass',icon:'mdi:view-dashboard',show_in_sidebar:true,require_admin:false},
@@ -65,6 +66,24 @@ test('strategy and settings use registry/project contracts and retain manual ove
   expect(dashboard).toMatchObject({title:'Maison test',views:[{path:'home',cards:[{type:'custom:mp-glass-light-v4',name:'Éclairage principal'}]},{path:'lights'},{path:'rooms'},{title:'Salon'}]});
   await page.getByRole('button',{name:'Analyser l’installation'}).click();
   await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeEnabled();
+});
+test('an update installed while the page is open asks for a reload',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async()=>{
+    const projectModule='/shared/project.ts';
+    const {defaultProject}=await import(projectModule);
+    // The integration was updated (e.g. through HACS) but this page still runs the previous interface.
+    const record={revision:0,project:defaultProject('Maison test'),version:'0.0.1'};
+    const hass={connection:{},states:{},language:'fr',user:{id:'test',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
+      if(message.type==='mp_glass/project/get')return structuredClone(record);
+      if(String(message.type).startsWith('config/'))return [];
+      throw Error('unexpected command');
+    }};
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
+    panel.hass=hass;document.body.replaceChildren(panel);
+  });
+  await expect(page.getByRole('alert')).toContainText('MP Glass 0.0.1 est installé, mais cette page affiche encore la version');
+  await expect(page.getByRole('button',{name:'Recharger la page'})).toBeVisible();
 });
 test('card editor emits config-changed and filters unrelated domains',async({page})=>{
   await page.goto('/');

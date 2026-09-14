@@ -10,7 +10,7 @@ Après mise à jour de l’intégration et redémarrage de Home Assistant :
 
 Le lien **Configurer Gemini** dans le Studio ouvre la fiche de l’intégration. Le lien **Obtenir une clé API** ouvre [Google AI Studio](https://aistudio.google.com/api-keys). La clé reste dans les options de l’intégration, jamais dans l’export du projet, le JavaScript ou les diagnostics MP Glass.
 
-Le modèle utilisé par défaut est `gemini-3.5-flash-lite` (`gemini-2.5-flash-lite` est refusé aux nouveaux projets Google depuis septembre 2026). Pour rester dans les quotas gratuits, utiliser une clé provenant d’un projet Google sans facturation activée. Les quotas peuvent évoluer ; aucune substitution de modèle n’est déclenchée automatiquement. Seule une requête refusée comme invalide (HTTP 400, non facturée) est renvoyée une fois sous forme simplifiée.
+Le modèle utilisé par défaut est `gemini-3.5-flash-lite` (`gemini-2.5-flash-lite` est refusé aux nouveaux projets Google depuis septembre 2026). Pour rester dans les quotas gratuits, utiliser une clé provenant d’un projet Google sans facturation activée. Les quotas peuvent évoluer ; aucune substitution de modèle n’est déclenchée automatiquement. Seule une requête refusée comme invalide (HTTP 400, non facturée) est renvoyée sous des formes allégées (sans schéma de réponse, puis sans réflexion approfondie).
 
 **Envoi du document :** en mode direct, Google reçoit le fichier complet, y compris ses métadonnées et les autres pages du PDF. Le numéro de page est une instruction d’analyse, pas une extraction locale. Importer un PDF contenant seulement la page utile pour limiter l’envoi. MP Glass vérifie taille, type annoncé et signature, puis laisse Google décoder le document. Les fichiers malformés peuvent être refusés par Google.
 
@@ -26,7 +26,7 @@ Depuis 0.2.2, le Studio affiche la cause et, sous le message, le **détail techn
 | Clé API Gemini refusée | Recoller la clé dans les options (elle commence par `AIza`), vérifier que l’API est activée pour ce projet. |
 | Accès refusé (région ou facturation) | Le palier gratuit n’est pas ouvert à ce projet ou à ce pays : voir le détail Google. |
 | Modèle refusé (HTTP 404 `NOT_FOUND`, « no longer available to new users ») | Le modèle n’est plus ouvert à ce projet : mettre à jour MP Glass (modèle par défaut `gemini-3.5-flash-lite`) et redémarrer HA. En mode add-on, corriger l’option `model` du worker. |
-| Gemini a refusé la requête (HTTP 400 `INVALID_ARGUMENT`) | MP Glass a déjà réessayé sans schéma de réponse : le document est probablement en cause. Exporter la page du plan en PNG ou JPEG (capture d’écran nette) et relancer. Le détail technique indique le champ refusé quand Google le précise. |
+| Gemini a refusé la requête (HTTP 400 `INVALID_ARGUMENT`) | MP Glass a déjà réessayé sous des formes allégées : le document est probablement en cause. Exporter la page du plan en PNG ou JPEG (capture d’écran nette) et relancer. Le détail technique indique le champ refusé quand Google le précise. |
 | Gemini surchargé | Réessayer quelques minutes plus tard. |
 | Aucune pièce reconnue / réponse coupée | Vérifier le numéro de page, importer un seul niveau, une image plus nette ou recadrée. |
 | Google injoignable | Vérifier l’accès Internet et le DNS de Home Assistant. |

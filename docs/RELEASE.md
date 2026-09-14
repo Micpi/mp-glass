@@ -4,7 +4,7 @@ Le dépôt public `Micpi/mp-glass` est la source HACS (catégorie Intégration).
 
 ## Publier une mise à jour
 
-1. Mettre la même version dans `custom_components/mp_glass/manifest.json`, `const.py`, `package.json` (`npm version X.Y.Z --no-git-tag-version`), `frontend/bootstrap.ts` (`mp-glass.js?v=`) et, si le worker change, `addons/mp_glass_spatial/config.yaml` et `Dockerfile`.
+1. Mettre la même version dans `custom_components/mp_glass/manifest.json`, `const.py`, `package.json` (`npm version X.Y.Z --no-git-tag-version`, qui fixe aussi la version du frontend et la clé de cache du bundle) et, si le worker change, `addons/mp_glass_spatial/config.yaml` et `Dockerfile`.
 2. Renseigner le `CHANGELOG.md`.
 3. `npm run check`, `npm run test:e2e`, tests Python (`python -m unittest discover -s tests -p 'test_*.py'`) : le build régénère `www/` et synchronise les schémas et le contrat Gemini avec le worker.
 4. Commiter sur `main` et pousser.

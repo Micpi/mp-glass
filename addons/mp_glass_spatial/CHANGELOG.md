@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.7
+
+Contrat Gemini partagé : schéma de réponse sans limites de longueur de tableau, repli en deux temps après un refus invalide (sans schéma avec réflexion, puis requête la plus simple), chevauchements de pièces signalés.
+
 ## 0.2.6
 
 Contrat Gemini partagé : prompt de lecture du plan réécrit (cotes en pieds ou en mètres, pièces jointives, noms en français), réflexion `medium` pour Gemini 3, échelle recalculée à partir des cotes écrites, murs proches alignés, surfaces invraisemblables signalées.

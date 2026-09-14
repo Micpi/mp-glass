@@ -30,10 +30,11 @@ export class HARegistryReader {
     return { ...await entry.promise, states: hass.states };
   }
 }
-export interface ProjectResponse { revision: number; project: ProjectConfig }
+/** `version`: installed integration, returned by `project/get` since 0.2.7. */
+export interface ProjectResponse { revision: number; project: ProjectConfig; version?: string }
 export async function readProject(hass: Hass): Promise<ProjectResponse> {
   const response = await hass.callWS<ProjectResponse>({ type: 'mp_glass/project/get' });
-  return { revision: response.revision, project: parseProject(response.project) };
+  return { revision: response.revision, project: parseProject(response.project), ...(typeof response.version === 'string' ? { version: response.version } : {}) };
 }
 export async function saveProject(hass: Hass, response: ProjectResponse): Promise<ProjectResponse> {
   return hass.callWS({ type: 'mp_glass/project/save', revision: response.revision, project: parseProject(response.project) });

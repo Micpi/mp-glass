@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Schéma accepté et interface à jour 0.2.7 — 14 septembre 2026
+
+Deuxième import réel (0.2.6) : 13 pièces nommées en français, échelle calculée à partir des cotes de 7 pièces (chambre 3 : 10,2 m², 3 × 3,4 m, conforme au 10X11 ft du plan), placards fusionnés ; mais message « Plan obtenu avec une requête simplifiée : Gemini a refusé le schéma de réponse », donc sans réflexion `medium`, et interface du Studio antérieure à 0.2.5 (page non rechargée après la mise à jour). Suspect principal du refus : limites de longueur de tableaux imbriqués dans le schéma (60 pièces × 40 sommets × 2 valeurs). Parade : schéma sans limites, repli gardant la réflexion, bandeau de rechargement.
+
+Validé localement : 38 tests Python (schéma sans minItems/maxItems, repli sans schéma avec réflexion puis requête la plus simple, trois refus détaillés, deux pour un modèle 2.x, chevauchement Buanderie / Salle d’eau signalé et pièces disjointes ignorées), 33 tests Vitest, 25 scénarios Playwright (bandeau « MP Glass 0.0.1 est installé, mais cette page affiche encore la version… » avec Recharger la page ; absent quand les versions concordent), build (`mp-glass.js?v=0.2.7` issu de `package.json`). Non validé : acceptation réelle du schéma allégé par Gemini ; le brouillon indiquera la forme de requête utilisée.
+
 ## Plans importés plus fidèles 0.2.6 — 14 septembre 2026
 
 Premier import réel réussi (plan de maison coté en pieds, image avec filigrane) : 16 pièces pour 31 m² au lieu d’environ 150 m², pièces chevauchantes à gauche du plan, noms restés en anglais, placards comptés comme pièces. Corrections : prompt réécrit (murs extérieurs puis cotes puis pièces jointives, conversion pieds/pouces, placards rattachés, noms en français, filigranes ignorés), réflexion `medium`, échelle recalculée à partir des cotes écrites, murs proches alignés, surfaces invraisemblables signalées.

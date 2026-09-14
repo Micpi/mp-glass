@@ -124,6 +124,16 @@ class GeometryTest(unittest.TestCase):
                     yield key
                     yield from keys(value) if key != "properties" else (k for v in value.values() for k in keys(v))
         self.assertLessEqual(set(keys(gemini.EXTRACTION_SCHEMA)), supported)
+        # Nested array length limits got the schema refused by gemini-3.5-flash-lite: counts are checked locally.
+        self.assertFalse({"minItems", "maxItems"} & set(keys(gemini.EXTRACTION_SCHEMA)))
+
+    def test_overlapping_rooms_are_flagged(self):
+        rooms = [{"name": "Buanderie", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]]},
+                 {"name": "Salle d'eau", "polygon": [[2, 1], [5, 1], [5, 4], [2, 4]]},
+                 {"name": "Dressing", "polygon": [[6, 0], [8, 0], [8, 3], [6, 3]]}]
+        warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["warnings"]
+        self.assertIn("Pièces qui se chevauchent, à corriger : Buanderie / Salle d'eau", warnings)
+        self.assertFalse(any("Dressing" in w for w in warnings))
 
 
 class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
@@ -178,31 +188,44 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
                 return Response(*answers[len(self.payloads) - 1])
         return Session()
 
-    async def test_invalid_request_is_retried_once_without_response_schema(self):
-        invalid = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Request contains an invalid argument."}}).encode()
-        ok = json.dumps({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "```json\n" + json.dumps(RESULT) + "\n```"}]}}]}).encode()
-        session = self.replies((400, invalid), (200, ok))
+    INVALID = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Request contains an invalid argument.",
+                                    "details": [{"fieldViolations": [{"field": "contents[0].parts[1]", "description": "Unsupported document"}]}]}}).encode()
+    OK = json.dumps({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "```json\n" + json.dumps(RESULT) + "\n```"}]}}]}).encode()
+
+    async def test_refused_schema_falls_back_to_json_in_the_prompt_keeping_the_thinking(self):
+        session = self.replies((400, self.INVALID), (200, self.OK))
         with self.assertLogs(gemini._LOGGER, "WARNING"):
             result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
         first, second = session.payloads
         self.assertIn("responseJsonSchema", first["generationConfig"])
+        self.assertEqual(first["generationConfig"]["thinkingConfig"], {"thinkingLevel": "medium"})
         self.assertNotIn("responseJsonSchema", second["generationConfig"])
         self.assertNotIn("maxOutputTokens", second["generationConfig"])
+        self.assertEqual(second["generationConfig"]["thinkingConfig"], {"thinkingLevel": "medium"})
         self.assertEqual(second["generationConfig"]["responseMimeType"], "application/json")
         self.assertIn('"scaleKnown"', second["systemInstruction"]["parts"][0]["text"])
         self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["name"], "Salon")
-        self.assertIn("requête simplifiée", result["warnings"][0])
+        self.assertEqual(result["warnings"][0], "Plan obtenu sans schéma de réponse : Gemini a refusé la requête structurée.")
 
-    async def test_invalid_request_twice_is_reported_with_both_attempts(self):
-        invalid = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Request contains an invalid argument.",
-                                        "details": [{"fieldViolations": [{"field": "contents[0].parts[1]", "description": "Unsupported document"}]}]}}).encode()
-        session = self.replies((400, invalid), (400, invalid))
-        with self.assertLogs(gemini._LOGGER, "WARNING"), self.assertRaises(gemini.SpatialError) as caught:
-            await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
-        self.assertEqual(caught.exception.code, "provider_request")
-        self.assertTrue(caught.exception.detail.startswith("Refusée aussi sans schéma de réponse : HTTP 400 INVALID_ARGUMENT"))
-        self.assertIn("contents[0].parts[1] Unsupported document", caught.exception.detail)
-        self.assertEqual(len(session.payloads), 2)
+    async def test_last_resort_is_the_plainest_request(self):
+        session = self.replies((400, self.INVALID), (400, self.INVALID), (200, self.OK))
+        with self.assertLogs(gemini._LOGGER, "WARNING"):
+            result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+        third = session.payloads[2]["generationConfig"]
+        self.assertEqual(set(third), {"responseMimeType"})
+        self.assertIn("requête simplifiée, sans schéma de réponse ni réflexion approfondie", result["warnings"][0])
+
+    async def test_refused_in_every_form_is_reported_with_google_details(self):
+        for model, count in (("gemini-3.5-flash-lite", 3), ("gemini-2.5-flash-lite", 2)):
+            session = self.replies(*[(400, self.INVALID)] * count)
+            with self.assertLogs(gemini._LOGGER, "WARNING"), self.assertRaises(gemini.SpatialError) as caught:
+                await gemini.request_gemini(session, image_bytes(), "image/png", "test-key", model)
+            self.assertEqual(caught.exception.code, "provider_request")
+            self.assertTrue(caught.exception.detail.startswith("Refusée sous toutes ses formes : HTTP 400 INVALID_ARGUMENT"))
+            self.assertIn("contents[0].parts[1] Unsupported document", caught.exception.detail)
+            self.assertEqual(len(session.payloads), count)
+            if model.startswith("gemini-2"):
+                self.assertFalse(any("thinkingConfig" in p["generationConfig"] for p in session.payloads))
 
     async def test_other_refusals_are_not_retried(self):
         for status, body in [(429, b'{"error": {"status": "RESOURCE_EXHAUSTED"}}'), (400, b'{"error": {"status": "FAILED_PRECONDITION"}}'),

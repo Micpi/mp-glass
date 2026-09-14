@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Studio en HTTP 0.6.1 — 14 septembre 2026
+
+Retour utilisateur : **Utiliser pour ce niveau** sans effet après une analyse de 13 pièces. Cause reproduite : hors HTTPS, `crypto.randomUUID` n’existe pas et le clic levait `TypeError: crypto.randomUUID is not a function`, fenêtre laissée ouverte. **Ajouter une pièce** et **Ajouter un niveau** échouaient de la même façon.
+
+Validé localement : nouveau scénario Playwright sans `crypto.randomUUID` (échoue sur 0.6.0, réussit sur 0.6.1 : brouillon appliqué, fenêtre fermée, pièce et niveau ajoutés, identifiants au format attendu, aucune erreur de page), 41 scénarios Playwright, 37 tests Vitest, lint, types et build ; bundle reconstruit sans `randomUUID`. Tests Python : `test_project` réussi ; `test_spatial` non exécuté faute d’`aiohttp` dans l’interpréteur local (backend inchangé hors numéro de version). Non validé : le clic dans le vrai Home Assistant de l’utilisateur.
+
 ## Précision et ambiances 0.6.0 — 14 septembre 2026
 
 Validé localement : 37 tests Vitest (halos liés aux seules lumières associées, luminosité, indisponibilité, priorité des températures, conversion Fahrenheit, positions et capacités des volets), 46 tests Python (conservation d’un écart de cinq pixels et d’une échelle issue de cotes lors d’une correction manuelle), build TypeScript/Vite et lint. 40 scénarios Playwright réussis, dont : zoom 225 %, déplacement et correction de douze pixels sans aimantation, pincement tactile 240 % sans modification des pièces, contour concave posé sur un mur, fragments superposés, murs gris et traits fins, mode Climat et positions en direct, commandes de volet ciblées, associations conservées après recherche et disparition d’une entité. Six références visuelles actualisées pour les nouvelles commandes du plan, captures ordinateur et téléphone inspectées.

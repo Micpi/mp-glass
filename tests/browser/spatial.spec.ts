@@ -220,6 +220,27 @@ test('AI import needs consent and stays a draft until explicitly applied',async(
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(1);
 });
 
+test('over plain HTTP the draft is applied and rooms and floors are added',async({page})=>{
+  // Home Assistant at http://IP:8123 is not a secure context: crypto.randomUUID is missing there.
+  await page.addInitScript(()=>{Object.defineProperty(Crypto.prototype,'randomUUID',{value:undefined});});
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await mountEditor(page);
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);await page.getByRole('dialog').getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('textbox',{name:'Nom de la pièce',exact:true})).toHaveValue('Pièce importée');
+  await page.getByRole('button',{name:'Ajouter une pièce',exact:true}).click();
+  await expect(page.getByRole('textbox',{name:'Nom de la pièce',exact:true})).toHaveValue('Nouvelle pièce');
+  await page.getByRole('button',{name:'Ajouter un niveau',exact:true}).click();
+  await expect(page.getByRole('textbox',{name:'Nom du niveau',exact:true})).toHaveValue('Niveau 1');
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  const rooms=saved.floors[0]!.rooms;
+  expect(rooms.find(r=>r.name==='Pièce importée')!.id).toMatch(/^room-[0-9a-f]{8}$/);
+  expect(rooms.find(r=>r.name==='Nouvelle pièce')!.id).toMatch(/^room-[0-9a-f]{8}$/);
+  expect(saved.floors[1]!.id).toMatch(/^floor-[0-9a-f]{8}$/);
+  expect(errors).toEqual([]);
+});
+
 test('quota error preserves plan; non administrators cannot edit',async({page})=>{
   await mountEditor(page,true,true);
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});

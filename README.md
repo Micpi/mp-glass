@@ -4,7 +4,7 @@
 
 Framework de dashboards Home Assistant : configurer une installation, puis déduire son interface à partir des pièces, des appareils et de leurs capacités.
 
-**État : version de développement 0.6.0, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
+**État : version de développement 0.6.1, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
 
 ![Aperçu de la fixture desktop](tests/browser/light.spec.ts-snapshots/desktop-win32.png)
 

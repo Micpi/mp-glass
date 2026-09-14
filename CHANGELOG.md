@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.1 — Studio utilisable en HTTP
+
+Retour utilisateur : **Utiliser pour ce niveau** restait sans effet dans la fenêtre de résultat.
+
+- Home Assistant ouvert en `http://` (adresse IP, `homeassistant.local`) n’est pas un contexte sécurisé : le navigateur n’y fournit pas `crypto.randomUUID`, utilisé pour identifier les pièces importées. Le clic échouait donc en silence. Les identifiants de pièces et de niveaux sont désormais tirés de `crypto.getRandomValues`, disponible partout.
+- Même correction pour **Ajouter une pièce** et **Ajouter un niveau**, qui échouaient de la même façon en HTTP.
+
 ## 0.6.0 — précision du plan et ambiances interactives
 
 - Zoom du plan d’origine de 100 à 800 % : boutons, molette centrée sous le pointeur, pincement, déplacement et retour à la vue entière. Les poignées restent à taille constante ; l’aimantation se désactive pour les corrections fines.

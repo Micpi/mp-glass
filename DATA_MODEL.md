@@ -8,7 +8,7 @@ Le snapshot HA est une entrée, pas une configuration de chantier.
 | Area | area_id | nom, floor_id, icône, image |
 | SourceDevice | registry id | area_id, fabricant, modèle, via_device_id, relations supplémentaires conservables |
 | Entity | registry id, sinon state:entity_id | entity_id courant, domain, device, area, disabled, hidden |
-| LogicalDevice | logical:<stable entity id> initialement | source IDs, entités, area, catégorie, confidence, preuves, capabilities |
+| LogicalDevice | logical:<stable entity id> initialement | source IDs, entités, area, catégorie, confidence, preuves, capabilities, `planKind` (lumière, volet, thermostat, température, humidité, ouverture, présence ; absent pour le diagnostic et les réglages) |
 | Role | identifiant projet | référence stable vers logical device ou entity |
 | Floorplan | identifiant projet | floor, asset id, polygons et anchors normalisés [0,1] |
 

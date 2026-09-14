@@ -67,6 +67,52 @@ test('strategy and settings use registry/project contracts and retain manual ove
   await page.getByRole('button',{name:'Analyser l’installation'}).click();
   await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeEnabled();
 });
+test('one room change in the Studio moves the equipment on the plan and on the room pages',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async()=>{
+    const projectModule='/shared/project.ts';const fixturesModule='/tests/fixtures.ts';
+    const {defaultProject}=await import(projectModule);const {home}=await import(fixturesModule);
+    const snapshot=home(2);
+    // A temperature sensor Home Assistant has no room for: the Studio lists it to be placed.
+    snapshot.entities.push({id:'stable-sensor',entity_id:'sensor.bureau_temperature'});
+    snapshot.states['sensor.bureau_temperature']={entity_id:'sensor.bureau_temperature',state:'20.5',attributes:{friendly_name:'Bureau · Température',device_class:'temperature',unit_of_measurement:'°C'}};
+    let record={revision:0,project:defaultProject('Maison test')};
+    const hass={connection:{},states:snapshot.states,language:'fr',user:{id:'test',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
+      switch(message.type){
+        case 'mp_glass/project/get':return structuredClone(record);
+        case 'mp_glass/project/save':record={revision:record.revision+1,project:message.project as typeof record.project};return structuredClone(record);
+        case 'config/area_registry/list':return snapshot.areas;
+        case 'config/floor_registry/list':return snapshot.floors;
+        case 'config/device_registry/list':return snapshot.devices;
+        case 'config/entity_registry/list':return snapshot.entities;
+        case 'lovelace/dashboards/list':return [{url_path:'mp-glass',mode:'storage'}];
+        case 'lovelace/config':return {strategy:{type:'custom:mp-glass'}};
+        default:throw Error('unexpected command');
+      }
+    }};
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
+    panel.hass=hass;document.body.replaceChildren(panel);
+    Object.assign(window,{settingsTest:{hass,record:()=>record}});
+  });
+  await page.getByRole('button',{name:/Équipements/}).click();
+  await expect(page.locator('.device').filter({hasText:'Bureau · Température'})).toBeVisible();
+  await page.getByRole('button',{name:/Plan 3D/}).click();
+  const editor=page.locator('mp-spatial-editor');
+  await expect(editor.getByRole('note')).toContainText('Plan par défaut');
+  await expect(editor.getByText('Équipements automatiques · 2')).toBeVisible();
+  await editor.getByRole('combobox',{name:'Pièce de Circuit 1'}).selectOption('kitchen');
+  await expect(editor.getByText('Équipements automatiques · 1')).toBeVisible();
+  await page.getByRole('button',{name:'Enregistrer',exact:true}).click();
+  await expect(page.getByRole('status')).toContainText('Configuration enregistrée');
+  const {project,dashboard}=await page.evaluate(async()=>{
+    const {hass,record}=(window as unknown as {settingsTest:{hass:import('../../frontend/ha/client').Hass;record:()=>{project:unknown}}}).settingsTest;
+    const strategy=customElements.get('ll-strategy-dashboard-mp-glass') as unknown as {generate:(config:object,hass:unknown)=>Promise<{views:{path:string;cards:{entity:string}[];mp_spatial?:import('../../shared/spatial').SpatialPlan}[]}>};
+    return {project:record().project as import('../../shared/models').ProjectConfig,dashboard:await strategy.generate({},hass)};
+  });
+  expect(project.overrides['stable-1']).toEqual({areaId:'kitchen'});expect(project.spatial).toBeUndefined();
+  expect(dashboard.views[0]!.mp_spatial!.floors[0]!.rooms.map(r=>[r.name,r.entityIds])).toEqual([['Salon',['light.circuit_0']],['Cuisine',['light.circuit_1']]]);
+  expect(dashboard.views.find(v=>v.path==='area-kitchen')!.cards.map(c=>c.entity)).toEqual(['light.circuit_1']);
+});
 test('an update installed while the page is open asks for a reload',async({page})=>{
   await page.goto('/');
   await page.evaluate(async()=>{

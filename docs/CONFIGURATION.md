@@ -4,7 +4,7 @@ Le panneau **MP Glass Studio** est accessible dans la barre latérale Home Assis
 
 La navigation du projet crée des destinations réelles et stables : `home`, `lights`, `rooms`, puis une page `area-<id>` par pièce utile. Le Studio permet d'afficher, masquer et ordonner les trois destinations principales.
 
-La section Installation analyse les registries Home Assistant, affiche les éléments à vérifier et permet d'affecter une pièce, renommer ou masquer un équipement. Enregistrer valide le schéma côté serveur. Seuls les administrateurs peuvent écrire.
+La section Équipements analyse les registries Home Assistant, affiche les éléments à vérifier (lumières, et équipements du plan sans pièce) et permet d'affecter une pièce, renommer ou masquer un équipement. La pièce choisie vaut pour tout MP Glass : page de la pièce et pièce du plan 3D reliée à la même pièce Home Assistant. Depuis 0.7.0, le plan 3D permet aussi de relier ses pièces automatiquement et d'y déplacer, ajouter ou masquer des équipements ([MP Spatial](FLOORPLAN.md#associer-les-pièces-et-les-équipements)). Enregistrer valide le schéma côté serveur. Seuls les administrateurs peuvent écrire.
 
 Le JSON Schema `shared/project.schema.json` est normatif. La copie Python est produite par le build. Le [contrat projet](../PROJECT_CONFIG.md) détaille l'apparence, les rôles et les overrides. L'éditeur graphique de rôles, l'import graphique et les floorplans ne sont pas encore livrés ; ne pas les déduire de la présence de modèles dans la roadmap.
 

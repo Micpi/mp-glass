@@ -3,6 +3,7 @@ import { defaultSpatialPlan, examplePlan, parseSpatial, validPolygon, wallSegmen
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
+import { resolvePlan } from '../shared/rooms';
 import { home } from './fixtures';
 
 describe('spatial geometry and project persistence',()=>{
@@ -36,16 +37,21 @@ describe('spatial geometry and project persistence',()=>{
 });
 
 describe('default plan',()=>{
-  it('lays out the HA areas per floor, without overlaps, bound to their lights',()=>{
+  it('lays out the HA areas per floor, without overlaps, following their equipment',()=>{
     const snapshot=home();
     snapshot.floors=[{floor_id:'etage',name:'Étage',level:1},{floor_id:'ground',name:'Rez-de-chaussée',level:0}];
     snapshot.areas=[{area_id:'salon',name:'Salon',floor_id:'ground'},{area_id:'kitchen',name:'Cuisine',floor_id:'ground'},{area_id:'wc',name:'WC'},{area_id:'chambre',name:'Chambre parentale',floor_id:'etage'},{area_id:'bureau é',name:'Bureau',floor_id:'etage'}];
-    const plan=defaultSpatialPlan(MPDiscoveryEngine.discover(snapshot,defaultProject()))!;
+    const graph=MPDiscoveryEngine.discover(snapshot,defaultProject());
+    const plan=defaultSpatialPlan(graph)!;
     expect(parseSpatial(plan)).toEqual(plan);
     expect(plan.floors.map(f=>[f.id,f.name,f.elevation])).toEqual([['floor-ground','Rez-de-chaussée',0],['floor-etage','Étage',2.8]]);
     expect(plan.floors[0]!.rooms.map(r=>r.name)).toEqual(['Salon','Cuisine','WC']);
-    expect(plan.floors[0]!.rooms[0]).toMatchObject({id:'area-salon',areaId:'salon',entityIds:['light.circuit_0','light.circuit_1','light.circuit_2']});
-    expect(plan.floors[0]!.rooms[1]!.entityIds).toBeUndefined();
+    // No stored list: the rooms show whatever their area holds when the dashboard is generated.
+    expect(plan.floors.flatMap(f=>f.rooms).every(r=>r.areaId&&!r.entityIds)).toBe(true);
+    expect(plan.floors[0]!.rooms[0]).toMatchObject({id:'area-salon',areaId:'salon'});
+    const shown=resolvePlan(plan,graph.devices).floors[0]!.rooms;
+    expect(shown[0]!.entityIds).toEqual(['light.circuit_1','light.circuit_2','light.circuit_0']);
+    expect(shown[1]!.entityIds).toBeUndefined();
     expect(plan.floors[1]!.rooms.map(r=>r.id)).toEqual(['area-chambre','area-bureau__']);
     for(const floor of plan.floors){
       const boxes=floor.rooms.map(r=>({x0:Math.min(...r.polygon.map(p=>p[0])),x1:Math.max(...r.polygon.map(p=>p[0])),y0:Math.min(...r.polygon.map(p=>p[1])),y1:Math.max(...r.polygon.map(p=>p[1]))}));

@@ -260,7 +260,10 @@ test('without a saved plan the Studio starts from the default plan',async({page}
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
   await consentAndGenerate(page);await page.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
-  expect(saved.floors[0]!.name).toBe('RDC');expect(saved.floors[0]!.rooms.find(r=>r.name==='Séjour')).toBeTruthy();
+  expect(saved.floors[0]!.name).toBe('RDC');
+  // "Salon" is not on the imported plan: its only living room, "Séjour", takes the area and follows it.
+  expect(saved.floors[0]!.rooms.find(r=>r.name==='Séjour')).toMatchObject({areaId:'salon'});expect(saved.floors[0]!.rooms.find(r=>r.name==='Séjour')!.entityIds).toBeUndefined();
+  await expect(page.getByRole('status')).toContainText('1 pièce reliée à Home Assistant par son nom');
   await expect(page.getByRole('note')).toHaveCount(0);
 });
 
@@ -687,6 +690,89 @@ test('equipment selection survives searches and missing entities',async({page})=
   await page.getByLabel('Rechercher un équipement').fill('cover.salon');
   const missing=editor.getByRole('checkbox',{name:/cover.salon.*indisponible/});await expect(missing).toBeChecked();await missing.click();
   expect(await saved()).not.toContain('cover.salon');expect(await saved()).toContain('sensor.salon_temperature');
+});
+
+test('rooms link to Home Assistant by name and follow their area, where equipment is moved, added and hidden',async({page})=>{
+  await page.setViewportSize({width:1280,height:1000});
+  await mountEditor(page);
+  await page.evaluate(()=>{
+    type Device={entityKey:string;entityId:string;name:string;areaId?:string;planKind:string;hidden:boolean;disabled:boolean};
+    const device=(entityId:string,name:string,planKind:string,areaId?:string):Device=>({entityKey:`key-${entityId}`,entityId,name,planKind,hidden:false,disabled:false,...(areaId?{areaId}:{})});
+    const editor=document.querySelector('mp-spatial-editor') as HTMLElement&{areas:unknown[];devices:Device[]};
+    editor.areas=[{area_id:'salon',name:'Salon'},{area_id:'cuisine',name:'Cuisine'},{area_id:'sdb',name:'Salle d’eau'},{area_id:'leo',name:'Chambre Léo'},{area_id:'parents',name:'Chambre parents'},{area_id:'couloir',name:'Couloir'}];
+    editor.devices=[device('light.circuit_0','Salon · Suspension','light','salon'),device('light.circuit_1','Circuit 1','light','salon'),device('sensor.salon_temperature','Salon · Température','temperature','salon'),device('cover.salon','Salon · Volet baie','cover','salon'),device('light.circuit_2','Circuit 2','light','cuisine'),device('sensor.bureau_temperature','Bureau · Température','temperature')];
+    // Stand-in for the Studio: the override changes the entity's room, then the list is discovered again.
+    const overrides:unknown[]=[];
+    editor.addEventListener('override-change',event=>{const {entityKey,patch}=(event as CustomEvent<{entityKey:string;patch:{areaId?:string;hidden?:boolean}}>).detail;overrides.push({entityKey,patch});editor.devices=editor.devices.map(d=>d.entityKey===entityKey?{...d,...patch}:d);});
+    Object.assign((window as unknown as {spatialTest:object}).spatialTest,{overrides});
+  });
+  const editor=page.locator('mp-spatial-editor');
+  const last=()=>page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms);
+  await expect(editor.getByText('Pièces Home Assistant · 0 / 7 reliées')).toBeVisible();
+  await expect(editor).toContainText('Proposition : 4 pièces à relier par leur nom.');
+  await editor.getByRole('button',{name:'Associer automatiquement'}).click();
+  await expect(page.getByRole('status')).toContainText('4 pièces reliées par leur nom. À relier à la main : Séjour, Chambre, Bureau.');
+  expect(Object.fromEntries((await last()).map(r=>[r.name,r.areaId??null]))).toEqual({'Salon':'salon','Séjour':null,'Cuisine':'cuisine','Chambre':null,'Entrée':'couloir','Bureau':null,'Salle de bain':'sdb'});
+  expect((await last()).some(r=>r.entityIds)).toBe(false);
+  await expect(editor.getByRole('button',{name:'Associer automatiquement'})).toHaveCount(0);
+
+  // The Salon shows its area's equipment without any box to tick.
+  await expect(editor.getByText('Équipements automatiques · 4')).toBeVisible();
+  const list=editor.getByRole('list',{name:'Équipements de la pièce'});
+  await expect(list.getByRole('listitem')).toHaveText([/Circuit 1/,/Suspension/,/Volet baie/,/Température/]);
+  await list.getByRole('combobox',{name:'Pièce de Circuit 1'}).selectOption('cuisine');
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  // Equipment without a room is offered first; adding it places it in this room's area.
+  await editor.getByRole('button',{name:'Ajouter Bureau · Température'}).click();
+  await expect(list.getByRole('listitem')).toHaveCount(4);
+  await list.getByRole('combobox',{name:'Pièce de Salon · Volet baie'}).selectOption('hide');
+  await expect(list.getByRole('listitem')).toHaveCount(3);
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{overrides:unknown[]}}).spatialTest.overrides)).toEqual([
+    {entityKey:'key-light.circuit_1',patch:{areaId:'cuisine'}},{entityKey:'key-sensor.bureau_temperature',patch:{areaId:'salon',hidden:false}},{entityKey:'key-cover.salon',patch:{hidden:true}},
+  ]);
+  await editor.locator('.box:has(.equipment)').screenshot({path:'artifacts/spatial-room-equipment.png'});
+
+  // Touching the kitchen on the plan opens it in the editor; the plan shows the light moved there.
+  const viewer=editor.locator('mp-spatial-viewer');
+  await viewer.locator('nav.strip').getByRole('button',{name:/Cuisine/}).click();
+  await expect(editor.getByRole('textbox',{name:'Nom de la pièce',exact:true})).toHaveValue('Cuisine');
+  await expect(list.getByRole('listitem')).toHaveText([/Circuit 1/,/Circuit 2/]);
+  await expect(viewer.getByRole('region',{name:'Cuisine'})).toContainText('Circuit 1');
+
+  // A list of its own, then back to following the area.
+  await editor.getByRole('button',{name:'Choisir à la main'}).click();
+  expect((await last()).find(r=>r.name==='Cuisine')!.entityIds).toEqual(['light.circuit_1','light.circuit_2']);
+  await expect(editor.getByText('Équipements choisis à la main · 2 / 12')).toBeVisible();
+  await editor.getByRole('button',{name:'Suivre la pièce Home Assistant'}).click();
+  expect((await last()).find(r=>r.name==='Cuisine')!.entityIds).toBeUndefined();
+
+  // An unlinked room offers its likely area in one click.
+  await editor.getByRole('combobox',{name:'Pièce à modifier'}).selectOption({label:'Séjour'});
+  await expect(editor.getByRole('button',{name:/^Relier à/})).toHaveCount(0);
+  await editor.getByRole('combobox',{name:'Pièce Home Assistant'}).selectOption('salon');
+  expect((await last()).find(r=>r.name==='Séjour')).toMatchObject({areaId:'salon'});
+});
+
+test('associating automatically lets a hand-made list follow its area only when nothing would disappear from it',async({page})=>{
+  await mountEditor(page);
+  await page.evaluate(async()=>{
+    const module='/shared/spatial.ts';const {examplePlan}=await import(module);
+    const device=(entityId:string,name:string,planKind:string,areaId?:string)=>({entityKey:`key-${entityId}`,entityId,name,planKind,hidden:false,disabled:false,...(areaId?{areaId}:{})});
+    const editor=document.querySelector('mp-spatial-editor') as HTMLElement&{areas:unknown[];devices:unknown[];plan:unknown};
+    editor.areas=[{area_id:'salon',name:'Salon'},{area_id:'cuisine',name:'Cuisine'}];
+    editor.devices=[device('light.circuit_0','Salon · Suspension','light','salon'),device('light.circuit_1','Circuit 1','light','salon'),device('light.circuit_2','Circuit 2','light','cuisine'),device('sensor.bureau_temperature','Bureau · Température','temperature')];
+    // Saved before 0.7.0: the Salon list is part of its area, the kitchen one holds a sensor from elsewhere.
+    const plan=examplePlan();Object.assign(plan.floors[0].rooms[0],{areaId:'salon',entityIds:['light.circuit_0']});Object.assign(plan.floors[0].rooms[2],{areaId:'cuisine',entityIds:['sensor.bureau_temperature']});
+    editor.plan=plan;
+  });
+  const editor=page.locator('mp-spatial-editor');
+  await expect(editor).toContainText('Proposition : 1 liste à passer en automatique.');
+  await editor.getByRole('button',{name:'Associer automatiquement'}).click();
+  await expect(page.getByRole('status')).toContainText('1 pièce passée en automatique · 1 pièce garde sa liste à la main (équipements d’autres pièces). À relier à la main : Séjour, Chambre, Entrée, Bureau, Salle de bain.');
+  const rooms=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms);
+  expect(rooms[0]).toMatchObject({areaId:'salon'});expect(rooms[0]!.entityIds).toBeUndefined();
+  expect(rooms[2]).toMatchObject({areaId:'cuisine',entityIds:['sensor.bureau_temperature']});
+  await expect(editor.getByText('Équipements automatiques · 2')).toBeVisible();
 });
 
 test.describe('precision touch',()=>{

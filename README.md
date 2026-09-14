@@ -4,7 +4,7 @@
 
 Framework de dashboards Home Assistant : configurer une installation, puis déduire son interface à partir des pièces, des appareils et de leurs capacités.
 
-**État : version de développement 0.6.1, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
+**État : version de développement 0.7.0, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
 
 ![Aperçu de la fixture desktop](tests/browser/light.spec.ts-snapshots/desktop-win32.png)
 
@@ -16,7 +16,7 @@ Cette image montre une fixture de développement, pas une maison cliente. [Résu
 - Core TypeScript indépendant : normalisation, capacités lumière, classification explicable, overrides, registre de cartes et composition déterministe.
 - Frontend : stratégie MP Glass Dashboard, vue responsive, carte lumière marche/arrêt et luminosité, fallback, editor, panneau de découverte et apparence.
 - Six presets : Glass Blue, Warm, Dark, Light, OLED et Neutral. La direction photographique premium et le wizard complet restent au programme.
-- [MP Spatial](docs/FLOORPLAN.md) : plan 3D manipulable, pièces/niveaux, états et lumières associés. [Gemini direct, sans add-on](docs/GEMINI_QUICKSTART.md) : une clé API dans MP Glass suffit pour importer PDF/images en brouillons corrigibles. Le worker séparé reste une option avancée.
+- [MP Spatial](docs/FLOORPLAN.md) : plan 3D manipulable, pièces/niveaux, états et commandes. Chaque pièce du plan se relie d’un clic à sa pièce Home Assistant et en affiche les équipements ; un équipement déplacé l’est aussi sur le dashboard. [Gemini direct, sans add-on](docs/GEMINI_QUICKSTART.md) : une clé API dans MP Glass suffit pour importer PDF/images en brouillons corrigibles. Le worker séparé reste une option avancée.
 
 ## Installer et créer un premier dashboard
 

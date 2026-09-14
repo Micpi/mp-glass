@@ -1,5 +1,6 @@
 import type { CardDefinition, LogicalDevice, MPHomeGraph, ProjectConfig } from './models';
 import { defaultSpatialPlan, examplePlan } from './spatial';
+import { resolvePlan } from './rooms';
 
 export class MPCardRegistry {
   private definitions: CardDefinition[] = [];
@@ -54,7 +55,8 @@ export class MPDashboardComposer {
       });
     // Until a plan is saved in the Studio, the home view shows a schematic plan of the HA areas.
     const generated = project.spatial ? undefined : defaultSpatialPlan(graph);
-    const spatial = project.spatial ?? generated ?? examplePlan();
+    // Rooms bound to an area show its equipment as it is now: moving a light to another area moves it on the plan too.
+    const spatial = resolvePlan(project.spatial ?? generated ?? examplePlan(), graph.devices);
     const spatialOrigin = project.spatial ? 'project' as const : generated ? 'areas' as const : 'example' as const;
     const view = (path: string, title: string, kind: 'home'|'lights'|'rooms'|'area'|'inventory', viewCards: ReturnType<typeof cards>, icon: string) => ({
       title,

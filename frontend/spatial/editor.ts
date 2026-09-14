@@ -1,10 +1,12 @@
 import { repeat } from 'lit/directives/repeat.js';
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
-import type { HAArea } from '../../shared/models';
+import { available } from '../../shared/capabilities';
+import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
+import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
 import { examplePlan, parseSpatial, polygonArea, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { roomTemperature } from '../../shared/spatial-state';
 import type { Hass } from '../ha/client';
-import { mpIcon } from '../icons';
+import { mpIcon, type MPIconName } from '../icons';
 import './viewer';
 import { detectWalls, snapBox, snapOutline, type DetectionRoom, type Source, type Walls } from './zones';
 
@@ -20,6 +22,9 @@ interface ModelInfo { backend:'gemini'|'addon'; configured:boolean; model:string
 const QUALITY_KEY='mp-glass.spatial.quality';
 /** Eight random hex digits. Not `crypto.randomUUID`: it only exists over HTTPS, and Home Assistant is often opened at http://IP:8123. */
 const shortId=()=>Array.from(crypto.getRandomValues(new Uint8Array(4)),byte=>byte.toString(16).padStart(2,'0')).join('');
+const KIND_ICONS:Record<PlanKind,MPIconName>={light:'bulb',cover:'window',climate:'flame',temperature:'thermo',humidity:'drop',opening:'window',motion:'motion'};
+const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
+const count=(n:number,word:string,suffix='')=>`${n} ${word}${n>1?'s':''}${suffix?` ${suffix}${n>1?'s':''}`:''}`;
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
 /** Google renews daily quotas at midnight in California: that moment in the viewer's time, "demain à 9 h". */
@@ -101,9 +106,11 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
+    .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
+    .equipment{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:5px;margin:8px 0;padding:0}.equipment li{display:flex;align-items:center;gap:10px;min-height:48px;padding:5px 6px 5px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.equipment .mp-icon{color:#9ad4ff}.equipment li>span:not(.mp-icon){flex:1;min-width:0}.equipment small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.equipment select{flex:0 1 auto;width:11em;min-width:0;min-height:38px;padding:6px 8px}.equipment button{flex:none;min-height:38px;padding:0 12px}
     .entity-list{display:grid;gap:5px;max-height:250px;overflow:auto;margin:8px 0;padding:3px}.entity-list label{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.entity-list input{flex:none;min-height:20px;width:18px;height:18px;accent-color:#69b7ff}.entity-list span{min-width:0;overflow:hidden;text-overflow:ellipsis}.entity-list small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis}.entity-list label:has(:checked){background:#69b7ff15;border-color:#69b7ff55}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
     dialog.job::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}
@@ -122,8 +129,13 @@ export class MPSpatialEditor extends LitElement {
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
   `;
-  plan?:SpatialPlan;fallback?:SpatialPlan;hass?:Hass;areas:HAArea[]=[];
+  plan?:SpatialPlan;fallback?:SpatialPlan;hass?:Hass;areas:HAArea[]=[];floors:HAFloor[]=[];
+  /** Entities as discovered, with the room chosen in MP Glass: rooms that follow an area show its equipment. */
+  devices:LogicalDevice[]=[];
   private entitySearch='';
+  private resolved?:{draft:SpatialPlan;devices:LogicalDevice[];plan:SpatialPlan};
+  /** Draft as the dashboard will show it. */
+  private get shown(){if(!this.draft)return undefined;if(this.resolved?.draft!==this.draft||this.resolved.devices!==this.devices)this.resolved={draft:this.draft,devices:this.devices,plan:resolvePlan(this.draft,this.devices)};return this.resolved.plan;}
   private draft?:SpatialPlan;private usingDefault=false;private candidate?:SpatialPlan;private message='';private detail='';private busy=false;private selected='';private floorIndex=0;private file?:File;private page=1;private confirmed=false;
   private timer?:ReturnType<typeof setTimeout>;private disposed=false;private generation=0;private startedAt=0;
   /** Analysis window: progress while `busy`, then the draft or the failure. */
@@ -259,8 +271,40 @@ export class MPSpatialEditor extends LitElement {
     if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;}}}
     const plan=this.draft?structuredClone(this.draft):{version:1 as const,enabled:true,floors:[]};
     if(plan.floors.length)plan.floors[this.floorIndex]=incoming;else plan.floors.push(incoming);
-    this.commit(plan);this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
+    // The other imported rooms are linked by their name ("SDB" to "Salle de bain") when that is unambiguous: they then follow their area.
+    const matches=matchAreas(plan,this.areas,this.floors);let linked=0;
+    for(const r of incoming.rooms){const areaId=matches.get(r.id);if(areaId){r.areaId=areaId;linked++;}}
+    const before=this.draft;this.commit(plan);
+    if(linked&&this.draft!==before)this.message=`Niveau importé · ${count(linked,'pièce','reliée')} à Home Assistant par ${linked>1?'leur':'son'} nom : vérifiez, puis cliquez sur Enregistrer dans le Studio.`;
+    this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
   }
+  /** Room of an entity for the whole of MP Glass (dashboard pages and plan), stored with the project like the Équipements section does. */
+  private assign(device:LogicalDevice,patch:Override){this.dispatchEvent(new CustomEvent('override-change',{detail:{entityKey:device.entityKey,patch},bubbles:true,composed:true}));}
+  /** Linking a room makes it follow the area, unless equipment was already chosen for it. */
+  private linkRoom(areaId:string){this.editRoom(r=>{if(areaId)r.areaId=areaId;else delete r.areaId;if(areaId&&!r.entityIds?.length)delete r.entityIds;});}
+  /** A list chosen by hand can follow its area without losing anything when all of it is in the area. */
+  private withinArea(room:SpatialRoom){const own=new Set(areaEquipment(room.areaId!,this.devices).slice(0,ROOM_ENTITY_LIMIT).map(d=>d.entityId));return (room.entityIds??[]).every(id=>own.has(id));}
+  /** Links rooms by name and lets hand-made lists follow their area when nothing would disappear from them. */
+  private linkAll(suggestions:Map<string,string>){
+    let linked=0,automatic=0,kept=0;const pending:string[]=[];
+    const before=this.draft;
+    this.mutate(plan=>{for(const room of plan.floors.flatMap(f=>f.rooms)){
+      const areaId=room.areaId??suggestions.get(room.id);
+      if(!areaId){pending.push(room.name);continue;}
+      if(!room.areaId){room.areaId=areaId;linked++;}
+      if(room.entityIds&&this.withinArea(room)){delete room.entityIds;automatic++;}
+      else if(room.entityIds)kept++;
+    }});
+    if(this.draft===before)return;
+    const done=[linked?`${count(linked,'pièce','reliée')} par ${linked>1?'leur':'son'} nom`:'',automatic?`${count(automatic,'pièce','passée')} en automatique`:'',kept?`${count(kept,'pièce')} ${kept>1?'gardent leur':'garde sa'} liste à la main (équipements d’autres pièces)`:''].filter(Boolean).join(' · ');
+    this.message=`${done||'Aucune nouvelle association'}${pending.length?`. À relier à la main : ${pending.join(', ')}`:''}. Vérifiez, puis cliquez sur Enregistrer dans le Studio.`;
+  }
+  private roomSelected=(e:CustomEvent<{floorId:string;roomId:string}>)=>{
+    const index=this.draft?.floors.findIndex(f=>f.id===e.detail.floorId)??-1;
+    if(index<0)return;
+    if(this.selected!==e.detail.roomId)this.entitySearch='';
+    this.floorIndex=index;this.selected=e.detail.roomId;
+  };
   private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
   /** Right after the analysis, the edges of Gemini's boxes are moved onto the walls drawn on the plan (undoable). */
   private async fitToWalls(generation:number){
@@ -358,25 +402,54 @@ export class MPSpatialEditor extends LitElement {
       .filter(id=>`${id} ${states[id]?.attributes.friendly_name??''}`.toLocaleLowerCase().includes(query))
       .sort((a,b)=>Number(ids.includes(b))-Number(ids.includes(a))||String(states[a]?.attributes.friendly_name??a).localeCompare(String(states[b]?.attributes.friendly_name??b)));
     const temperatures=ids.filter(id=>id.startsWith('sensor.')&&roomTemperature({...room,entityIds:[id]},states));
-    return html`<strong>Équipements du plan · ${ids.length} / 12</strong><p class="muted">Lumières, volets, températures et autres capteurs. Cochez les équipements de cette pièce.</p>
+    return html`<div class="equipment-head"><strong>Équipements choisis à la main · ${ids.length} / 12</strong>${room.areaId?html`<button @click=${()=>this.editRoom(r=>{delete r.entityIds;})}>Suivre la pièce Home Assistant</button>`:nothing}</div><p class="muted">${room.areaId?'Cette pièce garde sa propre liste : un équipement ajouté à sa pièce Home Assistant ne s’y ajoute pas.':'Reliez cette pièce à une pièce Home Assistant : ses lumières, volets, thermostats et capteurs s’afficheront d’eux-mêmes. Sinon, cochez-les ici.'}</p>
       <label>Rechercher un équipement<input type="search" .value=${this.entitySearch} @input=${(e:Event)=>{this.entitySearch=(e.target as HTMLInputElement).value;}}></label>
       <div class="entity-list" role="group" aria-label="Équipements de la pièce">${repeat(candidates,id=>id,id=>html`<label><input type="checkbox" .checked=${ids.includes(id)} ?disabled=${!ids.includes(id)&&ids.length>=12} @change=${(e:Event)=>{const checked=(e.target as HTMLInputElement).checked;if(checked&&ids.length>=12)return;this.editRoom(r=>{r.entityIds=checked?[...(r.entityIds??[]),id]:(r.entityIds??[]).filter(v=>v!==id);});}}><span>${String(states[id]?.attributes.friendly_name??id)}<small>${id}${!states[id]||['unknown','unavailable'].includes(states[id]!.state)?' · indisponible':''}</small></span></label>`)}</div>
       ${!candidates.length?html`<p class="muted">Aucun équipement correspondant.</p>`:nothing}
       ${temperatures.length>1?html`<label>Température principale<select .value=${temperatures[0]!} @change=${(e:Event)=>{const id=(e.target as HTMLSelectElement).value;this.editRoom(r=>{r.entityIds=[id,...(r.entityIds??[]).filter(v=>v!==id)];});}}>${temperatures.map(id=>html`<option value=${id}>${String(states[id]?.attributes.friendly_name??id)}</option>`)}</select></label>`:nothing}`;
   }
+  /** Equipment of the linked area, kept up to date; moving or hiding one changes it for the dashboard too. */
+  private automatic(room:SpatialRoom){
+    const areaId=room.areaId!,areaName=this.areas.find(a=>a.area_id===areaId)?.name??areaId,states=this.hass?.states??{};
+    const all=areaEquipment(areaId,this.devices),list=all.slice(0,ROOM_ENTITY_LIMIT);
+    return html`<div class="equipment-head"><strong>Équipements automatiques · ${list.length}</strong><button ?disabled=${!list.length} @click=${()=>this.editRoom(r=>{r.entityIds=list.map(d=>d.entityId);})}>Choisir à la main</button></div>
+      <p class="muted">Ceux de la pièce Home Assistant « ${areaName} », tenus à jour : un équipement placé dans cette pièce apparaît ici, sur le plan comme sur le dashboard.${all.length>list.length?` ${list.length} affichés sur ${all.length}.`:''}</p>
+      ${list.length?html`<ul class="equipment" aria-label="Équipements de la pièce">${repeat(list,d=>d.entityId,d=>html`<li>${mpIcon(KIND_ICONS[d.planKind!],18)}<span>${d.name}<small>${d.entityId}${available(states[d.entityId])?'':' · indisponible'}</small></span><select aria-label=${`Pièce de ${d.name}`} title="Changer de pièce ou masquer" @change=${(e:Event)=>{const value=(e.target as HTMLSelectElement).value;this.assign(d,value==='hide'?{hidden:true}:{areaId:value});}}><option value=${areaId} selected>${areaName}</option>${this.areas.filter(a=>a.area_id!==areaId).map(a=>html`<option value=${a.area_id}>Déplacer vers ${a.name}</option>`)}<option value="hide">Masquer (plan et dashboard)</option></select></li>`)}</ul>`:html`<p class="muted">Aucune lumière, aucun volet, thermostat ou capteur dans « ${areaName} » pour l’instant.</p>`}
+      ${this.addEquipment(room)}`;
+  }
+  /** Without a search: equipment that has no room yet, and the hidden equipment of this one. */
+  private addEquipment(room:SpatialRoom){
+    const areaId=room.areaId!,query=plain(this.entitySearch.trim()),known=new Map(this.areas.map(a=>[a.area_id,a.name]));
+    const homeless=(d:LogicalDevice)=>!d.areaId||!known.has(d.areaId);
+    const candidates=this.devices.filter(d=>d.planKind&&!d.disabled&&(d.hidden||d.areaId!==areaId)&&(query?plain(`${d.name} ${d.entityId}`).includes(query):homeless(d)||d.areaId===areaId))
+      .sort((a,b)=>Number(homeless(b))-Number(homeless(a))||a.name.localeCompare(b.name,undefined,{numeric:true}));
+    const where=(d:LogicalDevice)=>d.hidden?'masqué':homeless(d)?'sans pièce':`dans ${known.get(d.areaId!)}`;
+    return html`<label>Ajouter un équipement<input type="search" placeholder="Nom ou identifiant" .value=${this.entitySearch} @input=${(e:Event)=>{this.entitySearch=(e.target as HTMLInputElement).value;}}></label>
+      ${candidates.length?html`${query?nothing:html`<p class="muted">Sans pièce ou masqués : ${candidates.length}</p>`}<ul class="equipment" aria-label="Équipements à ajouter">${repeat(candidates.slice(0,8),d=>d.entityId,d=>html`<li>${mpIcon(KIND_ICONS[d.planKind!],18)}<span>${d.name}<small>${d.entityId} · ${where(d)}</small></span><button aria-label=${`Ajouter ${d.name}`} @click=${()=>this.assign(d,{areaId,hidden:false})}>Ajouter</button></li>`)}</ul>${candidates.length>8?html`<p class="muted">Et ${candidates.length-8} autres : précisez la recherche.</p>`:nothing}`:query?html`<p class="muted">Aucun équipement correspondant.</p>`:nothing}`;
+  }
+  /** Plan-wide state of the links, with the one-click association. */
+  private renderLinks(suggestions:Map<string,string>){
+    const rooms=this.draft!.floors.flatMap(f=>f.rooms),linked=rooms.filter(r=>r.areaId).length,manual=rooms.filter(r=>r.areaId&&r.entityIds&&this.withinArea(r)).length;
+    const proposal=[suggestions.size?`${count(suggestions.size,'pièce')} à relier par ${suggestions.size>1?'leur':'son'} nom`:'',manual?`${count(manual,'liste')} à passer en automatique`:''].filter(Boolean).join(', ');
+    return html`<div class="box links"><div class="equipment-head"><strong>Pièces Home Assistant · ${linked} / ${rooms.length} reliées</strong>${proposal?html`<button class="primary" @click=${()=>this.linkAll(suggestions)}>Associer automatiquement</button>`:nothing}</div>
+      <p class="muted">Une pièce reliée affiche d’elle-même les lumières, volets, thermostats et capteurs de sa pièce Home Assistant, sur le plan comme sur le dashboard.${proposal?` Proposition : ${proposal}.`:linked<rooms.length?' Reliez les pièces restantes avec le menu « Pièce Home Assistant ».':''}</p></div>`;
+  }
   render(){const floor=this.floor,room=this.room;const admin=!!this.hass?.user?.is_admin;
+    const suggestions=this.draft?matchAreas(this.draft,this.areas,this.floors):new Map<string,string>(),suggested=room&&!room.areaId?this.areas.find(a=>a.area_id===suggestions.get(room.id)):undefined;
     return html`<h2>Plan 3D</h2><p>Votre maison en volume, reliée à vos équipements.</p>
-    ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau, lumières déjà associées. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
+    ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau ; chaque pièce affiche d’elle-même les équipements de sa zone. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
       <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label>${this.renderModelChoice()}</div>${this.info?.backend==='addon'?html`<p class="muted">Mode add-on : le modèle est celui de l’option « model » de l’add-on.</p>`:nothing}<label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas ; chaque modèle a son propre quota : si l’un est épuisé, choisissez l’autre. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>Générer le brouillon 3D</button></div>
       <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}
     ${this.renderJob(floor?.name)}
-    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${()=>{this.candidate=undefined;}}>Ignorer</button><p>Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises ; vérifiez-les.</p></div>`:nothing}
+    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${()=>{this.candidate=undefined;}}>Ignorer</button><p>Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
     ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>Afficher le plan sur l’accueil</label><div class="row"><label>Niveau à modifier<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:`Niveau ${p.floors.length}`,elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>Ajouter un niveau</button></div><div class="row"><label>Nom du niveau<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>Hauteur des murs (m)<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{for(const r of p.floors[this.floorIndex]!.rooms)r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);});}}>Appliquer l’échelle</button></div>
-      ${room?html`<div class="box"><label>Pièce à modifier<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><div class="row"><label>Nom de la pièce<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>Pièce Home Assistant<select .value=${room.areaId??''} @change=${(e:Event)=>this.editRoom(r=>{const v=(e.target as HTMLSelectElement).value;if(v)r.areaId=v;else delete r.areaId;})}><option value="" .selected=${!room.areaId}>Non associée</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${this.entityPicker(room)}<details><summary>Corriger les sommets (X / Y en mètres)</summary>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${`Sommet ${i+1} X`} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Sommet ${i+1} Y`} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><button aria-label=${`Supprimer sommet ${i+1}`} ?disabled=${room.polygon.length<=3} @click=${()=>this.editRoom(r=>{r.polygon.splice(i,1);})}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.editRoom(r=>{const a=r.polygon.at(-1)!,b=r.polygon[0]!;r.polygon.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);})}>Ajouter un sommet</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>Supprimer cette pièce</button></div>`:nothing}</fieldset><mp-spatial-viewer .plan=${this.draft} .hass=${this.hass}></mp-spatial-viewer>`:nothing}`;
+      ${this.renderLinks(suggestions)}</fieldset>
+      <mp-spatial-viewer .plan=${this.shown} .hass=${this.hass} @room-select=${this.roomSelected}></mp-spatial-viewer>
+      ${room?html`<fieldset ?disabled=${!admin||this.busy}><div class="box"><label>Pièce à modifier<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;this.entitySearch='';}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><p class="muted">Ou touchez-la sur le plan.</p><div class="row"><label>Nom de la pièce<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>Pièce Home Assistant<select .value=${room.areaId??''} @change=${(e:Event)=>this.linkRoom((e.target as HTMLSelectElement).value)}><option value="" .selected=${!room.areaId}>Non associée</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${suggested?html`<button class="suggest" @click=${()=>this.linkRoom(suggested.area_id)}>Relier à « ${suggested.name} »</button>`:nothing}${followsArea(room)?this.automatic(room):this.entityPicker(room)}<details><summary>Corriger les sommets (X / Y en mètres)</summary>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${`Sommet ${i+1} X`} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Sommet ${i+1} Y`} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><button aria-label=${`Supprimer sommet ${i+1}`} ?disabled=${room.polygon.length<=3} @click=${()=>this.editRoom(r=>{r.polygon.splice(i,1);})}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.editRoom(r=>{const a=r.polygon.at(-1)!,b=r.polygon[0]!;r.polygon.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);})}>Ajouter un sommet</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>Supprimer cette pièce</button></div></fieldset>`:nothing}`:nothing}`;
   }
 }
 if(!customElements.get('mp-spatial-editor'))customElements.define('mp-spatial-editor',MPSpatialEditor);

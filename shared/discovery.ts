@@ -1,5 +1,6 @@
 import { MPCapabilityEngine } from './capabilities';
 import type { LogicalDevice, MPHomeGraph, ProjectConfig, Snapshot } from './models';
+import { planKind } from './rooms';
 const byId = (a: { id: string }, b: { id: string }) => a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 export class MPDiscoveryEngine {
   static discover(snapshot: Snapshot, project: ProjectConfig): MPHomeGraph {
@@ -21,6 +22,7 @@ export class MPDiscoveryEngine {
       if (!entity.id) evidence.push('identity:provisional');
       let presentation = override?.presentation;
       if (presentation === 'light' && category !== 'light') { warnings.push(`incompatible_override:${entityKey}`); presentation = undefined; }
+      const kind = planKind(entity.entity_id, state, entity.entity_category);
       return {
         id: `logical:${entityKey}`, entityKey, entityId: entity.entity_id,
         name: override?.name ?? entity.name ?? (typeof state?.attributes.friendly_name === 'string' ? state.attributes.friendly_name : entity.original_name) ?? entity.entity_id,
@@ -28,6 +30,7 @@ export class MPDiscoveryEngine {
         category, presentation, confidence: category === 'light' ? 0.99 : 0,
         evidence, capabilities: MPCapabilityEngine.detect(entity.entity_id, state),
         hidden: override?.hidden ?? !!entity.hidden_by, disabled: !!entity.disabled_by,
+        ...(kind ? { planKind: kind } : {}),
       };
     }).sort(byId);
     return { floors: [...snapshot.floors].sort((a,b) => byId({id:a.floor_id},{id:b.floor_id})), areas: [...snapshot.areas].sort((a,b) => byId({id:a.area_id},{id:b.area_id})), sourceDevices: [...snapshot.devices].sort(byId), devices, warnings: [...new Set(warnings)].sort() };

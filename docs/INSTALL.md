@@ -27,4 +27,4 @@ L’add-on facultatif MP Glass Spatial n’est pas distribué par HACS : voir [s
 4. Nommage de la maison, puis ouverture du panneau MP Glass Studio réservé aux administrateurs : il crée le dashboard MP Glass s’il manque.
 5. Analyser, corriger les pièces si nécessaire, enregistrer.
 
-Si le module n'apparaît pas après installation : recharger complètement le navigateur. Le backend charge le bootstrap de strategy avant Lovelace, puis le bundle principal à la demande. Pour utiliser seulement la carte en mode MANUAL, charger `/mp_glass_static/mp-glass.js?v=0.6.1` (version installée) comme ressource module dans l'UI Lovelace après installation du composant.
+Si le module n'apparaît pas après installation : recharger complètement le navigateur. Le backend charge le bootstrap de strategy avant Lovelace, puis le bundle principal à la demande. Pour utiliser seulement la carte en mode MANUAL, charger `/mp_glass_static/mp-glass.js?v=0.7.0` (version installée) comme ressource module dans l'UI Lovelace après installation du composant.

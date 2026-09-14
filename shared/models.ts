@@ -2,7 +2,7 @@ export interface HAState { entity_id: string; state: string; attributes: Record<
 export interface HAFloor { floor_id: string; name: string; level?: number }
 export interface HAArea { area_id: string; name: string; floor_id?: string | null; icon?: string | null; picture?: string | null }
 export interface HADevice { id: string; area_id?: string | null; via_device_id?: string | null; manufacturer?: string | null; model?: string | null }
-export interface HAEntity { id?: string; entity_id: string; device_id?: string | null; area_id?: string | null; name?: string | null; original_name?: string | null; disabled_by?: string | null; hidden_by?: string | null; labels?: string[] }
+export interface HAEntity { id?: string; entity_id: string; device_id?: string | null; area_id?: string | null; name?: string | null; original_name?: string | null; disabled_by?: string | null; hidden_by?: string | null; entity_category?: string | null; labels?: string[] }
 export interface Snapshot { floors: HAFloor[]; areas: HAArea[]; devices: HADevice[]; entities: HAEntity[]; states: Record<string, HAState>; warnings: string[] }
 export type Capability = 'POWER' | 'DIM' | 'COLOR_TEMP' | 'RGB' | 'RGBW' | 'RGBWW' | 'EFFECT';
 export interface CapabilityBinding { capability: Capability; entityId: string; evidence: string }
@@ -54,6 +54,8 @@ export interface LogicalDevice {
   areaId?: string; floorId?: string; category: Category; presentation?: Category;
   confidence: number; evidence: string[]; capabilities: CapabilityBinding[];
   hidden: boolean; disabled: boolean;
+  /** Shown in its area's room of the plan; unset for diagnostics, settings and other sensors. */
+  planKind?: import('./rooms').PlanKind;
 }
 export interface MPHomeGraph { floors: HAFloor[]; areas: HAArea[]; sourceDevices: HADevice[]; devices: LogicalDevice[]; warnings: string[] }
 export interface CardConfig { type: string; entity: string; name?: string; preset?: Preset; appearance?: AppearanceConfig; debug?: boolean }

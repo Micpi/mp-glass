@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.7.0 — associations en un clic
+
+Demande utilisateur : simplifier l’association des entités avec le dashboard et le plan. Une seule règle désormais : **chaque pièce du plan est reliée à une pièce Home Assistant, et ses équipements suivent**.
+
+- **Équipements automatiques** : une pièce du plan reliée à une pièce Home Assistant affiche d’elle-même ses lumières, volets, thermostats, capteurs de température et d’humidité, ouvertures et présences (12 au maximum), recalculés à chaque ouverture du dashboard. Un équipement ajouté ensuite à la pièce Home Assistant apparaît sans passer par le Studio. Les entités de diagnostic et de réglage, l’énergie et les autres capteurs restent hors du plan.
+- **Associer automatiquement** (Studio → Plan 3D → Pièces Home Assistant) : relie les pièces par leur nom, accents, abréviations des plans (SDB, CH., W.C., Dgt, Cuis., Séj.) et noms anglais compris, puis rapproche les pièces de même nature restées seules (« Séjour » et « Salon », « Entrée » et « Couloir »). Une pièce n’est reliée que si elle et la pièce Home Assistant sont chacune le seul choix de l’autre ; un niveau nommé comme un étage Home Assistant ne regarde que ses pièces. Les listes choisies à la main passent en automatique seulement si aucun équipement ne s’en retire. Chaque pièce non reliée propose aussi **Relier à « … »** d’un clic.
+- **Import d’un niveau** : les pièces importées sont reliées de la même façon, après la reprise des pièces de même nom.
+- **Un seul endroit pour les deux** : dans la fiche d’une pièce, chaque équipement peut être déplacé vers une autre pièce ou masqué, et **Ajouter un équipement** propose d’abord ceux qui n’ont pas de pièce. Ces choix sont ceux de la section Équipements : ils changent aussi les pages de pièce du dashboard, et s’affichent avant l’enregistrement.
+- **Choisir à la main** fige la liste d’une pièce ; **Suivre la pièce Home Assistant** y revient. Les plans enregistrés gardent leurs listes, rien n’est retiré sans action.
+- **Plan par défaut** : ses pièces suivent leur zone, capteurs compris ; aucune liste n’y est plus enregistrée.
+- Toucher une pièce sur le plan 3D du Studio l’ouvre dans l’éditeur, placé désormais juste sous le plan.
+- Studio → Équipements : la liste « À vérifier » inclut les volets, thermostats et capteurs du plan sans pièce, et une pièce choisie s’applique aussitôt.
+
 ## 0.6.1 — Studio utilisable en HTTP
 
 Retour utilisateur : **Utiliser pour ce niveau** restait sans effet dans la fenêtre de résultat.

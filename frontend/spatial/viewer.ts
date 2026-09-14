@@ -200,6 +200,8 @@ export class MPSpatialViewer extends LitElement {
     if(!this.currentFloor?.rooms.some(r=>r.id===id)) return;
     this.selected=id; this.error=''; this.engaged=true;
     this.scene?.focus(id);
+    // The Studio edits the room touched on the plan.
+    this.dispatchEvent(new CustomEvent('room-select',{detail:{floorId:this.currentFloor.id,roomId:id}}));
     void this.updateComplete.then(()=>this.reveal());
   }
   /** On a phone the room card sits under the plan and the room list scrolls sideways: show both for the selected room. */

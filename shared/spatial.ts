@@ -1,6 +1,6 @@
 import Ajv from 'ajv';
 import schema from './spatial.schema.json';
-import type { HAArea, HAFloor, LogicalDevice } from './models';
+import type { HAArea, HAFloor } from './models';
 
 export type Point = [number, number];
 export interface SpatialRoom { id: string; name: string; polygon: Point[]; areaId?: string; entityIds?: string[] }
@@ -79,7 +79,7 @@ export function examplePlan(): SpatialPlan {
   ]}] };
 }
 
-interface HomeLayout { areas: HAArea[]; floors: HAFloor[]; devices: Pick<LogicalDevice,'entityId'|'areaId'|'category'|'hidden'|'disabled'>[] }
+interface HomeLayout { areas: HAArea[]; floors: HAFloor[] }
 /** Typical surface in m², only used to give the schematic rooms plausible proportions. */
 const ROOM_SIZES: [RegExp, number][] = [
   [/salon|sejour|living|lounge|salle a manger|dining|piece de vie/, 26], [/garage|atelier|workshop/, 22],
@@ -120,7 +120,7 @@ function tile(sizes: number[]): Point[][] {
 
 /**
  * Schematic plan built from the Home Assistant areas: one level per HA floor, one rectangle per area,
- * bound to the area and its lights. It is a starting point, not a survey of the home.
+ * bound to the area, whose equipment it follows. It is a starting point, not a survey of the home.
  */
 export function defaultSpatialPlan(home: HomeLayout): SpatialPlan | undefined {
   if (!home.areas.length) return undefined;
@@ -147,13 +147,7 @@ export function defaultSpatialPlan(home: HomeLayout): SpatialPlan | undefined {
       name: floor?.name.trim().slice(0, 80) || 'Niveau principal',
       elevation: Math.min(100, Math.max(-20, (byLevel ? floor!.level! : index) * 2.8)),
       height: 2.6,
-      rooms: areas.map(({ area }, i) => {
-        const entityIds = home.devices
-          .filter(d => d.areaId === area.area_id && !d.hidden && !d.disabled && /^(light|cover|climate)\.[a-z0-9_]+$/.test(d.entityId))
-          .sort((a, b) => Number(b.category === 'light') - Number(a.category === 'light') || a.entityId.localeCompare(b.entityId))
-          .slice(0, 12).map(d => d.entityId);
-        return { id: uniqueId('area', area.area_id, roomIds), name: area.name.trim().slice(0, 80) || 'Pièce', areaId: area.area_id.slice(0, 255), polygon: polygons[i]!, ...(entityIds.length ? { entityIds } : {}) };
-      }),
+      rooms: areas.map(({ area }, i) => ({ id: uniqueId('area', area.area_id, roomIds), name: area.name.trim().slice(0, 80) || 'Pièce', areaId: area.area_id.slice(0, 255), polygon: polygons[i]! })),
     };
   }) };
   try { return parseSpatial(plan); } catch { return undefined; }

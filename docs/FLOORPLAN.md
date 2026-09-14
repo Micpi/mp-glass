@@ -1,25 +1,38 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.6.1. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.7.0. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
-Sans plan enregistré, l’accueil affiche un plan schématique construit à partir des registres Home Assistant : un niveau par étage HA (ordonnés par `level`, 2,8 m par niveau), une pièce rectangulaire par zone, proportionnée selon son nom (salon, cuisine, chambre, WC…), reliée à sa zone et à ses lumières/volets/thermostats (12 maximum). Les zones sans étage rejoignent le niveau le plus proche du rez-de-chaussée. Sans aucune zone, le plan d’exemple fictif est affiché. Une mention invite à importer ou dessiner le vrai plan.
+Sans plan enregistré, l’accueil affiche un plan schématique construit à partir des registres Home Assistant : un niveau par étage HA (ordonnés par `level`, 2,8 m par niveau), une pièce rectangulaire par zone, proportionnée selon son nom (salon, cuisine, chambre, WC…), reliée à sa zone dont elle affiche les équipements ([voir Associer](#associer-les-pièces-et-les-équipements)). Les zones sans étage rejoignent le niveau le plus proche du rez-de-chaussée. Sans aucune zone, le plan d’exemple fictif est affiché. Une mention invite à importer ou dessiner le vrai plan.
 
-Ce plan est recalculé à chaque génération du dashboard et n’est pas enregistré. Dans **Studio → Plan 3D**, il sert de point de départ : toute modification ou tout import Gemini le transforme en plan du projet après **Enregistrer**. L’import d’un niveau reprend automatiquement les associations des pièces de même nom (celles du plan par défaut portent le nom des zones HA). **Repartir du plan par défaut** remplace le plan courant par celui des zones actuelles. Pour revenir à l’accueil sans plan, décocher **Afficher le plan sur l’accueil** puis enregistrer.
+Ce plan est recalculé à chaque génération du dashboard et n’est pas enregistré. Dans **Studio → Plan 3D**, il sert de point de départ : toute modification ou tout import Gemini le transforme en plan du projet après **Enregistrer**. L’import d’un niveau reprend automatiquement les associations des pièces de même nom (celles du plan par défaut portent le nom des zones HA), puis relie les autres pièces par leur nom quand c’est sans ambiguïté. **Repartir du plan par défaut** remplace le plan courant par celui des zones actuelles. Pour revenir à l’accueil sans plan, décocher **Afficher le plan sur l’accueil** puis enregistrer.
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.6.1 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.6.1`, puis recharger le navigateur.
+1. Installer MP Glass 0.7.0 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.7.0`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.
 5. Choisir un PDF non chiffré (page 1–100), PNG, JPEG ou WebP, maximum 8 Mo. En mode direct, choisir le **Modèle d’analyse** : Gemini 3.8 Flash, le plus précis, ou Gemini 3.5 Flash-Lite, le plus rapide ; chacun a son propre quota. Le réglage des options de l’intégration est présélectionné, puis le dernier modèle choisi dans ce navigateur. Cocher l’envoi à Google, puis **Générer le brouillon 3D**. Une fenêtre suit l’analyse étape par étape (préparation, envoi, analyse avec chronomètre) et permet de l’annuler ; elle affiche ensuite le brouillon en 3D (pièces, surface, dimensions, avertissements) ou la cause de l’échec avec **Réessayer**. Une seule analyse à la fois, cinq minutes maximum ; quitter le Studio arrête l’analyse en cours.
 6. Ajuster les pièces sur le plan d’origine si besoin (voir [Corriger les pièces détectées](#corriger-les-pièces-détectées)), cliquer **Utiliser pour ce niveau**, puis corriger noms, contours, hauteur et échelle. Exemple : une longueur affichée de 5 m pour une cote réelle de 6 m nécessite un facteur 1,2. La hauteur des murs reste indépendante.
-7. Associer les pièces HA et cocher les équipements à afficher (recherche par nom ou identifiant, 12 maximum). Lumières, volets, thermostats, températures et autres capteurs sont disponibles. Avec plusieurs capteurs de température, choisir la **Température principale**. L’association de pièce est un repère ; les équipements se sélectionnent explicitement.
+7. Cliquer **Associer automatiquement**, puis relier à la main les pièces restantes avec **Pièce Home Assistant**. Leurs équipements s’affichent seuls ([détails](#associer-les-pièces-et-les-équipements)).
 8. Cliquer **Enregistrer** dans le Studio puis recharger le dashboard. Le plan remplace le texte d’accueil lorsque **Afficher le plan sur l’accueil** est activé. Une détection des équipements conserve le plan.
 
 L’image d’inspiration n’est pas un plan coté : importer un véritable plan 2D pour reconstruire la maison.
+
+## Associer les pièces et les équipements
+
+Une seule règle : **chaque pièce du plan est reliée à une pièce Home Assistant, et ses équipements suivent**. Le dashboard utilise les mêmes pièces pour ses pages : un équipement placé une fois apparaît sur la page de sa pièce et dans la pièce du plan.
+
+- **Équipements automatiques** : une pièce reliée affiche les lumières, volets, thermostats, capteurs de température et d’humidité, ouvertures (porte, fenêtre) et présences de sa pièce Home Assistant, dans cet ordre, 12 au maximum. La liste est recalculée à chaque ouverture du dashboard : un équipement ajouté ensuite dans Home Assistant apparaît sans passer par le Studio. Les entités de diagnostic ou de réglage, l’énergie et les autres capteurs ne sont pas affichés. Le premier capteur de température donne la température de la pièce, le thermostat servant de repli.
+- **Associer automatiquement** : relie les pièces par leur nom. Accents et majuscules sont ignorés, les abréviations des plans comprises (SDB, S.D.B., salle d’eau, CH., Chbre, W.C., toilettes, Dgt, Cuis., Séj., SAM) ainsi que les noms anglais (bedroom, kitchen, living…). Une pièce restée seule de sa nature se relie à la seule pièce Home Assistant de même nature (« Séjour » et « Salon », « Entrée » et « Couloir »). Une pièce n’est reliée que si elle et la pièce Home Assistant sont chacune le seul choix de l’autre : deux chambres face à « Chambre Léo » et « Chambre parents » restent à relier à la main. Si un niveau porte le nom d’un étage Home Assistant, seules les pièces de cet étage lui sont proposées. Les pièces déjà reliées ne changent pas. Le bouton fait aussi passer en automatique les pièces reliées dont la liste choisie à la main est entièrement dans leur pièce Home Assistant : elles gagnent des équipements sans en perdre. Les pièces restant à relier sont nommées dans le message.
+- **Relier à « … »** : sous le choix de la pièce Home Assistant, la correspondance trouvée pour la pièce sélectionnée, d’un clic.
+- **Déplacer ou masquer** : dans la fiche d’une pièce, le menu de chaque équipement le déplace vers une autre pièce Home Assistant ou le masque du plan et du dashboard. **Ajouter un équipement** liste d’abord les équipements sans pièce et ceux masqués ; une recherche par nom ou identifiant trouve les autres, et **Ajouter** les place dans cette pièce. Ces choix sont enregistrés dans MP Glass (comme dans Studio → Équipements), pas dans Home Assistant.
+- **Choisir à la main** : fige la liste de la pièce, qui se coche alors équipement par équipement (recherche, 12 maximum, **Température principale** avec plusieurs capteurs). **Suivre la pièce Home Assistant** revient à l’automatique. Une pièce non reliée n’a qu’une liste à la main.
+- Toucher une pièce sur le plan 3D du Studio l’ouvre dans l’éditeur, juste en dessous.
+
+Les plans enregistrés avant 0.7.0 gardent leurs listes : **Associer automatiquement** propose de les passer en automatique quand rien ne s’en retire. Dans le contrat, une pièce avec `areaId` et sans `entityIds` suit sa zone ; aucune liste calculée n’est enregistrée.
 
 ## Interactions
 
@@ -92,7 +105,7 @@ En mode add-on, les sources ne sont jamais sauvegardées par MP Glass : HTTP aut
 
 En mode direct, clé Gemini dans les options de l’intégration HA. En mode add-on, clé Gemini dans les options du worker et clé de liaison dans les options HA. Les sauvegardes HA peuvent contenir ces secrets, exclus des exports MP Glass et des diagnostics.
 
-Une seule tâche éphémère reste en mémoire. Fermer le Studio ou recharger l’intégration peut nécessiter une nouvelle analyse. Aucun résultat IA n’est automatiquement enregistré. L’import remplace seulement le niveau choisi ; les autres niveaux sont préservés. Les associations des pièces de même nom sont reprises et doivent être vérifiées.
+Une seule tâche éphémère reste en mémoire. Fermer le Studio ou recharger l’intégration peut nécessiter une nouvelle analyse. Aucun résultat IA n’est automatiquement enregistré. L’import remplace seulement le niveau choisi ; les autres niveaux sont préservés. Les associations des pièces de même nom sont reprises, les autres pièces reliées par leur nom quand c’est sans ambiguïté ; elles doivent être vérifiées.
 
 ## Limites de validation
 

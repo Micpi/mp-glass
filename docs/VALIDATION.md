@@ -1,5 +1,13 @@
 # Validation — incrément lumière 0.1.0
 
+## Associations en un clic 0.7.0 — 14 septembre 2026
+
+Demande utilisateur : simplifier l’association des entités avec le dashboard et le plan. Avant : pièce Home Assistant choisie à part, sans effet sur les équipements, puis jusqu’à 12 cases à cocher par pièce parmi toutes les entités de la maison, et les pièces du dashboard réglées ailleurs. Réponse : une pièce du plan reliée à une pièce Home Assistant en suit les équipements, **Associer automatiquement** relie par le nom, et déplacer ou masquer un équipement depuis le plan écrit la même préférence que la section Équipements.
+
+Validé localement : 45 tests Vitest dont 8 nouveaux (types d’équipements retenus et écartés, diagnostic exclu, ordre de la fiche, 12 au maximum, masqués exclus, plan non modifié par le calcul, déplacement d’une lumière visible à la fois sur le plan et sur la page de pièce ; abréviations SEJOUR/CUIS./S.D.B/W.C./Dgt/CH. 2, chambres ambiguës laissées à l’utilisateur, chambres numérotées, liens existants conservés, étage de même nom), 44 scénarios Playwright dont 3 nouveaux (Studio seul : quatre pièces reliées sur sept, trois nommées à relier, liste automatique, déplacement, ajout d’un capteur sans pièce, masquage, pièce touchée sur le plan ouverte dans l’éditeur, passage à la main et retour ; liste d’avant 0.7.0 passée en automatique quand elle est dans sa pièce, gardée quand elle contient un capteur d’ailleurs ; Studio complet : lumière déplacée dans le plan par défaut, enregistrée comme override, présente dans la pièce Cuisine du plan et sur la page Cuisine du dashboard généré), import d’un niveau reliant « Séjour » à « Salon », six références visuelles du dashboard inchangées, 46 tests Python, lint, types et build. Captures ordinateur et téléphone de l’éditeur inspectées ; un débordement horizontal de la liste d’équipements à 390 px a été corrigé.
+
+Non validé : les noms réels des pièces de l’utilisateur face à ses pièces Home Assistant, et le Studio dans son vrai Home Assistant. Le rapprochement par nom est volontairement prudent : une pièce ambiguë reste à relier à la main.
+
 ## Studio en HTTP 0.6.1 — 14 septembre 2026
 
 Retour utilisateur : **Utiliser pour ce niveau** sans effet après une analyse de 13 pièces. Cause reproduite : hors HTTPS, `crypto.randomUUID` n’existe pas et le clic levait `TypeError: crypto.randomUUID is not a function`, fenêtre laissée ouverte. **Ajouter une pièce** et **Ajouter un niveau** échouaient de la même façon.

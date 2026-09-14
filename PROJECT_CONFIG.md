@@ -63,4 +63,4 @@ Le backend conserve `{revision, project}`. Une sauvegarde exige la révision lue
 
 Source normative : `shared/project.schema.json`.
 
-Depuis 0.2.0, `spatial` est optionnel dans ce schéma v2 : `{version:1, enabled:true, floors:[...]}`. Géométrie en mètres, niveaux, pièces polygonales, `areaId` facultatif et liste `entityIds` choisie par l’utilisateur. Aucun fichier source, clé API ou état runtime. La validation géométrique complète le JSON Schema. Voir `shared/spatial.schema.json` et [MP Spatial](docs/FLOORPLAN.md).
+Depuis 0.2.0, `spatial` est optionnel dans ce schéma v2 : `{version:1, enabled:true, floors:[...]}`. Géométrie en mètres, niveaux, pièces polygonales, `areaId` facultatif et liste `entityIds` facultative. Depuis 0.7.0, une pièce avec `areaId` et sans `entityIds` suit sa zone : ses équipements sont calculés à la génération du dashboard (mêmes overrides que les pages de pièce), jamais enregistrés ; `entityIds` est une liste choisie à la main. Aucun fichier source, clé API ou état runtime. La validation géométrique complète le JSON Schema. Voir `shared/spatial.schema.json` et [MP Spatial](docs/FLOORPLAN.md).

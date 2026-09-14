@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.0
+
+Consignes de détection affinées pour les contours concaves, couloirs et limites ambiguës ; contrat de normalisation synchronisé avec l’intégration.
+
 ## 0.5.0
 
 Contrat Gemini partagé : les contours aux côtés horizontaux et verticaux partagent la grille de découpage des rectangles (plus de chevauchement avec une pièce en L) et donnent la boîte de leur pièce.

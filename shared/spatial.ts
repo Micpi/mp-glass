@@ -149,7 +149,7 @@ export function defaultSpatialPlan(home: HomeLayout): SpatialPlan | undefined {
       height: 2.6,
       rooms: areas.map(({ area }, i) => {
         const entityIds = home.devices
-          .filter(d => d.areaId === area.area_id && !d.hidden && !d.disabled && /^(light|climate)\.[a-z0-9_]+$/.test(d.entityId))
+          .filter(d => d.areaId === area.area_id && !d.hidden && !d.disabled && /^(light|cover|climate)\.[a-z0-9_]+$/.test(d.entityId))
           .sort((a, b) => Number(b.category === 'light') - Number(a.category === 'light') || a.entityId.localeCompare(b.entityId))
           .slice(0, 12).map(d => d.entityId);
         return { id: uniqueId('area', area.area_id, roomIds), name: area.name.trim().slice(0, 80) || 'Pièce', areaId: area.area_id.slice(0, 255), polygon: polygons[i]!, ...(entityIds.length ? { entityIds } : {}) };

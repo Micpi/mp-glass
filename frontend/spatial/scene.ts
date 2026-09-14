@@ -1,9 +1,10 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import type { SpatialFloor, WallSegment } from '../../shared/spatial';
+import type { RoomAmbient } from '../../shared/spatial-state';
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
-interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; anchor:T.Vector3; radius:number }
+interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
 interface WallParts { rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; edges:T.LineBasicMaterial; exterior:boolean }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
 const SLOP=14;
@@ -171,7 +172,21 @@ export class SpatialScene {
       surface.rotation.x=-Math.PI/2;surface.position.y=floor.elevation;surface.userData.roomId=room.id;this.group.add(surface);
       const bounds=new T.Box2().setFromPoints(room.polygon.map(p=>new T.Vector2(...p)));
       const center=bounds.getCenter(new T.Vector2());
-      this.rooms.set(room.id,{surface,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(bounds.getSize(new T.Vector2()).length()/2,1)});
+      // The glow shares the exact polygon: its radial falloff cannot spill through a partition.
+      const size=bounds.getSize(new T.Vector2());
+      const glow=new T.Mesh(surface.geometry.clone(),new T.ShaderMaterial({
+        transparent:true,depthWrite:false,side:T.DoubleSide,
+        uniforms:{tint:{value:new T.Color('#ffd080')},strength:{value:0},center:{value:new T.Vector2(center.x,-center.y)},extent:{value:new T.Vector2(Math.max(size.x,.01),Math.max(size.y,.01))}},
+        vertexShader:'varying vec2 spot; void main(){spot=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+        fragmentShader:'varying vec2 spot; uniform vec3 tint; uniform float strength; uniform vec2 center; uniform vec2 extent; void main(){float d=length((spot-center)/extent*1.6);float a=(1.-smoothstep(0.,1.,d))*strength;gl_FragColor=vec4(tint,a);}',
+      }));
+      glow.rotation.x=-Math.PI/2;glow.position.y=floor.elevation+.008;glow.renderOrder=1;this.group.add(glow);
+      // Keep the label inside concave rooms, using the widest horizontal slice through the centre.
+      const crossings:number[]=[];const y=center.y;
+      room.polygon.forEach((a,i)=>{const b=room.polygon[(i+1)%room.polygon.length]!;if((a[1]>y)!==(b[1]>y))crossings.push(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]));});
+      crossings.sort((a,b)=>a-b);let widest=0;
+      for(let i=0;i+1<crossings.length;i+=2){const width=crossings[i+1]!-crossings[i]!;if(width>widest){widest=width;center.x=(crossings[i]!+crossings[i+1]!)/2;}}
+      this.rooms.set(room.id,{surface,glow,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(size.length()/2,1)});
       this.surfaces.push(surface);this.solids.push(surface);
     }
     // Each wall once: a shared partition is not drawn twice; exterior walls are thicker and brighter.
@@ -189,14 +204,16 @@ export class SpatialScene {
     if(reset)this.reset();else this.render();
   }
   /** Selected room in light, rooms with a light on in warm tones, the others muted while a room is selected. */
-  highlight(selected:string,lit:ReadonlySet<string>=new Set()) {
-    const key=`${selected}|${[...lit].sort().join()}`;
+  highlight(selected:string,ambient:ReadonlyMap<string,RoomAmbient>=new Map()) {
+    const key=JSON.stringify([selected,[...ambient]]);
     if(key===this.styled)return false;
     this.styled=key;
-    for(const [id,{surface}] of this.rooms){
-      const on=lit.has(id),picked=id===selected,muted=!!selected&&!picked;
-      surface.material.color.setHex(picked?(on?0xffd98f:0x8fd8ff):on?0xffbf5c:0x3496d1);
-      surface.material.opacity=picked?.5:on?.34:muted?.13:.22;
+    for(const [id,{surface,glow}] of this.rooms){
+      const state=ambient.get(id),on=!!state?.strength,picked=id===selected,muted=!!selected&&!picked;
+      surface.material.color.set(on?state!.color:picked?'#8fd8ff':'#3496d1');
+      surface.material.opacity=picked?.3:on?.18:muted?.1:.18;
+      glow.material.uniforms.tint!.value.set(state?.color??'#ffd080');
+      glow.material.uniforms.strength!.value=(state?.strength??0)*(muted?.65:1);
     }
     for(const {rooms,mesh,edges,exterior} of this.wallParts){
       const picked=rooms.includes(selected),muted=!!selected&&!picked;

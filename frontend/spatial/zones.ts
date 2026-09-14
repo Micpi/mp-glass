@@ -66,8 +66,18 @@ export async function detectWalls(blob:Blob):Promise<Walls>{
     const context=canvas.getContext('2d',{willReadFrequently:true});
     if(!context)return {x:[],y:[]};
     context.fillStyle='#fff';context.fillRect(0,0,w,h);context.drawImage(bitmap,0,0,w,h);
-    const pixels=context.getImageData(0,0,w,h).data,dark=new Uint8Array(w*h);
-    for(let i=0;i<w*h;i++)dark[i]=pixels[i*4]!*.3+pixels[i*4+1]!*.59+pixels[i*4+2]!*.11<120?1:0;
+    const pixels=context.getImageData(0,0,w,h).data,dark=new Uint8Array(w*h),histogram=new Uint32Array(256);
+    for(let i=0;i<w*h;i++){dark[i]=Math.round(pixels[i*4]!*.3+pixels[i*4+1]!*.59+pixels[i*4+2]!*.11);histogram[dark[i]!]!++;}
+    // Bounded Otsu threshold: faded grey scans still have walls; pale paper never becomes a wall.
+    let total=0,weight=0,sum=0,best=0,threshold=120;
+    for(let i=0;i<256;i++)total+=i*histogram[i]!;
+    for(let i=0;i<255;i++){
+      weight+=histogram[i]!;sum+=i*histogram[i]!;const rest=w*h-weight;if(!weight||!rest)continue;
+      const variance=weight*rest*(sum/weight-(total-sum)/rest)**2;
+      if(variance>best){best=variance;const ink=sum/weight,paper=(total-sum)/rest;threshold=ink+(paper-ink)*.25;}
+    }
+    threshold=Math.min(190,Math.max(120,threshold));
+    for(let i=0;i<w*h;i++)dark[i]=dark[i]!<threshold?1:0;
     return {x:wallLines(dark,w,h,true),y:wallLines(dark,w,h,false)};
   }finally{bitmap.close();}
 }
@@ -80,7 +90,10 @@ function nearest(lines:WallLine[],value:number,from:number,to:number,tolerance:n
     const distance=Math.abs(line.at-value);
     if(distance>gap||!along(line))continue;
     // Doors and windows cut a wall into pieces: those on the same line count together.
-    if(lines.reduce((sum,other)=>Math.abs(other.at-line.at)<=4?sum+along(other):sum,0)>=(to-from)*.4){gap=distance;best=line.at;}
+    const spans=lines.filter(other=>Math.abs(other.at-line.at)<=4).map(other=>[Math.max(from,other.from),Math.min(to,other.to)]).filter(([a,b])=>b!>a!).sort((a,b)=>a[0]!-b[0]!);
+    let covered=0,end=from;
+    for(const [a,b] of spans){covered+=Math.max(0,b!-Math.max(a!,end));end=Math.max(end,b!);}
+    if(covered>=(to-from)*.4){gap=distance;best=line.at;}
   }
   return best;
 }
@@ -93,6 +106,16 @@ export function snapBox(box:number[],walls:Walls,tx:number,ty:number,edges='nsew
   if(snapped[2]-snapped[0]<MIN){snapped[0]=y0;snapped[2]=y1;}
   if(snapped[3]-snapped[1]<MIN){snapped[1]=x0;snapped[3]=x1;}
   return snapped;
+}
+/** Adjust orthogonal outline edges together, keeping concave corners and diagonal walls intact. */
+export function snapOutline(polygon:number[][],walls:Walls,tx:number,ty:number):number[][]{
+  const original=toXY(polygon),points=original.map(p=>[...p]);
+  original.forEach((a,i)=>{
+    const j=(i+1)%original.length,b=original[j]!;
+    if(Math.abs(a[0]!-b[0]!)<.01){const x=nearest(walls.x,a[0]!,Math.min(a[1]!,b[1]!),Math.max(a[1]!,b[1]!),tx);points[i]![0]=points[j]![0]=x;}
+    if(Math.abs(a[1]!-b[1]!)<.01){const y=nearest(walls.y,a[1]!,Math.min(a[0]!,b[0]!),Math.max(a[0]!,b[0]!),ty);points[i]![1]=points[j]![1]=y;}
+  });
+  return validPolygon(points as Point[])?toYX(points):polygon;
 }
 /** Moved box kept on the walls: the smallest correction among its two opposite edges shifts it, without resizing it. */
 function snapMove(box:number[],walls:Walls,tx:number,ty:number){
@@ -131,12 +154,15 @@ const pairs=(points:number[][])=>points.map(p=>`${p[0]},${p[1]}`).join(' ');
  */
 export class MPPlanZones extends LitElement {
   static properties={src:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},
-    selected:{state:true},vertex:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true}};
+    selected:{state:true},vertex:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
     button{font:inherit;color:inherit;cursor:pointer;min-height:36px;padding:0 12px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;display:inline-flex;align-items:center;gap:6px}
     button:disabled{opacity:.45;cursor:default}button[aria-pressed=true]{background:#2a648e;border-color:#8acbff}
     .tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 6px}
+    .viewport{overflow:auto;overscroll-behavior:contain;margin:8px auto;border-radius:14px;background:#fff;max-width:calc(100% - 16px)}
+    .viewport figure{max-width:none;margin:0;border-radius:0;box-shadow:none}.viewport figure.panning,.panning polygon{cursor:grab;touch-action:none}
+    .zoom-tools output{min-width:46px;text-align:center;font-variant-numeric:tabular-nums}.zoom-tools{margin-bottom:8px}
     /* Same buttons and room for two lines of help in every mode: the plan does not jump under the pointer. */
     .hint{margin:0;min-height:2.9em;color:#9fb6ca;font-size:12px}@media (max-width:600px){.hint{min-height:4.3em}}
     figure{position:relative;max-width:calc(100% - 16px);margin:8px auto;border-radius:14px;background:#fff;box-shadow:0 10px 30px #0006;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:3px}
@@ -171,6 +197,17 @@ export class MPPlanZones extends LitElement {
   /** Drawing a new room: a rectangle dragged diagonally, or an outline corner by corner ([x, y] points; `cursor`: the next one). */
   private mode:''|'rect'|'trace'='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
   private drag?:Drag;private notice='';private frame={width:0,height:0};
+  private zoomLevel=1;private panning=false;private magnet=true;
+  private pan?:{x:number;y:number;left:number;top:number};
+  private pinch?:{distance:number;zoom:number};
+  private zoomTo(value:number,x?:number,y?:number){
+    const viewport=this.renderRoot.querySelector<HTMLElement>('.viewport');if(!viewport||this.drag||this.draft)return;
+    const next=Math.min(8,Math.max(1,value)),ratio=next/this.zoomLevel,rect=viewport.getBoundingClientRect();
+    const px=x===undefined?viewport.clientWidth/2:x-rect.left,py=y===undefined?viewport.clientHeight/2:y-rect.top;
+    const left=(viewport.scrollLeft+px)*ratio-px,top=(viewport.scrollTop+py)*ratio-py;
+    this.zoomLevel=next;void this.updateComplete.then(()=>{viewport.scrollLeft=left;viewport.scrollTop=top;});
+  }
+  private wheel={handleEvent:(e:WheelEvent)=>{e.preventDefault();this.zoomTo(this.zoomLevel*Math.exp(-e.deltaY*.002),e.clientX,e.clientY);},passive:false};
   /** Double click or double tap, told apart here (the browser gives it to the plan, not to the corner): corner last tapped, corner last placed. */
   private lastTap?:{vertex:number;time:number};private placedAt=0;
   private observer=new ResizeObserver(([entry])=>{if(entry)this.frame={width:entry.contentRect.width,height:entry.contentRect.height};});
@@ -192,7 +229,8 @@ export class MPPlanZones extends LitElement {
     return [Math.min(1000,Math.max(0,(e.clientX-rect.left)/rect.width*1000)),Math.min(1000,Math.max(0,(e.clientY-rect.top)/rect.height*1000))];
   }
   /** Attraction of the walls: about 10 screen pixels, in 0-1000 units along each axis. */
-  private get tolerance():[number,number]{return [10/Math.max(1,this.frame.width)*1000,10/Math.max(1,this.frame.height)*1000];}
+  private get screenTolerance():[number,number]{return [10/Math.max(1,this.frame.width)*1000,10/Math.max(1,this.frame.height)*1000];}
+  private get tolerance():[number,number]{return this.magnet?this.screenTolerance:[0,0];}
   /** Guides for a corner: the walls, the sides and corners of the rooms other than `except`, and the `own` points of its outline. */
   private guides(except:number,own:number[][]=[]):Guides{
     const xs:number[]=[],ys:number[]=[];
@@ -240,11 +278,12 @@ export class MPPlanZones extends LitElement {
     const shape=toXY(room.polygon).filter((_,k)=>k!==this.vertex);
     this.vertex=-1;this.reshape(this.selected,shape);
   }
-  private startMode(mode:'rect'|'trace'){this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.notice='';}
+  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.notice='';}
   /** Next corner of the outline being drawn (true when placed); back on the first corner, the outline is closed. */
   private tracePoint(p:number[]){
     const [tx,ty]=this.tolerance,points=this.trace?.points??[],first=points[0],last=points.at(-1);
-    const near=(a:number[],b:number[],radius:number)=>Math.hypot((a[0]!-b[0]!)/tx,(a[1]!-b[1]!)/ty)<radius;
+    const [sx,sy]=this.screenTolerance;
+    const near=(a:number[],b:number[],radius:number)=>Math.hypot((a[0]!-b[0]!)/sx,(a[1]!-b[1]!)/sy)<radius;
     if(first&&points.length>=3&&near(p,first,1.2)){this.finishTrace();return false;}
     // On the last corner again: a double click or tap closes the outline.
     if(last&&near(p,last,.8)){if(points.length>=3&&performance.now()-this.placedAt<450)this.finishTrace();return false;}
@@ -291,6 +330,8 @@ export class MPPlanZones extends LitElement {
   }
   private down=(e:PointerEvent)=>{
     if(this.busy||e.button>0)return;
+    if(this.pinch)return;
+    if(this.panning){const v=this.renderRoot.querySelector<HTMLElement>('.viewport')!;this.pan={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);e.preventDefault();return;}
     const figure=e.currentTarget as HTMLElement,p=this.point(e);
     this.notice='';
     if(this.mode==='trace')this.tracing=this.tracePoint(p);
@@ -301,6 +342,8 @@ export class MPPlanZones extends LitElement {
     e.preventDefault();figure.focus({preventScroll:true});
   };
   private move=(e:PointerEvent)=>{
+    if(this.pinch)return;
+    if(this.pan){const v=this.renderRoot.querySelector<HTMLElement>('.viewport')!;v.scrollLeft=this.pan.left+this.pan.x-e.clientX;v.scrollTop=this.pan.top+this.pan.y-e.clientY;return;}
     const [tx,ty]=this.tolerance;
     if(this.mode==='trace'){
       const points=this.trace?.points;
@@ -320,7 +363,7 @@ export class MPPlanZones extends LitElement {
     }
     const drag=this.drag;if(!drag)return;
     const dx=p[0]-drag.start[0],dy=p[1]-drag.start[1];
-    if(!drag.moved&&!drag.inserted&&Math.hypot(dx/tx,dy/ty)<.4)return;  // a click is not a move
+    if(!drag.moved&&!drag.inserted&&Math.hypot(dx/this.screenTolerance[0],dy/this.screenTolerance[1])<.4)return;  // a click is not a move
     if(drag.handle==='vertex'){
       const shape=drag.shape!.map(q=>[...q]);
       shape[drag.vertex!]=snapPoint(p,drag.guides!,tx,ty);
@@ -341,6 +384,8 @@ export class MPPlanZones extends LitElement {
     this.drag={...drag,box:snapBox([y0,x0,y1,x1],walls,tx,ty,drag.handle),moved:true};
   };
   private up=()=>{
+    if(this.pan){this.pan=undefined;return;}
+    if(this.pinch)return;
     if(this.mode==='trace'){this.tracing=false;return;}
     if(this.draft){
       const box=this.draft.box;this.draft=undefined;this.mode='';
@@ -354,7 +399,7 @@ export class MPPlanZones extends LitElement {
       return;
     }
     if(drag.handle==='vertex'){
-      const [tx,ty]=this.tolerance,v=drag.vertex!,count=drag.shape!.length;
+      const [tx,ty]=this.screenTolerance,v=drag.vertex!,count=drag.shape!.length;
       let shape=drag.shape!;
       // Dropped onto a neighbouring corner: this corner goes away.
       const onto=(k:number)=>Math.hypot((shape[v]![0]!-shape[k]![0]!)/tx,(shape[v]![1]!-shape[k]![1]!)/ty)<.8;
@@ -371,6 +416,7 @@ export class MPPlanZones extends LitElement {
     }));
   };
   private key=(e:KeyboardEvent)=>{
+    if(['+','=','-','0'].includes(e.key)){e.preventDefault();this.zoomTo(e.key==='0'?1:this.zoomLevel*(e.key==='-'?.8:1.25));return;}
     if(this.mode==='trace'&&this.trace){
       if(e.key==='Enter'){e.preventDefault();this.finishTrace();return;}
       if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();const points=this.trace.points.slice(0,-1);this.trace=points.length?{points}:undefined;return;}
@@ -379,7 +425,14 @@ export class MPPlanZones extends LitElement {
     else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;}
   };
   /** On a phone, a finger on a room, a handle or in drawing mode edits the plan instead of scrolling the window. */
-  private touch={handleEvent:(e:TouchEvent)=>{if(this.mode||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid]'))e.preventDefault();},passive:false};
+  private touch={handleEvent:(e:TouchEvent)=>{
+    if(e.touches.length>=2){
+      e.preventDefault();const a=e.touches[0]!,b=e.touches[1]!,distance=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      if(!this.pinch){this.pinch={distance:Math.max(1,distance),zoom:this.zoomLevel};this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}
+      else this.zoomTo(this.pinch.zoom*distance/this.pinch.distance,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
+    }else if(this.pinch){if(!e.touches.length)this.pinch=undefined;else e.preventDefault();}
+    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid]'))e.preventDefault();
+  },passive:false};
   private label(index:number,room:DetectionRoom,points:number[][]){
     const spot=labelSpot(points),name=room.name;
     const size=Math.min(15,spot.width/1000*this.frame.width/Math.max(4,name.length*.6),spot.height/1000*this.frame.height*.4);
@@ -426,8 +479,15 @@ export class MPPlanZones extends LitElement {
         <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>Annuler</button>
       </div>
       <p class="hint" aria-live="polite">${this.busy?'Mise à jour du plan…':this.notice||this.hint}</p>
-      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''}`} tabindex="0" aria-label="Pièces détectées sur le plan" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(52vh * ${source.width/source.height}))`}
-        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${this.up} @keydown=${this.key} @touchstart=${this.touch}>
+      <div class="tools zoom-tools" role="toolbar" aria-label="Précision du plan">
+        <button aria-label="Zoom arrière du plan" ?disabled=${this.zoomLevel<=1} @click=${()=>this.zoomTo(this.zoomLevel/1.5)}>−</button><output aria-label="Zoom du plan">${Math.round(this.zoomLevel*100)} %</output><button aria-label="Zoom avant du plan" ?disabled=${this.zoomLevel>=8} @click=${()=>this.zoomTo(this.zoomLevel*1.5)}>+</button>
+        <button @click=${()=>this.zoomTo(1)}>Ajuster à l’écran</button>
+        <button aria-pressed=${this.panning} @click=${()=>{this.panning=!this.panning;this.mode='';this.trace=undefined;}}>Déplacer le plan</button>
+        <button aria-pressed=${this.magnet} @click=${()=>{this.magnet=!this.magnet;}}>Aimantation</button>
+      </div>
+      <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(52vh * ${source.width/source.height}))`} @wheel=${this.wheel}>
+      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''}`} tabindex="0" aria-label="Pièces détectées sur le plan" style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
+        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
         <img src=${this.src} alt="Plan analysé par Gemini" draggable="false">
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
           ${this.detection.map((r,i)=>{
@@ -451,6 +511,7 @@ export class MPPlanZones extends LitElement {
           ${trace?trace.points.map((p,i)=>html`<span class=${`handle point${i===0?' first':''}`} style=${at(p[0]!,p[1]!)}></span>`):nothing}
         </div>
       </figure>
+      </div>
       <ul aria-label="Pièces du brouillon">${this.detection.map((r,i)=>{
         const plan=r.id?rooms.get(r.id):undefined;
         return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;}}}>

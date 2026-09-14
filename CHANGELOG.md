@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.6.0 — précision du plan et ambiances interactives
+
+- Zoom du plan d’origine de 100 à 800 % : boutons, molette centrée sous le pointeur, pincement, déplacement et retour à la vue entière. Les poignées restent à taille constante ; l’aimantation se désactive pour les corrections fines.
+- Les corrections manuelles conservent leurs coordonnées et l’échelle de l’analyse. Le serveur n’aligne plus à nouveau les petits écarts après une retouche.
+- Ajustement aux murs étendu aux contours concaves. Seuil de contraste adapté aux plans gris ; les fragments superposés d’un mur ne comptent plus plusieurs fois dans la détection. Consignes Gemini renforcées pour les décrochements, couloirs et limites ambiguës.
+- Halos lumineux doux contenus dans les contours des pièces, intensité liée à la luminosité des éclairages associés.
+- Mode Climat : températures sur le plan et halos selon une échelle commune. Capteur dédié prioritaire, thermostat en repli ; valeurs indisponibles exclues, conversion °F/°C pour les couleurs.
+- Volets : symbole de tablier et pourcentage ouvert sur le plan, ouverture/arrêt/fermeture et réglage de position dans la fiche, selon les fonctions disponibles. Une position inconnue reste signalée comme inconnue.
+- Associations par cases à cocher et recherche, 12 équipements maximum, capteur de température principal sélectionnable, associations indisponibles conservées. Volets inclus dans les plans par défaut.
+
 ## 0.5.0 — pièces en forme libre
 
 Retour sur l’import réel : les zones rectangulaires ne suivent pas les pièces en L ni les découpes du plan.

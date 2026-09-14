@@ -81,8 +81,11 @@ Ignore watermarks, logos, captions, title blocks, furniture, fixtures, landscapi
 Coordinates are normalized to 0-1000 over the whole image, as in object detection: box_2d is [ymin, xmin, ymax, xmax], a point is [y, x].
 1. building: the box of the exterior walls.
 2. For each room, box_2d: the inside of the room, from wall face to wall face, following the drawn walls (not the label or the furniture).
-   Neighbouring rooms meet along their shared wall: their boxes touch or overlap by the wall thickness only, never more. Leave no gap inside the building.
+   Neighbouring rooms meet along their shared wall: their boxes touch or overlap by the wall thickness only, never more. Keep wall thickness and intentional voids; never invent a room to fill a gap.
 3. Only for a room that is clearly not rectangular (L-shaped, angled wall): also give polygon, its outline as [y, x] points in boundary order; box_2d is then the box around it.
+   Trace every recess along partitions, including corridors around bathrooms and laundries. Never replace an L-shaped circulation space with a rectangle covering its neighbours.
+   Follow wall segments across door openings, ignoring door swing arcs. In an open kitchen/living space, use labelled functional zones only when their boundary can be located; otherwise keep a single room and report the uncertainty.
+   Before returning, check the plan from top to bottom: each label belongs to one room, small enclosed rooms are included, outlines stay inside their walls, adjacent rooms do not cover each other. Mention ambiguous boundaries or unreadable labels in warnings rather than inventing them.
 4. label: the text written in the room as it appears on the plan (for example "BED 2 10X12" or "Séjour 32,5 m²").
 5. size: only when the room's dimensions are written (12X16, 12'x16', 12'-6" x 10', 3,50 x 4,20, 3.5 m x 4.2 m): convert them to metres (feet x 0.3048, inches x 0.0254) and give [horizontal, vertical] as drawn, the first value along the image's x axis. Never guess a size.
 
@@ -358,7 +361,9 @@ def normalize_result(value, size=None, scale=None):
         sizes.append(room.get("size"))
     if not any(boxes):
         raise SpatialError("no_rooms")
-    tolerance = SNAP * max(width, height)
+    # A supplied valid scale identifies a Studio correction: preserve its precise coordinates.
+    editing = bool(scale and len(scale) == 2 and all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in scale))
+    tolerance = 0 if editing else SNAP * max(width, height)
     snap_x = _snap([v for b in boxes if b for v in (b[0], b[2])] + [p[0] for s in shapes if s for p in s], tolerance)
     snap_y = _snap([v for b in boxes if b for v in (b[1], b[3])] + [p[1] for s in shapes if s for p in s], tolerance)
     boxes = [b and (snap_x[b[0]], snap_y[b[1]], snap_x[b[2]], snap_y[b[3]]) for b in boxes]
@@ -370,7 +375,7 @@ def normalize_result(value, size=None, scale=None):
     outlines = dict(zip(members, _partition([shapes[k] or _corners(boxes[k]) for k in members]))) if members else {}
     regions = [outlines[k] if k in outlines else shapes[k] for k in range(len(names))]
     notes = []
-    calibrated = _scale(boxes, sizes, size is not None)
+    calibrated = None if editing else _scale(boxes, sizes, size is not None)
     if calibrated:
         kx, ky, count = calibrated
         notes.append(f"Échelle calculée à partir des cotes de {count} pièces du plan.")

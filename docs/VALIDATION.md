@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Précision et ambiances 0.6.0 — 14 septembre 2026
+
+Validé localement : 37 tests Vitest (halos liés aux seules lumières associées, luminosité, indisponibilité, priorité des températures, conversion Fahrenheit, positions et capacités des volets), 46 tests Python (conservation d’un écart de cinq pixels et d’une échelle issue de cotes lors d’une correction manuelle), build TypeScript/Vite et lint. 40 scénarios Playwright réussis, dont : zoom 225 %, déplacement et correction de douze pixels sans aimantation, pincement tactile 240 % sans modification des pièces, contour concave posé sur un mur, fragments superposés, murs gris et traits fins, mode Climat et positions en direct, commandes de volet ciblées, associations conservées après recherche et disparition d’une entité. Six références visuelles actualisées pour les nouvelles commandes du plan, captures ordinateur et téléphone inspectées.
+
+La reconnaissance réelle de Gemini sur le document utilisateur, les commandes sur un volet physique et Safari/iOS restent à vérifier. Les volets sont représentés par des indicateurs dans l’étiquette de pièce ; leur position géographique sur les murs n’est pas détectée. L’échelle thermique est fixe, les couleurs représentent la température mesurée et non une consigne ou une demande de chauffage.
+
 ## Pièces en forme libre 0.5.0 — 14 septembre 2026
 
 Retour sur l’import réel (13 pièces, 140,5 m², 19 × 8,7 m) : pouvoir créer des zones non rectangulaires qui suivent la forme des pièces. Réponse : mode **Forme libre** (points d’angle, ajout par les **+**, retrait), **Tracer un contour** angle par angle, aimantation des points sur chaque axe, contours à angles droits intégrés au découpage sans chevauchement de Home Assistant. Le message d’ajustement aux murs n’apparaissait pas sur ce plan de 654 px de large : les murs y font environ 2 px, sous le seuil de 3 px ; l’image est désormais agrandie avant la recherche.

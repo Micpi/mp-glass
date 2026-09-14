@@ -2,6 +2,7 @@ import type { HAArea, HADevice, HAEntity, HAFloor, HAState, ProjectConfig, Snaps
 import { parseProject } from '../../shared/project';
 export interface Hass {
   states: Record<string, HAState>; language?: string; locale?: { language: string };
+  config?: { unit_system?: { temperature?: string } };
   user?: { id: string; is_admin: boolean };
   connection: object;
   callWS<T>(message: Record<string, unknown>): Promise<T>;

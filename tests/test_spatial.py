@@ -178,6 +178,15 @@ class GeometryTest(unittest.TestCase):
         for scale in ([float("nan"), 1], [0, 0], [1]):
             self.assertEqual(server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 1000), scale)["source"]["scale"], estimated["source"]["scale"])
 
+    def test_precise_edits_keep_small_offsets_and_calibrated_scale(self):
+        rooms = [{"name": "A", "box_2d": [0, 0, 500, 500], "size": [5, 5]},
+                 {"name": "B", "box_2d": [0, 505, 500, 1000], "size": [5, 5]}]
+        result = server.normalize_result({"rooms": rooms}, (1000, 1000), [.01, .01])
+        self.assertEqual(result["source"]["scale"], [.01, .01])
+        self.assertEqual(result["detection"][1]["box_2d"][1], 505)
+        # A five-pixel correction is smaller than the initial analysis alignment tolerance.
+        self.assertEqual(rooms_of(result)["B"][0][0], 5.05)
+
     def test_worker_detection_is_kept_only_when_well_formed(self):
         rooms = [{"name": "Séjour", "label": "LIVING", "box_2d": [0, 0, 500, 500], "size": [5, 5]}, {"name": "Coin", "box_2d": [500, 0, 1000, 500], "polygon": [[500, 0], [1000, 0], [1000, 500]]}]
         detection = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 1000))["detection"]

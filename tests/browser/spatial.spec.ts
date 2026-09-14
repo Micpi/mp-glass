@@ -588,3 +588,98 @@ test('editor retains associations and other floors after importing a level',asyn
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
   expect(saved.floors).toHaveLength(2);expect(saved.floors[0]!.rooms[0]!.areaId).toBe('salon');expect(saved.floors[1]!.name).toBe('Étage');
 });
+
+
+test('precise zoom keeps editing coordinates, supports panning and can disable snapping',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+  const zones=page.locator('mp-plan-zones');await expect(zones.locator('polygon[data-zone="0"]')).toBeVisible();
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize').length)).toBeGreaterThan(0);
+  await zones.getByRole('button',{name:'Zoom avant du plan'}).click();await zones.getByRole('button',{name:'Zoom avant du plan'}).click();
+  await expect(zones.getByLabel('Zoom du plan',{exact:true})).toHaveText('225 %');
+  await zones.getByRole('button',{name:'Déplacer le plan',exact:true}).click();
+  const viewport=zones.locator('.viewport'),v=(await viewport.boundingBox())!;
+  const before=await viewport.evaluate(el=>({x:el.scrollLeft,y:el.scrollTop}));
+  await page.mouse.move(v.x+v.width/2,v.y+v.height/2);await page.mouse.down();await page.mouse.move(v.x+v.width/2-70,v.y+v.height/2-35,{steps:5});await page.mouse.up();
+  expect(await viewport.evaluate(el=>el.scrollLeft)).toBeGreaterThan(before.x+50);
+  await zones.getByRole('button',{name:'Déplacer le plan',exact:true}).click();
+  await zones.getByRole('button',{name:'Aimantation',exact:true}).click();
+  await expect(zones.getByRole('button',{name:'Aimantation',exact:true})).toHaveAttribute('aria-pressed','false');
+  await viewport.evaluate(el=>{el.scrollLeft=0;el.scrollTop=0;});
+  await zones.locator('li').first().click();
+  const handle=zones.locator('[data-handle=e]'),h=(await handle.boundingBox())!,f=(await zones.locator('figure').boundingBox())!;
+  const initial=(await editedRooms(page))[0]!.box_2d[3]!;
+  await handle.scrollIntoViewIfNeeded();const box=(await handle.boundingBox())!;
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();await page.mouse.move(box.x+box.width/2+12,box.y+box.height/2,{steps:4});await page.mouse.up();
+  await expect.poll(async()=>(await editedRooms(page))[0]!.box_2d[3]!).toBeGreaterThan(initial+1);
+  expect((await editedRooms(page))[0]!.box_2d[3]!-initial).toBeCloseTo(12/f.width*1000,0);
+  expect(h.width).toBeLessThan(25); // handles remain the same screen size at high zoom
+  await zones.screenshot({path:'artifacts/spatial-precision-zoom.png'});
+  await zones.getByRole('button',{name:'Ajuster à l’écran'}).click();await expect(zones.getByLabel('Zoom du plan',{exact:true})).toHaveText('100 %');
+});
+
+test('climate and shutter position update on the plan and cover commands target only the selected entity',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();
+  await viewer.getByRole('button',{name:'Climat',exact:true}).click();
+  await expect(viewer.locator('[data-room="living"]')).toContainText('21,5 °C');
+  await expect(viewer.locator('[data-room="bedroom"]')).toContainText('19,5 °C');
+  await viewer.locator('[data-room="living"]').click();
+  const card=viewer.getByRole('region',{name:'Salon'});
+  await card.getByRole('button',{name:'Fermer le volet Volet baie'}).click();
+  await expect(viewer.locator('[data-room="living"]')).toContainText('0 %');
+  await card.getByRole('slider',{name:'Ouverture Volet baie'}).fill('45');
+  await expect(viewer.locator('[data-room="living"]')).toContainText('45 %');
+  await card.getByRole('button',{name:'Arrêter le volet Volet baie'}).click();
+  expect(await demoCalls(page)).toEqual([{domain:'cover',service:'close_cover',data:{entity_id:'cover.salon'}},{domain:'cover',service:'set_cover_position',data:{entity_id:'cover.salon',position:45}},{domain:'cover',service:'stop_cover',data:{entity_id:'cover.salon'}}]);
+  await viewer.screenshot({path:'artifacts/spatial-climate-covers.png'});
+  await page.setViewportSize({width:390,height:844});await viewer.screenshot({path:'artifacts/spatial-climate-covers-phone.png'});
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
+test('wall fitting follows concave outlines and does not count duplicate wall fragments twice',async({page})=>{
+  await page.goto('/?spatial');
+  const result=await page.evaluate(async()=>{
+    const module='/frontend/spatial/zones.ts';const {snapOutline,snapBox,detectWalls}=await import(module);
+    const shape=[[100,100],[100,500],[300,500],[300,300],[500,300],[500,100]];
+    const adjusted=snapOutline(shape,{x:[{at:105,from:100,to:500}],y:[]},10,10);
+    const box=snapBox([100,100,500,500],{x:[{at:105,from:100,to:200},{at:106,from:100,to:200}],y:[]},10,10);
+    const canvas=document.createElement('canvas');canvas.width=canvas.height=1000;const context=canvas.getContext('2d')!;context.fillStyle='white';context.fillRect(0,0,1000,1000);context.fillStyle='#aaa';context.fillRect(200,100,8,700);
+    const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!)));const faded=await detectWalls(blob);
+    return {adjusted,box,faded};
+  });
+  expect(result.adjusted).toEqual([[100,105],[100,500],[300,500],[300,300],[500,300],[500,105]]);
+  expect(result.box).toEqual([100,100,500,500]);
+  expect(result.faded.x.some((line:{at:number})=>Math.abs(line.at-204)<5)).toBe(true);
+});
+
+
+test('equipment selection survives searches and missing entities',async({page})=>{
+  await mountEditor(page);
+  const editor=page.locator('mp-spatial-editor');
+  await page.getByLabel('Rechercher un équipement').fill('cover.salon');
+  await editor.getByRole('checkbox',{name:/Volet baie/}).check();
+  await page.getByLabel('Rechercher un équipement').fill('sensor.salon_temperature');
+  await editor.getByRole('checkbox',{name:/Température/}).check();
+  const saved=()=>page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms[0]!.entityIds!);
+  expect(await saved()).toContain('cover.salon');expect(await saved()).toContain('sensor.salon_temperature');
+  await page.evaluate(()=>{const editor=document.querySelector('mp-spatial-editor') as HTMLElement&{hass:import('../../frontend/ha/client').Hass};const states={...editor.hass.states};delete states['cover.salon'];editor.hass={...editor.hass,states};});
+  await page.getByLabel('Rechercher un équipement').fill('cover.salon');
+  const missing=editor.getByRole('checkbox',{name:/cover.salon.*indisponible/});await expect(missing).toBeChecked();await missing.click();
+  expect(await saved()).not.toContain('cover.salon');expect(await saved()).toContain('sensor.salon_temperature');
+});
+
+test.describe('precision touch',()=>{
+  test.use({hasTouch:true,viewport:{width:390,height:844}});
+  test('pinch zoom does not change the room geometry',async({page})=>{
+    await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+    const zones=page.locator('mp-plan-zones');await expect(page.getByRole('dialog').getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+    await zones.locator('.viewport').scrollIntoViewIfNeeded();
+    const before=await editedRooms(page),v=(await zones.locator('.viewport').boundingBox())!,x=v.x+v.width/2,y=v.y+v.height/2;
+    const cdp=await page.context().newCDPSession(page);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x-25,y,id:1},{x:x+25,y,id:2}]});
+    for(let distance=30;distance<=60;distance+=5)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-distance,y,id:1},{x:x+distance,y,id:2}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await expect(zones.getByLabel('Zoom du plan',{exact:true})).toHaveText('240 %');expect(await editedRooms(page)).toEqual(before);
+    await zones.screenshot({path:'artifacts/spatial-precision-phone.png'});
+  });
+});

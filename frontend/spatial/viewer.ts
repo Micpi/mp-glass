@@ -5,8 +5,9 @@ import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/c
 import { polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import type { SpatialScene } from './scene';
+import { canCover, coverPosition, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
 
-type Kind = 'light'|'climate'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
+type Kind = 'light'|'cover'|'climate'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
 
 const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
@@ -17,12 +18,13 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
   [/jardin|terrasse|garden|terrace|balcon|balcony|piscine|pool|exterieur|outdoor|patio|veranda/,'leaf'],
 ];
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
-const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',climate:'flame',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
+const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'window',climate:'flame',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
 const HVAC:Record<string,string>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
 const numeric=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
 function kindOf(id:string,state?:HAState):Kind{
   const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??''),unit=String(state?.attributes.unit_of_measurement??'');
   if(domain==='light')return 'light';
+  if(domain==='cover')return 'cover';
   if(domain==='climate')return 'climate';
   if(domain==='binary_sensor')return ['door','window','opening','garage_door'].includes(deviceClass)?'opening':['motion','occupancy','presence'].includes(deviceClass)?'motion':'binary';
   if(deviceClass==='temperature'||/°[CF]$/.test(unit))return 'temperature';
@@ -37,7 +39,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true} };
+  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -61,6 +63,18 @@ export class MPSpatialViewer extends LitElement {
     .labels{position:absolute;inset:0;z-index:1;pointer-events:none}
     .labels button{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:inline-flex;align-items:center;gap:6px;max-width:150px;min-height:28px;padding:0 11px 0 9px;border-radius:999px;border:1px solid rgba(206,230,255,.24);background:rgba(6,22,38,.66);box-shadow:0 6px 18px rgba(0,8,18,.4);backdrop-filter:blur(10px);font-size:11.5px;font-weight:600;letter-spacing:.01em;color:#eef7ff;transition:background .2s,border-color .2s,box-shadow .2s}
     .labels button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .labels button{flex-wrap:wrap;justify-content:center;padding:5px 9px;max-width:170px;border-radius:12px;gap:4px 6px}
+    .readings{display:flex;align-items:center;justify-content:center;gap:7px;flex-basis:100%;font-size:11px;font-weight:500;color:#cce3f2}
+    .reading{display:inline-flex;align-items:center;gap:4px}.labels .readings i{box-shadow:none}
+    .shutter{display:inline-block;position:relative;width:15px;height:17px;border:1px solid currentColor;border-radius:2px;background:transparent;overflow:hidden;flex:none}
+    .shutter::before{content:'';position:absolute;inset:0 0 auto;height:var(--closed,100%);background:repeating-linear-gradient(0deg,currentColor 0 1px,transparent 1px 3px);transition:height .3s}
+    .shutter.unknown{opacity:.45}.shutter.unknown::before{background:none}.shutter.unknown::after{content:'?';position:absolute;inset:0;text-align:center;font:11px/15px system-ui}
+    .modes{position:absolute;left:12px;bottom:12px;z-index:2;display:flex;gap:3px;padding:3px;border-radius:13px}
+    .modes button{display:flex;align-items:center;gap:6px;border:0;border-radius:10px;background:transparent;padding:7px 10px;min-height:34px;color:#bed4e4;font-size:12px}
+    .modes button[aria-pressed=true]{background:#74b9eb30;color:#fff}.legend{position:absolute;bottom:62px;left:12px;right:62px;color:#cde0eb;font-size:10px;pointer-events:none}
+    .legend b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.legend span{margin-right:8px;white-space:nowrap}
+    .cover-controls{grid-column:1/-1;display:flex;gap:6px;align-items:center;padding:4px 8px 8px}.cover-controls button{border:1px solid var(--line);border-radius:9px;background:#14354d;min-width:38px;min-height:36px}
+    .cover-controls label{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.cover-controls output{font-size:11px;white-space:nowrap}
     .labels i{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:#8fd3ff;box-shadow:0 0 8px rgba(143,211,255,.7)}.labels .lit i{background:var(--warm);box-shadow:0 0 10px #ffc53d}
     .labels button[aria-pressed=true]{z-index:1;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 80%,transparent),rgba(38,94,149,.78));border-color:color-mix(in srgb,var(--accent) 70%,white);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent),0 10px 24px rgba(0,8,18,.45)}
     .strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;scroll-snap-type:x proximity;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}.strip::-webkit-scrollbar{display:none}
@@ -129,6 +143,9 @@ export class MPSpatialViewer extends LitElement {
   private topView = false;
   private engaged = false;
   private busy = false;
+  private mode:PlanMode='lights';
+  private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
+  private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   private scene?: SpatialScene;
   private loading = false;
   private get currentFloor() { return this.plan?.floors.find(f=>f.id===this.floor) ?? this.plan?.floors[0]; }
@@ -151,18 +168,27 @@ export class MPSpatialViewer extends LitElement {
     } else if (this.scene && (changed.has('plan') || changed.has('floor') || changed.has('walls'))) {
       this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls, !changed.has('walls'));
     }
-    if (this.scene && this.currentFloor && this.scene.highlight(this.room?.id ?? '', this.litRooms(this.currentFloor))) this.scene.render();
+    if(this.scene&&this.currentFloor){
+      const styled=this.scene.highlight(this.room?.id??'',new Map(this.currentFloor.rooms.map(r=>[r.id,roomAmbient(r,this.hass?.states??{},this.mode,this.temperatureUnit)])));
+      // Labels change size when sensor values or the mode changes, even if the camera stays still.
+      const previous=changed.get('hass') as Hass|undefined;
+      const readings=changed.has('hass')&&this.currentFloor.rooms.some(r=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
+      if(styled||readings||changed.has('mode')||changed.has('plan')||changed.has('floor'))this.scene.render();
+    }
   }
   /** Room labels follow the camera; the selected one first, overlapping ones hidden. */
   private place(positions: Map<string,{x:number;y:number;visible:boolean}>) {
     const labels=new Map(Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-room]')).map(el=>[el.dataset.room!,el]));
-    const occupied:{left:number;right:number;top:number;bottom:number}[]=[];
+    const stage=this.renderRoot.querySelector<HTMLElement>('.stage')!,frame=stage.getBoundingClientRect();
+    const occupied=Array.from(this.renderRoot.querySelectorAll<HTMLElement>('.rail,.floor-tag,.floors,.modes,.legend,.hint:not([hidden])')).map(el=>{
+      const r=el.getBoundingClientRect();return {left:r.left-frame.left-3,right:r.right-frame.left+3,top:r.top-frame.top-3,bottom:r.bottom-frame.top+3};
+    });
     const ordered=[...positions].sort(([a],[b])=>a===this.selected?-1:b===this.selected?1:0);
     for (const [id, position] of ordered) {
       const label=labels.get(id);
       if(!label) continue;
       const box={left:position.x-label.offsetWidth/2-3,right:position.x+label.offsetWidth/2+3,top:position.y-label.offsetHeight/2-3,bottom:position.y+label.offsetHeight/2+3};
-      const visible=position.visible&&!occupied.some(b=>box.left<b.right&&box.right>b.left&&box.top<b.bottom&&box.bottom>b.top);
+      const visible=position.visible&&box.left>=0&&box.right<=frame.width&&box.top>=0&&box.bottom<=frame.height&&!occupied.some(b=>box.left<b.right&&box.right>b.left&&box.top<b.bottom&&box.bottom>b.top);
       if(visible)occupied.push(box);
       label.style.left=`${position.x}px`;label.style.top=`${position.y}px`;label.style.visibility=visible?'visible':'hidden';
     }
@@ -196,6 +222,10 @@ export class MPSpatialViewer extends LitElement {
     if(!ready) return {...base,detail:'Indisponible'};
     switch(kind){
       case 'light': return {...base,switchable:['on','off'].includes(state!.state),detail:on?'Allumée':'Éteinte',percent:brightnessPercent(state!.attributes.brightness),dimmable:MPCapabilityEngine.detect(id,state).some(b=>b.capability==='DIM')};
+      case 'cover': {
+        const percent=coverPosition(state),detail=({opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'} as Record<string,string>)[state!.state]??state!.state;
+        return {...base,on:false,percent,value:percent===undefined?undefined:`${this.format(percent,0)} %`,detail:percent===undefined?`${detail} · position inconnue`:`${detail} · ${this.format(percent,0)} % ouvert`};
+      }
       case 'climate': {
         const current=numeric(state!.attributes.current_temperature),target=numeric(state!.attributes.temperature);
         return {...base,on:state!.state!=='off',numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:`${HVAC[state!.state]??state!.state}${target===undefined?'':` · consigne ${this.format(target)} °`}`};
@@ -228,6 +258,22 @@ export class MPSpatialViewer extends LitElement {
     if(state==='on'||state==='off') void this.lights(room,state==='on'?'turn_off':'turn_on',[id]);
   }
   private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
+  private async cover(room:SpatialRoom,id:string,action:CoverAction,position?:number){
+    if(!this.hass||this.busy||!id.startsWith('cover.')||!room.entityIds?.includes(id)||!canCover(this.hass.states[id],action))return;
+    if(action==='set_cover_position'&&(position===undefined||!Number.isFinite(position)||position<0||position>100))return;
+    this.busy=true;this.error='';
+    try{await this.hass.callService('cover',action,{entity_id:id,...(action==='set_cover_position'?{position}: {})});}
+    catch{this.error='Commande du volet refusée ou équipement indisponible.';}
+    finally{this.busy=false;}
+  }
+  private planReadings(room:SpatialRoom){
+    const temperature=this.temperature(room),covers=(room.entityIds??[]).filter(id=>id.startsWith('cover.'));
+    if(!covers.length&&this.mode!=='climate')return nothing;
+    return html`<span class="readings">
+      ${this.mode==='climate'?html`<span class="reading" style=${`color:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Aucune température disponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span>`:nothing}
+      ${covers.map(id=>{const state=this.hass?.states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?'Indisponible':position===undefined?'Position inconnue':`${this.format(position,0)} % ouvert`}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':`${this.format(position,0)} %`}</span></span>`;})}
+    </span>`;
+  }
   render() {
     const floor=this.currentFloor,room=this.room;
     if(!floor) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
@@ -235,7 +281,9 @@ export class MPSpatialViewer extends LitElement {
     return html`<div class="layout">
       <div class="stage">
         <div class="canvas"></div>
-        <div class="labels">${floor.rooms.map(r=>html`<button class=${lit.has(r.id)?'lit':''} style="visibility:hidden" data-room=${r.id} aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}><i></i><span>${r.name}</span></button>`)}</div>
+        <div class="labels">${floor.rooms.map(r=>html`<button class=${lit.has(r.id)?'lit':''} style="visibility:hidden" data-room=${r.id} aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}><i></i><span>${r.name}</span>${this.preview?nothing:this.planReadings(r)}</button>`)}</div>
+        ${this.preview?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${this.mode==='lights'} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${this.mode==='climate'} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
+          ${this.mode==='climate'?html`<div class="legend"><span><b style="background:#69b7ff"></b>&lt; 18 °C</span><span><b style="background:#71d7c0"></b>18–21</span><span><b style="background:#ffc574"></b>21–24</span><span><b style="background:#ff816b"></b>≥ 24 °C</span></div>`:nothing}`}
         ${this.plan!.floors.length>1
           ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.plan!.floors.map(f=>html`<button aria-pressed=${f.id===floor.id} @click=${()=>this.showFloor(f.id)}>${f.name}</button>`)}</div>`
           : html`<div class="floor-tag glass">${mpIcon('rooms',13)}<span>${floor.name}</span></div>`}
@@ -247,7 +295,7 @@ export class MPSpatialViewer extends LitElement {
           <button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>
           <button aria-label="Murs" title="Afficher les murs" aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
         </div>
-        <p class="hint glass" aria-hidden="true" ?hidden=${this.engaged||!!this.error}><span class="touch">Touchez la maison pour la manipuler</span><span class="fine">Glissez la maison pour la tourner · molette pour zoomer</span></p>
+        <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error}><span class="touch">Touchez la maison pour la manipuler</span><span class="fine">Glissez la maison pour la tourner · molette pour zoomer</span></p>
       </div>
       <p class="sr">Sur la maison : glisser pour tourner, pincer ou molette pour zoomer, deux doigts ou clic droit pour déplacer. À côté de la maison, la page défile normalement. Clavier : flèches pour déplacer, + et − pour zoomer.</p>
       <div class="side">
@@ -275,7 +323,7 @@ export class MPSpatialViewer extends LitElement {
     const lights=devices.filter(d=>d.kind==='light'),on=lights.filter(d=>d.on);
     const surface=polygonArea(room.polygon),xs=room.polygon.map(p=>p[0]),ys=room.polygon.map(p=>p[1]);
     const width=Math.max(...xs)-Math.min(...xs),depth=Math.max(...ys)-Math.min(...ys),rectangle=Math.abs(width*depth-surface)<surface*.03;
-    const temperature=(devices.find(d=>d.kind==='temperature'&&d.numeric!==undefined)??devices.find(d=>d.kind==='climate'&&d.numeric!==undefined))?.numeric;
+    const temperature=this.temperature(room);
     const humidity=devices.find(d=>d.kind==='humidity'&&d.numeric!==undefined)?.numeric;
     const href=room.areaId?this.areaHref?.(room.areaId):undefined;
     const group=lights.filter(d=>d.switchable);
@@ -284,7 +332,7 @@ export class MPSpatialViewer extends LitElement {
       <div class="stats">
         <div class="stat"><small>Surface</small><strong>${this.format(surface)} m²</strong>${rectangle?html`<span>${this.format(width)} × ${this.format(depth)} m</span>`:nothing}</div>
         ${lights.length?this.lightsStat(lights.length,on.length):nothing}
-        ${temperature===undefined?nothing:html`<div class="stat"><small>Température</small><strong>${this.format(temperature)}°</strong></div>`}
+        ${temperature===undefined?nothing:html`<div class="stat"><small>Température</small><strong title=${temperature.id}>${this.format(temperature.value)}${temperature.unit==='°C'?'°':temperature.unit}</strong></div>`}
         ${humidity===undefined?nothing:html`<div class="stat"><small>Humidité</small><strong>${this.format(humidity,0)} %</strong></div>`}
       </div>
       ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights(room,on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?'Tout éteindre':'Tout allumer'}</span></button>`:nothing}
@@ -300,6 +348,10 @@ export class MPSpatialViewer extends LitElement {
         ? html`<button class="switch ${d.on?'on':''}" aria-label=${action} title=${`${action} ${d.name}`} ?disabled=${this.busy||!d.switchable} @click=${()=>this.toggle(room,d.id)}><span></span></button>`
         : d.value?html`<strong class="value">${d.value}</strong>`:nothing}
       ${d.on&&d.dimmable?html`<label class="dim">${mpIcon('sun',14)}<input type="range" min="1" max="100" .value=${String(d.percent??1)} aria-label=${`Luminosité ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.lights(room,'turn_on',[d.id],{brightness_pct:Number((e.target as HTMLInputElement).value)})}><output>${d.percent===undefined?'—':`${d.percent} %`}</output></label>`:nothing}
+      ${d.kind==='cover'?html`<div class="cover-controls">
+        ${([['open_cover','Ouvrir le volet','↑'],['stop_cover','Arrêter le volet','■'],['close_cover','Fermer le volet','↓']] as const).map(([action,label,icon])=>html`<button aria-label=${`${label} ${d.name}`} ?disabled=${this.busy||!canCover(this.hass?.states[d.id],action)} @click=${()=>this.cover(room,d.id,action)}>${icon}</button>`)}
+        ${canCover(this.hass?.states[d.id],'set_cover_position')?html`<label><input type="range" min="0" max="100" .value=${String(d.percent??50)} aria-label=${`Ouverture ${d.name}`} aria-valuetext=${d.percent===undefined?'Position actuelle inconnue':`${this.format(d.percent,0)} % ouvert`} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_position',Number((e.target as HTMLInputElement).value))}><output>${d.percent===undefined?'—':`${this.format(d.percent,0)} %`}</output></label>`:nothing}
+      </div>`:nothing}
     </li>`;
   }
 }

@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Modèle choisi avant l’analyse 0.4.2 — 14 septembre 2026
+
+Demande utilisateur après le quota atteint : pouvoir sélectionner le modèle avant l’analyse. Réponse : sélecteur dans le Studio, alimenté par `mp_glass/spatial/info` (administrateur : mode, modèle des options), dernier choix retenu par le navigateur, envoyé comme `quality` à l’import (seuls les modèles proposés sont acceptés par Home Assistant).
+
+Validé localement : 44 tests Python, 34 tests Vitest, 33 scénarios Playwright (réglage par défaut présélectionné et signalé, Flash-Lite choisi puis envoyé et retenu à la réouverture, modèle personnalisé des options proposé en premier, add-on sans sélecteur ni `quality`, relance avec l’autre modèle qui reste sélectionné ; captures ordinateur et téléphone), build. Non validé : commande `mp_glass/spatial/info` dans un vrai Home Assistant.
+
 ## Quota Gemini expliqué 0.4.1 — 14 septembre 2026
 
 Essai réel de la 0.4.0 : `HTTP 429 RESOURCE_EXHAUSTED` avec Gemini 3.8 Flash, après une journée d’imports d’essai. Le détail, limité à 300 caractères, s’arrêtait sur « Quota exceeded for metric: gen » : impossible de savoir s’il fallait attendre une minute ou le lendemain. Réponse : lecture des détails `QuotaFailure` et `RetryInfo` de Google (ou, à défaut, de son message), message précis, heure de renouvellement du quota journalier, autre modèle proposé d’un clic, compte à rebours pour une limite par minute.

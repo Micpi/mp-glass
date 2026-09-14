@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-interface MountOptions { jobError?:{error:string;detail?:string;quota?:Record<string,unknown>}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean; model?:string }
+interface MountOptions { jobError?:{error:string;detail?:string;quota?:Record<string,unknown>}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean; model?:string; info?:Record<string,unknown> }
 /** One-page PDF (600 x 400 pt) with a few walls, built by hand so the test needs no fixture file. */
 function pdfPlan():Buffer{
   const stream='4 w 20 20 560 360 re S 300 20 m 300 380 l S 300 200 m 580 200 l S';
@@ -31,6 +31,7 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
     },callWS:async<T>(message:Record<string,unknown>)=>{
       messages.push(message);
       if(message.type==='mp_glass/spatial/cancel'&&message.job_id==='job-test')return {cancelled:true} as T;
+      if(message.type==='mp_glass/spatial/info')return (options.info??{backend:'gemini',configured:true,model:'gemini-3.8-flash',quality:'precise'}) as T;
       if(message.type==='mp_glass/spatial/normalize'){
         // Stand-in for Home Assistant's geometry (tested in Python): each room is its box, 100 px per metre.
         const rooms=message.rooms as {name:string;box_2d:number[]}[],width=message.width as number,height=message.height as number;
@@ -258,7 +259,7 @@ test('failures explain the cause with the technical detail',async({page})=>{
   await expect(page.getByRole('status')).toContainText('Format non pris en charge');
 });
 
-test('an overloaded model can be swapped for the other one for this analysis',async({page})=>{
+test('an overloaded model can be swapped for the other one in a click',async({page})=>{
   await mountEditor(page,true,false,{jobError:{error:'provider_unavailable',detail:'HTTP 503 UNAVAILABLE This model is currently experiencing high demand.'},model:'gemini-3.8-flash'});
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
   await consentAndGenerate(page);
@@ -267,7 +268,42 @@ test('an overloaded model can be swapped for the other one for this analysis',as
   await expect(dialog.getByRole('status')).toContainText('high demand');
   await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url)))
-    .toEqual(['/api/mp_glass/spatial/analyze?page=1','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+    .toEqual(['/api/mp_glass/spatial/analyze?page=1&quality=precise','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+  // The retry changed the model chosen for the next analyses.
+  await expect(page.getByRole('combobox',{name:'Modèle d’analyse'})).toHaveValue('fast');
+});
+
+test('the model is chosen before the analysis and remembered in this browser',async({page})=>{
+  await mountEditor(page);
+  const choice=()=>page.getByRole('combobox',{name:'Modèle d’analyse'});
+  await expect(choice()).toHaveValue('precise');
+  await expect(choice().locator('option')).toHaveText(['Gemini 3.8 Flash — le plus précis · réglage par défaut','Gemini 3.5 Flash-Lite — le plus rapide']);
+  await page.locator('mp-spatial-editor .box').first().screenshot({path:'artifacts/spatial-model-choice.png'});
+  await page.setViewportSize({width:390,height:844});await page.locator('mp-spatial-editor .box').first().screenshot({path:'artifacts/spatial-model-choice-phone.png'});
+  await page.setViewportSize({width:1280,height:720});
+  await choice().selectOption('fast');
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  await expect(page.getByText('Brouillon IA · non enregistré')).toBeVisible();
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url))).toEqual(['/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+  // The Studio opened again: the last choice is kept, the default one is still marked.
+  await mountEditor(page);
+  await expect(choice()).toHaveValue('fast');
+  // A custom model in the options stays available as the default choice.
+  await page.evaluate(()=>localStorage.clear());
+  await mountEditor(page,true,false,{info:{backend:'gemini',configured:true,model:'gemini-3.8-flash-preview',quality:null}});
+  await expect(choice()).toHaveValue('');
+  await expect(choice().locator('option')).toHaveText(['Modèle des options (gemini-3.8-flash-preview)','Gemini 3.8 Flash — le plus précis','Gemini 3.5 Flash-Lite — le plus rapide']);
+});
+
+test('in add-on mode the worker chooses its own model',async({page})=>{
+  await mountEditor(page,true,false,{info:{backend:'addon',configured:true,model:null,quality:null}});
+  await expect(page.getByText('Mode add-on : le modèle est celui de l’option « model » de l’add-on.')).toBeVisible();
+  await expect(page.getByRole('combobox',{name:'Modèle d’analyse'})).toHaveCount(0);
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  await expect(page.getByText('Brouillon IA · non enregistré')).toBeVisible();
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url))).toEqual(['/api/mp_glass/spatial/analyze?page=1']);
 });
 
 test.describe('quota',()=>{
@@ -285,10 +321,10 @@ test.describe('quota',()=>{
     await expect(dialog.getByRole('status')).toContainText('GenerateRequestsPerDayPerProjectPerModel-FreeTier · limite 20');
     await expect(dialog.getByRole('link',{name:'Voir vos quotas Gemini'})).toHaveAttribute('href','https://ai.dev/rate-limit');
     await expect(dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'})).toHaveClass('primary');
-    expect(await uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1']);  // nothing sent again on its own
+    expect(await uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1&quality=precise']);  // nothing sent again on its own
     await page.screenshot({path:'artifacts/spatial-quota.png'});
     await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
-    await expect.poll(()=>uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
+    await expect.poll(()=>uploadedUrls(page)).toEqual(['/api/mp_glass/spatial/analyze?page=1&quality=precise','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
   });
   test('a per-minute limit counts down before retrying the same model',async({page})=>{
     await mountEditor(page,true,false,{model:'gemini-3.8-flash',jobError:{error:'quota',quota:{period:'minute',unit:'requests',limit:5,model:'gemini-3.8-flash',retry:2}}});

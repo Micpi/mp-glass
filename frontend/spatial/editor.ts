@@ -10,8 +10,12 @@ import { detectWalls, snapBox, type DetectionRoom, type Source, type Walls } fro
 interface Quota { period:'day'|'minute'|''; unit:'requests'|'tokens'; limit:number|null; model:string; retry:number|null }
 interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string; detection?:DetectionRoom[]; quota?:Quota }
 type Quality='precise'|'fast';
-/** Models offered in the integration options; the other one is proposed when Gemini is overloaded. */
-const MODELS:Record<string,{label:string;quality:Quality}>={'gemini-3.8-flash':{label:'Gemini 3.8 Flash',quality:'precise'},'gemini-3.5-flash-lite':{label:'Gemini 3.5 Flash-Lite',quality:'fast'}};
+/** Models offered before each analysis (the integration options give the default); the other one is proposed after an overload or a quota. */
+const MODELS:Record<string,{label:string;quality:Quality;hint:string}>={'gemini-3.8-flash':{label:'Gemini 3.8 Flash',quality:'precise',hint:'le plus précis'},'gemini-3.5-flash-lite':{label:'Gemini 3.5 Flash-Lite',quality:'fast',hint:'le plus rapide'}};
+/** What Home Assistant analyses with: direct Gemini (model of the options, if one of those offered) or the add-on, which picks its own. */
+interface ModelInfo { backend:'gemini'|'addon'; configured:boolean; model:string|null; quality:Quality|null }
+/** Last model chosen in this browser. */
+const QUALITY_KEY='mp-glass.spatial.quality';
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
 /** Google renews daily quotas at midnight in California: that moment in the viewer's time, "demain à 9 h". */
@@ -93,7 +97,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
@@ -119,7 +123,9 @@ export class MPSpatialEditor extends LitElement {
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
   /** Model of the running or last analysis, as reported by Home Assistant (direct mode only). */
-  private model='';private quality?:Quality;private errorCode='';
+  private model='';private errorCode='';
+  /** Model chosen before the analysis; none: the one in the integration options. */
+  private quality?:Quality;private info?:ModelInfo;private infoLoading=false;
   /** Quota refused by Google, and when a per-minute limit lets "Réessayer" through again. */
   private quotaInfo?:Quota;private retryAt=0;
   private get modelLabel(){return MODELS[this.model]?.label??'Gemini';}
@@ -143,6 +149,21 @@ export class MPSpatialEditor extends LitElement {
     if(changed.has('plan')&&this.plan!==this.draft){this.draft=this.plan?structuredClone(this.plan):undefined;this.usingDefault=false;this.floorIndex=0;}
     // Without a saved plan, start from the schematic plan of the HA areas (refreshed while untouched).
     if(!this.plan&&this.fallback&&(!this.draft||(this.usingDefault&&changed.has('fallback')))){this.draft=structuredClone(this.fallback);this.usingDefault=true;this.floorIndex=0;}
+    if(changed.has('hass')&&this.hass&&!this.infoLoading){this.infoLoading=true;void this.loadInfo();}
+  }
+  /** Models offered before the analysis: the last one chosen in this browser, else the one in the options. */
+  private async loadInfo(){
+    try{
+      const info=await this.hass!.callWS<ModelInfo>({type:'mp_glass/spatial/info'});
+      let stored:string|null=null;
+      try{stored=localStorage.getItem(QUALITY_KEY);}catch{/* Storage blocked: the options decide. */}
+      this.info=info;
+      if(info.backend==='gemini')this.quality=stored==='precise'||stored==='fast'?stored:info.quality??undefined;
+    }catch{/* Older integration or not an administrator: the options decide. */}
+  }
+  private choose(quality?:Quality){
+    this.quality=quality;
+    try{if(quality)localStorage.setItem(QUALITY_KEY,quality);else localStorage.removeItem(QUALITY_KEY);}catch{/* Kept for this page only. */}
   }
   private get floor(){return this.draft?.floors[this.floorIndex]??this.draft?.floors[0];}
   private get room(){return this.floor?.rooms.find(r=>r.id===this.selected)??this.floor?.rooms[0];}
@@ -153,10 +174,10 @@ export class MPSpatialEditor extends LitElement {
   private mutate(edit:(plan:SpatialPlan)=>void){if(!this.draft)return;const copy=structuredClone(this.draft);edit(copy);this.commit(copy);}
   private editRoom(edit:(room:SpatialRoom)=>void){const id=this.room?.id;this.mutate(plan=>{const room=plan.floors[this.floorIndex]?.rooms.find(r=>r.id===id);if(room)edit(room);});}
   private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';this.sourceBlob=blob;}
-  /** `quality`: the other offered model for this analysis only (after an overload); none: the one in the options. */
-  private async analyze(quality?:Quality){
+  /** With the model chosen in the Studio; none chosen: the one in the integration options. */
+  private async analyze(){
     if(!this.file||!this.hass?.fetchWithAuth||!this.confirmed||this.busy)return;
-    this.quality=quality;this.model='';this.errorCode='';this.quotaInfo=undefined;this.retryAt=0;
+    const quality=this.quality;this.model='';this.errorCode='';this.quotaInfo=undefined;this.retryAt=0;
     this.busy=true;this.candidate=undefined;this.source=undefined;this.setSource();this.detail='';this.warnings=[];this.jobId='';this.phase='preparing';this.dialogOpen=true;this.startedAt=Date.now();this.message='Préparation du fichier…';
     clearInterval(this.ticker);this.ticker=setInterval(()=>{this.tick++;},1000);
     const generation=++this.generation;
@@ -304,16 +325,25 @@ export class MPSpatialEditor extends LitElement {
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse impossible</h3><p>Le plan enregistré est conservé.</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>
         ${quota?html`<p class="muted"><a href="https://ai.dev/rate-limit" target="_blank" rel="noopener noreferrer">Voir vos quotas Gemini</a> · MP Glass ne relance jamais de lui-même une analyse refusée pour quota.</p>`:nothing}
-        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${other?html`<button class=${daily?'primary':''} @click=${()=>this.analyze(other.quality)}>Réessayer avec ${other.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class=${daily?'':'primary'} ?disabled=${wait>0} @click=${()=>this.analyze(this.quality)}>${wait>0?`Réessayer dans ${wait} s`:'Réessayer'}</button>`:nothing}</div>`;
+        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${other?html`<button class=${daily?'primary':''} @click=${()=>{this.choose(other.quality);void this.analyze();}}>Réessayer avec ${other.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class=${daily?'':'primary'} ?disabled=${wait>0} @click=${()=>this.analyze()}>${wait>0?`Réessayer dans ${wait} s`:'Réessayer'}</button>`:nothing}</div>`;
     }
     // Escape does not interrupt a running analysis: only "Annuler l’analyse" does.
     return html`<dialog class="job" aria-labelledby="job-title" @cancel=${(e:Event)=>{if(this.busy)e.preventDefault();}} @close=${()=>{this.dialogOpen=false;}}>${body}</dialog>`;
+  }
+  /** Model for the next analysis, in direct mode: the default one (integration options) is marked. */
+  private renderModelChoice(){
+    const info=this.info;
+    if(info?.backend!=='gemini')return nothing;
+    return html`<label>Modèle d’analyse<select @change=${(e:Event)=>this.choose(((e.target as HTMLSelectElement).value||undefined) as Quality|undefined)}>
+      ${info.quality||!info.model?nothing:html`<option value="" .selected=${!this.quality}>Modèle des options (${info.model})</option>`}
+      ${Object.entries(MODELS).map(([id,m])=>html`<option value=${m.quality} .selected=${this.quality===m.quality}>${m.label} — ${m.hint}${info.model===id?' · réglage par défaut':''}</option>`)}
+    </select></label>`;
   }
   render(){const floor=this.floor,room=this.room;const admin=!!this.hass?.user?.is_admin;
     return html`<h2>Plan 3D</h2><p>Votre maison en volume, reliée à vos équipements.</p>
     ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau, lumières déjà associées. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
-      <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label></div><label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>Générer le brouillon 3D</button></div>
+      <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label>${this.renderModelChoice()}</div>${this.info?.backend==='addon'?html`<p class="muted">Mode add-on : le modèle est celui de l’option « model » de l’add-on.</p>`:nothing}<label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas ; chaque modèle a son propre quota : si l’un est épuisé, choisissez l’autre. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>Générer le brouillon 3D</button></div>
       <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}

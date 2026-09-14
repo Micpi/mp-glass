@@ -134,7 +134,7 @@ class SpatialUploadView(HomeAssistantView):
                 raise ValueError
         except ValueError:
             return web.json_response({"error": "invalid_file"}, status=400)
-        # The Studio may pick the other offered model for one analysis (e.g. after an overload), never an arbitrary one.
+        # The Studio picks one of the offered models before the analysis (or after an overload), never an arbitrary one.
         quality = request.query.get("quality")
         if quality is not None and quality not in QUALITIES:
             return web.json_response({"error": "invalid_request"}, status=400)
@@ -198,6 +198,18 @@ async def websocket_normalize(hass, connection, msg):
         connection.send_error(msg["id"], err.code, err.detail or err.code)
         return
     connection.send_result(msg["id"], result)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/spatial/info"})
+@websocket_api.require_admin
+@callback
+def websocket_info(hass, connection, msg):
+    """Models offered in the Studio before an analysis, and the one set in the options (direct mode; the add-on picks its own)."""
+    runtime = hass.data.get(KEY)
+    direct = not runtime or runtime.backend == "gemini"
+    model = (runtime.model if runtime else DEFAULT_MODEL) if direct else None
+    connection.send_result(msg["id"], {"backend": "gemini" if direct else "addon", "configured": bool(runtime and runtime.configured), "models": QUALITIES,
+                                       "model": model, "quality": next((q for q, m in QUALITIES.items() if m == model), None)})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/spatial/cancel", vol.Required("job_id"): str})

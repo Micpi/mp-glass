@@ -22,7 +22,7 @@
           "show_settings": "Show the integrator settings panel",
           "spatial_backend": "Plan analysis",
           "gemini_api_key": "Gemini API key",
-          "gemini_quality": "Plan analysis model"
+          "gemini_quality": "Default plan analysis model"
         },
         "description": "For 3D plan generation, select direct Gemini and paste your API key. No app to install. Both models are on Google's free tier. Leave the key empty if you only use the dashboard."
       },

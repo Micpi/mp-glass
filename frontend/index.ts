@@ -17,6 +17,8 @@ class MPGlassViewV3 extends MPGlassView {}
 class MPGlassLightV4 extends MPGlassLight {}
 class MPGlassGenericV4 extends MPGlassGeneric {}
 class MPGlassViewV4 extends MPGlassView {}
+class MPGlassViewV5 extends MPGlassView {}
+if (!customElements.get('mp-glass-view-v5')) customElements.define('mp-glass-view-v5', MPGlassViewV5);
 for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 'mp-glass-light-v2':MPGlassLightV2, 'mp-glass-light-v3':MPGlassLightV3, 'mp-glass-light-v4':MPGlassLightV4, 'mp-glass-generic':MPGlassGeneric, 'mp-glass-generic-v2':MPGlassGenericV2, 'mp-glass-generic-v3':MPGlassGenericV3, 'mp-glass-generic-v4':MPGlassGenericV4, 'mp-glass-card-editor':MPGlassCardEditor, 'mp-glass-view':MPGlassView, 'mp-glass-view-v2':MPGlassViewV2, 'mp-glass-view-v3':MPGlassViewV3, 'mp-glass-view-v4':MPGlassViewV4, 'll-strategy-dashboard-mp-glass':MPGlassStrategy, 'mp-glass-settings':MPGlassSettings })) {
   if (!customElements.get(name)) customElements.define(name, component);
 }

@@ -6,6 +6,12 @@ from pathlib import Path
 
 from jsonschema import Draft7Validator
 
+# Loaded both inside Home Assistant and by standalone contract tests.
+import importlib.util
+_spec = importlib.util.spec_from_file_location("mp_spatial_contract", Path(__file__).with_name("spatial_contract.py"))
+_contract = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(_contract)
+
 
 def load_validator():
     """Load once via executor at integration setup."""
@@ -57,6 +63,8 @@ def migrate_project(value):
 
 def validate_project(validator, value):
     validator.validate(value)
+    if "spatial" in value:
+        _contract.validate_geometry(value["spatial"])
     return deepcopy(value)
 
 

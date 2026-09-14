@@ -1,4 +1,4 @@
-export interface HAState { entity_id: string; state: string; attributes: Record<string, unknown> }
+export interface HAState { entity_id: string; state: string; attributes: Record<string, unknown>; last_changed?: string }
 export interface HAFloor { floor_id: string; name: string; level?: number }
 export interface HAArea { area_id: string; name: string; floor_id?: string | null; icon?: string | null; picture?: string | null }
 export interface HADevice { id: string; area_id?: string | null; via_device_id?: string | null; manufacturer?: string | null; model?: string | null }
@@ -48,7 +48,7 @@ export interface AppearanceConfig {
 }
 export interface NavigationConfig { items: NavigationItem[]; showLabels: boolean }
 export interface Override { name?: string; areaId?: string; hidden?: boolean; presentation?: Category }
-export interface ProjectConfig { schema_version: 2; project: { name: string }; appearance: AppearanceConfig; navigation: NavigationConfig; roles: Record<string, string>; overrides: Record<string, Override> }
+export interface ProjectConfig { schema_version: 2; project: { name: string }; appearance: AppearanceConfig; navigation: NavigationConfig; roles: Record<string, string>; overrides: Record<string, Override>; spatial?: import('./spatial').SpatialPlan }
 export interface LogicalDevice {
   id: string; entityKey: string; entityId: string; name: string; sourceDeviceIds: string[];
   areaId?: string; floorId?: string; category: Category; presentation?: Category;

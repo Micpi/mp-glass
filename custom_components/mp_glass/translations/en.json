@@ -1,1 +1,49 @@
-{"title":"MP Glass","config":{"step":{"user":{"title":"Welcome to MP Glass","description":"Name your home. Then open MP Glass in the sidebar to discover your installation.","data":{"name":"Home name"}}},"abort":{"already_configured":"MP Glass is already configured."}},"options":{"step":{"init":{"title":"MP Glass options","data":{"show_settings":"Show the integrator settings panel"}}}}}
+{
+  "title": "MP Glass",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Welcome to MP Glass",
+        "description": "Name your home. Then open MP Glass in the sidebar to discover your installation.",
+        "data": {
+          "name": "Home name"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "MP Glass is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MP Glass options",
+        "data": {
+          "show_settings": "Show the integrator settings panel",
+          "spatial_backend": "Plan analysis",
+          "gemini_api_key": "Gemini API key"
+        },
+        "description": "For 3D plan generation, select direct Gemini and paste your API key. No app to install. Leave the key empty if you only use the dashboard."
+      },
+      "spatial_addon": {
+        "title": "App connection (advanced)",
+        "description": "Only for the separate worker. Configure the Gemini key in that app.",
+        "data": {
+          "spatial_url": "Spatial app URL (e.g. http://local-mp-glass-spatial:8099)",
+          "spatial_token": "App connection key (api_token)"
+        }
+      }
+    },
+    "error": {
+      "invalid_spatial_url": "Use an HTTP(S) URL without credentials or query parameters."
+    }
+  },
+  "selector": {
+    "spatial_backend": {
+      "options": {
+        "gemini": "Direct Gemini — no app required (recommended)",
+        "addon": "Spatial app — advanced"
+      }
+    }
+  }
+}

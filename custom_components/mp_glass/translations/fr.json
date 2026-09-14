@@ -1,1 +1,49 @@
-{"title":"MP Glass","config":{"step":{"user":{"title":"Bienvenue dans MP Glass","description":"Nommez votre maison, puis ouvrez MP Glass dans la barre latérale pour découvrir votre installation.","data":{"name":"Nom de la maison"}}},"abort":{"already_configured":"MP Glass est déjà configuré."}},"options":{"step":{"init":{"title":"Options MP Glass","data":{"show_settings":"Afficher le panneau de configuration intégrateur"}}}}}
+{
+  "title": "MP Glass",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Bienvenue dans MP Glass",
+        "description": "Nommez votre maison, puis ouvrez MP Glass dans la barre latérale pour découvrir votre installation.",
+        "data": {
+          "name": "Nom de la maison"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "MP Glass est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Options MP Glass",
+        "data": {
+          "show_settings": "Afficher le panneau de configuration intégrateur",
+          "spatial_backend": "Analyse des plans",
+          "gemini_api_key": "Clé API Gemini"
+        },
+        "description": "Pour générer un plan 3D, choisissez Gemini direct et collez votre clé API. Aucun add-on à installer. Laissez la clé vide si vous utilisez seulement le dashboard."
+      },
+      "spatial_addon": {
+        "title": "Connexion à l’add-on (avancé)",
+        "description": "Uniquement pour le worker séparé. La clé Gemini est configurée dans cet add-on.",
+        "data": {
+          "spatial_url": "Adresse de l’add-on Spatial (ex. http://local-mp-glass-spatial:8099)",
+          "spatial_token": "Clé de liaison de l’add-on (api_token)"
+        }
+      }
+    },
+    "error": {
+      "invalid_spatial_url": "Utilisez une adresse HTTP(S) sans identifiants ni paramètres."
+    }
+  },
+  "selector": {
+    "spatial_backend": {
+      "options": {
+        "gemini": "Gemini direct — sans add-on (recommandé)",
+        "addon": "Add-on Spatial — avancé"
+      }
+    }
+  }
+}

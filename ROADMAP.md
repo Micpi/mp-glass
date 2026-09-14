@@ -1,5 +1,9 @@
 # Roadmap et portes d'acceptation
 
+## MP Spatial 0.2.0 — développement local
+
+Vue 3D orbitale, niveaux, murs transparents, états/lumières, éditeur de contours et worker Gemini Flash-Lite pour PDF/images implémentés. Installation Supervisor et appel réel Gemini restent à valider. [Détails](docs/FLOORPLAN.md). Meubles, portes/fenêtres, manipulation graphique des sommets et undo/redo restent futurs.
+
 ## Incrément 0 — fondations
 
 Audit, recherche API datée, architecture, modèles, ADR, registre de cartes. Documentation créée avant le code.

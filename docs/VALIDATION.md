@@ -1,5 +1,25 @@
 # Validation — incrément lumière 0.1.0
 
+## Plan par défaut et import Gemini 0.2.2 — 14 septembre 2026
+
+Signalement utilisateur : l’import Gemini échoue sur l’instance réelle, message exact non transmis ; instance et navigateur authentifié non accessibles dans cette session. Causes corrigées d’après le code : mots-clés `minLength`/`maxLength` hors du sous-ensemble documenté de `responseJsonSchema`, rejet complet du plan pour une seule pièce mal tracée, erreurs Google mal classées (clé invalide renvoyée en HTTP 400, surcharge 503, Google injoignable présenté comme add-on inaccessible), absence de détail pour diagnostiquer.
+
+Validé localement : ESLint, TypeScript, 30 tests Vitest, 19 scénarios Playwright (plan par défaut dans le Studio, détail d’erreur, service absent, réduction d’image à 3 072 px, six références visuelles régénérées avec le plan par défaut) et 27 tests Python (réparation de géométrie, conversion d’échelle, classification des réponses Google, schéma fournisseur). Archive `artifacts/mp-glass-0.2.2.zip`, 18 fichiers, SHA-256 `1f59b6c8577eaf03dafc34771a81ffd231c57e6e61c6996e79fb6d056fe1791b`.
+
+Restent à valider : installation sur l’instance HA, appel Gemini réel avec la clé de l’utilisateur et rendu du plan par défaut avec ses zones réelles.
+
+## Simplification Gemini 0.2.1 — 14 septembre 2026
+
+Mode direct configuré depuis les options de MP Glass, avec clé conservée uniquement côté backend. Les installations utilisant déjà un worker restent sur le mode add-on. Contrat partagé entre les deux modes ; tests du PDF inline avec numéro de page, signatures/taille, origine Google fixe, clé en header, erreur 429 sans relance et compatibilité des réglages existants. Liens et information d’envoi complet vérifiés dans le navigateur.
+
+Ces validations sont locales avec réponse Gemini simulée. Aucune installation sur l’instance HA ni analyse avec une clé réelle dans cette session.
+
+## MP Spatial 0.2.0 — 14 septembre 2026
+
+Vue 3D, Studio et add-on Gemini implémentés localement. Vérifications : géométrie/contrat projet, pipeline réel PDFium/Pillow avec sous-processus, API worker authentifiée et fournisseur Gemini simulé. Tests navigateur : rotation, zoom, déplacement clavier, lumière, mobile, brouillon avec accord d’envoi, quota, droits non-admin et conservation des autres niveaux. Captures de plans fictifs dans `artifacts/spatial-desktop.png` et `artifacts/spatial-mobile.png`.
+
+Limites : aucun appel réel Gemini ni mesure de précision, aucun build/installation Supervisor (Docker Engine local indisponible). La 3D n’a pas été déployée sur l’instance utilisateur. Les vérifications HA 2026.9.1 ci-dessous concernent l’incrément précédent. Aucun dépôt distant configuré, donc aucune release HACS publiée.
+
 ## Navigation et Studio de personnalisation — 13–14 septembre 2026
 
 La révision frontend r14 a été déployée sur l'instance Home Assistant 2026.9.1. Les routes `home`, `lights`, `rooms` et `area-<area_id>` ont été ouvertes depuis l'interface réelle. Les onglets Accueil, Lumières et Pièces changent bien de vue, la liste des pièces détectées est générée, et la page Cuisine affiche uniquement son équipement associé.

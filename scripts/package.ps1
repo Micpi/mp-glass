@@ -18,5 +18,7 @@ try {
   New-Item -ItemType Directory -Path artifacts -Force | Out-Null
   & $Python scripts/package.py "artifacts/mp-glass-$mpVersion.zip"
   if ($LASTEXITCODE -ne 0) { throw 'Packaging failed' }
+  & $Python scripts/package.py "artifacts/mp-glass-spatial-addon-$mpVersion.zip" --addon
+  if ($LASTEXITCODE -ne 0) { throw 'Add-on packaging failed' }
   Write-Host "Local artifact created. This is not a GitHub/HACS release: artifacts/mp-glass-$mpVersion.zip"
 } finally { Pop-Location }

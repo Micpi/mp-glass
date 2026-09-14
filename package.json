@@ -1,6 +1,6 @@
 {
   "name": "mp-glass",
-  "version": "0.1.0",
+  "version": "0.2.2",
   "private": true,
   "type": "module",
   "scripts": {
@@ -12,6 +12,20 @@
     "lint": "eslint shared frontend tests --max-warnings 0",
     "check": "npm run lint && npm run typecheck && npm test && npm run build"
   },
-  "dependencies": {"ajv": "^8.17.1", "lit": "^3.3.1"},
-  "devDependencies": {"@eslint/js": "^9.39.1", "@playwright/test": "^1.56.1", "@types/node": "^24.10.1", "eslint": "^9.39.1", "typescript": "^5.9.3", "typescript-eslint": "^8.48.0", "vite": "^7.2.4", "vitest": "^4.0.14"}
+  "dependencies": {
+    "ajv": "^8.17.1",
+    "lit": "^3.3.1",
+    "three": "^0.186.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@playwright/test": "^1.56.1",
+    "@types/node": "^24.10.1",
+    "@types/three": "^0.186.0",
+    "eslint": "^9.39.1",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.48.0",
+    "vite": "^7.2.4",
+    "vitest": "^4.0.14"
+  }
 }

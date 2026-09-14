@@ -9,6 +9,7 @@ from homeassistant.helpers.storage import Store
 from .const import DOMAIN
 from .frontend import async_register, async_unregister
 from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
+from .spatial import KEY as SPATIAL_KEY, SpatialRuntime, SpatialUploadView, websocket_job
 
 
 async def async_setup_entry(hass, entry):
@@ -24,9 +25,12 @@ async def async_setup_entry(hass, entry):
             record = {"revision": record["revision"] + 1, "project": migrated}
             await store.async_save(record)
     hass.data[DOMAIN] = ProjectRepository(store, validator, record)
+    hass.data[SPATIAL_KEY] = SpatialRuntime(hass, entry.options)
     if not hass.data.get("mp_glass_ws_registered"):
         websocket_api.async_register_command(hass, websocket_get)
         websocket_api.async_register_command(hass, websocket_save)
+        websocket_api.async_register_command(hass, websocket_job)
+        hass.http.register_view(SpatialUploadView())
         hass.data["mp_glass_ws_registered"] = True
     await async_register(hass, entry.options.get("show_settings", True))
     entry.async_on_unload(entry.add_update_listener(async_reload))
@@ -38,6 +42,9 @@ async def async_reload(hass, entry):
 
 
 async def async_unload_entry(hass, entry):
+    runtime = hass.data.pop(SPATIAL_KEY, None)
+    if runtime:
+        await runtime.close()
     async_unregister(hass)
     hass.data.pop(DOMAIN, None)
     return True
@@ -63,7 +70,7 @@ async def websocket_save(hass, connection, msg):
         return
     try:
         record = await runtime.save(msg["revision"], msg["project"])
-    except ValidationError:
+    except (ValidationError, ValueError):
         connection.send_error(msg["id"], "invalid_project", "Invalid project schema")
         return
     except RevisionConflict:

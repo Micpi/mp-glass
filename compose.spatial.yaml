@@ -1,0 +1,17 @@
+services:
+  spatial:
+    build: ./addons/mp_glass_spatial
+    ports:
+      - "127.0.0.1:8099:8099"
+    volumes:
+      - ./spatial-options.json:/data/options.json:ro
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m
+    mem_limit: 1g
+    pids_limit: 64
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: "no"

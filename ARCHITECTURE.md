@@ -2,6 +2,10 @@
 
 Statut : architecture cible avec premier incrément lumière. La roadmap distingue les composants livrés et futurs.
 
+Extension 0.2.0 : `frontend/spatial` ajoute Three.js chargé à la demande et l’édition de `project.spatial`. L’intégration reçoit les imports HTTP administrateur et expose le suivi WebSocket. `addons/mp_glass_spatial` isole la conversion et Gemini Flash-Lite, sans token HA ni accès aux entités/services. Son absence n’empêche pas d’afficher un plan enregistré. [Contrat et parcours](docs/FLOORPLAN.md).
+
+Depuis 0.2.1, l’intégration propose Gemini direct par défaut : entrée binaire bornée, vérification de signature sans décodage dans Core, appel asynchrone Google, validation du JSON. La clé reste dans les options HA. L’add-on reste un mode avancé explicite pour rasteriser localement ; aucune bascule entre fournisseurs n’est déclenchée en cas d’erreur.
+
 ## Frontières
 
 ```text

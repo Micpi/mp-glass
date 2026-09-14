@@ -62,3 +62,5 @@ Le schéma ferme tous les objets et refuse les champs secrets, les extensions ar
 Le backend conserve `{revision, project}`. Une sauvegarde exige la révision lue et refuse une édition concurrente. Le passage v1 → v2 complète l'apparence et ajoute la navigation en conservant le nom, le preset, les rôles et les overrides.
 
 Source normative : `shared/project.schema.json`.
+
+Depuis 0.2.0, `spatial` est optionnel dans ce schéma v2 : `{version:1, enabled:true, floors:[...]}`. Géométrie en mètres, niveaux, pièces polygonales, `areaId` facultatif et liste `entityIds` choisie par l’utilisateur. Aucun fichier source, clé API ou état runtime. La validation géométrique complète le JSON Schema. Voir `shared/spatial.schema.json` et [MP Spatial](docs/FLOORPLAN.md).

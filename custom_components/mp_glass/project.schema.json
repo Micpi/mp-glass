@@ -3,41 +3,392 @@
   "title": "MP Glass Project v2",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "project", "appearance", "navigation", "roles", "overrides"],
+  "required": [
+    "schema_version",
+    "project",
+    "appearance",
+    "navigation",
+    "roles",
+    "overrides"
+  ],
   "properties": {
-    "schema_version": {"const": 2},
-    "project": {"type": "object", "additionalProperties": false, "required": ["name"], "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}}},
-    "appearance": {
-      "type": "object", "additionalProperties": false, "required": ["preset"],
+    "schema_version": {
+      "const": 2
+    },
+    "project": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "name"
+      ],
       "properties": {
-        "preset": {"enum": ["glass-blue", "glass-warm", "glass-dark", "glass-light", "glass-oled", "glass-neutral"]},
-        "accent": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
-        "secondaryAccent": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
-        "glassTint": {"type": "string", "pattern": "^#[0-9a-fA-F]{6}$"},
-        "glassOpacity": {"type": "number", "minimum": 0.25, "maximum": 0.9},
-        "glassBlur": {"type": "integer", "minimum": 0, "maximum": 40},
-        "borderStrength": {"type": "number", "minimum": 0.05, "maximum": 0.6},
-        "shadowStrength": {"type": "number", "minimum": 0, "maximum": 0.8},
-        "radius": {"type": "integer", "minimum": 10, "maximum": 38},
-        "backgroundDim": {"type": "number", "minimum": 0, "maximum": 0.8},
-        "backgroundPosition": {"enum": ["left", "center", "right"]},
-        "backgroundUrl": {"type": "string", "maxLength": 2048, "pattern": "^/(local|api/image)/"},
-        "backgroundBlur": {"type": "integer", "minimum": 0, "maximum": 20},
-        "backgroundSaturation": {"type": "number", "minimum": 0.5, "maximum": 1.5},
-        "density": {"enum": ["compact", "comfortable"]},
-        "fontStyle": {"enum": ["elegant", "modern", "soft"]},
-        "iconStyle": {"enum": ["tile", "orb", "minimal"]},
-        "cardStyle": {"enum": ["compact", "standard", "spacious"]},
-        "cardColumns": {"type": "integer", "minimum": 2, "maximum": 6},
-        "cardGap": {"type": "integer", "minimum": 6, "maximum": 32},
-        "maxWidth": {"type": "integer", "minimum": 960, "maximum": 1920},
-        "heroHeight": {"type": "integer", "minimum": 220, "maximum": 620},
-        "motion": {"type": "boolean"}, "showHero": {"type": "boolean"}, "showClock": {"type": "boolean"}, "showOverview": {"type": "boolean"}, "showFooter": {"type": "boolean"}, "showSettingsShortcut": {"type": "boolean"}, "showCardDetails": {"type": "boolean"}, "showBrightness": {"type": "boolean"},
-        "eyebrow": {"type": "string", "maxLength": 100}, "subtitle": {"type": "string", "maxLength": 160}, "quote": {"type": "string", "maxLength": 180}, "sectionTitle": {"type": "string", "maxLength": 80}, "sectionSubtitle": {"type": "string", "maxLength": 160}
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 100
+        }
       }
     },
-    "navigation": {"type": "object", "additionalProperties": false, "required": ["items", "showLabels"], "properties": {"items": {"type": "array", "minItems": 1, "maxItems": 3, "uniqueItems": true, "items": {"enum": ["home", "lights", "rooms"]}}, "showLabels": {"type": "boolean"}}},
-    "roles": {"type": "object", "maxProperties": 500, "propertyNames": {"pattern": "^[a-z][a-z0-9_]{0,63}$"}, "additionalProperties": {"type": "string", "minLength": 1, "maxLength": 255}},
-    "overrides": {"type": "object", "maxProperties": 5000, "propertyNames": {"maxLength": 255, "not": {"enum": ["__proto__", "constructor", "prototype"]}}, "additionalProperties": {"type": "object", "additionalProperties": false, "properties": {"name": {"type": "string", "minLength": 1, "maxLength": 100}, "areaId": {"type": "string", "minLength": 1, "maxLength": 255}, "hidden": {"type": "boolean"}, "presentation": {"enum": ["light", "generic"]}}}}
+    "appearance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "preset"
+      ],
+      "properties": {
+        "preset": {
+          "enum": [
+            "glass-blue",
+            "glass-warm",
+            "glass-dark",
+            "glass-light",
+            "glass-oled",
+            "glass-neutral"
+          ]
+        },
+        "accent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "secondaryAccent": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "glassTint": {
+          "type": "string",
+          "pattern": "^#[0-9a-fA-F]{6}$"
+        },
+        "glassOpacity": {
+          "type": "number",
+          "minimum": 0.25,
+          "maximum": 0.9
+        },
+        "glassBlur": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 40
+        },
+        "borderStrength": {
+          "type": "number",
+          "minimum": 0.05,
+          "maximum": 0.6
+        },
+        "shadowStrength": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.8
+        },
+        "radius": {
+          "type": "integer",
+          "minimum": 10,
+          "maximum": 38
+        },
+        "backgroundDim": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 0.8
+        },
+        "backgroundPosition": {
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ]
+        },
+        "backgroundUrl": {
+          "type": "string",
+          "maxLength": 2048,
+          "pattern": "^/(local|api/image)/"
+        },
+        "backgroundBlur": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 20
+        },
+        "backgroundSaturation": {
+          "type": "number",
+          "minimum": 0.5,
+          "maximum": 1.5
+        },
+        "density": {
+          "enum": [
+            "compact",
+            "comfortable"
+          ]
+        },
+        "fontStyle": {
+          "enum": [
+            "elegant",
+            "modern",
+            "soft"
+          ]
+        },
+        "iconStyle": {
+          "enum": [
+            "tile",
+            "orb",
+            "minimal"
+          ]
+        },
+        "cardStyle": {
+          "enum": [
+            "compact",
+            "standard",
+            "spacious"
+          ]
+        },
+        "cardColumns": {
+          "type": "integer",
+          "minimum": 2,
+          "maximum": 6
+        },
+        "cardGap": {
+          "type": "integer",
+          "minimum": 6,
+          "maximum": 32
+        },
+        "maxWidth": {
+          "type": "integer",
+          "minimum": 960,
+          "maximum": 1920
+        },
+        "heroHeight": {
+          "type": "integer",
+          "minimum": 220,
+          "maximum": 620
+        },
+        "motion": {
+          "type": "boolean"
+        },
+        "showHero": {
+          "type": "boolean"
+        },
+        "showClock": {
+          "type": "boolean"
+        },
+        "showOverview": {
+          "type": "boolean"
+        },
+        "showFooter": {
+          "type": "boolean"
+        },
+        "showSettingsShortcut": {
+          "type": "boolean"
+        },
+        "showCardDetails": {
+          "type": "boolean"
+        },
+        "showBrightness": {
+          "type": "boolean"
+        },
+        "eyebrow": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "subtitle": {
+          "type": "string",
+          "maxLength": 160
+        },
+        "quote": {
+          "type": "string",
+          "maxLength": 180
+        },
+        "sectionTitle": {
+          "type": "string",
+          "maxLength": 80
+        },
+        "sectionSubtitle": {
+          "type": "string",
+          "maxLength": 160
+        }
+      }
+    },
+    "navigation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "items",
+        "showLabels"
+      ],
+      "properties": {
+        "items": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 3,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "home",
+              "lights",
+              "rooms"
+            ]
+          }
+        },
+        "showLabels": {
+          "type": "boolean"
+        }
+      }
+    },
+    "roles": {
+      "type": "object",
+      "maxProperties": 500,
+      "propertyNames": {
+        "pattern": "^[a-z][a-z0-9_]{0,63}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 255
+      }
+    },
+    "overrides": {
+      "type": "object",
+      "maxProperties": 5000,
+      "propertyNames": {
+        "maxLength": 255,
+        "not": {
+          "enum": [
+            "__proto__",
+            "constructor",
+            "prototype"
+          ]
+        }
+      },
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 100
+          },
+          "areaId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 255
+          },
+          "hidden": {
+            "type": "boolean"
+          },
+          "presentation": {
+            "enum": [
+              "light",
+              "generic"
+            ]
+          }
+        }
+      }
+    },
+    "spatial": {
+      "title": "MP Spatial floor plan in metres",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version",
+        "enabled",
+        "floors"
+      ],
+      "properties": {
+        "version": {
+          "const": 1
+        },
+        "enabled": {
+          "type": "boolean"
+        },
+        "floors": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 8,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name",
+              "elevation",
+              "height",
+              "rooms"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              },
+              "elevation": {
+                "type": "number",
+                "minimum": -20,
+                "maximum": 100
+              },
+              "height": {
+                "type": "number",
+                "minimum": 1,
+                "maximum": 8
+              },
+              "rooms": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 60,
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "id",
+                    "name",
+                    "polygon"
+                  ],
+                  "properties": {
+                    "id": {
+                      "type": "string",
+                      "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                    },
+                    "name": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 80
+                    },
+                    "areaId": {
+                      "type": "string",
+                      "minLength": 1,
+                      "maxLength": 255
+                    },
+                    "entityIds": {
+                      "type": "array",
+                      "maxItems": 12,
+                      "uniqueItems": true,
+                      "items": {
+                        "type": "string",
+                        "pattern": "^[a-z_]+\\.[a-z0-9_]+$",
+                        "maxLength": 255
+                      }
+                    },
+                    "polygon": {
+                      "type": "array",
+                      "minItems": 3,
+                      "maxItems": 40,
+                      "items": {
+                        "type": "array",
+                        "minItems": 2,
+                        "maxItems": 2,
+                        "items": {
+                          "type": "number",
+                          "minimum": -200,
+                          "maximum": 200
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
   }
 }

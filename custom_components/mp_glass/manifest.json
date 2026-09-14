@@ -1,12 +1,21 @@
 {
   "domain": "mp_glass",
   "name": "MP Glass",
-  "codeowners": ["@Micpi"],
+  "codeowners": [
+    "@Micpi"
+  ],
   "config_flow": true,
-  "dependencies": ["frontend", "http", "panel_custom", "websocket_api"],
+  "dependencies": [
+    "frontend",
+    "http",
+    "panel_custom",
+    "websocket_api"
+  ],
   "documentation": "https://github.com/Micpi/mp-glass",
   "integration_type": "service",
   "iot_class": "local_push",
-  "requirements": ["jsonschema==4.25.1"],
-  "version": "0.1.0"
+  "requirements": [
+    "jsonschema==4.25.1"
+  ],
+  "version": "0.2.2"
 }

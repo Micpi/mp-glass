@@ -1,0 +1,4 @@
+aiohttp==3.13.3
+Pillow==12.3.0
+pypdfium2==5.9.0
+jsonschema==4.25.1

@@ -1,9 +1,11 @@
 import Ajv from 'ajv';
 import schema from './project.schema.json';
 import type { ProjectConfig } from './models';
+import { parseSpatial } from './spatial';
 const validate = new Ajv({ allErrors: true, strict: true }).compile<ProjectConfig>(schema);
 export function parseProject(value: unknown): ProjectConfig {
   if (!validate(value)) throw new Error('invalid_project');
+  if (value.spatial) parseSpatial(value.spatial);
   return structuredClone(value);
 }
 export function defaultProject(name = 'MP Glass'): ProjectConfig {

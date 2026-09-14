@@ -1,4 +1,5 @@
 import type { CardDefinition, LogicalDevice, MPHomeGraph, ProjectConfig } from './models';
+import { defaultSpatialPlan, examplePlan } from './spatial';
 
 export class MPCardRegistry {
   private definitions: CardDefinition[] = [];
@@ -51,11 +52,15 @@ export class MPDashboardComposer {
           lightCount: members.filter(d => d.category === 'light').length,
         };
       });
+    // Until a plan is saved in the Studio, the home view shows a schematic plan of the HA areas.
+    const generated = project.spatial ? undefined : defaultSpatialPlan(graph);
+    const spatial = project.spatial ?? generated ?? examplePlan();
+    const spatialOrigin = project.spatial ? 'project' as const : generated ? 'areas' as const : 'example' as const;
     const view = (path: string, title: string, kind: 'home'|'lights'|'rooms'|'area'|'inventory', viewCards: ReturnType<typeof cards>, icon: string) => ({
       title,
       path,
       icon,
-      type: 'custom:mp-glass-view-v4',
+      type: 'custom:mp-glass-view-v5',
       mp_project_name: project.project.name,
       mp_appearance: project.appearance,
       mp_navigation: project.navigation,
@@ -63,6 +68,7 @@ export class MPDashboardComposer {
       mp_view_path: path,
       mp_view_title: title,
       mp_areas: areas,
+      ...(kind === 'home' ? { mp_spatial: spatial, mp_spatial_origin: spatialOrigin } : {}),
       cards: viewCards,
     });
     return {

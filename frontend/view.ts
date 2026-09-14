@@ -2,9 +2,14 @@ import { LitElement, html, css, nothing } from 'lit';
 import type { AppearanceConfig, NavigationConfig, NavigationItem } from '../shared/models';
 import { MP_GLASS_BACKGROUND } from './background';
 import { mpIcon } from './icons';
+import type { SpatialPlan } from '../shared/spatial';
+import type { Hass } from './ha/client';
+import './spatial/viewer';
 
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
 interface ViewConfig {
+  mp_spatial?: SpatialPlan;
+  mp_spatial_origin?: 'project'|'areas'|'example';
   mp_project_name?: string;
   title?: string;
   mp_appearance?: AppearanceConfig;
@@ -16,7 +21,7 @@ interface ViewConfig {
 }
 
 export class MPGlassView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false} };
   static styles = css`
     :host{display:block;flex:1 1 100%;width:100%;min-width:0;min-height:100vh;container-type:inline-size;box-sizing:border-box;color:#f8fbff;font-family:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif);position:relative;isolation:isolate;overflow:hidden;background:#061421}
     *{box-sizing:border-box}.backdrop,.shade,.ambient{position:fixed;inset:0;pointer-events:none}.backdrop{z-index:-4;background-size:cover;background-repeat:no-repeat;transform:scale(1.035);filter:blur(var(--mp-bg-blur,0)) saturate(var(--mp-bg-saturation,1))}.shade{z-index:-3;background:linear-gradient(90deg,rgba(2,13,25,.8),rgba(3,18,31,.17) 58%,rgba(2,10,19,.38)),linear-gradient(0deg,rgba(2,11,21,.95),transparent 72%)}.ambient{z-index:-2;background:radial-gradient(circle at 18% 15%,color-mix(in srgb,var(--mp-accent,#69b7ff) 14%,transparent),transparent 34%),radial-gradient(circle at 85% 70%,color-mix(in srgb,var(--mp-secondary,#efbd8b) 10%,transparent),transparent 28%)}
@@ -27,6 +32,8 @@ export class MPGlassView extends LitElement {
     .hero{min-height:var(--mp-hero-height,455px);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(230px,.65fr);align-items:center;padding:clamp(42px,7vw,94px) 24px clamp(28px,4vw,52px);gap:50px}.hero-copy{max-width:780px}.eyebrow{font-size:10px;letter-spacing:.32em;text-transform:uppercase;margin-bottom:18px;display:flex;align-items:center;gap:11px;font-weight:650}.eyebrow::after{content:'';width:44px;height:1px;background:linear-gradient(90deg,var(--mp-accent),transparent)}.eyebrow .mp-icon{color:var(--mp-accent);filter:drop-shadow(0 0 9px var(--mp-accent))}.hero h1{font:clamp(43px,5.5vw,82px)/.98 var(--mp-display-font,Georgia,serif);font-weight:400;letter-spacing:-.035em;margin:0;max-width:860px;text-wrap:balance;text-shadow:0 4px 22px rgba(0,5,15,.6)}.hero p{font-size:clamp(15px,1.45vw,21px);color:#d3dfea;margin:18px 0 0;max-width:620px}.hero-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}.chip{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 11px;border-radius:999px;background:rgba(3,21,37,.38);border:1px solid rgba(211,233,255,.17);color:#dce9f5;font-size:11px;backdrop-filter:blur(12px)}.chip .mp-icon{color:#ffd56c}.quote{justify-self:end;max-width:335px;border-left:1px solid rgba(255,255,255,.38);padding:15px 0 15px clamp(24px,3vw,42px);font:italic clamp(18px,1.8vw,27px)/1.45 var(--mp-display-font,Georgia,serif);color:#f5eee7;text-shadow:0 2px 13px rgba(0,6,14,.75)}.quote::after{content:'';display:block;width:34px;height:2px;margin-top:20px;background:var(--mp-accent);border-radius:99px;box-shadow:0 0 12px color-mix(in srgb,var(--mp-accent) 45%,transparent)}
     .page-intro{padding:clamp(46px,7vw,90px) 10px clamp(28px,4vw,48px)}.page-intro .eyebrow{margin-bottom:13px}.page-intro h1{font:clamp(42px,5vw,72px)/1 var(--mp-display-font,Georgia,serif);font-weight:400;margin:0}.page-intro p{color:#b9cad9;font-size:16px;margin:13px 0 0}
     .overview{padding:0 0 16px}.overview-card{min-height:94px;border-radius:var(--mp-radius);padding:13px 16px;display:grid;grid-template-columns:minmax(190px,1fr) repeat(3,minmax(120px,.58fr));align-items:stretch;gap:8px}.overview-title{display:flex;align-items:center;gap:12px;padding:5px 8px;min-width:0}.seal{display:grid;place-items:center;width:48px;height:48px;flex:0 0 auto;border-radius:16px;color:#6be6a4;background:radial-gradient(circle,rgba(70,220,143,.24),rgba(39,153,103,.07));border:1px solid rgba(111,237,170,.21);box-shadow:0 0 25px rgba(62,215,135,.13)}.overview-title strong{display:block;font:20px/1.1 var(--mp-display-font,Georgia,serif);font-weight:400}.overview-title small{color:#7de5ab;font-size:11px}.overview-item{display:flex;align-items:center;gap:10px;padding:9px 13px;border-left:1px solid rgba(215,235,255,.12);color:#d9e6f2}.overview-item .mp-icon{color:#a9c6df}.overview-item strong{display:block;font-size:13px}.overview-item small{display:block;margin-top:3px;color:#9eb1c3;font-size:10px}
+    mp-spatial-viewer{margin:clamp(14px,2vw,24px) 0 16px}
+    .spatial-note{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:-2px 2px 20px;color:#b9cad9;font-size:12px}.spatial-note .mp-icon{color:var(--mp-accent)}.spatial-note a{margin-left:auto;min-height:36px;display:inline-flex;align-items:center;padding:0 13px;border-radius:999px;color:#eef7ff;text-decoration:none;border:1px solid color-mix(in srgb,var(--mp-accent) 45%,transparent);background:color-mix(in srgb,var(--mp-accent) 13%,transparent)}.spatial-note a:hover{background:color-mix(in srgb,var(--mp-accent) 24%,transparent)}
     .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:10px 3px 15px}.section-label{display:flex;align-items:center;gap:12px}.section-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:var(--mp-icon-radius,14px);color:#ffe170;background:rgba(255,206,66,.11);border:1px solid rgba(255,221,118,.17);box-shadow:0 0 24px rgba(255,190,40,.08)}.section-head h2{margin:0;font:clamp(23px,2.2vw,31px)/1 var(--mp-display-font,Georgia,serif);font-weight:400}.section-head p{margin:5px 0 0;color:#aebfd0;font-size:12px}.section-action{display:flex;align-items:center;gap:8px;color:#c9d9e8;font-size:12px}.section-action i{width:7px;height:7px;border-radius:50%;background:#7be1aa;box-shadow:0 0 12px #56d99a}
     .grid{display:grid;grid-template-columns:repeat(var(--mp-columns,4),minmax(0,1fr));gap:var(--mp-gap,12px)}.grid>div{min-width:0}.rooms-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap,12px)}.room{min-height:180px;padding:22px;border-radius:var(--mp-radius);color:white;text-decoration:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}.room::before{content:'';position:absolute;inset:0;background:linear-gradient(145deg,color-mix(in srgb,var(--mp-tint) 84%,transparent),rgba(4,20,35,.78));z-index:-1}.room:hover{border-color:color-mix(in srgb,var(--mp-accent) 65%,white);transform:translateY(-2px)}.room-icon{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--mp-accent) 16%,transparent);color:#dff0ff}.room h3{font:26px/1 var(--mp-display-font,Georgia,serif);font-weight:400;margin:0}.room p{margin:7px 0 0;color:#b7c8d8;font-size:12px}.room-arrow{position:absolute;right:20px;top:22px}
     footer{display:flex;align-items:center;justify-content:center;gap:14px;padding:42px 0 4px;color:#9fb2c4;letter-spacing:.23em;text-transform:uppercase;font-size:9px}footer::before,footer::after{content:'';height:1px;width:50px;background:linear-gradient(90deg,transparent,rgba(207,228,248,.45))}footer::after{transform:scaleX(-1)}
@@ -38,6 +45,9 @@ export class MPGlassView extends LitElement {
   `;
 
   cards: HTMLElement[] = [];
+  hass?: Hass;
+  private spatial?: SpatialPlan;
+  private spatialOrigin: ViewConfig['mp_spatial_origin'] = 'project';
   badges: HTMLElement[] = [];
   private projectName = 'Maison';
   private appearance: AppearanceConfig = { preset:'glass-blue' };
@@ -48,6 +58,9 @@ export class MPGlassView extends LitElement {
   private areas: AreaSummary[] = [];
 
   setConfig(config: ViewConfig) {
+    this.spatial = config?.mp_spatial;
+    this.spatialOrigin = config?.mp_spatial_origin ?? 'project';
+    this.requestUpdate();
     this.projectName = config?.mp_project_name ?? config?.title ?? 'Maison';
     this.appearance = config?.mp_appearance ?? { preset:'glass-blue' };
     this.navigation = config?.mp_navigation ?? { items:['home','lights','rooms'], showLabels:true };
@@ -69,6 +82,7 @@ export class MPGlassView extends LitElement {
     const parts = window.location.pathname.split('/').filter(Boolean);
     return `/${[...parts.slice(0,-1),path].join('/')}`;
   }
+  private areaHref = (areaId: string) => this.areas.some(area=>area.id===areaId) ? this.route(`area-${areaId}`) : undefined;
   private navItem(item: NavigationItem) {
     const meta = {
       home:{label:'Accueil',icon:'home' as const},
@@ -102,7 +116,7 @@ export class MPGlassView extends LitElement {
             ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small><i></i>${new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${a.eyebrow ?? 'Une maison plus simple à vivre'}</div><h1>${this.greeting()},<br>la maison est avec vous.</h1><p>${a.subtitle ?? 'Vos équipements sont prêts, pièce par pièce.'}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${total} équipements</span><span class="chip">${mpIcon('shield',14)} Interface locale</span></div></div><div class="quote">« ${a.quote ?? 'Les plus beaux moments commencent à la maison.'} »</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && this.spatial?.enabled ? html`<mp-spatial-viewer .plan=${this.spatial} .hass=${this.hass} .areaHref=${this.areaHref}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? 'Plan schématique créé à partir de vos pièces Home Assistant.' : 'Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.'}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">Importer ou dessiner mon plan</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${a.eyebrow ?? 'Une maison plus simple à vivre'}</div><h1>${this.greeting()},<br>la maison est avec vous.</h1><p>${a.subtitle ?? 'Vos équipements sont prêts, pièce par pièce.'}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${total} équipements</span><span class="chip">${mpIcon('shield',14)} Interface locale</span></div></div><div class="quote">« ${a.quote ?? 'Les plus beaux moments commencent à la maison.'} »</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
         ${this.viewKind === 'home' && a.showOverview !== false ? html`<section class="overview"><div class="overview-card glass"><div class="overview-title"><span class="seal">${mpIcon('shield',25)}</span><div><strong>La maison</strong><small>Tout est prêt</small></div></div><div class="overview-item">${mpIcon('bulb',21)}<div><strong>${total} équipements</strong><small>Détectés</small></div></div><div class="overview-item">${mpIcon('rooms',21)}<div><strong>${this.areas.length} pièces</strong><small>Organisation automatique</small></div></div><div class="overview-item">${mpIcon('sliders',21)}<div><strong>Contrôles</strong><small>Disponibles en direct</small></div></div></div></section>` : nothing}
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'rooms' ? html`

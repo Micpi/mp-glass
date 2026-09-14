@@ -1,7 +1,7 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean }
+interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean; model?:string }
 /** One-page PDF (600 x 400 pt) with a few walls, built by hand so the test needs no fixture file. */
 function pdfPlan():Buffer{
   const stream='4 w 20 20 560 360 re S 300 20 m 300 380 l S 300 200 m 580 200 l S';
@@ -27,7 +27,7 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       const body=init?.body as Blob;const bitmap=await createImageBitmap(body).catch(()=>undefined);
       uploads.push({url,method:init?.method,type:(init?.headers as Record<string,string>)['Content-Type'],side:bitmap&&Math.max(bitmap.width,bitmap.height)});
       if(options.uploadStatus)return new Response('404: Not Found',{status:options.uploadStatus});
-      return new Response(JSON.stringify({id:'job-test',status:'running'}),{status:202});
+      return new Response(JSON.stringify({id:'job-test',status:'running',...(options.model?{model:options.model}:{})}),{status:202});
     },callWS:async<T>(message:Record<string,unknown>)=>{
       messages.push(message);
       if(message.type==='mp_glass/spatial/cancel'&&message.job_id==='job-test')return {cancelled:true} as T;
@@ -207,6 +207,18 @@ test('failures explain the cause with the technical detail',async({page})=>{
   await page.getByLabel('Plan à importer').setInputFiles({name:'notes.txt',mimeType:'text/plain',buffer:Buffer.from('pas un plan')});
   await consentAndGenerate(page);
   await expect(page.getByRole('status')).toContainText('Format non pris en charge');
+});
+
+test('an overloaded model can be swapped for the other one for this analysis',async({page})=>{
+  await mountEditor(page,true,false,{jobError:{error:'provider_unavailable',detail:'HTTP 503 UNAVAILABLE This model is currently experiencing high demand.'},model:'gemini-3.8-flash'});
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog',{name:'Analyse impossible'});
+  await expect(dialog.getByRole('status')).toContainText('Gemini 3.8 Flash est momentanément surchargé ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec Gemini 3.5 Flash-Lite.');
+  await expect(dialog.getByRole('status')).toContainText('high demand');
+  await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url)))
+    .toEqual(['/api/mp_glass/spatial/analyze?page=1','/api/mp_glass/spatial/analyze?page=1&quality=fast']);
 });
 
 test('analysis window shows progress and cancels the running job',async({page})=>{

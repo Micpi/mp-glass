@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.1
+
+Contrat Gemini partagé : une surcharge de Google (HTTP 500, 503, 504) déclenche deux nouveaux envois de la même requête, après 4 puis 12 secondes.
+
 ## 0.3.0
 
 Contrat Gemini partagé refondu : détection des pièces en boîtes normalisées, géométrie, échelle et découpage sans chevauchement calculés localement, correspondance plan/image renvoyée pour la vérification. Modèle par défaut `gemini-3.8-flash` (tout modèle Flash accepté) ; une installation existante garde son option `model`.

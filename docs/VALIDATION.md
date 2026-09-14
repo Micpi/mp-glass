@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Gemini surchargé 0.3.1 — 14 septembre 2026
+
+Premier essai réel de la 0.3.0 : `HTTP 503 UNAVAILABLE This model is currently experiencing high demand` avec Gemini 3.8 Flash. La requête (schéma, réflexion, image) est donc acceptée ; seule la capacité du modèle manquait. Parade : deux nouveaux envois après 4 et 12 s pour les erreurs 5xx, puis choix de l’autre modèle pour l’analyse en cours, depuis la fenêtre d’échec.
+
+Validé localement : 40 tests Python (503 puis succès avec une requête identique, trois 503 signalés avec le détail Google, quota et refus jamais relancés), 34 tests Vitest, 28 scénarios Playwright (message nommant les deux modèles, relance avec `quality=fast`), build. Non validé : disponibilité réelle des modèles au moment de l’essai.
+
 ## Analyse du plan refondue 0.3.0 — 14 septembre 2026
 
 Retour utilisateur après 0.2.7 : résultat encore insuffisant. Refonte : détection des pièces par Gemini en boîtes normalisées 0–1000, géométrie calculée localement (proportions de l’image lues dans l’en-tête, alignement des murs, découpage sans chevauchement sur grille, échelle depuis les cotes écrites ou la surface habituelle des pièces), Gemini 3.8 Flash par défaut, PDF dessiné dans le navigateur (PDF.js), superposition du résultat sur le plan analysé avec renommage et exclusion des pièces, murs dessinés une fois avec murs extérieurs distingués.

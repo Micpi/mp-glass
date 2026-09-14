@@ -51,11 +51,11 @@ class SpatialRuntime:
     def configured(self):
         return bool(self.api_key) if self.backend == "gemini" else bool(self.url and self.token)
 
-    async def analyze(self, job, data, content_type, page):
+    async def analyze(self, job, data, content_type, page, model=None):
         try:
             session = async_get_clientsession(self.hass)
             if self.backend == "gemini":
-                result = await request_gemini(session, data, content_type, self.api_key, self.model, page)
+                result = await request_gemini(session, data, content_type, self.api_key, model or self.model, page)
                 job.update(status="done", plan=result["plan"], warnings=result["warnings"], source=result["source"])
                 return
             async with session.post(
@@ -131,6 +131,11 @@ class SpatialUploadView(HomeAssistantView):
                 raise ValueError
         except ValueError:
             return web.json_response({"error": "invalid_file"}, status=400)
+        # The Studio may pick the other offered model for one analysis (e.g. after an overload), never an arbitrary one.
+        quality = request.query.get("quality")
+        if quality is not None and quality not in QUALITIES:
+            return web.json_response({"error": "invalid_request"}, status=400)
+        model = QUALITIES[quality] if quality else runtime.model
         if request.content_type not in {"application/pdf", "image/png", "image/jpeg", "image/webp"}:
             return web.json_response({"error": "invalid_file"}, status=415)
         await runtime.lock.acquire()
@@ -146,10 +151,11 @@ class SpatialUploadView(HomeAssistantView):
                         return web.json_response({"error": "invalid_file"}, status=413)
             if not data:
                 return web.json_response({"error": "invalid_file"}, status=400)
-            job = {"id": uuid4().hex, "status": "running"}
+            # The Studio shows the model and offers the other one if this one is overloaded (the worker picks its own).
+            job = {"id": uuid4().hex, "status": "running", **({"model": model} if runtime.backend == "gemini" else {})}
             runtime.jobs.clear()  # One job at a time; never an unbounded source cache.
             runtime.jobs[job["id"]] = job
-            runtime.task = runtime.hass.async_create_background_task(runtime.analyze(job, bytes(data), request.content_type, page), "MP Spatial analysis")
+            runtime.task = runtime.hass.async_create_background_task(runtime.analyze(job, bytes(data), request.content_type, page, model), "MP Spatial analysis")
             transferred = True
             return web.json_response(job, status=202)
         except TimeoutError:

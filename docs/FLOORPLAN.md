@@ -1,6 +1,6 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.3.0. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.3.1. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
@@ -10,7 +10,7 @@ Ce plan est recalculé à chaque génération du dashboard et n’est pas enregi
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.3.0 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.3.0`, puis recharger le navigateur.
+1. Installer MP Glass 0.3.1 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.3.1`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.
@@ -38,7 +38,7 @@ Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. R
 
 ## Analyse du plan
 
-Depuis 0.3.0, Gemini ne rédige plus de coordonnées en mètres : il **détecte** chaque pièce sur l’image, comme un objet, avec une boîte `[ymin, xmin, ymax, xmax]` normalisée de 0 à 1000 (son format de détection natif), un contour seulement pour les pièces non rectangulaires, le texte écrit dans la pièce et, quand elles sont écrites, ses cotes converties en mètres (pieds et pouces compris). MP Glass fait ensuite toute la géométrie localement :
+Depuis 0.3.1, Gemini ne rédige plus de coordonnées en mètres : il **détecte** chaque pièce sur l’image, comme un objet, avec une boîte `[ymin, xmin, ymax, xmax]` normalisée de 0 à 1000 (son format de détection natif), un contour seulement pour les pièces non rectangulaires, le texte écrit dans la pièce et, quand elles sont écrites, ses cotes converties en mètres (pieds et pouces compris). MP Glass fait ensuite toute la géométrie localement :
 
 1. **Proportions** : les boîtes sont converties en pixels avec la taille réelle de l’image, lue dans son en-tête (PNG, JPEG, WebP) sans la décoder.
 2. **Murs** : les bords distants de moins de 1,2 % de l’image (épaisseur d’un mur) sont alignés.
@@ -54,7 +54,7 @@ La fenêtre de résultat superpose les pièces détectées, en couleur et nommé
 
 Modèle au choix dans les options de l’intégration : **Gemini 3.8 Flash** (`gemini-3.8-flash`, le plus précis, par défaut) ou **Gemini 3.5 Flash-Lite** (`gemini-3.5-flash-lite`, le plus rapide). En mode add-on, l’option `model` du worker accepte les modèles Flash. Les deux sont proposés au palier gratuit lors de la vérification du 14 septembre 2026, sous quotas et disponibilité du projet Google ; au-delà, Flash coûte plus cher que Flash-Lite. `gemini-2.5-flash-lite`, l’ancien défaut, est refusé aux nouveaux projets Google (HTTP 404). La température reste à la valeur par défaut recommandée par Google pour Gemini 3 ; la réflexion du modèle est demandée au niveau `medium` et comptée dans le budget de 32 768 jetons de sortie. Utiliser un projet API **sans facturation activée** pour éviter les frais ; l’application ne peut pas vérifier le statut de facturation via la clé. Un abonnement Gemini grand public ne remplace pas une clé API.
 
-Depuis le Studio, seule l’image de la page choisie est envoyée à Google. En mode add-on, seule la page rasterisée par le worker l’est. Ni les entités ni les états HA ne sont joints. Selon Google, les données du palier gratuit peuvent servir à améliorer leurs produits. L’accord d’envoi est présenté pour chaque fichier. Une erreur 429 est affichée sans relance, changement de modèle ni basculement payant. Seule exception : une requête refusée comme invalide (HTTP 400 `INVALID_ARGUMENT`, ni traitée ni facturée) est renvoyée, au même modèle et avec le même document, sous une forme allégée : d’abord sans schéma de réponse imposé (réflexion `medium` conservée), puis en dernier recours sans schéma ni réflexion approfondie ; le brouillon indique la forme utilisée et le résultat reste validé localement. Le schéma envoyé ne porte aucune limite de longueur de tableau : avec des limites imbriquées, `gemini-3.5-flash-lite` le refusait.
+Depuis le Studio, seule l’image de la page choisie est envoyée à Google. En mode add-on, seule la page rasterisée par le worker l’est. Ni les entités ni les états HA ne sont joints. Selon Google, les données du palier gratuit peuvent servir à améliorer leurs produits. L’accord d’envoi est présenté pour chaque fichier. Une erreur 429 est affichée sans relance, changement de modèle ni basculement payant. Une surcharge de Google (HTTP 500, 503 ou 504, non facturée) déclenche deux nouveaux envois de la même requête, après 4 puis 12 secondes ; si elle persiste, la fenêtre d’échec propose de relancer tout de suite avec l’autre modèle, pour cette analyse seulement. Seule exception : une requête refusée comme invalide (HTTP 400 `INVALID_ARGUMENT`, ni traitée ni facturée) est renvoyée, au même modèle et avec le même document, sous une forme allégée : d’abord sans schéma de réponse imposé (réflexion `medium` conservée), puis en dernier recours sans schéma ni réflexion approfondie ; le brouillon indique la forme utilisée et le résultat reste validé localement. Le schéma envoyé ne porte aucune limite de longueur de tableau : avec des limites imbriquées, `gemini-3.5-flash-lite` le refusait.
 
 [Tarification officielle](https://ai.google.dev/gemini-api/docs/pricing) · [Détection d’objets](https://ai.google.dev/gemini-api/docs/generate-content/image-understanding) · [Sortie JSON structurée](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
 

@@ -7,6 +7,7 @@ import math
 from pathlib import Path
 import sys
 import unittest
+import unittest.mock
 
 from aiohttp.test_utils import TestClient, TestServer
 from PIL import Image
@@ -246,6 +247,20 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(len(session.payloads), count)
             if model.startswith("gemini-2"):
                 self.assertFalse(any("thinkingConfig" in p["generationConfig"] for p in session.payloads))
+
+    async def test_overloaded_model_gets_the_same_request_again(self):
+        busy = json.dumps({"error": {"code": 503, "status": "UNAVAILABLE", "message": "This model is currently experiencing high demand."}}).encode()
+        with unittest.mock.patch.object(gemini, "RETRY_DELAYS", (0, 0)), self.assertLogs(gemini._LOGGER, "WARNING"):
+            session = self.replies((503, busy), (200, self.OK))
+            result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+            self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["name"], "Salon")
+            self.assertEqual(session.payloads[0], session.payloads[1])  # same structured request, not a lighter one
+            session = self.replies((503, busy), (503, busy), (503, busy))
+            with self.assertRaises(gemini.SpatialError) as caught:
+                await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+        self.assertEqual(caught.exception.code, "provider_unavailable")
+        self.assertIn("high demand", caught.exception.detail)
+        self.assertEqual(len(session.payloads), 3)
 
     async def test_other_refusals_are_not_retried(self):
         for status, body in [(429, b'{"error": {"status": "RESOURCE_EXHAUSTED"}}'), (400, b'{"error": {"status": "FAILED_PRECONDITION"}}'),

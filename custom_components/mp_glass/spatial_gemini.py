@@ -1,4 +1,5 @@
 """Gemini floor-plan contract shared by direct HA import and the optional worker."""
+import asyncio
 import base64
 import json
 import logging
@@ -19,6 +20,8 @@ ROOT = Path(__file__).parent
 VALIDATOR = Draft7Validator(json.loads((ROOT / "spatial.schema.json").read_text()))
 # Output budget, thought tokens included (always on with Gemini 3).
 MAX_OUTPUT_TOKENS = 32768
+# Google overloaded or down (HTTP 500/503/504, not billed): the same request again after these delays, in seconds.
+RETRY_DELAYS = (4, 12)
 MAX_FILE = 8 * 1024 * 1024
 MAX_ROOMS = 60
 MAX_POINTS = 40
@@ -479,6 +482,21 @@ async def _send(session, payload, model, api_key):
     return body
 
 
+async def _send_retrying(session, payload, model, api_key):
+    """Overload or outage on Google's side ("high demand", HTTP 5xx): the same request again, twice, a few seconds apart.
+
+    Quota (429) and refusals are never retried.
+    """
+    for delay in (*RETRY_DELAYS, None):
+        try:
+            return await _send(session, payload, model, api_key)
+        except SpatialError as err:
+            if err.code != "provider_unavailable" or delay is None:
+                raise
+            _LOGGER.warning("Gemini unavailable (%s); new attempt in %s s", err.detail, delay)
+            await asyncio.sleep(delay)
+
+
 async def request_gemini(session, data, mime, api_key, model=DEFAULT_MODEL, page=1):
     api_key = (api_key or "").strip()
     if not api_key:
@@ -493,7 +511,7 @@ async def request_gemini(session, data, mime, api_key, model=DEFAULT_MODEL, page
     notes = []
     for index, (structured, thinking) in enumerate(attempts):
         try:
-            body = await _send(session, build_request(data, mime, model, page, structured, thinking), model, api_key)
+            body = await _send_retrying(session, build_request(data, mime, model, page, structured, thinking), model, api_key)
             break
         except SpatialError as refused:
             if refused.code != "provider_request" or refused.status != 400:

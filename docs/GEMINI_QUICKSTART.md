@@ -27,7 +27,7 @@ Depuis 0.2.2, le Studio affiche la cause et, sous le message, le **détail techn
 | Accès refusé (région ou facturation) | Le palier gratuit n’est pas ouvert à ce projet ou à ce pays : voir le détail Google. |
 | Modèle refusé (HTTP 404 `NOT_FOUND`, « no longer available to new users ») | Le modèle n’est plus ouvert à ce projet : mettre à jour MP Glass (modèle par défaut `gemini-3.5-flash-lite`) et redémarrer HA. En mode add-on, corriger l’option `model` du worker. |
 | Gemini a refusé la requête (HTTP 400 `INVALID_ARGUMENT`) | MP Glass a déjà réessayé sous des formes allégées : le document est probablement en cause. Exporter la page du plan en PNG ou JPEG (capture d’écran nette) et relancer. Le détail technique indique le champ refusé quand Google le précise. |
-| Gemini surchargé | Réessayer quelques minutes plus tard. |
+| Gemini surchargé (HTTP 503 « high demand ») | MP Glass a déjà renvoyé la même requête deux fois, à quelques secondes d’intervalle. Réessayer quelques minutes plus tard, ou tout de suite avec **Réessayer avec** l’autre modèle proposé dans la fenêtre (pour cette analyse seulement ; le réglage des options ne change pas). |
 | Aucune pièce reconnue / réponse coupée | Vérifier le numéro de page, importer un seul niveau, une image plus nette ou recadrée. |
 | Google injoignable | Vérifier l’accès Internet et le DNS de Home Assistant. |
 

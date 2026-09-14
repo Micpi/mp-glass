@@ -7,7 +7,10 @@ import './viewer';
 
 /** Maps the plan (metres) back onto the analysed image: pixel = metre / scale + origin. */
 interface Source { width:number; height:number; scale:number[]; origin:number[] }
-interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source }
+interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string }
+type Quality='precise'|'fast';
+/** Models offered in the integration options; the other one is proposed when Gemini is overloaded. */
+const MODELS:Record<string,{label:string;quality:Quality}>={'gemini-3.8-flash':{label:'Gemini 3.8 Flash',quality:'precise'},'gemini-3.5-flash-lite':{label:'Gemini 3.5 Flash-Lite',quality:'fast'}};
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
 /** Distinct colour per room (golden angle), shared by the overlay and the review list. */
@@ -28,7 +31,7 @@ const MESSAGES:Record<string,string>={
   provider_region:'Google refuse l’accès à Gemini pour ce projet (région ou facturation). Voir le détail ci-dessous.',
   provider_request:'Gemini a refusé la requête, même simplifiée : le document est sans doute en cause (PDF protégé, corrompu ou atypique). Essayez une capture PNG ou JPEG du plan. Voir le détail ci-dessous.',
   cancelled:'Analyse annulée. Le plan enregistré est conservé.',
-  provider_unavailable:'Gemini est momentanément surchargé ou indisponible. Réessayez dans quelques minutes.',
+  provider_unavailable:'Gemini est momentanément surchargé ou indisponible ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes.',
   provider_unreachable:'Home Assistant n’arrive pas à joindre Google Gemini. Vérifiez sa connexion Internet et son DNS.',
   provider_blocked:'Gemini a interrompu l’analyse de ce document. Essayez une autre page ou une image du plan.',
   worker_unavailable:'Add-on inaccessible. Vérifiez son démarrage, son adresse et la clé de liaison.',
@@ -83,7 +86,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},source:{state:true},sourceUrl:{state:true},edits:{state:true},view:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},edits:{state:true},view:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
@@ -113,6 +116,10 @@ export class MPSpatialEditor extends LitElement {
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
   /** Review of the draft: image sent to Gemini, rooms kept and renamed, overlay or 3D. */
+  /** Model of the running or last analysis, as reported by Home Assistant (direct mode only). */
+  private model='';private quality?:Quality;private errorCode='';
+  private get modelLabel(){return MODELS[this.model]?.label??'Gemini';}
+  private get alternative(){const current=MODELS[this.model];return current?Object.values(MODELS).find(m=>m.quality!==current.quality):undefined;}
   private source?:Source;private sourceUrl='';private edits:{name:string;include:boolean}[]=[];private view:'overlay'|'3d'='overlay';
   connectedCallback(){super.connectedCallback();this.disposed=false;}
   disconnectedCallback(){
@@ -139,8 +146,10 @@ export class MPSpatialEditor extends LitElement {
   private mutate(edit:(plan:SpatialPlan)=>void){if(!this.draft)return;const copy=structuredClone(this.draft);edit(copy);this.commit(copy);}
   private editRoom(edit:(room:SpatialRoom)=>void){const id=this.room?.id;this.mutate(plan=>{const room=plan.floors[this.floorIndex]?.rooms.find(r=>r.id===id);if(room)edit(room);});}
   private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';}
-  private async analyze(){
+  /** `quality`: the other offered model for this analysis only (after an overload); none: the one in the options. */
+  private async analyze(quality?:Quality){
     if(!this.file||!this.hass?.fetchWithAuth||!this.confirmed||this.busy)return;
+    this.quality=quality;this.model='';this.errorCode='';
     this.busy=true;this.candidate=undefined;this.source=undefined;this.setSource();this.detail='';this.warnings=[];this.jobId='';this.phase='preparing';this.dialogOpen=true;this.startedAt=Date.now();this.message='Préparation du fichier…';
     clearInterval(this.ticker);this.ticker=setInterval(()=>{this.tick++;},1000);
     const generation=++this.generation;
@@ -149,7 +158,7 @@ export class MPSpatialEditor extends LitElement {
       if(this.disposed||generation!==this.generation)return;
       this.setSource(body);
       this.phase='uploading';this.message='Envoi du plan à Home Assistant…';
-      const response=await this.hass.fetchWithAuth(`/api/mp_glass/spatial/analyze?page=${this.page}`,{method:'POST',headers:{'Content-Type':body.type},body});
+      const response=await this.hass.fetchWithAuth(`/api/mp_glass/spatial/analyze?page=${this.page}${quality?`&quality=${quality}`:''}`,{method:'POST',headers:{'Content-Type':body.type},body});
       if(!response.ok){
         const answer=await response.json().catch(()=>({})) as {error?:string};
         throw Error(answer.error??(response.status===404?'not_installed':response.status===401||response.status===403?'unauthorized':`http_${response.status}`));
@@ -157,7 +166,7 @@ export class MPSpatialEditor extends LitElement {
       const job=await response.json() as Job;
       // Cancelled while uploading: the job has just started, stop it so the next analysis is not "busy".
       if(this.disposed||generation!==this.generation){void this.stopJob(job.id);return;}
-      this.jobId=job.id;this.phase='analyzing';this.message='Analyse du plan par Gemini…';
+      this.jobId=job.id;this.model=job.model??'';this.phase='analyzing';this.message=`Analyse du plan par ${this.modelLabel}…`;
       await this.poll(job.id,generation);
     }catch(error){if(generation===this.generation)this.fail(error);}
   }
@@ -165,7 +174,9 @@ export class MPSpatialEditor extends LitElement {
   private fail(error:unknown,detail=''){
     const code=error instanceof TypeError?'network':error instanceof Error?error.message:String((error as {code?:string})?.code??error);
     const pages=Number(/^page_missing:(\d+)$/.exec(code)?.[1]);
-    this.message=pages?`La page ${this.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:MESSAGES[code]??`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
+    this.errorCode=code;
+    const overloaded=code==='provider_unavailable'&&this.alternative?`${this.modelLabel} est momentanément surchargé ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec ${this.alternative.label}.`:'';
+    this.message=pages?`La page ${this.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:overloaded||MESSAGES[code]||`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
   }
   private async poll(id:string,generation:number){
     try{
@@ -232,7 +243,7 @@ export class MPSpatialEditor extends LitElement {
     const seconds=Math.round((this.busy?Date.now()-this.startedAt:this.elapsed)/1000),time=`${Math.floor(seconds/60)}:${String(seconds%60).padStart(2,'0')}`;
     let body;
     if(this.busy){
-      const steps:[string,string][]=[['preparing','Préparation du fichier'],['uploading','Envoi à Home Assistant'],['analyzing','Analyse du plan par Gemini']];
+      const steps:[string,string][]=[['preparing','Préparation du fichier'],['uploading','Envoi à Home Assistant'],['analyzing',`Analyse du plan par ${this.modelLabel}`]];
       const current=steps.findIndex(([id])=>id===this.phase),pdf=this.file?.type==='application/pdf'||/\.pdf$/i.test(this.file?.name??'');
       body=html`<header class="job-head"><span class="job-orb scan">${mpIcon('scan',26)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse du plan en cours</h3><p>${this.file?.name??''}${pdf?` · page ${this.page}`:''}</p></div></header>
         <ol class="steps">${steps.map(([id,label],i)=>html`<li class=${i<current?'done':i===current?'current':''}><span class="dot">${i<current?mpIcon('check',12):nothing}</span><span>${label}</span>${id==='analyzing'&&i===current?html`<time>${time}</time>`:nothing}</li>`)}</ol>
@@ -253,7 +264,7 @@ export class MPSpatialEditor extends LitElement {
     }else{
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse impossible</h3><p>Le plan enregistré est conservé.</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>
-        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${this.file&&this.confirmed?html`<button class="primary" @click=${this.analyze}>Réessayer</button>`:nothing}</div>`;
+        <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${this.file&&this.confirmed&&this.alternative&&this.errorCode==='provider_unavailable'?html`<button @click=${()=>this.analyze(this.alternative!.quality)}>Réessayer avec ${this.alternative.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class="primary" @click=${()=>this.analyze(this.quality)}>Réessayer</button>`:nothing}</div>`;
     }
     // Escape does not interrupt a running analysis: only "Annuler l’analyse" does.
     return html`<dialog class="job" aria-labelledby="job-title" @cancel=${(e:Event)=>{if(this.busy)e.preventDefault();}} @close=${()=>{this.dialogOpen=false;}}>${body}</dialog>`;
@@ -262,7 +273,7 @@ export class MPSpatialEditor extends LitElement {
     return html`<h2>Plan 3D</h2><p>Votre maison en volume, reliée à vos équipements.</p>
     ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau, lumières déjà associées. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
-      <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label></div><label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${this.analyze}>Générer le brouillon 3D</button></div>
+      <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label></div><label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>Générer le brouillon 3D</button></div>
       <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}

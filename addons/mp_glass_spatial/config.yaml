@@ -1,5 +1,5 @@
 name: MP Glass Spatial
-version: "0.2.5"
+version: "0.2.6"
 slug: mp_glass_spatial
 description: Génération de plans 3D avec Gemini Flash-Lite, pilotée depuis MP Glass Studio
 arch:

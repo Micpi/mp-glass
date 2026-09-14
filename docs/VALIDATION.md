@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Plans importés plus fidèles 0.2.6 — 14 septembre 2026
+
+Premier import réel réussi (plan de maison coté en pieds, image avec filigrane) : 16 pièces pour 31 m² au lieu d’environ 150 m², pièces chevauchantes à gauche du plan, noms restés en anglais, placards comptés comme pièces. Corrections : prompt réécrit (murs extérieurs puis cotes puis pièces jointives, conversion pieds/pouces, placards rattachés, noms en français, filigranes ignorés), réflexion `medium`, échelle recalculée à partir des cotes écrites, murs proches alignés, surfaces invraisemblables signalées.
+
+Validé localement : 36 tests Python (calibrage à partir de cotes lues au double de la taille dessinée, cotes contradictoires ignorées, murs décalés de 5 à 8 cm alignés, surface moyenne de 1 m² signalée, contenu du prompt, niveau de réflexion absent de la requête simplifiée et des modèles 2.x), 33 tests Vitest, 24 scénarios Playwright, build. Non validé : qualité réelle du nouveau prompt, qui dépend du modèle ; à juger sur un nouvel import.
+
 ## Import fiabilisé et fenêtre d’analyse 0.2.5 — 14 septembre 2026
 
 Signalement utilisateur : `HTTP 400 INVALID_ARGUMENT Request contains an invalid argument.` avec `gemini-3.5-flash-lite`, sans détail de champ. Cause non déterminable sans appel réel (aucune clé dans cette session) ; suspects dans la requête : budget de sortie porté à 65 536 en 0.2.3, schéma de réponse imposé ; sinon le document lui-même. Parade : budget ramené à 32 768, un seul renvoi sans schéma de réponse sur un 400 invalide, détail des `fieldViolations` de Google, message orientant vers une image si les deux requêtes sont refusées.

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.6
+
+Contrat Gemini partagé : prompt de lecture du plan réécrit (cotes en pieds ou en mètres, pièces jointives, noms en français), réflexion `medium` pour Gemini 3, échelle recalculée à partir des cotes écrites, murs proches alignés, surfaces invraisemblables signalées.
+
 ## 0.2.5
 
 Contrat Gemini partagé : sortie limitée à 32 768 jetons, requête refusée comme invalide (HTTP 400) renvoyée une fois sans schéma de réponse, détail des champs refusés par Google.

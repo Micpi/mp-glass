@@ -77,6 +77,40 @@ class GeometryTest(unittest.TestCase):
         self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["polygon"], [[0, 0], [15, 0], [15, 11.25], [0, 11.25]])
         self.assertIn("calibrez", result["warnings"][0])
 
+    def test_written_room_sizes_set_the_scale(self):
+        # Drawn at half size, as in a real import where 21X16 ft rooms came out far too small.
+        rooms = [{"name": "Séjour", "polygon": [[0, 0], [3.2, 0], [3.2, 2.44], [0, 2.44]], "size": [6.4, 4.88]},
+                 {"name": "Chambre 3", "polygon": [[3.2, 0], [4.725, 0], [4.725, 1.675], [3.2, 1.675]], "size": [3.35, 3.05]},
+                 {"name": "Cuisine", "polygon": [[0, 2.44], [3.2, 2.44], [3.2, 4], [0, 4]]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []})
+        living, bedroom, kitchen = result["plan"]["floors"][0]["rooms"]
+        self.assertEqual(living["polygon"], [[0, 0], [6.4, 0], [6.4, 4.88], [0, 4.88]])
+        self.assertEqual(bedroom["polygon"][2], [9.45, 3.35])
+        self.assertEqual(kitchen["polygon"][2], [6.4, 8])
+        self.assertEqual(result["warnings"], ["Échelle calculée à partir des cotes de 2 pièces du plan."])
+
+    def test_written_sizes_that_contradict_the_drawing_are_not_trusted(self):
+        rooms = [{"name": "Séjour", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]], "size": [8, 6]},
+                 {"name": "Chambre", "polygon": [[4, 0], [7, 0], [7, 3], [4, 3]], "size": [15, 15]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []})
+        self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["polygon"], [[0, 0], [4, 0], [4, 3], [0, 3]])
+        self.assertIn("Échelle estimée", result["warnings"][0])
+
+    def test_neighbouring_walls_are_snapped_together(self):
+        rooms = [{"name": "Salon", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]]},
+                 {"name": "Cuisine", "polygon": [[4.08, 0.05], [7, 0.05], [7, 3.1], [4.08, 3.1]]}]
+        plan = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["plan"]
+        self.assertEqual(plan["floors"][0]["rooms"][1]["polygon"], [[4, 0], [7, 0], [7, 3], [4, 3]])
+
+    def test_implausible_room_sizes_are_flagged(self):
+        rooms = [{"name": f"Pièce {i}", "polygon": [[i, 0], [i + 1, 0], [i + 1, 1], [i, 1]]} for i in range(3)]
+        warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["warnings"]
+        self.assertIn("Surface moyenne de 1,0 m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue.", warnings)
+
+    def test_prompt_reads_imperial_sizes_and_names_rooms_in_french(self):
+        for text in ("feet x 0.3048", "12X16", "BED 2 -> Chambre 2", "W.I.C. -> Dressing", "Ignore watermarks", "Rooms never overlap"):
+            self.assertIn(text, gemini.PROMPT)
+
     def test_unreadable_plan_reports_no_rooms(self):
         for rooms in ([], [{"name": "Trait", "polygon": [[0, 0], [1, 1], [2, 2]]}]):
             with self.assertRaisesRegex(ValueError, "no_rooms"):
@@ -115,7 +149,11 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gemini.DEFAULT_MODEL, "gemini-3.5-flash-lite")
         self.assertNotIn("temperature", config)
         self.assertEqual(config["maxOutputTokens"], 32768)
-        self.assertEqual(gemini.build_request(image_bytes(), "image/png", "gemini-2.5-flash-lite")["generationConfig"]["temperature"], 0)
+        self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "medium"})
+        self.assertNotIn("thinkingConfig", gemini.build_request(image_bytes(), "image/png", gemini.DEFAULT_MODEL, structured=False)["generationConfig"])
+        legacy = gemini.build_request(image_bytes(), "image/png", "gemini-2.5-flash-lite")["generationConfig"]
+        self.assertEqual(legacy["temperature"], 0)
+        self.assertNotIn("thinkingConfig", legacy)
 
     @staticmethod
     def replies(*answers):

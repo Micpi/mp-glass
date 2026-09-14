@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.4 — dashboard créé à l’installation
+
+- Le dashboard n’était pas créé après une installation par HACS : seul le Studio apparaissait. Le Studio ajoute désormais le dashboard **MP Glass** dans la barre latérale dès sa première ouverture (commandes WebSocket publiques de Home Assistant, administrateurs uniquement). Un dashboard MP Glass existant est réutilisé, quelle que soit son adresse ; en cas d’échec, le Studio indique la marche manuelle.
+- Le bouton **Voir le dashboard** du Studio pointe vers le dashboard réel au lieu d’une adresse fixe.
+- Le Studio s’appelle **MP Glass Studio** dans la barre latérale, pour ne plus se confondre avec le dashboard.
+
 ## 0.2.3 — plan 3D pensé pour le téléphone, Gemini 3.5 et mises à jour HACS
 
 - Installation et mises à jour depuis HACS (dépôt personnalisé `Micpi/mp-glass`, catégorie Intégration) : chaque release GitHub apparaît comme mise à jour dans Home Assistant.

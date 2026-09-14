@@ -1,6 +1,6 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.2.3. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.2.4. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
@@ -10,7 +10,7 @@ Ce plan est recalculé à chaque génération du dashboard et n’est pas enregi
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.2.3 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.2.3`, puis recharger le navigateur.
+1. Installer MP Glass 0.2.4 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.2.4`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.

@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Dashboard créé à l’installation 0.2.4 — 14 septembre 2026
+
+Signalement utilisateur : après installation par HACS sur une autre instance, seul le Studio apparaît, pas le dashboard. Cause : le dashboard devait être ajouté à la main (Paramètres → Tableaux de bord) et le lien du Studio visait une adresse fixe `/mp-glass/home` inexistante.
+
+Validé localement : 33 tests Vitest (dont réutilisation d’un dashboard MP Glass existant quelle que soit son adresse, création avec la strategy `custom:mp-glass`, adresse de repli si `mp-glass` est prise), 22 scénarios Playwright (installation neuve : création du dashboard par le Studio, message affiché, lien vers `/mp-glass/home`), 28 tests Python, build. Non validé : création réelle sur une instance Home Assistant.
+
 ## Plan 3D mobile, Gemini 3.5 et HACS 0.2.3 — 14 septembre 2026
 
 Signalements utilisateur : plan 3D difficile à utiliser sur téléphone (le plan capte le défilement) ; import Gemini refusé avec `HTTP 404 NOT_FOUND This model models/gemini-2.5-flash-lite is no longer available to new users`. Modèle de remplacement `gemini-3.5-flash-lite` vérifié sur la documentation Google du jour (stable, PDF et images, sortie JSON structurée, palier gratuit).

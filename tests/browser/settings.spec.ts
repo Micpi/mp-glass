@@ -22,7 +22,9 @@ test('strategy and settings use registry/project contracts and retain manual ove
     const snapshot=home(1);snapshot.devices[0].area_id=null;
     let record={revision:0,project:defaultProject('Maison test')};
     record.project.overrides['stable-0']={name:'Éclairage principal'};
-    const requests:unknown[]=[];
+    const requests:Record<string,unknown>[]=[];
+    // Fresh install: no dashboard yet besides an unrelated one.
+    const dashboards:{url_path:string;config?:unknown}[]=[{url_path:'energie',config:{views:[]}}];
     const hass={connection:{},states:snapshot.states,language:'fr',user:{id:'test',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
       requests.push(message);
       switch(message.type){
@@ -32,6 +34,10 @@ test('strategy and settings use registry/project contracts and retain manual ove
         case 'config/floor_registry/list':return snapshot.floors;
         case 'config/device_registry/list':return snapshot.devices;
         case 'config/entity_registry/list':return snapshot.entities;
+        case 'lovelace/dashboards/list':return dashboards.map(({url_path})=>({url_path,mode:'storage'}));
+        case 'lovelace/config':{const config=dashboards.find(d=>d.url_path===message.url_path)?.config;if(config)return config;throw {code:'config_not_found'};}
+        case 'lovelace/dashboards/create':dashboards.push({url_path:String(message.url_path)});return {};
+        case 'lovelace/config/save':dashboards.find(d=>d.url_path===message.url_path)!.config=message.config;return null;
         default:throw Error('unexpected command');
       }
     }};
@@ -40,6 +46,12 @@ test('strategy and settings use registry/project contracts and retain manual ove
     panel.hass=hass;document.body.replaceChildren(panel);
     Object.assign(window,{settingsTest:{hass,requests}});
   });
+  await expect(page.getByText('Dashboard « MP Glass » créé')).toBeVisible();
+  await expect(page.getByRole('link',{name:'Voir le dashboard'})).toHaveAttribute('href','/mp-glass/home');
+  expect(await page.evaluate(()=>(window as unknown as {settingsTest:{requests:Record<string,unknown>[]}}).settingsTest.requests.filter(r=>String(r.type).startsWith('lovelace/dashboards/create')||r.type==='lovelace/config/save'))).toEqual([
+    {type:'lovelace/dashboards/create',url_path:'mp-glass',title:'MP Glass',icon:'mdi:view-dashboard',show_in_sidebar:true,require_admin:false},
+    {type:'lovelace/config/save',url_path:'mp-glass',config:{strategy:{type:'custom:mp-glass'}}},
+  ]);
   await page.getByRole('button',{name:/Équipements/}).click();
   await expect(page.getByText('Éclairage principal',{exact:true})).toBeVisible();
   await page.getByRole('combobox',{name:'Pièce',exact:true}).selectOption('salon');

@@ -38,3 +38,24 @@ export async function readProject(hass: Hass): Promise<ProjectResponse> {
 export async function saveProject(hass: Hass, response: ProjectResponse): Promise<ProjectResponse> {
   return hass.callWS({ type: 'mp_glass/project/save', revision: response.revision, project: parseProject(response.project) });
 }
+export const DASHBOARD_STRATEGY = 'custom:mp-glass';
+/**
+ * Dashboard running the MP Glass strategy, created in the sidebar when none exists, through the same
+ * public WebSocket commands as Home Assistant's "Add dashboard" dialog. Administrators only.
+ */
+export async function ensureDashboard(hass: Hass, title = 'MP Glass'): Promise<{ urlPath: string; created: boolean }> {
+  const dashboards = await hass.callWS<{ url_path: string }[]>({ type: 'lovelace/dashboards/list' });
+  // Overview (null) last: an MP Glass dashboard of its own is preferred when both exist.
+  const paths: (string | null)[] = [...dashboards.map(d => d.url_path).sort((a, b) => Number(b === 'mp-glass') - Number(a === 'mp-glass')), null];
+  const configs = await Promise.all(paths.map(url_path => hass.callWS<{ strategy?: { type?: unknown } }>({ type: 'lovelace/config', url_path }).catch(() => undefined)));
+  const found = configs.findIndex(config => config?.strategy?.type === DASHBOARD_STRATEGY);
+  if (found >= 0) return { urlPath: paths[found] ?? 'lovelace', created: false };
+  const used = new Set(dashboards.map(d => d.url_path));
+  for (const urlPath of ['mp-glass', 'mp-glass-2', 'mp-glass-3'].filter(path => !used.has(path))) {
+    try { await hass.callWS({ type: 'lovelace/dashboards/create', url_path: urlPath, title, icon: 'mdi:view-dashboard', show_in_sidebar: true, require_admin: false }); }
+    catch { continue; } // URL already used by another panel.
+    await hass.callWS({ type: 'lovelace/config/save', url_path: urlPath, config: { strategy: { type: DASHBOARD_STRATEGY } } });
+    return { urlPath, created: true };
+  }
+  throw new Error('dashboard_unavailable');
+}

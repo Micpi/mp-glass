@@ -15,7 +15,7 @@ async def async_register(hass, show_settings):
         hass.data["mp_glass_static_registered"] = True
     register_module(hass, BOOTSTRAP_URL)
     if show_settings:
-        await panel_custom.async_register_panel(hass, frontend_url_path="mp-glass-settings", webcomponent_name="mp-glass-settings", sidebar_title="MP Glass", sidebar_icon="mdi:view-dashboard", module_url=MODULE_URL, require_admin=True)
+        await panel_custom.async_register_panel(hass, frontend_url_path="mp-glass-settings", webcomponent_name="mp-glass-settings", sidebar_title="MP Glass Studio", sidebar_icon="mdi:tune-variant", module_url=MODULE_URL, require_admin=True)
 
 
 def async_unregister(hass):

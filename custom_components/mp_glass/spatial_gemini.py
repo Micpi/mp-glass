@@ -259,20 +259,40 @@ def _trace(cells, xs, ys):
     return [p for k, p in enumerate(points) if _cross(points[k - 1], p, points[(k + 1) % len(points)]) != 0]
 
 
-def _partition(boxes):
-    """Non-overlapping outlines: each cell of the grid made by all box edges goes to the smallest box covering it.
+def _corners(box):
+    return [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]]
 
-    A closet drawn inside a bedroom carves it (an L-shaped bedroom) instead of overlapping it.
+
+def _orthogonal(ring):
+    """Horizontal and vertical sides only (an L, T or U-shaped room): the grid of `_partition` follows it exactly."""
+    return all(a[0] == b[0] or a[1] == b[1] for a, b in zip(ring, ring[1:] + ring[:1]))
+
+
+def _inside(x, y, ring):
+    """Ray casting. The points tested are cell centres, never on a side of an outline drawn on the grid."""
+    inside = False
+    for (x1, y1), (x2, y2) in zip(ring, ring[1:] + ring[:1]):
+        if (y1 > y) != (y2 > y) and x < x1 + (y - y1) * (x2 - x1) / (y2 - y1):
+            inside = not inside
+    return inside
+
+
+def _partition(rings):
+    """Non-overlapping outlines: each cell of the grid made by all outline coordinates goes to the smallest outline covering it.
+
+    A closet drawn inside a bedroom carves it (an L-shaped bedroom) instead of overlapping it. Outlines are rectangles or
+    rooms drawn with horizontal and vertical sides, which the grid follows exactly.
     """
-    xs = sorted({v for b in boxes for v in (b[0], b[2])})
-    ys = sorted({v for b in boxes for v in (b[1], b[3])})
-    areas = [(b[2] - b[0]) * (b[3] - b[1]) for b in boxes]
-    owned = [set() for _ in boxes]
+    xs = sorted({p[0] for r in rings for p in r})
+    ys = sorted({p[1] for r in rings for p in r})
+    boxes = [(min(p[0] for p in r), min(p[1] for p in r), max(p[0] for p in r), max(p[1] for p in r)) for r in rings]
+    areas = [_area(r) for r in rings]
+    owned = [set() for _ in rings]
     for i in range(len(xs) - 1):
         x = (xs[i] + xs[i + 1]) / 2
         for j in range(len(ys) - 1):
             y = (ys[j] + ys[j + 1]) / 2
-            covering = [k for k, b in enumerate(boxes) if b[0] <= x <= b[2] and b[1] <= y <= b[3]]
+            covering = [k for k, b in enumerate(boxes) if b[0] <= x <= b[2] and b[1] <= y <= b[3] and _inside(x, y, rings[k])]
             if covering:
                 owned[min(covering, key=areas.__getitem__)].add((i, j))
     return [_trace(cells, xs, ys) if cells else None for cells in owned]
@@ -327,9 +347,11 @@ def normalize_result(value, size=None, scale=None):
     names, boxes, shapes, sizes = [], [], [], []
     for index, room in enumerate(value["rooms"][:MAX_ROOMS * 2], 1):
         names.append(" ".join(room["name"].split())[:80] or f"Pièce {index}")
-        shape = [[float(p[1]) * fx, float(p[0]) * fy] for p in room.get("polygon", []) if len(p) >= 2 and all(math.isfinite(v) for v in p[:2])]
+        shape = [[min(max(float(p[1]), 0), 1000) * fx, min(max(float(p[0]), 0), 1000) * fy] for p in room.get("polygon", [])
+                 if len(p) >= 2 and all(math.isfinite(v) for v in p[:2])]
         box = _box(room["box_2d"])
-        if box is None and len(shape) >= 3:
+        if len(shape) >= 3:
+            # The outline, drawn in the Studio or given by Gemini, is more precise than a box written beside it.
             box = (min(p[0] for p in shape) / fx, min(p[1] for p in shape) / fy, max(p[0] for p in shape) / fx, max(p[1] for p in shape) / fy)
         boxes.append(box and (box[0] * fx, box[1] * fy, box[2] * fx, box[3] * fy))
         shapes.append(shape if len(shape) >= 3 else None)
@@ -342,9 +364,11 @@ def normalize_result(value, size=None, scale=None):
     boxes = [b and (snap_x[b[0]], snap_y[b[1]], snap_x[b[2]], snap_y[b[3]]) for b in boxes]
     boxes = [b if b and b[2] > b[0] and b[3] > b[1] else None for b in boxes]
     shapes = [s and [[snap_x[x], snap_y[y]] for x, y in s] for s in shapes]
-    rectangles = [k for k, b in enumerate(boxes) if b and not shapes[k]]
-    outlines = dict(zip(rectangles, _partition([boxes[k] for k in rectangles]))) if rectangles else {}
-    regions = [shapes[k] or outlines.get(k) for k in range(len(names))]
+    # Rectangles and outlines with right angles share one grid, so none overlaps another; an outline with a slanted
+    # side is kept as drawn.
+    members = [k for k, b in enumerate(boxes) if b and (not shapes[k] or _orthogonal(shapes[k]))]
+    outlines = dict(zip(members, _partition([shapes[k] or _corners(boxes[k]) for k in members]))) if members else {}
+    regions = [outlines[k] if k in outlines else shapes[k] for k in range(len(names))]
     notes = []
     calibrated = _scale(boxes, sizes, size is not None)
     if calibrated:

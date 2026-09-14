@@ -34,10 +34,10 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       if(message.type==='mp_glass/spatial/info')return (options.info??{backend:'gemini',configured:true,model:'gemini-3.8-flash',quality:'precise'}) as T;
       if(message.type==='mp_glass/spatial/normalize'){
         // Stand-in for Home Assistant's geometry (tested in Python): each room is its box, 100 px per metre.
-        const rooms=message.rooms as {name:string;box_2d:number[]}[],width=message.width as number,height=message.height as number;
+        const rooms=message.rooms as {name:string;box_2d:number[];polygon?:number[][]}[],width=message.width as number,height=message.height as number;
         const floor={id:'imported',name:'Niveau importé',elevation:0,height:2.6,rooms:rooms.map((room,i)=>{
           const [y0,x0,y1,x1]=room.box_2d.map((v,k)=>v*(k%2?width:height)/100000) as [number,number,number,number];
-          return {id:`room-${i+1}`,name:room.name,polygon:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]};
+          return {id:`room-${i+1}`,name:room.name,polygon:room.polygon?room.polygon.map(([y,x])=>[x!*width/100000,y!*height/100000]):[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]};
         })};
         return {plan:{version:1,enabled:true,floors:[floor]},warnings:[],source:{width,height,scale:[.01,.01],origin:[0,0]},detection:rooms.map((room,i)=>({...room,id:`room-${i+1}`}))} as T;
       }
@@ -68,7 +68,7 @@ const choosePlanImage=(page:Page)=>page.evaluate(async()=>{
   const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
 });
 /** Rooms sent to Home Assistant by the last edit of the draft. */
-const editedRooms=async(page:Page)=>(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string;rooms?:{name:string;box_2d:number[]}[]}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize'))).at(-1)!.rooms!;
+const editedRooms=async(page:Page)=>(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string;rooms?:{name:string;box_2d:number[];polygon?:number[][]}[]}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize'))).at(-1)!.rooms!;
 const consentAndGenerate=async(page:Page)=>{await page.getByRole('checkbox',{name:'Envoyer ce plan à Google pour l’analyser'}).check();await page.getByRole('button',{name:'Générer le brouillon 3D'}).click();};
 const demoCalls=(page:Page)=>page.evaluate(()=>(window as unknown as {demo:{calls:unknown[]}}).demo.calls);
 /** Points of the canvas: its centre is the house (first one not covered by a label), a bottom corner is beside it. */
@@ -159,6 +159,7 @@ test.describe('touch',()=>{
     const frame=(await figure.boundingBox())!;
     await page.touchscreen.tap(frame.x+frame.width*.18,frame.y+frame.height*.25);
     await expect(figure.locator('.handle')).toHaveCount(8);
+    await dialog.locator('mp-plan-zones').screenshot({path:'artifacts/spatial-zones-phone.png'});
     const cdp=await page.context().newCDPSession(page);
     const swipe=async(from:{x:number;y:number},dx:number,dy:number)=>{
       await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:from.x,y:from.y}]});
@@ -417,9 +418,11 @@ test('detected rooms fit the drawn walls and can be moved, resized, drawn, delet
   await expect.poll(async()=>(await lastRooms())[0]!.box_2d[3]).toBeGreaterThan(450);
 
   // Draw a new room, then name it.
-  frame=await box();
   await zones.getByRole('button',{name:'Ajouter une pièce'}).click();
   await expect(zones.getByRole('button',{name:'Ajouter une pièce'})).toHaveAttribute('aria-pressed','true');
+  // The plan stays where it was when a drawing mode starts.
+  expect((await box()).y).toBe(frame.y);
+  frame=await box();
   await page.mouse.move(frame.x+frame.width*.55,frame.y+frame.height*.6);await page.mouse.down();
   await page.mouse.move(frame.x+frame.width*.6,frame.y+frame.height*.7,{steps:3});await page.mouse.move(frame.x+frame.width*.64,frame.y+frame.height*.8,{steps:3});await page.mouse.up();
   await expect(figure.locator('polygon')).toHaveCount(8);
@@ -439,6 +442,7 @@ test('detected rooms fit the drawn walls and can be moved, resized, drawn, delet
   await expect(figure.locator('polygon')).toHaveCount(7);
   await expect(zones.getByRole('textbox',{name:'Nom de la pièce 3'})).toHaveValue('Chambre');
   expect(await zones.getByRole('listitem').filter({has:page.getByRole('textbox',{name:'Nom de la pièce 3'})}).locator('.swatch').getAttribute('style')).toBe(bedroom);
+  frame=await box();  // the window scrolled to the name of the room just drawn
   await page.mouse.click(frame.x+frame.width*.85,frame.y+frame.height*.75);
   await expect(zones.locator('li.selected input')).toHaveValue('Salle de bain');
   await page.keyboard.press('Delete');
@@ -452,6 +456,98 @@ test('detected rooms fit the drawn walls and can be moved, resized, drawn, delet
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
   const names=saved.floors[0]!.rooms.map(r=>r.name);
   expect(names).toHaveLength(6);expect(names).toContain('Cellier');expect(names).not.toContain('Cuisine');
+});
+
+test('a room follows its real shape: drawn corner by corner, then corners moved, added and removed',async({page})=>{
+  await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog'),zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+  const lastRoom=async()=>(await editedRooms(page)).at(-1)!;
+  const outline=async()=>(await lastRoom()).polygon!.map(([y,x])=>[x!,y!]);  // [x, y] in 0-1000
+  /** Screen position of a point of the plan, in 0-1000. */
+  const screen=async(x:number,y:number)=>{const f=(await figure.boundingBox())!;return {x:f.x+f.width*x/1000,y:f.y+f.height*y/1000};};
+  const click=async(x:number,y:number)=>{await idle();const s=await screen(x,y);await page.mouse.click(s.x,s.y);};
+  // Each edit is rebuilt by Home Assistant; the plan ignores the pointer meanwhile.
+  const idle=()=>expect(figure).not.toHaveClass(/busy/);
+  const centre=async(handle:string)=>{await idle();const b=(await figure.locator(handle).boundingBox())!;return {x:b.x+b.width/2,y:b.y+b.height/2};};
+  const pull=async(handle:string,dx:number,dy:number)=>{const c=await centre(handle);await page.mouse.move(c.x,c.y);await page.mouse.down();await page.mouse.move(c.x+dx/2,c.y+dy/2,{steps:4});await page.mouse.move(c.x+dx,c.y+dy,{steps:4});await page.mouse.up();};
+
+  // An L-shaped room drawn corner by corner, each click a few pixels off: corners go onto the walls and in line with the previous ones.
+  await zones.getByRole('button',{name:'Tracer un contour'}).click();
+  await expect(zones.getByRole('button',{name:'Terminer le contour'})).toBeDisabled();
+  for(const [x,y] of [[541,504],[765,506],[772,760],[640,757],[643,990],[541,992]])await click(x!,y!);
+  await expect(figure.locator('.point')).toHaveCount(6);
+  await expect(zones.getByRole('button',{name:'Terminer le contour'})).toBeEnabled();
+  await page.screenshot({path:'artifacts/spatial-zones-trace.png'});
+  await click(540,502);  // back on the first corner: closed
+  await expect(figure.locator('polygon[data-zone]')).toHaveCount(8);
+  const drawn=await outline();
+  expect(drawn).toHaveLength(6);
+  expect(Math.abs(drawn[0]![0]!-538.5)).toBeLessThan(2);expect(Math.abs(drawn[0]![1]!-500)).toBeLessThan(2);
+  expect(drawn[1]![0]).toBe(drawn[2]![0]);expect(drawn[2]![1]).toBe(drawn[3]![1]);expect(drawn[3]![0]).toBe(drawn[4]![0]);
+  expect(drawn[4]![1]).toBe(drawn[5]![1]);expect(drawn[5]![0]).toBe(drawn[0]![0]);expect(drawn[0]![1]).toBe(drawn[1]![1]);
+  expect((await lastRoom()).box_2d).toEqual([drawn[0]![1],drawn[0]![0],drawn[4]![1],drawn[1]![0]]);
+  await expect(zones.getByRole('textbox',{name:'Nom de la pièce 8'})).toBeFocused();
+  await expect(figure.locator('polygon[data-zone="7"]')).toHaveAttribute('points',/^(\S+ ){5}\S+$/);
+  await expect(figure.locator('.vertex')).toHaveCount(6);await expect(figure.locator('.mid')).toHaveCount(6);
+  await page.screenshot({path:'artifacts/spatial-zones-outline.png'});
+
+  // The inner corner moved 60 px to the right: its side stays horizontal.
+  await pull('.vertex[data-vertex="3"]',60,0);
+  await expect.poll(async()=>(await outline())[3]![0]).toBeGreaterThan(700);
+  let edited=await outline();
+  expect(edited[3]![1]).toBe(edited[2]![1]);expect(edited[4]).toEqual(drawn[4]);
+
+  // A + on the top side adds a corner where it is dropped; a double click removes it.
+  await pull('.mid[data-mid="0"]',0,30);
+  await expect.poll(async()=>(await outline()).length).toBe(7);
+  expect((await outline())[1]![1]).toBeGreaterThan(560);
+  await page.mouse.dblclick((await centre('.vertex[data-vertex="1"]')).x,(await centre('.vertex[data-vertex="1"]')).y);
+  await expect.poll(async()=>(await outline()).length).toBe(6);
+
+  // A corner touched then removed with the toolbar, another with the keyboard.
+  await expect(zones.getByRole('button',{name:'Supprimer le point'})).toBeDisabled();
+  await page.mouse.click((await centre('.vertex[data-vertex="3"]')).x,(await centre('.vertex[data-vertex="3"]')).y);
+  await expect(figure.locator('.vertex.active')).toHaveCount(1);
+  await zones.getByRole('button',{name:'Supprimer le point'}).click();
+  await expect.poll(async()=>(await outline()).length).toBe(5);
+  await page.mouse.click((await centre('.vertex[data-vertex="2"]')).x,(await centre('.vertex[data-vertex="2"]')).y);
+  await page.keyboard.press('Delete');
+  await expect.poll(async()=>(await outline()).length).toBe(4);
+  await expect(figure.locator('polygon[data-zone]')).toHaveCount(8);  // the room itself stays
+
+  // Back to a rectangle, and undone.
+  edited=await outline();
+  await idle();await zones.getByRole('button',{name:'Rectangle'}).click();
+  await expect.poll(async()=>(await lastRoom()).polygon).toBeUndefined();
+  expect((await lastRoom()).box_2d[1]).toBe(Math.min(...edited.map(q=>q[0]!)));
+  await idle();await zones.getByRole('button',{name:'Annuler'}).click();
+  await expect.poll(async()=>(await lastRoom()).polygon?.length).toBe(4);
+
+  // « Forme libre » gives a rectangle its outline as shown, with a handle on each corner.
+  await click(150,250);
+  await expect(zones.getByRole('button',{name:'Forme libre'})).toBeEnabled();
+  await zones.getByRole('button',{name:'Forme libre'}).click();
+  await expect.poll(async()=>(await editedRooms(page))[0]!.polygon?.length).toBe(4);
+  await expect(figure.locator('.vertex')).toHaveCount(4);
+  const living=(await editedRooms(page))[0]!;
+  expect(living.box_2d).toEqual([Math.min(...living.polygon!.map(q=>q[0]!)),Math.min(...living.polygon!.map(q=>q[1]!)),Math.max(...living.polygon!.map(q=>q[0]!)),Math.max(...living.polygon!.map(q=>q[1]!))]);
+});
+
+test('walls 2 px thick are found on a small plan, not the thin lines',async({page})=>{
+  await page.goto('/?spatial');
+  const walls=await page.evaluate(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=650;canvas.height=400;const context=canvas.getContext('2d')!;
+    context.fillStyle='#fff';context.fillRect(0,0,650,400);context.fillStyle='#222';
+    for(const [x,y,w,h] of [[0,0,650,2],[0,398,650,2],[0,0,2,400],[648,0,2,400],[324,0,2,400],[0,199,650,2]])context.fillRect(x!,y!,w!,h!);
+    context.fillRect(60,100,200,1);  // furniture drawn with a thin line
+    const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));
+    const module='/frontend/spatial/zones.ts';const {detectWalls}=await import(module);
+    return detectWalls(blob) as Promise<{x:{at:number}[];y:{at:number}[]}>;
+  });
+  const found=(lines:{at:number}[],at:number)=>lines.some(line=>Math.abs(line.at-at)<3);
+  expect(found(walls.x,500)).toBe(true);expect(found(walls.y,500)).toBe(true);
+  expect(found(walls.y,251)).toBe(false);
 });
 
 test('a PDF page is drawn in the browser and only that image is sent',async({page})=>{

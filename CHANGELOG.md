@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.5.0 — pièces en forme libre
+
+Retour sur l’import réel : les zones rectangulaires ne suivent pas les pièces en L ni les découpes du plan.
+
+- **Forme libre** : sur une pièce sélectionnée, un point à chaque angle du contour affiché. Glisser un point, ajouter un point avec le **+** au milieu d’un côté, retirer un point (double toucher, dépôt sur son voisin, **Supprimer le point** ou Suppr). **Rectangle** revient au rectangle.
+- **Tracer un contour** : nouvelle pièce dessinée angle par angle ; fermer sur le premier point, par un double toucher ou **Terminer le contour** ; Retour arrière retire le dernier point.
+- **Aimantation des points** : sur chaque axe, vers les murs du plan, les bords et angles des autres pièces et les points voisins, pour des côtés d’équerre sans précision au pixel.
+- **Géométrie** : les contours aux côtés horizontaux et verticaux (L, T, U) partagent la grille de découpage des rectangles, sans chevauchement ; la boîte d’une pièce suit son contour.
+- **Murs sur les petits plans** : l’image est agrandie jusqu’à 1 200 px avant la recherche des murs, pour trouver les murs de 2 px d’épaisseur (les traits fins restent ignorés).
+- Barre d’outils de taille constante : le plan ne bouge plus sous le pointeur quand on change de mode ; noms placés dans la partie la plus large de chaque pièce.
+
 ## 0.4.2 — modèle choisi avant l’analyse
 
 - Studio → Plan 3D : sélecteur **Modèle d’analyse** à côté du fichier et de la page, en mode direct : Gemini 3.8 Flash (le plus précis) ou Gemini 3.5 Flash-Lite (le plus rapide). Le réglage des options de l’intégration est présélectionné et signalé « réglage par défaut » ; le navigateur retient ensuite le dernier choix.

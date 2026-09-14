@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.5.0
+
+Contrat Gemini partagé : les contours aux côtés horizontaux et verticaux partagent la grille de découpage des rectangles (plus de chevauchement avec une pièce en L) et donnent la boîte de leur pièce.
+
 ## 0.4.1
 
 Quota Gemini atteint : la réponse d’erreur précise le quota (par minute ou par jour), sa limite, le modèle et le délai conseillé par Google, pour la fenêtre d’échec du Studio.

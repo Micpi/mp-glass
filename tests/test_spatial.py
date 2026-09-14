@@ -103,6 +103,27 @@ class GeometryTest(unittest.TestCase):
         k = result["source"]["scale"][0]
         self.assertAlmostEqual(area(bedroom) + area(closet), (400 * k) ** 2, delta=.01)
 
+    def test_outlines_with_right_angles_share_the_grid_with_rectangles(self):
+        # An L-shaped living room drawn in the Studio ([y, x] points) and a kitchen box reaching into it.
+        living = [[0, 0], [0, 600], [300, 600], [300, 300], [600, 300], [600, 0]]
+        rooms = [{"name": "Séjour", "box_2d": [0, 0, 10, 10], "polygon": living}, {"name": "Cuisine", "box_2d": [200, 400, 600, 800]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        k = result["source"]["scale"][0]
+        sejour, cuisine = rooms_of(result).values()
+        # The smaller kitchen takes the overlap: the living room loses a notch, nothing is counted twice.
+        self.assertEqual(len(cuisine), 4)
+        self.assertEqual(len(sejour), 8)
+        union = 600 * 300 + 300 * 300 + 400 * 400 - 100 * 200
+        self.assertAlmostEqual(area(sejour) + area(cuisine), union * k * k, delta=.01)
+        # Its box follows the outline, not the one written beside it.
+        self.assertEqual(result["detection"][0]["box_2d"], [0, 0, 600, 600])
+        self.assertEqual(result["detection"][0]["polygon"], living)
+        # Alone, the outline is kept exactly.
+        alone = server.normalize_result({"rooms": rooms[:1], "scaleKnown": False, "warnings": []}, (1000, 1000))
+        ring = rooms_of(alone)["Séjour"]
+        k = alone["source"]["scale"][0]
+        self.assertEqual(sorted(map(tuple, ring)), sorted((round(x * k, 3), round(y * k, 3)) for y, x in living))
+
     def test_non_rectangular_rooms_and_bad_answers_are_repaired_or_skipped(self):
         rooms = [
             {"name": "  Salon\n", "box_2d": [0, 0, 300, 400]},

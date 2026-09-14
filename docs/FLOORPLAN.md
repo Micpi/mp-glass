@@ -1,6 +1,6 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.4.2. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.5.0. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
@@ -10,7 +10,7 @@ Ce plan est recalculé à chaque génération du dashboard et n’est pas enregi
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.4.2 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.4.2`, puis recharger le navigateur.
+1. Installer MP Glass 0.5.0 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.5.0`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.
@@ -42,7 +42,7 @@ Depuis 0.3.0, Gemini ne rédige plus de coordonnées en mètres : il **détecte*
 
 1. **Proportions** : les boîtes sont converties en pixels avec la taille réelle de l’image, lue dans son en-tête (PNG, JPEG, WebP) sans la décoder.
 2. **Murs** : les bords distants de moins de 1,2 % de l’image (épaisseur d’un mur) sont alignés.
-3. **Découpage sans chevauchement** : la grille formée par tous les bords est répartie entre les pièces, la plus petite pièce l’emportant. Un placard dessiné dans une chambre la découpe (chambre en L) au lieu de la recouvrir.
+3. **Découpage sans chevauchement** : la grille formée par tous les bords est répartie entre les pièces, la plus petite pièce l’emportant. Un placard dessiné dans une chambre la découpe (chambre en L) au lieu de la recouvrir. Depuis 0.5.0, les contours aux côtés horizontaux et verticaux (pièce en L, en T, en U) partagent cette grille avec les rectangles ; un contour avec un côté en biais est gardé tel quel.
 4. **Échelle** : à partir des cotes écrites d’au moins deux pièces qui concordent avec le dessin (l’ordre largeur × profondeur est vérifié) ; à défaut, d’après la surface habituelle des pièces selon leur nom (séjour, chambre, salle de bain…), signalée comme estimée.
 5. **Contrôles** : contours réparés ou ignorés avec un avertissement, surface moyenne invraisemblable signalée.
 6. **Murs dessinés** (dans le navigateur, depuis 0.4.0) : les traits sombres, épais et longs de l’image sont repérés comme murs ; chaque bord de pièce à moins de 2 % de l’image d’un mur est posé sur son axe, et le plan est recalculé. Les murs coupés par des portes comptent d’un seul tenant. Le nombre de bords ajustés est indiqué et **Annuler** revient à la détection de Gemini.
@@ -56,12 +56,14 @@ La fenêtre de résultat superpose les pièces détectées, en couleur et nommé
 Dans l’onglet **Sur le plan d’origine** de la fenêtre de résultat, avant **Utiliser pour ce niveau** :
 
 - **Ajuster** : toucher une pièce la sélectionne et affiche huit poignées. Glisser la pièce la déplace ; glisser une poignée déplace un bord ou un coin. À moins de 10 px d’écran d’un mur dessiné, le bord s’y colle.
-- **Ajouter** : **Ajouter une pièce**, puis tracer un rectangle sur le plan ; ses bords se collent aux murs voisins et son nom (« Pièce N ») est sélectionné pour être renommé.
-- **Supprimer** : bouton **Supprimer** ou touche Suppr pour la pièce sélectionnée, ou croix dans la liste.
+- **Forme libre** : pour une pièce qui n’est pas rectangulaire, **Forme libre** remplace les poignées par un point à chaque angle du contour affiché. Glisser un point le déplace ; glisser le **+** au milieu d’un côté ajoute un point ; toucher deux fois un point, le déposer sur son voisin, ou le toucher puis **Supprimer le point** (ou Suppr) le retire. **Rectangle** revient au rectangle qui l’entoure.
+- **Ajouter** : **Ajouter une pièce**, puis tracer un rectangle sur le plan ; ou **Tracer un contour**, puis toucher les angles de la pièce l’un après l’autre et fermer en touchant le premier point, en touchant deux fois le dernier ou avec **Terminer le contour** (Retour arrière retire le dernier point, Échap abandonne). Son nom (« Pièce N ») est ensuite sélectionné pour être renommé.
+- **Aimantation** : chaque bord, et chaque point sur chacun de ses deux axes, se colle à moins de 10 px d’écran d’un mur dessiné, d’un bord ou d’un angle d’une autre pièce, ou des points voisins du même contour : les côtés restent d’équerre sans viser au pixel près.
+- **Supprimer** : bouton **Supprimer la pièce** ou touche Suppr pour la pièce sélectionnée, ou croix dans la liste.
 - **Renommer** : champ de la liste, sous le plan, avec la surface de chaque pièce.
 - **Annuler** : revient sur les 30 dernières modifications.
 
-Chaque modification est recalculée par Home Assistant avec la même géométrie que l’analyse (murs alignés, découpage sans chevauchement), sans nouvel appel à Gemini ni quota consommé. L’échelle calculée à partir des cotes écrites est recalculée ; une échelle estimée est conservée, pour ne pas changer la taille des autres pièces. Une pièce redimensionnée devient rectangulaire ; déplacée, elle garde son contour. Sur téléphone, un doigt posé sur une pièce ou une poignée la modifie ; ailleurs, il fait défiler la fenêtre. Chaque pièce garde sa couleur pendant les modifications.
+Chaque modification est recalculée par Home Assistant avec la même géométrie que l’analyse (murs alignés, découpage sans chevauchement), sans nouvel appel à Gemini ni quota consommé. L’échelle calculée à partir des cotes écrites est recalculée ; une échelle estimée est conservée, pour ne pas changer la taille des autres pièces. Un contour qui se croise ou trop petit est refusé, la pièce restant comme avant ; déplacée, une pièce garde son contour. Sur téléphone, un doigt posé sur une pièce ou une poignée la modifie ; ailleurs, il fait défiler la fenêtre. Chaque pièce garde sa couleur pendant les modifications.
 
 ## Gemini et gratuité
 
@@ -85,6 +87,6 @@ Une seule tâche éphémère reste en mémoire. Fermer le Studio ou recharger l�
 
 ## Limites de validation
 
-Aucun appel Gemini réel avec une clé dans cette session : les tests simulent le fournisseur et ne mesurent pas la précision de reconnaissance, à juger sur de vrais plans. Build et installation Linux Supervisor, Safari/iOS et matériel tactile restent à valider. Trous internes, mobilier, ouvertures et déplacement graphique des sommets d’un contour non rectangulaire restent à développer ; les poignées ajustent le rectangle d’une pièce.
+Aucun appel Gemini réel avec une clé dans cette session : les tests simulent le fournisseur et ne mesurent pas la précision de reconnaissance, à juger sur de vrais plans. Build et installation Linux Supervisor, Safari/iOS et matériel tactile restent à valider. Trous internes, mobilier et ouvertures restent à développer. Un contour avec un côté en biais n’entre pas dans le découpage sans chevauchement.
 
 Le mode Gemini direct, le rendu et les commandes HA fonctionnent sans add-on. HA Container peut utiliser le même worker en conteneur séparé ; l’usage quotidien reste dans le Studio.

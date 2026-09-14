@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Pièces en forme libre 0.5.0 — 14 septembre 2026
+
+Retour sur l’import réel (13 pièces, 140,5 m², 19 × 8,7 m) : pouvoir créer des zones non rectangulaires qui suivent la forme des pièces. Réponse : mode **Forme libre** (points d’angle, ajout par les **+**, retrait), **Tracer un contour** angle par angle, aimantation des points sur chaque axe, contours à angles droits intégrés au découpage sans chevauchement de Home Assistant. Le message d’ajustement aux murs n’apparaissait pas sur ce plan de 654 px de large : les murs y font environ 2 px, sous le seuil de 3 px ; l’image est désormais agrandie avant la recherche.
+
+Validé localement : 45 tests Python (séjour en L tracé dans le Studio et cuisine qui y déborde : pas de surface comptée deux fois, contour gardé exactement, boîte tirée du contour), 34 tests Vitest, 35 scénarios Playwright (pièce en L tracée en six clics imprécis, angles posés sur les murs et côtés d’équerre, point déplacé, ajouté par un +, retiré par double clic, par le bouton et par Suppr, retour au rectangle et annulation, Forme libre sur un rectangle ; murs de 2 px trouvés sur une image de 650 px et trait fin ignoré ; plan immobile au changement de mode ; capture téléphone), build. Non validé : manipulation au doigt des points sur un vrai téléphone, murs du vrai plan après agrandissement.
+
 ## Modèle choisi avant l’analyse 0.4.2 — 14 septembre 2026
 
 Demande utilisateur après le quota atteint : pouvoir sélectionner le modèle avant l’analyse. Réponse : sélecteur dans le Studio, alimenté par `mp_glass/spatial/info` (administrateur : mode, modèle des options), dernier choix retenu par le navigateur, envoyé comme `quality` à l’import (seuls les modèles proposés sont acceptés par Home Assistant).

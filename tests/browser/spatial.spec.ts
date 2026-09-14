@@ -1,14 +1,14 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean }
+interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean }
 async function mountEditor(page:Page, isAdmin=true, jobError=false, options:MountOptions={}) {
   await page.goto('/?spatial');
   await page.evaluate(async({isAdmin,jobError,options})=>{
     const module='/shared/spatial.ts';const {examplePlan}=await import(module);
     const plan=examplePlan();
     const demo=(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo;
-    const changed:unknown[]=[];const uploads:{url:string;method?:string;type?:string;side?:number}[]=[];
+    const changed:unknown[]=[];const uploads:{url:string;method?:string;type?:string;side?:number}[]=[];const messages:Record<string,unknown>[]=[];
     const editor=document.createElement('mp-spatial-editor') as HTMLElement&{hass:import('../../frontend/ha/client').Hass;plan?:typeof plan;fallback?:typeof plan;areas:unknown[]};
     if(options.saved!==false)editor.plan=plan;
     if(options.fallback){const fallback=examplePlan();fallback.floors[0].name='RDC';fallback.floors[0].rooms[0].areaId='salon';editor.fallback=fallback;}
@@ -19,13 +19,16 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       if(options.uploadStatus)return new Response('404: Not Found',{status:options.uploadStatus});
       return new Response(JSON.stringify({id:'job-test',status:'running'}),{status:202});
     },callWS:async<T>(message:Record<string,unknown>)=>{
+      messages.push(message);
+      if(message.type==='mp_glass/spatial/cancel'&&message.job_id==='job-test')return {cancelled:true} as T;
       if(message.type!=='mp_glass/spatial/job'||message.job_id!=='job-test')throw Error('unexpected_command');
+      if(options.pending)return {id:'job-test',status:'running'} as T;
       const incoming=examplePlan();incoming.floors[0].rooms[0].name='Pièce importée';
       const failure=options.jobError??(jobError?{error:'quota'}:undefined);
       return (failure?{id:'job-test',status:'error',...failure}:{id:'job-test',status:'done',plan:incoming,warnings:['Échelle estimée']}) as T;
     }};
     editor.addEventListener('spatial-change',e=>changed.push((e as CustomEvent).detail));
-    document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads}});
+    document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages}});
   },{isAdmin,jobError,options});
 }
 const consentAndGenerate=async(page:Page)=>{await page.getByRole('checkbox',{name:'Envoyer ce plan à Google pour l’analyser'}).check();await page.getByRole('button',{name:'Générer le brouillon 3D'}).click();};
@@ -187,9 +190,47 @@ test('failures explain the cause with the technical detail',async({page})=>{
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
   await consentAndGenerate(page);
   await expect(page.getByRole('status')).toContainText('Service d’import introuvable');
+  await page.getByRole('dialog').getByRole('button',{name:'Fermer'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   await page.getByLabel('Plan à importer').setInputFiles({name:'notes.txt',mimeType:'text/plain',buffer:Buffer.from('pas un plan')});
   await consentAndGenerate(page);
   await expect(page.getByRole('status')).toContainText('Format non pris en charge');
+});
+
+test('analysis window shows progress and cancels the running job',async({page})=>{
+  await mountEditor(page,true,false,{pending:true});
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog',{name:'Analyse du plan en cours'});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('li.done')).toHaveText(['Préparation du fichier','Envoi à Home Assistant']);
+  await expect(dialog.locator('li.current')).toContainText('Analyse du plan par Gemini');
+  await expect(dialog.locator('li.current time')).toHaveText(/^0:0\d$/);
+  await page.screenshot({path:'artifacts/spatial-import-progress.png'});
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeVisible();
+  await dialog.getByRole('button',{name:'Annuler l’analyse'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText('Analyse annulée');
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:Record<string,unknown>[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/cancel'))).toEqual([{type:'mp_glass/spatial/cancel',job_id:'job-test'}]);
+  await expect(page.getByRole('button',{name:'Générer le brouillon 3D'})).toBeEnabled();
+});
+
+test('result window previews the draft and can discard it',async({page})=>{
+  await mountEditor(page);
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog',{name:'7 pièces reconnues'});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByText('Brouillon IA · non enregistré')).toBeVisible();
+  await expect(dialog.getByText(/^104 m² · 13 × 8 m · analysé en 0:0\d$/)).toBeVisible();
+  await expect(dialog.getByRole('listitem').filter({hasText:'Échelle estimée'})).toBeVisible();
+  await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
+  await page.screenshot({path:'artifacts/spatial-import-result.png'});
+  await dialog.getByRole('button',{name:'Ignorer'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.getByRole('status')).toContainText('Brouillon ignoré');
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
 });
 
 test('large images are reduced before upload',async({page})=>{

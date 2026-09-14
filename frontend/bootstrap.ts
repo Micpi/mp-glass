@@ -7,7 +7,7 @@ interface MPGlassModule {
 class MPGlassDashboardBootstrap extends HTMLElement {
   static getCreateSuggestions() { return { title: 'MP Glass', icon: 'mdi:view-dashboard' }; }
   static async generate(config: { debug?: boolean }, hass: Hass) {
-    const url = new URL(/* @vite-ignore */ './mp-glass.js?v=0.2.4', import.meta.url).href;
+    const url = new URL(/* @vite-ignore */ './mp-glass.js?v=0.2.5', import.meta.url).href;
     const module = await import(/* @vite-ignore */ url) as MPGlassModule;
     return module.generateMPGlassDashboard(config, hass);
   }

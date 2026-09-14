@@ -114,8 +114,65 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
         config = gemini.build_request(image_bytes(), "image/png", gemini.DEFAULT_MODEL)["generationConfig"]
         self.assertEqual(gemini.DEFAULT_MODEL, "gemini-3.5-flash-lite")
         self.assertNotIn("temperature", config)
-        self.assertEqual(config["maxOutputTokens"], 65536)
+        self.assertEqual(config["maxOutputTokens"], 32768)
         self.assertEqual(gemini.build_request(image_bytes(), "image/png", "gemini-2.5-flash-lite")["generationConfig"]["temperature"], 0)
+
+    @staticmethod
+    def replies(*answers):
+        """Session answering each POST with the next (status, body) pair."""
+        class Content:
+            def __init__(self, body):
+                self.body = body
+            async def iter_chunked(self, _size):
+                yield self.body
+        class Response:
+            def __init__(self, status, body):
+                self.status, self.content = status, Content(body)
+            async def __aenter__(self):
+                return self
+            async def __aexit__(self, *_args):
+                pass
+        class Session:
+            def __init__(self):
+                self.payloads = []
+            def post(self, _url, **kwargs):
+                self.payloads.append(kwargs["json"])
+                return Response(*answers[len(self.payloads) - 1])
+        return Session()
+
+    async def test_invalid_request_is_retried_once_without_response_schema(self):
+        invalid = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Request contains an invalid argument."}}).encode()
+        ok = json.dumps({"candidates": [{"finishReason": "STOP", "content": {"parts": [{"text": "```json\n" + json.dumps(RESULT) + "\n```"}]}}]}).encode()
+        session = self.replies((400, invalid), (200, ok))
+        with self.assertLogs(gemini._LOGGER, "WARNING"):
+            result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+        first, second = session.payloads
+        self.assertIn("responseJsonSchema", first["generationConfig"])
+        self.assertNotIn("responseJsonSchema", second["generationConfig"])
+        self.assertNotIn("maxOutputTokens", second["generationConfig"])
+        self.assertEqual(second["generationConfig"]["responseMimeType"], "application/json")
+        self.assertIn('"scaleKnown"', second["systemInstruction"]["parts"][0]["text"])
+        self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["name"], "Salon")
+        self.assertIn("requête simplifiée", result["warnings"][0])
+
+    async def test_invalid_request_twice_is_reported_with_both_attempts(self):
+        invalid = json.dumps({"error": {"code": 400, "status": "INVALID_ARGUMENT", "message": "Request contains an invalid argument.",
+                                        "details": [{"fieldViolations": [{"field": "contents[0].parts[1]", "description": "Unsupported document"}]}]}}).encode()
+        session = self.replies((400, invalid), (400, invalid))
+        with self.assertLogs(gemini._LOGGER, "WARNING"), self.assertRaises(gemini.SpatialError) as caught:
+            await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+        self.assertEqual(caught.exception.code, "provider_request")
+        self.assertTrue(caught.exception.detail.startswith("Refusée aussi sans schéma de réponse : HTTP 400 INVALID_ARGUMENT"))
+        self.assertIn("contents[0].parts[1] Unsupported document", caught.exception.detail)
+        self.assertEqual(len(session.payloads), 2)
+
+    async def test_other_refusals_are_not_retried(self):
+        for status, body in [(429, b'{"error": {"status": "RESOURCE_EXHAUSTED"}}'), (400, b'{"error": {"status": "FAILED_PRECONDITION"}}'),
+                             (400, b'{"error": {"status": "INVALID_ARGUMENT", "details": [{"reason": "API_KEY_INVALID"}]}}')]:
+            session = self.replies((status, body))
+            with self.assertRaises(gemini.SpatialError):
+                await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
+            self.assertEqual(len(session.payloads), 1)
 
     async def test_preserves_existing_worker_choice(self):
         self.assertEqual(gemini.selected_backend({}), "gemini")

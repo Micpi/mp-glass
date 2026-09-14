@@ -1,6 +1,6 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.2.4. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.2.5. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
@@ -10,11 +10,11 @@ Ce plan est recalculé à chaque génération du dashboard et n’est pas enregi
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.2.4 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.2.4`, puis recharger le navigateur.
+1. Installer MP Glass 0.2.5 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.2.5`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.
-5. Choisir un PDF non chiffré (page 1–100), PNG, JPEG ou WebP, maximum 8 Mo. Cocher l’envoi à Google, puis **Générer le brouillon 3D**. Une seule analyse à la fois, cinq minutes maximum.
+5. Choisir un PDF non chiffré (page 1–100), PNG, JPEG ou WebP, maximum 8 Mo. Cocher l’envoi à Google, puis **Générer le brouillon 3D**. Une fenêtre suit l’analyse étape par étape (préparation, envoi, analyse avec chronomètre) et permet de l’annuler ; elle affiche ensuite le brouillon en 3D (pièces, surface, dimensions, avertissements) ou la cause de l’échec avec **Réessayer**. Une seule analyse à la fois, cinq minutes maximum ; quitter le Studio arrête l’analyse en cours.
 6. Examiner le brouillon, cliquer **Utiliser pour ce niveau**, corriger noms, contours, hauteur et échelle. Exemple : une longueur affichée de 5 m pour une cote réelle de 6 m nécessite un facteur 1,2. La hauteur des murs reste indépendante.
 7. Associer les pièces HA et sélectionner les capteurs/lumières à afficher. L’association de pièce est un repère ; les équipements se sélectionnent explicitement.
 8. Cliquer **Enregistrer** dans le Studio puis recharger le dashboard. Le plan remplace le texte d’accueil lorsque **Afficher le plan sur l’accueil** est activé. Une détection des équipements conserve le plan.
@@ -37,9 +37,9 @@ Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. R
 
 ## Gemini et gratuité
 
-Le modèle par défaut est `gemini-3.5-flash-lite` (configurable en mode add-on), qui accepte PDF, images et sortie JSON structurée. `gemini-2.5-flash-lite`, l’ancien défaut, est refusé aux nouveaux projets Google (HTTP 404). Les entrées/sorties standard de `gemini-3.5-flash-lite` sont proposées au palier gratuit lors de la vérification du 14 septembre 2026, sous quotas et disponibilité du projet Google ; au-delà, il coûte plus cher que la génération 2.5. La température reste à la valeur par défaut recommandée par Google pour Gemini 3 ; la réflexion du modèle (niveau minimal par défaut) est comptée dans le budget de 65 536 jetons de sortie. Utiliser un projet API **sans facturation activée** pour éviter les frais ; l’application ne peut pas vérifier le statut de facturation via la clé. Un abonnement Gemini grand public ne remplace pas une clé API.
+Le modèle par défaut est `gemini-3.5-flash-lite` (configurable en mode add-on), qui accepte PDF, images et sortie JSON structurée. `gemini-2.5-flash-lite`, l’ancien défaut, est refusé aux nouveaux projets Google (HTTP 404). Les entrées/sorties standard de `gemini-3.5-flash-lite` sont proposées au palier gratuit lors de la vérification du 14 septembre 2026, sous quotas et disponibilité du projet Google ; au-delà, il coûte plus cher que la génération 2.5. La température reste à la valeur par défaut recommandée par Google pour Gemini 3 ; la réflexion du modèle (niveau minimal par défaut) est comptée dans le budget de 32 768 jetons de sortie. Utiliser un projet API **sans facturation activée** pour éviter les frais ; l’application ne peut pas vérifier le statut de facturation via la clé. Un abonnement Gemini grand public ne remplace pas une clé API.
 
-En mode direct, le fichier complet (métadonnées et autres pages PDF incluses) est envoyé à Google ; le numéro de page guide le modèle sans extraction locale. En mode add-on, seule la page rasterisée est envoyée. Ni les entités ni les états HA ne sont joints. Selon Google, les données du palier gratuit peuvent servir à améliorer leurs produits. L’accord d’envoi est présenté pour chaque fichier. Une erreur 429 est affichée sans relance, changement de modèle ni basculement payant.
+En mode direct, le fichier complet (métadonnées et autres pages PDF incluses) est envoyé à Google ; le numéro de page guide le modèle sans extraction locale. En mode add-on, seule la page rasterisée est envoyée. Ni les entités ni les états HA ne sont joints. Selon Google, les données du palier gratuit peuvent servir à améliorer leurs produits. L’accord d’envoi est présenté pour chaque fichier. Une erreur 429 est affichée sans relance, changement de modèle ni basculement payant. Seule exception : une requête refusée comme invalide (HTTP 400 `INVALID_ARGUMENT`, ni traitée ni facturée) est renvoyée une fois, au même modèle et avec le même document, sans schéma de réponse imposé ; le brouillon le signale et le résultat reste validé localement.
 
 [Tarification officielle](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite) · [Sortie JSON structurée](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
 

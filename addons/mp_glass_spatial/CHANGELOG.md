@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.2.5
+
+Contrat Gemini partagé : sortie limitée à 32 768 jetons, requête refusée comme invalide (HTTP 400) renvoyée une fois sans schéma de réponse, détail des champs refusés par Google.
+
 ## 0.2.3
 
 Modèle par défaut `gemini-3.5-flash-lite` : `gemini-2.5-flash-lite` est refusé aux nouveaux projets Google (HTTP 404). Une installation existante garde son option `model`, à corriger. Température par défaut conservée pour Gemini 3, budget de sortie porté à 65 536 jetons.

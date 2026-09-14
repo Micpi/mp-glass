@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Import fiabilisé et fenêtre d’analyse 0.2.5 — 14 septembre 2026
+
+Signalement utilisateur : `HTTP 400 INVALID_ARGUMENT Request contains an invalid argument.` avec `gemini-3.5-flash-lite`, sans détail de champ. Cause non déterminable sans appel réel (aucune clé dans cette session) ; suspects dans la requête : budget de sortie porté à 65 536 en 0.2.3, schéma de réponse imposé ; sinon le document lui-même. Parade : budget ramené à 32 768, un seul renvoi sans schéma de réponse sur un 400 invalide, détail des `fieldViolations` de Google, message orientant vers une image si les deux requêtes sont refusées.
+
+Validé localement : 33 tests Vitest, 24 scénarios Playwright (fenêtre de progression avec étapes et chronomètre, Échap sans effet pendant l’analyse, annulation envoyée au serveur, fenêtre de résultat avec aperçu 3D, résumé 104 m² · 13 × 8 m et avertissements, Ignorer ; fermeture de la fenêtre d’erreur avant nouvel essai), 31 tests Python (renvoi unique sans schéma après un 400, double refus détaillé, 429 / clé invalide / précondition jamais renvoyés), build. Non validé : appel Gemini réel, commande d’annulation sur une instance Home Assistant réelle.
+
 ## Dashboard créé à l’installation 0.2.4 — 14 septembre 2026
 
 Signalement utilisateur : après installation par HACS sur une autre instance, seul le Studio apparaît, pas le dashboard. Cause : le dashboard devait être ajouté à la main (Paramètres → Tableaux de bord) et le lien du Studio visait une adresse fixe `/mp-glass/home` inexistante.

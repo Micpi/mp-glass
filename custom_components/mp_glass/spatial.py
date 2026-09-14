@@ -155,3 +155,17 @@ def websocket_job(hass, connection, msg):
         connection.send_error(msg["id"], "job_missing", "Analysis expired; retry the import")
         return
     connection.send_result(msg["id"], job)
+
+
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/spatial/cancel", vol.Required("job_id"): str})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_cancel(hass, connection, msg):
+    """Stop the running analysis so another one can start; the job ends as "cancelled"."""
+    runtime = hass.data.get(KEY)
+    job = runtime.jobs.get(msg["job_id"]) if runtime else None
+    cancelled = bool(job and job["status"] == "running" and runtime.task and not runtime.task.done())
+    if cancelled:
+        runtime.task.cancel()
+        await asyncio.gather(runtime.task, return_exceptions=True)
+    connection.send_result(msg["id"], {"cancelled": cancelled})

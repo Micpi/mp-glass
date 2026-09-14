@@ -21,9 +21,10 @@
         "data": {
           "show_settings": "Afficher le panneau de configuration intégrateur",
           "spatial_backend": "Analyse des plans",
-          "gemini_api_key": "Clé API Gemini"
+          "gemini_api_key": "Clé API Gemini",
+          "gemini_quality": "Modèle d’analyse des plans"
         },
-        "description": "Pour générer un plan 3D, choisissez Gemini direct et collez votre clé API. Aucun add-on à installer. Laissez la clé vide si vous utilisez seulement le dashboard."
+        "description": "Pour générer un plan 3D, choisissez Gemini direct et collez votre clé API. Aucun add-on à installer. Les deux modèles font partie du palier gratuit de Google. Laissez la clé vide si vous utilisez seulement le dashboard."
       },
       "spatial_addon": {
         "title": "Connexion à l’add-on (avancé)",
@@ -43,6 +44,12 @@
       "options": {
         "gemini": "Gemini direct — sans add-on (recommandé)",
         "addon": "Add-on Spatial — avancé"
+      }
+    },
+    "gemini_quality": {
+      "options": {
+        "precise": "Gemini 3.8 Flash — le plus précis (recommandé)",
+        "fast": "Gemini 3.5 Flash-Lite — le plus rapide"
       }
     }
   }

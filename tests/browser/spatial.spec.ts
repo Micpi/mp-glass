@@ -1,7 +1,17 @@
 import { test, expect } from '@playwright/test';
 import type { Page } from '@playwright/test';
 
-interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean }
+interface MountOptions { jobError?:{error:string;detail?:string}; uploadStatus?:number; saved?:boolean; fallback?:boolean; pending?:boolean; source?:boolean }
+/** One-page PDF (600 x 400 pt) with a few walls, built by hand so the test needs no fixture file. */
+function pdfPlan():Buffer{
+  const stream='4 w 20 20 560 360 re S 300 20 m 300 380 l S 300 200 m 580 200 l S';
+  const objects=['<< /Type /Catalog /Pages 2 0 R >>','<< /Type /Pages /Kids [3 0 R] /Count 1 >>','<< /Type /Page /Parent 2 0 R /MediaBox [0 0 600 400] /Contents 4 0 R >>',`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`];
+  let body='%PDF-1.4\n';const offsets:number[]=[];
+  objects.forEach((object,i)=>{offsets.push(body.length);body+=`${i+1} 0 obj\n${object}\nendobj\n`;});
+  const xref=body.length;
+  body+=`xref\n0 ${objects.length+1}\n0000000000 65535 f \n${offsets.map(o=>`${String(o).padStart(10,'0')} 00000 n \n`).join('')}trailer\n<< /Size ${objects.length+1} /Root 1 0 R >>\nstartxref\n${xref}\n%%EOF`;
+  return Buffer.from(body,'latin1');
+}
 async function mountEditor(page:Page, isAdmin=true, jobError=false, options:MountOptions={}) {
   await page.goto('/?spatial');
   await page.evaluate(async({isAdmin,jobError,options})=>{
@@ -25,7 +35,9 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       if(options.pending)return {id:'job-test',status:'running'} as T;
       const incoming=examplePlan();incoming.floors[0].rooms[0].name='Pièce importée';
       const failure=options.jobError??(jobError?{error:'quota'}:undefined);
-      return (failure?{id:'job-test',status:'error',...failure}:{id:'job-test',status:'done',plan:incoming,warnings:['Échelle estimée']}) as T;
+      // The example plan (13 x 8 m) drawn at 100 px per metre on the analysed image.
+      const source=options.source?{source:{width:1300,height:800,scale:[.01,.01],origin:[0,0]}}:{};
+      return (failure?{id:'job-test',status:'error',...failure}:{id:'job-test',status:'done',plan:incoming,warnings:['Échelle estimée'],...source}) as T;
     }};
     editor.addEventListener('spatial-change',e=>changed.push((e as CustomEvent).detail));
     document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages}});
@@ -231,6 +243,48 @@ test('result window previews the draft and can discard it',async({page})=>{
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Brouillon ignoré');
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
+});
+
+test('result window draws the rooms over the analysed plan; rooms can be renamed or left out',async({page})=>{
+  await mountEditor(page,true,false,{source:true});
+  await page.evaluate(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=1300;canvas.height=800;const context=canvas.getContext('2d')!;
+    context.fillStyle='#fff';context.fillRect(0,0,1300,800);context.lineWidth=8;context.strokeRect(4,4,1292,792);
+    const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));
+    const input=document.querySelector('mp-spatial-editor')!.shadowRoot!.querySelector<HTMLInputElement>('input[type=file]')!;
+    const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
+  });
+  await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog',{name:'7 pièces reconnues'});
+  await expect(dialog.getByRole('tab',{name:'Sur le plan d’origine'})).toHaveAttribute('aria-selected','true');
+  const overlay=dialog.locator('figure.overlay');
+  await expect(overlay.locator('img')).toHaveJSProperty('naturalWidth',1300);
+  await expect(overlay.locator('polygon')).toHaveCount(7);
+  await expect(overlay.locator('text',{hasText:'Pièce importée'})).toHaveCount(1);
+  await page.screenshot({path:'artifacts/spatial-import-overlay.png'});
+  await dialog.getByRole('textbox',{name:'Nom de la pièce 1'}).fill('Salon');
+  await dialog.getByRole('checkbox',{name:'Garder Cuisine'}).uncheck();
+  await expect(overlay.locator('polygon')).toHaveCount(6);
+  await expect(overlay.locator('text',{hasText:'Salon'})).toHaveCount(1);
+  await dialog.getByRole('tab',{name:'En 3D'}).click();
+  await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
+  await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  const names=saved.floors[0]!.rooms.map(r=>r.name);
+  expect(names).toHaveLength(6);expect(names).toContain('Salon');expect(names).not.toContain('Cuisine');
+});
+
+test('a PDF page is drawn in the browser and only that image is sent',async({page})=>{
+  await mountEditor(page);
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.pdf',mimeType:'application/pdf',buffer:pdfPlan()});
+  await consentAndGenerate(page);
+  await expect(page.getByText('Brouillon IA · non enregistré')).toBeVisible();
+  // 600 x 400 pt drawn at 4x: 2400 x 1600 pixels, PNG.
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{type:string;side:number}[]}}).spatialTest.uploads)).toMatchObject([{type:'image/png',side:2400}]);
+  await page.getByRole('dialog').getByRole('button',{name:'Ignorer'}).click();
+  await page.getByLabel('Page du PDF').fill('2');await page.getByLabel('Page du PDF').blur();
+  await consentAndGenerate(page);
+  await expect(page.getByRole('status')).toContainText('La page 2 n’existe pas : ce PDF compte 1 page.');
 });
 
 test('large images are reduced before upload',async({page})=>{

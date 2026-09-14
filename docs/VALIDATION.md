@@ -1,5 +1,13 @@
 # Validation — incrément lumière 0.1.0
 
+## Analyse du plan refondue 0.3.0 — 14 septembre 2026
+
+Retour utilisateur après 0.2.7 : résultat encore insuffisant. Refonte : détection des pièces par Gemini en boîtes normalisées 0–1000, géométrie calculée localement (proportions de l’image lues dans l’en-tête, alignement des murs, découpage sans chevauchement sur grille, échelle depuis les cotes écrites ou la surface habituelle des pièces), Gemini 3.8 Flash par défaut, PDF dessiné dans le navigateur (PDF.js), superposition du résultat sur le plan analysé avec renommage et exclusion des pièces, murs dessinés une fois avec murs extérieurs distingués.
+
+Essai de bout en bout de la géométrie sur une détection plausible du plan de test utilisateur (13 boîtes relevées sur l’image 654 × 463, cotes en pieds) : 13 pièces, 136,8 m², 18,6 × 8,5 m, échelle calculée à partir de 7 cotes, aucun chevauchement.
+
+Validé localement : 39 tests Python (proportions, échelle depuis les cotes quel que soit leur ordre, cotes contradictoires ignorées, murs alignés, placard qui découpe une chambre en L, contours réparés ou ignorés, taille lue dans les en-têtes PNG, JPEG, WebP avec et sans perte, repli des requêtes), 34 tests Vitest (murs mitoyens dessinés une fois), 27 scénarios Playwright (superposition, renommage, exclusion, onglet 3D ; PDF réel dessiné par PDF.js et envoyé en PNG 2 400 px ; page absente signalée ; six références visuelles régénérées avec les nouveaux murs), build (`mp-glass.js` d’un seul tenant, PDF.js et son worker en morceaux relatifs). Non validé : précision réelle de Gemini 3.8 Flash sur des plans, à juger sur un nouvel import.
+
 ## Schéma accepté et interface à jour 0.2.7 — 14 septembre 2026
 
 Deuxième import réel (0.2.6) : 13 pièces nommées en français, échelle calculée à partir des cotes de 7 pièces (chambre 3 : 10,2 m², 3 × 3,4 m, conforme au 10X11 ft du plan), placards fusionnés ; mais message « Plan obtenu avec une requête simplifiée : Gemini a refusé le schéma de réponse », donc sans réflexion `medium`, et interface du Studio antérieure à 0.2.5 (page non rechargée après la mise à jour). Suspect principal du refus : limites de longueur de tableaux imbriqués dans le schéma (60 pièces × 40 sommets × 2 valeurs). Parade : schéma sans limites, repli gardant la réflexion, bandeau de rechargement.

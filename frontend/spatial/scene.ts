@@ -1,9 +1,10 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { SpatialFloor } from '../../shared/spatial';
+import type { SpatialFloor, WallSegment } from '../../shared/spatial';
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
-interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; walls:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>[]; edges:T.LineBasicMaterial[]; anchor:T.Vector3; radius:number }
+interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; anchor:T.Vector3; radius:number }
+interface WallParts { rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; edges:T.LineBasicMaterial; exterior:boolean }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
 const SLOP=14;
 /** A wheel gesture keeps its first target (plan or page) while its events follow each other. */
@@ -23,6 +24,7 @@ export class SpatialScene {
   private rooms = new Map<string,RoomParts>();
   private surfaces: T.Object3D[] = [];
   private solids: T.Object3D[] = [];
+  private wallParts: WallParts[] = [];
   private ray = new T.Raycaster();
   private halo?: T.CanvasTexture;
   private center = new T.Vector3();
@@ -145,7 +147,7 @@ export class SpatialScene {
   private fit(){return this.radius*3/Math.min(this.camera.aspect,1);}
   private clear() {
     this.group.traverse(object=>{if(object instanceof T.Mesh || object instanceof T.LineSegments){object.geometry.dispose();for(const material of Array.isArray(object.material)?object.material:[object.material])material.dispose();}});
-    this.group.clear();this.rooms.clear();this.surfaces=[];this.solids=[];this.styled='';
+    this.group.clear();this.rooms.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';
   }
   /** Soft light pool under the house so it does not float over the background. */
   private addHalo(box:T.Box3,elevation:number) {
@@ -160,7 +162,8 @@ export class SpatialScene {
     const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:this.halo,color:0x2f8fe0,transparent:true,opacity:.3,depthWrite:false}));
     plane.rotation.x=-Math.PI/2;plane.position.set(this.center.x,elevation-.02,this.center.z);plane.renderOrder=-1;this.group.add(plane);
   }
-  setFloor(floor:SpatialFloor,walls:boolean,reset=true) {
+  /** `segments`: the floor's walls, each once (wallSegments), computed by the caller to keep this lazy chunk free of app code. */
+  setFloor(floor:SpatialFloor,segments:WallSegment[],walls:boolean,reset=true) {
     this.clear();this.walls=walls;
     for(const room of floor.rooms) {
       const shape=new T.Shape(room.polygon.map(p=>new T.Vector2(p[0],-p[1])));
@@ -168,18 +171,18 @@ export class SpatialScene {
       surface.rotation.x=-Math.PI/2;surface.position.y=floor.elevation;surface.userData.roomId=room.id;this.group.add(surface);
       const bounds=new T.Box2().setFromPoints(room.polygon.map(p=>new T.Vector2(...p)));
       const center=bounds.getCenter(new T.Vector2());
-      const parts:RoomParts={surface,walls:[],edges:[],anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(bounds.getSize(new T.Vector2()).length()/2,1)};
-      for(let i=0;i<room.polygon.length;i++){
-        const a=room.polygon[i]!,b=room.polygon[(i+1)%room.polygon.length]!;
-        const length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-        const geometry=new T.BoxGeometry(length,walls?floor.height:.035,.045);
-        const wall=new T.Mesh(geometry,new T.MeshBasicMaterial({color:0x6abaff,transparent:true,opacity:walls?.065:.25,depthWrite:false}));
-        wall.position.set((a[0]+b[0])/2,floor.elevation+(walls?floor.height/2:.02),(a[1]+b[1])/2);wall.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);
-        const edges=new T.LineBasicMaterial({color:0x94d5ff,transparent:true,opacity:.82});
-        wall.add(new T.LineSegments(new T.EdgesGeometry(geometry),edges));this.group.add(wall);
-        parts.walls.push(wall);parts.edges.push(edges);
-      }
-      this.rooms.set(room.id,parts);this.surfaces.push(surface);this.solids.push(surface,...parts.walls);
+      this.rooms.set(room.id,{surface,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(bounds.getSize(new T.Vector2()).length()/2,1)});
+      this.surfaces.push(surface);this.solids.push(surface);
+    }
+    // Each wall once: a shared partition is not drawn twice; exterior walls are thicker and brighter.
+    for(const {a,b,rooms} of segments){
+      const exterior=rooms.length===1,length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+      const geometry=new T.BoxGeometry(length,walls?floor.height:.035,exterior?.14:.07);
+      const mesh=new T.Mesh(geometry,new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false}));
+      mesh.position.set((a[0]+b[0])/2,floor.elevation+(walls?floor.height/2:.02),(a[1]+b[1])/2);mesh.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);
+      const edges=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6});
+      mesh.add(new T.LineSegments(new T.EdgesGeometry(geometry),edges));this.group.add(mesh);
+      this.wallParts.push({rooms,mesh,edges,exterior});this.solids.push(mesh);
     }
     const box=new T.Box3().setFromObject(this.group);box.getCenter(this.center);this.radius=Math.max(box.getSize(new T.Vector3()).length()/2,2);
     this.addHalo(box,floor.elevation);
@@ -190,12 +193,16 @@ export class SpatialScene {
     const key=`${selected}|${[...lit].sort().join()}`;
     if(key===this.styled)return false;
     this.styled=key;
-    for(const [id,{surface,walls,edges}] of this.rooms){
+    for(const [id,{surface}] of this.rooms){
       const on=lit.has(id),picked=id===selected,muted=!!selected&&!picked;
       surface.material.color.setHex(picked?(on?0xffd98f:0x8fd8ff):on?0xffbf5c:0x3496d1);
       surface.material.opacity=picked?.5:on?.34:muted?.13:.22;
-      for(const wall of walls)wall.material.opacity=this.walls?(picked?.13:muted?.04:.065):(picked?.5:.25);
-      for(const edge of edges){edge.color.setHex(picked?0xf1fbff:0x94d5ff);edge.opacity=picked?1:muted?.4:.82;}
+    }
+    for(const {rooms,mesh,edges,exterior} of this.wallParts){
+      const picked=rooms.includes(selected),muted=!!selected&&!picked;
+      mesh.material.opacity=this.walls?(picked?.16:muted?.04:exterior?.1:.06):(picked?.55:muted?.15:exterior?.35:.2);
+      edges.color.setHex(picked?0xf1fbff:exterior?0xb5e2ff:0x94d5ff);
+      edges.opacity=picked?1:muted?.35:exterior?.95:.6;
     }
     return true;
   }

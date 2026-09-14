@@ -1,13 +1,17 @@
-import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
+import { LitElement, css, html, nothing, svg, type PropertyValues } from 'lit';
 import type { HAArea } from '../../shared/models';
 import { examplePlan, parseSpatial, polygonArea, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import type { Hass } from '../ha/client';
 import { mpIcon } from '../icons';
 import './viewer';
 
-interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[] }
+/** Maps the plan (metres) back onto the analysed image: pixel = metre / scale + origin. */
+interface Source { width:number; height:number; scale:number[]; origin:number[] }
+interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source }
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
+/** Distinct colour per room (golden angle), shared by the overlay and the review list. */
+const roomColor=(index:number)=>`hsl(${Math.round(index*137.5)%360} 78% 62%)`;
 const MESSAGES:Record<string,string>={
   not_configured:'Ouvrez Configurer Gemini et collez votre clé API dans les options de MP Glass. Aucun add-on nécessaire en mode direct.',
   not_installed:'Service d’import introuvable : mettez à jour l’intégration MP Glass, puis redémarrez Home Assistant.',
@@ -31,12 +35,39 @@ const MESSAGES:Record<string,string>={
   model_unavailable:'Google refuse le modèle Gemini utilisé (retiré ou non ouvert à ce projet). Mettez à jour MP Glass puis redémarrez Home Assistant ; en mode add-on, corrigez l’option « model » du worker. Voir le détail ci-dessous.',
   timeout:'L’analyse a dépassé le délai. Réessayez avec une page plus simple.',
   job_missing:'L’analyse a été interrompue (MP Glass rechargé ou Home Assistant redémarré). Relancez-la.',
+  pdf_protected:'PDF protégé par un mot de passe : exportez la page du plan en image (PNG ou JPEG).',
+  pdf_unreadable:'Le navigateur n’a pas pu lire ce PDF : exportez la page du plan en image (PNG ou JPEG).',
 };
 
-/** PDF sent as is; images decoded by the browser and reduced when too large or in another format. */
-async function prepareUpload(file:File):Promise<Blob>{
+async function encodeCanvas(canvas:HTMLCanvasElement):Promise<Blob>{
+  const encode=(format:string,quality?:number)=>new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,format,quality));
+  const png=await encode('image/png');
+  const blob=png&&png.size<=MAX_UPLOAD?png:await encode('image/jpeg',.9);
+  if(!blob||blob.size>MAX_UPLOAD)throw Error('file_too_large');
+  return blob;
+}
+let pdfWorker:Worker|undefined;
+/** Only the chosen page leaves the browser, drawn by PDF.js (loaded on demand) as an image without the file's metadata. */
+async function renderPdfPage(file:File,page:number):Promise<Blob>{
+  const [pdfjs,{default:PdfWorker}]=await Promise.all([import('pdfjs-dist'),import('pdfjs-dist/build/pdf.worker.min.mjs?worker')]);
+  pdfWorker??=new PdfWorker();
+  pdfjs.GlobalWorkerOptions.workerPort=pdfWorker;
+  const task=pdfjs.getDocument({data:new Uint8Array(await file.arrayBuffer())});
+  try{
+    const pdf=await task.promise.catch((error:{name?:string})=>{throw Error(error?.name==='PasswordException'?'pdf_protected':'pdf_unreadable');});
+    if(page>pdf.numPages)throw Error(`page_missing:${pdf.numPages}`);
+    const source=await pdf.getPage(page),base=source.getViewport({scale:1});
+    const viewport=source.getViewport({scale:Math.min(4,MAX_SIDE/Math.max(base.width,base.height))});
+    const canvas=document.createElement('canvas');
+    canvas.width=Math.round(viewport.width);canvas.height=Math.round(viewport.height);
+    await source.render({canvas,viewport,background:'#ffffff'}).promise;
+    return await encodeCanvas(canvas);
+  }finally{await task.destroy();}
+}
+/** PDF page drawn in the browser; images decoded by the browser and reduced when too large or in another format. */
+async function prepareUpload(file:File,page:number):Promise<Blob>{
   const type=file.type||(/\.pdf$/i.test(file.name)?'application/pdf':'');
-  if(type==='application/pdf'){if(file.size>MAX_UPLOAD)throw Error('file_too_large');return file.type===type?file:new Blob([file],{type});}
+  if(type==='application/pdf')return renderPdfPage(file,page);
   let bitmap:ImageBitmap;
   try{bitmap=await createImageBitmap(file);}
   catch{if(ACCEPTED.includes(type)&&file.size<=MAX_UPLOAD)return file;throw Error('invalid_file');}
@@ -47,19 +78,15 @@ async function prepareUpload(file:File):Promise<Blob>{
     canvas.width=Math.max(1,Math.round(bitmap.width*scale));canvas.height=Math.max(1,Math.round(bitmap.height*scale));
     const context=canvas.getContext('2d');if(!context)throw Error('invalid_file');
     context.fillStyle='#fff';context.fillRect(0,0,canvas.width,canvas.height);context.drawImage(bitmap,0,0,canvas.width,canvas.height);
-    const encode=(format:string,quality?:number)=>new Promise<Blob|null>(resolve=>canvas.toBlob(resolve,format,quality));
-    const png=await encode('image/png');
-    const blob=png&&png.size<=MAX_UPLOAD?png:await encode('image/jpeg',.9);
-    if(!blob||blob.size>MAX_UPLOAD)throw Error('file_too_large');
-    return blob;
+    return await encodeCanvas(canvas);
   }finally{bitmap.close();}
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},source:{state:true},sourceUrl:{state:true},edits:{state:true},view:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
-    dialog.job{width:min(760px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
+    dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
     dialog.job::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}
     .job-head{display:flex;align-items:center;gap:14px}.job-head small{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#a9c0d6}.job-head h3{margin:3px 0 0;font:26px/1.1 Georgia,serif;font-weight:400}.job-head p{margin:5px 0 0;font-size:12px;overflow-wrap:anywhere}
     .job-orb{position:relative;display:grid;place-items:center;width:52px;height:52px;flex:0 0 auto;overflow:hidden;border-radius:16px;color:#dff0ff;background:radial-gradient(circle at 30% 25%,#69b7ff66,#69b7ff14);border:1px solid #69b7ff55;box-shadow:0 0 28px #69b7ff33}
@@ -72,6 +99,11 @@ export class MPSpatialEditor extends LitElement {
     .job-status{margin:14px 0 0;color:#dbe9f5}.job-status.failure{color:#ffd9cf}.job-status small{display:block;margin-top:8px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.muted{margin:8px 0 0;font-size:12px;color:#9fb6ca}
     .warnings{margin:12px 0 0;padding:10px 14px 10px 30px;border-radius:12px;background:#ffd36a12;border:1px solid #ffd36a33;color:#ffe3a3;font-size:12px}
     .job-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}.job mp-spatial-viewer{--mp-stage-height:min(42vh,360px);margin:16px 0 0}
+    .tabs{display:inline-flex;gap:2px;margin:16px 0 0;padding:3px;border-radius:12px;background:#ffffff0d;border:1px solid #d6ecff1f}.tabs button{min-height:34px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:#b9cfe2}.tabs button[aria-selected=true]{background:#2a648e;color:#fff}
+    .overlay{position:relative;max-width:100%;margin:12px auto 0;overflow:hidden;border-radius:14px;background:#fff;box-shadow:0 10px 30px #0006}.overlay img{display:block;width:100%;height:100%}.overlay svg{position:absolute;inset:0;width:100%;height:100%}
+    .overlay polygon{fill-opacity:.3;stroke-opacity:.95;stroke-linejoin:round}.overlay text{fill:#fff;paint-order:stroke;stroke:#061421;text-anchor:middle;dominant-baseline:middle;font-family:system-ui,sans-serif;font-weight:650}
+    .review{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}.review li{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:10px;background:#ffffff08;border:1px solid #d6ecff14}.review li.off{opacity:.45}
+    .review input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;padding:0}.review .rename{flex:1;min-width:0;min-height:32px;padding:4px 8px}.review small{color:#9fb6ca;white-space:nowrap}.swatch{width:12px;height:12px;flex:0 0 auto;border-radius:4px}
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
   `;
@@ -80,12 +112,14 @@ export class MPSpatialEditor extends LitElement {
   private timer?:ReturnType<typeof setTimeout>;private disposed=false;private generation=0;private startedAt=0;
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
+  /** Review of the draft: image sent to Gemini, rooms kept and renamed, overlay or 3D. */
+  private source?:Source;private sourceUrl='';private edits:{name:string;include:boolean}[]=[];private view:'overlay'|'3d'='overlay';
   connectedCallback(){super.connectedCallback();this.disposed=false;}
   disconnectedCallback(){
     super.disconnectedCallback();this.disposed=true;this.generation++;clearTimeout(this.timer);clearInterval(this.ticker);
     // Leaving the Studio: free the server for the next analysis instead of letting an orphan job run.
     if(this.jobId)void this.stopJob(this.jobId);
-    this.busy=false;this.jobId='';this.phase=undefined;this.dialogOpen=false;
+    this.busy=false;this.jobId='';this.phase=undefined;this.dialogOpen=false;this.setSource();
   }
   protected updated(){
     const dialog=this.renderRoot.querySelector<HTMLDialogElement>('dialog.job');
@@ -104,14 +138,16 @@ export class MPSpatialEditor extends LitElement {
   }
   private mutate(edit:(plan:SpatialPlan)=>void){if(!this.draft)return;const copy=structuredClone(this.draft);edit(copy);this.commit(copy);}
   private editRoom(edit:(room:SpatialRoom)=>void){const id=this.room?.id;this.mutate(plan=>{const room=plan.floors[this.floorIndex]?.rooms.find(r=>r.id===id);if(room)edit(room);});}
+  private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';}
   private async analyze(){
     if(!this.file||!this.hass?.fetchWithAuth||!this.confirmed||this.busy)return;
-    this.busy=true;this.candidate=undefined;this.detail='';this.warnings=[];this.jobId='';this.phase='preparing';this.dialogOpen=true;this.startedAt=Date.now();this.message='Préparation du fichier…';
+    this.busy=true;this.candidate=undefined;this.source=undefined;this.setSource();this.detail='';this.warnings=[];this.jobId='';this.phase='preparing';this.dialogOpen=true;this.startedAt=Date.now();this.message='Préparation du fichier…';
     clearInterval(this.ticker);this.ticker=setInterval(()=>{this.tick++;},1000);
     const generation=++this.generation;
     try{
-      const body=await prepareUpload(this.file);
+      const body=await prepareUpload(this.file,this.page);
       if(this.disposed||generation!==this.generation)return;
+      this.setSource(body);
       this.phase='uploading';this.message='Envoi du plan à Home Assistant…';
       const response=await this.hass.fetchWithAuth(`/api/mp_glass/spatial/analyze?page=${this.page}`,{method:'POST',headers:{'Content-Type':body.type},body});
       if(!response.ok){
@@ -128,7 +164,8 @@ export class MPSpatialEditor extends LitElement {
   private finish(phase:'done'|'error'){this.busy=false;this.phase=phase;this.jobId='';this.elapsed=Date.now()-this.startedAt;clearInterval(this.ticker);if(!this.disposed)this.dialogOpen=true;}
   private fail(error:unknown,detail=''){
     const code=error instanceof TypeError?'network':error instanceof Error?error.message:String((error as {code?:string})?.code??error);
-    this.message=MESSAGES[code]??`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
+    const pages=Number(/^page_missing:(\d+)$/.exec(code)?.[1]);
+    this.message=pages?`La page ${this.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:MESSAGES[code]??`Analyse impossible (${code}). Le plan enregistré est conservé.`;this.detail=detail;this.finish('error');
   }
   private async poll(id:string,generation:number){
     try{
@@ -140,6 +177,9 @@ export class MPSpatialEditor extends LitElement {
       }
       if(job.status==='error'){this.fail(Error(job.error??'analysis_failed'),job.detail);return;}
       this.candidate=parseSpatial(job.plan);this.warnings=job.warnings??[];
+      const source=job.source,numbers=source?[source.width,source.height,...source.scale,...source.origin]:[];
+      this.source=numbers.length===6&&numbers.every(Number.isFinite)?source:undefined;
+      this.edits=this.candidate.floors[0]!.rooms.map(r=>({name:r.name,include:true}));this.view=this.source&&this.sourceUrl?'overlay':'3d';this.previewPlan=this.candidate;
       this.message=`Brouillon reçu : ${this.candidate.floors[0]!.rooms.length} pièce(s). Vérifiez l’échelle et les pièces avant de l’utiliser. ${this.warnings.join(' ')}`;
       this.finish('done');
     }catch(error){if(!this.disposed&&generation===this.generation)this.fail(error);}
@@ -150,16 +190,38 @@ export class MPSpatialEditor extends LitElement {
     this.busy=false;this.phase=undefined;this.dialogOpen=false;this.jobId='';this.message='Analyse annulée. Le plan enregistré est conservé.';this.detail='';
     if(id)void this.stopJob(id);
   };
+  /** Draft as reviewed: rooms left out and names changed in the result window. */
+  private get reviewed(){
+    if(!this.candidate)return undefined;
+    const floor=structuredClone(this.candidate.floors[0]!);
+    floor.rooms=floor.rooms.flatMap((room,i)=>{const edit=this.edits[i];if(edit?.include===false)return [];return [{...room,name:edit?.name.trim().slice(0,80)||room.name}];});
+    return floor;
+  }
   private applyCandidate(){
-    if(!this.candidate)return;
-    const incoming=structuredClone(this.candidate.floors[0]!);
+    const incoming=this.reviewed;
+    if(!incoming?.rooms.length)return;
     for(const r of incoming.rooms)r.id=`room-${crypto.randomUUID().slice(0,8)}`;
     if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;}}}
     const plan=this.draft?structuredClone(this.draft):{version:1 as const,enabled:true,floors:[]};
     if(plan.floors.length)plan.floors[this.floorIndex]=incoming;else plan.floors.push(incoming);
-    this.commit(plan);this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;
+    this.commit(plan);this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
   }
-  private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
+  private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
+  /** 3D preview of the reviewed draft, rebuilt when a room is left out or renamed (not at each keystroke). */
+  private previewPlan?:SpatialPlan;
+  private edit(index:number,patch:Partial<{name:string;include:boolean}>,refresh=false){
+    this.edits=this.edits.map((edit,i)=>i===index?{...edit,...patch}:edit);
+    if(refresh&&this.candidate){const floor=this.reviewed;this.previewPlan=floor?.rooms.length?{...this.candidate,floors:[floor]}:undefined;}
+  }
+  /** Rooms drawn over the image Gemini analysed, to check the detection at a glance. */
+  private renderOverlay(rooms:SpatialRoom[],source:Source){
+    const [kx,ky]=source.scale as [number,number],[ox,oy]=source.origin as [number,number],size=Math.max(source.width,source.height);
+    return html`<figure class="overlay" style=${`aspect-ratio:${source.width}/${source.height};width:min(100%,calc(48vh * ${source.width/source.height}))`}><img src=${this.sourceUrl} alt="Plan analysé par Gemini"><svg viewBox=${`0 0 ${source.width} ${source.height}`} preserveAspectRatio="none" aria-hidden="true">${rooms.map((room,i)=>{
+      if(this.edits[i]?.include===false)return nothing;
+      const points=room.polygon.map(([x,y])=>[x/kx+ox,y/ky+oy]),xs=points.map(p=>p[0]!),ys=points.map(p=>p[1]!);
+      return svg`<g><polygon points=${points.map(p=>p.join(',')).join(' ')} style=${`fill:${roomColor(i)};stroke:${roomColor(i)};stroke-width:${size/350}`}></polygon><text x=${(Math.min(...xs)+Math.max(...xs))/2} y=${(Math.min(...ys)+Math.max(...ys))/2} font-size=${size/50} stroke-width=${size/300}>${this.edits[i]?.name||room.name}</text></g>`;
+    })}</svg></figure>`;
+  }
   private addRoom(){
     if(!this.draft){this.commit({version:1,enabled:true,floors:[{id:'ground',name:'Rez-de-chaussée',elevation:0,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]}]});return;}
     this.mutate(p=>{const f=p.floors[this.floorIndex]!;const x=Math.max(...f.rooms.flatMap(r=>r.polygon.map(v=>v[0])))+.3;const id=`room-${crypto.randomUUID().slice(0,8)}`;f.rooms.push({id,name:'Nouvelle pièce',polygon:[[x,0],[x+4,0],[x+4,4],[x,4]]});this.selected=id;});
@@ -182,10 +244,12 @@ export class MPSpatialEditor extends LitElement {
       const rooms=this.candidate.floors[0]!.rooms,area=rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0),xs=rooms.flatMap(r=>r.polygon.map(p=>p[0])),ys=rooms.flatMap(r=>r.polygon.map(p=>p[1]));
       const metres=(value:number)=>new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(value),plural=rooms.length>1?'s':'';
       body=html`<header class="job-head"><span class="job-orb ok">${mpIcon('check',26)}</span><div><small>Brouillon IA · non enregistré</small><h3 id="job-title">${rooms.length} pièce${plural} reconnue${plural}</h3><p>${metres(area)} m² · ${metres(Math.max(...xs)-Math.min(...xs))} × ${metres(Math.max(...ys)-Math.min(...ys))} m · analysé en ${time}</p></div></header>
-        <mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer>
+        ${this.source&&this.sourceUrl?html`<div class="tabs" role="tablist" aria-label="Affichage du brouillon"><button role="tab" aria-selected=${this.view==='overlay'} @click=${()=>{this.view='overlay';}}>Sur le plan d’origine</button><button role="tab" aria-selected=${this.view==='3d'} @click=${()=>{this.view='3d';}}>En 3D</button></div>`:nothing}
+        ${this.view==='overlay'&&this.source&&this.sourceUrl?this.renderOverlay(rooms,this.source):html`<mp-spatial-viewer preview .plan=${this.previewPlan}></mp-spatial-viewer>`}
+        <ul class="review" aria-label="Pièces du brouillon">${rooms.map((room,i)=>{const edit=this.edits[i]??{name:room.name,include:true};return html`<li class=${edit.include?'':'off'}><input type="checkbox" .checked=${edit.include} aria-label=${`Garder ${edit.name||room.name}`} @change=${(e:Event)=>this.edit(i,{include:(e.target as HTMLInputElement).checked},true)}><span class="swatch" style=${`background:${roomColor(i)}`}></span><input class="rename" maxlength="80" .value=${edit.name} aria-label=${`Nom de la pièce ${i+1}`} @input=${(e:Event)=>this.edit(i,{name:(e.target as HTMLInputElement).value})} @change=${()=>this.edit(i,{},true)}><small>${metres(polygonArea(room.polygon))} m²</small></li>`;})}</ul>
         ${this.warnings.length?html`<ul class="warnings">${this.warnings.map(w=>html`<li>${w}</li>`)}</ul>`:nothing}
         <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises.</p>
-        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
+        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||!this.edits.some(e=>e.include)} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
     }else{
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse impossible</h3><p>Le plan enregistré est conservé.</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>
@@ -198,7 +262,7 @@ export class MPSpatialEditor extends LitElement {
     return html`<h2>Plan 3D</h2><p>Votre maison en volume, reliée à vos équipements.</p>
     ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau, lumières déjà associées. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
-      <div class="box"><strong>Générer depuis un plan · Gemini Flash-Lite</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label></div><label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Le fichier complet, y compris les autres pages du PDF et ses métadonnées, est envoyé à Google ; le numéro de page guide l’analyse. Pour limiter l’envoi, importez un PDF contenant uniquement la page utile. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${this.analyze}>Générer le brouillon 3D</button></div>
+      <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label></div><label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${this.analyze}>Générer le brouillon 3D</button></div>
       <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}

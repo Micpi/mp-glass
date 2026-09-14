@@ -24,13 +24,21 @@ project = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(project)
 
 TOKEN = "test-connection-token-123456789"
-RESULT = {"rooms": [{"name": "Salon", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]]}], "scaleKnown": False, "warnings": []}
+RESULT = {"rooms": [{"name": "Salon", "box_2d": [0, 0, 300, 400]}], "scaleKnown": False, "warnings": []}
 
 
-def image_bytes(format="PNG"):
+def image_bytes(format="PNG", **options):
     output = BytesIO()
-    Image.new("RGB", (100, 80), "white").save(output, format=format)
+    Image.new("RGB", (100, 80), "white").save(output, format=format, **options)
     return output.getvalue()
+
+
+def rooms_of(result):
+    return {room["name"]: room["polygon"] for room in result["plan"]["floors"][0]["rooms"]}
+
+
+def area(ring):
+    return abs(sum(p[0] * q[1] - q[0] * p[1] for p, q in zip(ring, ring[1:] + ring[:1]))) / 2
 
 
 class GeometryTest(unittest.TestCase):
@@ -48,22 +56,65 @@ class GeometryTest(unittest.TestCase):
             with self.assertRaises(Exception):
                 server.normalize_result(RESULT | patch)
 
-    def test_estimated_scale_has_a_warning(self):
-        self.assertIn("Échelle estimée", server.normalize_result(RESULT)["warnings"][0])
+    def test_without_written_sizes_the_scale_comes_from_usual_room_areas(self):
+        result = server.normalize_result(RESULT)
+        self.assertAlmostEqual(area(rooms_of(result)["Salon"]), 28, delta=.05)
+        self.assertEqual(result["warnings"][:2], ["Échelle estimée d’après la taille habituelle des pièces : calibrez le plan avec une cote connue.",
+                                                  "Proportions de l’image inconnues : vérifiez la forme des pièces."])
 
-    def test_imperfect_model_geometry_is_repaired_instead_of_rejecting_the_plan(self):
+    def test_boxes_keep_the_image_proportions(self):
+        polygon = rooms_of(server.normalize_result({"rooms": [{"name": "Séjour", "box_2d": [0, 0, 500, 500]}], "scaleKnown": False, "warnings": []}, (2000, 1000)))["Séjour"]
+        self.assertAlmostEqual(polygon[2][0] / polygon[2][1], 2, delta=.001)  # coordinates rounded to the millimetre
+
+    def test_written_sizes_set_the_scale_whatever_their_order(self):
+        # A plan dimensioned in feet, 0.02 m per pixel on a 1000 x 500 image. "10X11" is written vertical side first.
+        rooms = [{"name": "Séjour", "label": "LIVING 21X16", "box_2d": [0, 0, 488, 320], "size": [6.4, 4.88]},
+                 {"name": "Chambre 3", "label": "BED 3 11X10", "box_2d": [0, 320, 335, 472.5], "size": [3.35, 3.05]},
+                 {"name": "Cuisine", "box_2d": [488, 0, 1000, 320]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 500))
+        self.assertEqual(rooms_of(result), {"Séjour": [[0, 0], [6.4, 0], [6.4, 4.88], [0, 4.88]],
+                                            "Chambre 3": [[6.4, 0], [9.45, 0], [9.45, 3.35], [6.4, 3.35]],
+                                            "Cuisine": [[0, 4.88], [6.4, 4.88], [6.4, 10], [0, 10]]})
+        self.assertEqual(result["warnings"], ["Échelle calculée à partir des cotes de 2 pièces du plan."])
+        # The review overlay maps metres back onto the image: 9.45 m is pixel 472.5.
+        source = result["source"]
+        self.assertEqual((source["width"], source["height"], source["origin"]), (1000, 500, [0.0, 0.0]))
+        self.assertAlmostEqual(9.45 / source["scale"][0] + source["origin"][0], 472.5)
+
+    def test_written_sizes_that_contradict_the_drawing_are_not_trusted(self):
+        rooms = [{"name": "Séjour", "box_2d": [0, 0, 300, 400], "size": [8, 6]},
+                 {"name": "Chambre", "box_2d": [0, 400, 300, 700], "size": [15, 15]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        self.assertIn("Échelle estimée", result["warnings"][0])
+
+    def test_neighbouring_walls_are_snapped_together(self):
+        rooms = [{"name": "Salon", "box_2d": [0, 0, 300, 400]}, {"name": "Cuisine", "box_2d": [5, 408, 300, 700]}]  # wall thickness apart
+        living, kitchen = rooms_of(server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))).values()
+        self.assertEqual(kitchen[0], living[1])
+        self.assertEqual(kitchen[3], living[2])
+
+    def test_a_closet_drawn_inside_a_room_carves_it_instead_of_overlapping(self):
+        rooms = [{"name": "Chambre", "box_2d": [0, 0, 400, 400]}, {"name": "Dressing", "box_2d": [0, 300, 150, 400]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        bedroom, closet = rooms_of(result).values()
+        self.assertEqual(len(bedroom), 6)  # L-shaped
+        self.assertEqual(len(closet), 4)
+        k = result["source"]["scale"][0]
+        self.assertAlmostEqual(area(bedroom) + area(closet), (400 * k) ** 2, delta=.01)
+
+    def test_non_rectangular_rooms_and_bad_answers_are_repaired_or_skipped(self):
         rooms = [
-            {"name": "  Salon\n", "polygon": [[0, 0], [2, 0], [4, 0], [4, 3], [4, 3.001], [0, 3], [0, 0]]},  # aligned, repeated and closing vertices
-            {"name": "Cuisine", "polygon": [[4, 0], [7, 3], [4, 3], [7, 0]]},  # crossing edges
-            {"name": "Trait", "polygon": [[0, 5], [1, 5], [2, 5]]},  # no area
-            {"name": "", "polygon": [[7, 0], [9, 0], [9, 3], [7, 3], [float("nan"), 1]]},
-            {"name": "C" * 200, "polygon": [[9 + math.cos(i / 120 * math.tau), 5 + math.sin(i / 120 * math.tau)] for i in range(120)]},
+            {"name": "  Salon\n", "box_2d": [0, 0, 300, 400]},
+            {"name": "Cuisine", "box_2d": [0, 400, 300, 700], "polygon": [[0, 400], [300, 700], [300, 400], [0, 700]]},  # crossing edges
+            {"name": "Trait", "box_2d": [500, 0, 500, 200], "polygon": [[500, 0], [500, 100], [500, 200]]},  # no area
+            {"name": "", "box_2d": [0, 700, 300, 900]},
+            {"name": "C" * 200, "box_2d": [570, 720, 730, 880], "polygon": [[650 + 80 * math.sin(i / 120 * math.tau), 800 + 80 * math.cos(i / 120 * math.tau)] for i in range(120)]},
         ]
-        result = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": ["Cotes partielles"]})
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": ["Cotes partielles"]}, (1000, 1000))
         plan = result["plan"]
         project.validate_project(project.load_validator(), project.default_project() | {"spatial": plan})
         salon, cuisine, unnamed, circle = plan["floors"][0]["rooms"]
-        self.assertEqual((salon["name"], salon["polygon"]), ("Salon", [[0, 0], [4, 0], [4, 3], [0, 3]]))
+        self.assertEqual((salon["name"], len(salon["polygon"])), ("Salon", 4))
         self.assertEqual(len(cuisine["polygon"]), 4)
         self.assertEqual(unnamed["name"], "Pièce 4")
         self.assertLessEqual(len(circle["polygon"]), 40)
@@ -72,49 +123,26 @@ class GeometryTest(unittest.TestCase):
         self.assertIn("Contour illisible ignoré : Trait", result["warnings"])
         self.assertEqual(result["warnings"][-1], "Cotes partielles")
 
-    def test_pixel_coordinates_are_rescaled_and_flagged(self):
-        result = server.normalize_result({"rooms": [{"name": "Salon", "polygon": [[100, 100], [900, 100], [900, 700], [100, 700]]}], "scaleKnown": True, "warnings": []})
-        self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["polygon"], [[0, 0], [15, 0], [15, 11.25], [0, 11.25]])
-        self.assertIn("calibrez", result["warnings"][0])
-
-    def test_written_room_sizes_set_the_scale(self):
-        # Drawn at half size, as in a real import where 21X16 ft rooms came out far too small.
-        rooms = [{"name": "Séjour", "polygon": [[0, 0], [3.2, 0], [3.2, 2.44], [0, 2.44]], "size": [6.4, 4.88]},
-                 {"name": "Chambre 3", "polygon": [[3.2, 0], [4.725, 0], [4.725, 1.675], [3.2, 1.675]], "size": [3.35, 3.05]},
-                 {"name": "Cuisine", "polygon": [[0, 2.44], [3.2, 2.44], [3.2, 4], [0, 4]]}]
-        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []})
-        living, bedroom, kitchen = result["plan"]["floors"][0]["rooms"]
-        self.assertEqual(living["polygon"], [[0, 0], [6.4, 0], [6.4, 4.88], [0, 4.88]])
-        self.assertEqual(bedroom["polygon"][2], [9.45, 3.35])
-        self.assertEqual(kitchen["polygon"][2], [6.4, 8])
-        self.assertEqual(result["warnings"], ["Échelle calculée à partir des cotes de 2 pièces du plan."])
-
-    def test_written_sizes_that_contradict_the_drawing_are_not_trusted(self):
-        rooms = [{"name": "Séjour", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]], "size": [8, 6]},
-                 {"name": "Chambre", "polygon": [[4, 0], [7, 0], [7, 3], [4, 3]], "size": [15, 15]}]
-        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []})
-        self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["polygon"], [[0, 0], [4, 0], [4, 3], [0, 3]])
-        self.assertIn("Échelle estimée", result["warnings"][0])
-
-    def test_neighbouring_walls_are_snapped_together(self):
-        rooms = [{"name": "Salon", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]]},
-                 {"name": "Cuisine", "polygon": [[4.08, 0.05], [7, 0.05], [7, 3.1], [4.08, 3.1]]}]
-        plan = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["plan"]
-        self.assertEqual(plan["floors"][0]["rooms"][1]["polygon"], [[4, 0], [7, 0], [7, 3], [4, 3]])
-
     def test_implausible_room_sizes_are_flagged(self):
-        rooms = [{"name": f"Pièce {i}", "polygon": [[i, 0], [i + 1, 0], [i + 1, 1], [i, 1]]} for i in range(3)]
-        warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["warnings"]
+        rooms = [{"name": f"Pièce {i}", "box_2d": [0, 100 * i, 100, 100 * i + 100], "size": [1, 1]} for i in range(3)]
+        warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 1000))["warnings"]
         self.assertIn("Surface moyenne de 1,0 m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue.", warnings)
 
-    def test_prompt_reads_imperial_sizes_and_names_rooms_in_french(self):
-        for text in ("feet x 0.3048", "12X16", "BED 2 -> Chambre 2", "W.I.C. -> Dressing", "Ignore watermarks", "Rooms never overlap"):
+    def test_prompt_detects_rooms_as_normalised_boxes(self):
+        for text in ("box_2d is [ymin, xmin, ymax, xmax]", "feet x 0.3048", "BED 2 -> Chambre 2", "W.I.C. -> Dressing", "Ignore watermarks", "never more"):
             self.assertIn(text, gemini.PROMPT)
 
     def test_unreadable_plan_reports_no_rooms(self):
-        for rooms in ([], [{"name": "Trait", "polygon": [[0, 0], [1, 1], [2, 2]]}]):
+        for rooms in ([], [{"name": "Trait", "box_2d": [0, 0, 0, 500]}]):
             with self.assertRaisesRegex(ValueError, "no_rooms"):
                 server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []})
+
+    def test_image_size_is_read_from_the_header(self):
+        for data, mime in ((image_bytes(), "image/png"), (image_bytes("JPEG"), "image/jpeg"), (image_bytes("WEBP"), "image/webp"),
+                           (image_bytes("WEBP", lossless=True), "image/webp")):
+            self.assertEqual(gemini.image_size(data, mime), (100, 80), mime)
+        self.assertIsNone(gemini.image_size(b"%PDF-1.7", "application/pdf"))
+        self.assertIsNone(gemini.image_size(b"\x89PNG\r\n\x1a\n", "image/png"))
 
     def test_provider_schema_uses_supported_keywords_only(self):
         supported = {"type", "properties", "required", "additionalProperties", "items", "minItems", "maxItems", "description", "minimum", "maximum", "enum"}
@@ -126,14 +154,6 @@ class GeometryTest(unittest.TestCase):
         self.assertLessEqual(set(keys(gemini.EXTRACTION_SCHEMA)), supported)
         # Nested array length limits got the schema refused by gemini-3.5-flash-lite: counts are checked locally.
         self.assertFalse({"minItems", "maxItems"} & set(keys(gemini.EXTRACTION_SCHEMA)))
-
-    def test_overlapping_rooms_are_flagged(self):
-        rooms = [{"name": "Buanderie", "polygon": [[0, 0], [4, 0], [4, 3], [0, 3]]},
-                 {"name": "Salle d'eau", "polygon": [[2, 1], [5, 1], [5, 4], [2, 4]]},
-                 {"name": "Dressing", "polygon": [[6, 0], [8, 0], [8, 3], [6, 3]]}]
-        warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []})["warnings"]
-        self.assertIn("Pièces qui se chevauchent, à corriger : Buanderie / Salle d'eau", warnings)
-        self.assertFalse(any("Dressing" in w for w in warnings))
 
 
 class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
@@ -156,7 +176,7 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
 
     async def test_gemini_3_keeps_default_temperature_and_room_for_thoughts(self):
         config = gemini.build_request(image_bytes(), "image/png", gemini.DEFAULT_MODEL)["generationConfig"]
-        self.assertEqual(gemini.DEFAULT_MODEL, "gemini-3.5-flash-lite")
+        self.assertEqual(gemini.DEFAULT_MODEL, "gemini-3.8-flash")
         self.assertNotIn("temperature", config)
         self.assertEqual(config["maxOutputTokens"], 32768)
         self.assertEqual(config["thinkingConfig"], {"thinkingLevel": "medium"})
@@ -261,7 +281,7 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
         result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
         self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["name"], "Salon")
         url, args = session.calls[0]
-        self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
+        self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.8-flash:generateContent")
         self.assertEqual(args["headers"], {"x-goog-api-key": "test-key"})
         self.assertNotIn("test-key", str(args["json"]))
         self.assertFalse(args["allow_redirects"])

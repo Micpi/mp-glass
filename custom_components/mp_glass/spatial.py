@@ -2,6 +2,7 @@
 import asyncio
 import json
 import logging
+import math
 from uuid import uuid4
 
 import voluptuous as vol
@@ -13,13 +14,24 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .spatial_contract import validate_geometry
-from .spatial_gemini import DEFAULT_MODEL, request_gemini, selected_backend
+from .spatial_gemini import DEFAULT_MODEL, QUALITIES, request_gemini, selected_backend
 
 _LOGGER = logging.getLogger(__name__)
 KEY = "mp_glass_spatial"
 MAX_FILE = 8 * 1024 * 1024
 ERRORS = {"quota", "provider_auth", "provider_request", "provider_region", "provider_unavailable", "provider_unreachable", "provider_blocked",
           "model_unavailable", "invalid_file", "invalid_geometry", "no_rooms", "truncated", "timeout", "busy", "analysis_failed", "not_configured"}
+
+
+def _source(value):
+    """Worker's mapping of the plan onto the analysed image, kept only when well formed."""
+    try:
+        numbers = [value["width"], value["height"], *value["scale"], *value["origin"]]
+        if len(numbers) == 6 and all(isinstance(v, (int, float)) and math.isfinite(v) for v in numbers) and min(numbers[:4]) > 0:
+            return {"width": value["width"], "height": value["height"], "scale": list(value["scale"]), "origin": list(value["origin"])}
+    except (KeyError, TypeError):
+        pass
+    return None
 
 
 class SpatialRuntime:
@@ -29,7 +41,8 @@ class SpatialRuntime:
         self.token = options.get("spatial_token", "")
         self.backend = selected_backend(options)
         self.api_key = options.get("gemini_api_key", "").strip()
-        self.model = options.get("gemini_model", DEFAULT_MODEL)
+        # An explicit model (advanced) wins over the accuracy chosen in the options.
+        self.model = options.get("gemini_model") or QUALITIES.get(options.get("gemini_quality", "precise"), DEFAULT_MODEL)
         self.lock = asyncio.Lock()
         self.jobs = {}
         self.task = None
@@ -43,7 +56,7 @@ class SpatialRuntime:
             session = async_get_clientsession(self.hass)
             if self.backend == "gemini":
                 result = await request_gemini(session, data, content_type, self.api_key, self.model, page)
-                job.update(status="done", plan=result["plan"], warnings=result["warnings"])
+                job.update(status="done", plan=result["plan"], warnings=result["warnings"], source=result["source"])
                 return
             async with session.post(
                 self.url + "/analyze", params={"page": page}, data=data,
@@ -67,7 +80,8 @@ class SpatialRuntime:
                 warnings = result.get("warnings", [])
                 if not isinstance(warnings, list) or len(warnings) > 20 or any(not isinstance(w, str) or len(w) > 500 for w in warnings):
                     raise ValueError("invalid_geometry")
-                job.update(status="done", plan=plan, warnings=warnings)
+                source = _source(result.get("source"))
+                job.update(status="done", plan=plan, warnings=warnings, **({"source": source} if source else {}))
         except asyncio.CancelledError:
             job.update(status="error", error="cancelled")
             raise

@@ -27,6 +27,34 @@ export function validPolygon(points: Point[]): boolean {
   }
   return true;
 }
+export interface WallSegment { a: Point; b: Point; rooms: string[] }
+/**
+ * Walls of a floor, each drawn once: room edges are split where another room's corner lies on them,
+ * then identical pieces are merged. `rooms` lists the rooms on its sides; a single one is an exterior wall.
+ */
+export function wallSegments(rooms: SpatialRoom[]): WallSegment[] {
+  const corners = rooms.flatMap(r => r.polygon);
+  const key = (p: Point) => `${Math.round(p[0] * 1000)},${Math.round(p[1] * 1000)}`;
+  const pieces = new Map<string, WallSegment>();
+  for (const room of rooms) room.polygon.forEach((a, i) => {
+    const b = room.polygon[(i + 1) % room.polygon.length]!, dx = b[0] - a[0], dy = b[1] - a[1], length = Math.hypot(dx, dy);
+    if (length < 1e-3) return;
+    const cuts = [0, 1];
+    for (const c of corners) {
+      const t = ((c[0] - a[0]) * dx + (c[1] - a[1]) * dy) / (length * length);
+      if (t > 1e-6 && t < 1 - 1e-6 && Math.abs((c[0] - a[0]) * dy - (c[1] - a[1]) * dx) / length < .005) cuts.push(t);
+    }
+    cuts.sort((x, y) => x - y);
+    for (let k = 1; k < cuts.length; k++) {
+      if (cuts[k]! - cuts[k - 1]! < 1e-6) continue;
+      const p: Point = [a[0] + dx * cuts[k - 1]!, a[1] + dy * cuts[k - 1]!], q: Point = [a[0] + dx * cuts[k]!, a[1] + dy * cuts[k]!];
+      const id = [key(p), key(q)].sort().join('|'), piece = pieces.get(id);
+      if (!piece) pieces.set(id, { a: p, b: q, rooms: [room.id] });
+      else if (!piece.rooms.includes(room.id)) piece.rooms.push(room.id);
+    }
+  });
+  return [...pieces.values()];
+}
 export function parseSpatial(value: unknown): SpatialPlan {
   if (!validate(value)) throw new Error('Plan invalide : vérifiez les pièces et les coordonnées.');
   const ids = new Set<string>();

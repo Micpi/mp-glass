@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { polygonArea, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import type { SpatialScene } from './scene';
 
@@ -145,11 +145,11 @@ export class MPSpatialViewer extends LitElement {
         const host=this.renderRoot.querySelector<HTMLElement>('.canvas');
         if (!this.isConnected || !host || !this.currentFloor) return;
         this.scene=new SpatialScene(host, id=>this.select(id), positions=>this.place(positions), ()=>{this.engaged=true;});
-        this.scene.setFloor(this.currentFloor, this.walls);
+        this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls);
       } catch { this.error='La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'; }
       finally { this.loading=false; }
     } else if (this.scene && (changed.has('plan') || changed.has('floor') || changed.has('walls'))) {
-      this.scene.setFloor(this.currentFloor, this.walls, !changed.has('walls'));
+      this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls, !changed.has('walls'));
     }
     if (this.scene && this.currentFloor && this.scene.highlight(this.room?.id ?? '', this.litRooms(this.currentFloor))) this.scene.render();
   }

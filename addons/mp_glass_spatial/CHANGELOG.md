@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.3.0
+
+Contrat Gemini partagé refondu : détection des pièces en boîtes normalisées, géométrie, échelle et découpage sans chevauchement calculés localement, correspondance plan/image renvoyée pour la vérification. Modèle par défaut `gemini-3.8-flash` (tout modèle Flash accepté) ; une installation existante garde son option `model`.
+
 ## 0.2.7
 
 Contrat Gemini partagé : schéma de réponse sans limites de longueur de tableau, repli en deux temps après un refus invalide (sans schéma avec réflexion, puis requête la plus simple), chevauchements de pièces signalés.

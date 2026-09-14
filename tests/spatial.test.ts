@@ -1,11 +1,20 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSpatialPlan, examplePlan, parseSpatial, validPolygon } from '../shared/spatial';
+import { defaultSpatialPlan, examplePlan, parseSpatial, validPolygon, wallSegments } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
 import { home } from './fixtures';
 
 describe('spatial geometry and project persistence',()=>{
+  it('draws each wall once and tells exterior walls from partitions',()=>{
+    // A bedroom on the left, two rooms on the right: the bedroom's right wall is split where they meet.
+    const room=(id:string,x0:number,y0:number,x1:number,y1:number)=>({id,name:id,polygon:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]] as [number,number][]});
+    const walls=wallSegments([room('A',0,0,4,4),room('B',4,0,8,2),room('C',4,2,8,4)]);
+    expect(walls).toHaveLength(10);
+    const partitions=walls.filter(w=>w.rooms.length===2).map(w=>w.rooms.sort().join('|')).sort();
+    expect(partitions).toEqual(['A|B','A|C','B|C']);
+    expect(walls.filter(w=>w.rooms.length===1)).toHaveLength(7);
+  });
   it('accepts concave rooms and rejects crossings, touching edges, duplicate points and zero area',()=>{
     expect(validPolygon([[0,0],[4,0],[4,2],[2,2],[2,4],[0,4]])).toBe(true);
     for(const points of [ [[0,0],[3,3],[0,3],[3,0]], [[0,0],[4,0],[4,4],[2,0],[0,4]], [[0,0],[0,0],[4,4]], [[0,0],[1,1],[2,2]] ]) expect(validPolygon(points as [number,number][])).toBe(false);

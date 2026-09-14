@@ -21,9 +21,10 @@
         "data": {
           "show_settings": "Show the integrator settings panel",
           "spatial_backend": "Plan analysis",
-          "gemini_api_key": "Gemini API key"
+          "gemini_api_key": "Gemini API key",
+          "gemini_quality": "Plan analysis model"
         },
-        "description": "For 3D plan generation, select direct Gemini and paste your API key. No app to install. Leave the key empty if you only use the dashboard."
+        "description": "For 3D plan generation, select direct Gemini and paste your API key. No app to install. Both models are on Google's free tier. Leave the key empty if you only use the dashboard."
       },
       "spatial_addon": {
         "title": "App connection (advanced)",
@@ -43,6 +44,12 @@
       "options": {
         "gemini": "Direct Gemini — no app required (recommended)",
         "addon": "Spatial app — advanced"
+      }
+    },
+    "gemini_quality": {
+      "options": {
+        "precise": "Gemini 3.8 Flash — most accurate (recommended)",
+        "fast": "Gemini 3.5 Flash-Lite — fastest"
       }
     }
   }

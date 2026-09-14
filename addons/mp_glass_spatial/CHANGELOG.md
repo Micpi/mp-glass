@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.4.0
+
+Contrat Gemini partagé : les pièces détectées sont renvoyées avec leurs murs alignés, en coordonnées 0–1000, pour être ajustées dans le Studio (poignées, ajout, suppression) puis recalculées par Home Assistant.
+
 ## 0.3.1
 
 Contrat Gemini partagé : une surcharge de Google (HTTP 500, 503, 504) déclenche deux nouveaux envois de la même requête, après 4 puis 12 secondes.

@@ -306,11 +306,13 @@ def _typical(name):
     return next((area for pattern, area in TYPICAL_AREAS if re.search(pattern, text)), 10)
 
 
-def normalize_result(value, size=None):
+def normalize_result(value, size=None, scale=None):
     """Turn Gemini's detected rooms into a valid plan in metres, repairing what can be repaired and reporting it.
 
     `size` is the image's width and height in pixels, for the proportions of the normalised coordinates
     (taken as square when unknown). The result's `source` maps the plan back onto the image for review.
+    `scale` (metres per pixel along x and y) is kept when the rooms' written sizes do not give one: editing rooms
+    in the Studio must not change the size of the others.
     """
     try:
         RESULT_VALIDATOR.validate(value)
@@ -344,6 +346,9 @@ def normalize_result(value, size=None):
     if calibrated:
         kx, ky, count = calibrated
         notes.append(f"Échelle calculée à partir des cotes de {count} pièces du plan.")
+    elif scale and len(scale) == 2 and all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in scale):
+        kx, ky = scale
+        notes.append("Échelle de l’analyse conservée : vérifiez-la avec une cote connue.")
     else:
         drawn = sum(_area(r) for r in regions if r)
         kx = ky = math.sqrt(sum(_typical(n) for n, r in zip(names, regions) if r) / drawn) if drawn else .01
@@ -352,8 +357,8 @@ def normalize_result(value, size=None):
             notes.append("Proportions de l’image inconnues : vérifiez la forme des pièces.")
     points = [p for r in regions if r for p in r]
     ox, oy = min(p[0] for p in points), min(p[1] for p in points)
-    rooms, simplified, skipped = [], [], []
-    for name, region in zip(names, regions):
+    rooms, simplified, skipped, ids = [], [], [], {}
+    for index, (name, region) in enumerate(zip(names, regions)):
         ring = _clean([[round((x - ox) * kx, 3), round((y - oy) * ky, 3)] for x, y in region]) if region else []
         repaired = False
         if len(ring) >= 3 and not valid_ring(ring):
@@ -363,7 +368,8 @@ def normalize_result(value, size=None):
             continue
         if repaired:
             simplified.append(name)
-        rooms.append({"id": f"room-{len(rooms)+1}", "name": name, "polygon": ring})
+        ids[index] = f"room-{len(rooms)+1}"
+        rooms.append({"id": ids[index], "name": name, "polygon": ring})
     if not rooms:
         raise SpatialError("no_rooms", f"{len(names)} pièce(s) reçue(s), aucune exploitable.")
     plan = {"version": 1, "enabled": True, "floors": [{"id": "imported", "name": "Niveau importé", "elevation": 0, "height": 2.6, "rooms": rooms}]}
@@ -382,7 +388,29 @@ def normalize_result(value, size=None):
         warnings.append(f"Contour illisible ignoré : {', '.join(skipped)}"[:500])
     warnings += [" ".join(w.split())[:500] for w in value.get("warnings", []) if w.strip()]
     source = {"width": width, "height": height, "scale": [kx, ky], "origin": [ox, oy]}
-    return {"plan": plan, "warnings": warnings[:20], "source": source}
+    return {"plan": plan, "warnings": warnings[:20], "source": source, "detection": _detection(value["rooms"], names, boxes, shapes, sizes, ids, fx, fy)}
+
+
+def _detection(answer, names, boxes, shapes, sizes, ids, fx, fy):
+    """Rooms as used, walls aligned, back in normalised coordinates: what the Studio edits and sends to normalize again.
+
+    `id` links each one to its room in the plan (absent when the room was left out).
+    """
+    rooms = []
+    for index, box in enumerate(boxes):
+        if box is None:
+            continue
+        room = {"name": names[index], "box_2d": [round(box[1] / fy, 2), round(box[0] / fx, 2), round(box[3] / fy, 2), round(box[2] / fx, 2)]}
+        if shapes[index]:
+            room["polygon"] = [[round(y / fy, 2), round(x / fx, 2)] for x, y in shapes[index]]
+        if isinstance(sizes[index], list) and len(sizes[index]) == 2:
+            room["size"] = sizes[index]
+        if isinstance(answer[index].get("label"), str) and answer[index]["label"].strip():
+            room["label"] = answer[index]["label"][:120]
+        if index in ids:
+            room["id"] = ids[index]
+        rooms.append(room)
+    return rooms
 
 
 def validate_source(data, mime, page=1):
@@ -547,6 +575,23 @@ async def request_gemini(session, data, mime, api_key, model=DEFAULT_MODEL, page
     result = normalize_result(value, image_size(data, mime))
     result["warnings"] = (notes + result["warnings"])[:20]
     return result
+
+
+def valid_detection(value):
+    """Detected rooms from the worker, kept only when well formed: the Studio draws them and sends them back to normalize."""
+    def numbers(v, count):
+        return isinstance(v, list) and len(v) == count and all(isinstance(n, (int, float)) and not isinstance(n, bool) and math.isfinite(n) for n in v)
+
+    def text(v, limit):
+        return isinstance(v, str) and len(v) <= limit
+
+    def room(r):
+        polygon = r.get("polygon", []) if isinstance(r, dict) else None
+        return (isinstance(r, dict) and set(r) <= {"name", "box_2d", "polygon", "size", "label", "id"} and text(r.get("name"), 80)
+                and numbers(r.get("box_2d"), 4) and isinstance(polygon, list) and len(polygon) <= 400 and all(numbers(p, 2) for p in polygon)
+                and ("size" not in r or numbers(r["size"], 2)) and text(r.get("label", ""), 120) and text(r.get("id", ""), 40))
+
+    return value if isinstance(value, list) and 0 < len(value) <= MAX_ROOMS * 2 and all(map(room, value)) else None
 
 
 def selected_backend(options):

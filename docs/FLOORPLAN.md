@@ -1,6 +1,6 @@
 # MP Spatial — plan 3D et import Gemini
 
-Implémentation de développement 0.3.1. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
+Implémentation de développement 0.4.0. Le parcours recommandé est [Gemini direct sans add-on](GEMINI_QUICKSTART.md). La référence graphique fournie sert de direction visuelle. La scène actuelle contient sols, cloisons transparentes et étiquettes ; meubles, portes/fenêtres, escaliers et textures ne sont pas encore reconstruits.
 
 ## Plan par défaut
 
@@ -10,12 +10,12 @@ Ce plan est recalculé à chaque génération du dashboard et n’est pas enregi
 
 ## Utiliser depuis Home Assistant
 
-1. Installer MP Glass 0.3.1 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.3.1`, puis recharger le navigateur.
+1. Installer MP Glass 0.4.0 ([HACS ou copie manuelle](INSTALL.md)) et redémarrer HA. Si une ressource Lovelace historique pointe vers `mp-glass-r14.js`, la remplacer par `/mp_glass_static/mp-glass-bootstrap.js?v=0.4.0`, puis recharger le navigateur.
 2. Ouvrir **MP Glass Studio → Plan 3D**. **Ajouter une pièce** et **Charger un exemple** fonctionnent sans add-on et sans IA. L’exemple est fictif.
 3. Pour l’import IA, ouvrir les options de l’intégration, choisir **Gemini direct — sans add-on** et saisir la clé API Gemini. Aucun worker à installer.
 4. Uniquement pour le mode avancé **Add-on Spatial**, installer le worker puis renseigner son adresse et la même `api_token` dans l’intégration. Pour un add-on local Supervisor : `http://local-mp-glass-spatial:8099`. Un dépôt d’add-ons peut donner un préfixe différent : utiliser le nom d’hôte indiqué par HA.
 5. Choisir un PDF non chiffré (page 1–100), PNG, JPEG ou WebP, maximum 8 Mo. Cocher l’envoi à Google, puis **Générer le brouillon 3D**. Une fenêtre suit l’analyse étape par étape (préparation, envoi, analyse avec chronomètre) et permet de l’annuler ; elle affiche ensuite le brouillon en 3D (pièces, surface, dimensions, avertissements) ou la cause de l’échec avec **Réessayer**. Une seule analyse à la fois, cinq minutes maximum ; quitter le Studio arrête l’analyse en cours.
-6. Examiner le brouillon, cliquer **Utiliser pour ce niveau**, corriger noms, contours, hauteur et échelle. Exemple : une longueur affichée de 5 m pour une cote réelle de 6 m nécessite un facteur 1,2. La hauteur des murs reste indépendante.
+6. Ajuster les pièces sur le plan d’origine si besoin (voir [Corriger les pièces détectées](#corriger-les-pièces-détectées)), cliquer **Utiliser pour ce niveau**, puis corriger noms, contours, hauteur et échelle. Exemple : une longueur affichée de 5 m pour une cote réelle de 6 m nécessite un facteur 1,2. La hauteur des murs reste indépendante.
 7. Associer les pièces HA et sélectionner les capteurs/lumières à afficher. L’association de pièce est un repère ; les équipements se sélectionnent explicitement.
 8. Cliquer **Enregistrer** dans le Studio puis recharger le dashboard. Le plan remplace le texte d’accueil lorsque **Afficher le plan sur l’accueil** est activé. Une détection des équipements conserve le plan.
 
@@ -38,17 +38,30 @@ Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. R
 
 ## Analyse du plan
 
-Depuis 0.3.1, Gemini ne rédige plus de coordonnées en mètres : il **détecte** chaque pièce sur l’image, comme un objet, avec une boîte `[ymin, xmin, ymax, xmax]` normalisée de 0 à 1000 (son format de détection natif), un contour seulement pour les pièces non rectangulaires, le texte écrit dans la pièce et, quand elles sont écrites, ses cotes converties en mètres (pieds et pouces compris). MP Glass fait ensuite toute la géométrie localement :
+Depuis 0.3.0, Gemini ne rédige plus de coordonnées en mètres : il **détecte** chaque pièce sur l’image, comme un objet, avec une boîte `[ymin, xmin, ymax, xmax]` normalisée de 0 à 1000 (son format de détection natif), un contour seulement pour les pièces non rectangulaires, le texte écrit dans la pièce et, quand elles sont écrites, ses cotes converties en mètres (pieds et pouces compris). MP Glass fait ensuite toute la géométrie localement :
 
 1. **Proportions** : les boîtes sont converties en pixels avec la taille réelle de l’image, lue dans son en-tête (PNG, JPEG, WebP) sans la décoder.
 2. **Murs** : les bords distants de moins de 1,2 % de l’image (épaisseur d’un mur) sont alignés.
 3. **Découpage sans chevauchement** : la grille formée par tous les bords est répartie entre les pièces, la plus petite pièce l’emportant. Un placard dessiné dans une chambre la découpe (chambre en L) au lieu de la recouvrir.
 4. **Échelle** : à partir des cotes écrites d’au moins deux pièces qui concordent avec le dessin (l’ordre largeur × profondeur est vérifié) ; à défaut, d’après la surface habituelle des pièces selon leur nom (séjour, chambre, salle de bain…), signalée comme estimée.
 5. **Contrôles** : contours réparés ou ignorés avec un avertissement, surface moyenne invraisemblable signalée.
+6. **Murs dessinés** (dans le navigateur, depuis 0.4.0) : les traits sombres, épais et longs de l’image sont repérés comme murs ; chaque bord de pièce à moins de 2 % de l’image d’un mur est posé sur son axe, et le plan est recalculé. Les murs coupés par des portes comptent d’un seul tenant. Le nombre de bords ajustés est indiqué et **Annuler** revient à la détection de Gemini.
 
 Un PDF est dessiné **dans le navigateur** (PDF.js, chargé à la demande) : seule la page choisie part vers Home Assistant puis Google, en image, sans les autres pages ni les métadonnées du fichier. Un PDF protégé par mot de passe, illisible ou sans la page demandée est signalé avant tout envoi.
 
-La fenêtre de résultat superpose les pièces détectées, en couleur et nommées, à l’image analysée ; un onglet montre la 3D. Chaque pièce peut y être renommée ou écartée avant **Utiliser pour ce niveau**.
+La fenêtre de résultat superpose les pièces détectées, en couleur et nommées, à l’image analysée ; un onglet montre la 3D.
+
+## Corriger les pièces détectées
+
+Dans l’onglet **Sur le plan d’origine** de la fenêtre de résultat, avant **Utiliser pour ce niveau** :
+
+- **Ajuster** : toucher une pièce la sélectionne et affiche huit poignées. Glisser la pièce la déplace ; glisser une poignée déplace un bord ou un coin. À moins de 10 px d’écran d’un mur dessiné, le bord s’y colle.
+- **Ajouter** : **Ajouter une pièce**, puis tracer un rectangle sur le plan ; ses bords se collent aux murs voisins et son nom (« Pièce N ») est sélectionné pour être renommé.
+- **Supprimer** : bouton **Supprimer** ou touche Suppr pour la pièce sélectionnée, ou croix dans la liste.
+- **Renommer** : champ de la liste, sous le plan, avec la surface de chaque pièce.
+- **Annuler** : revient sur les 30 dernières modifications.
+
+Chaque modification est recalculée par Home Assistant avec la même géométrie que l’analyse (murs alignés, découpage sans chevauchement), sans nouvel appel à Gemini ni quota consommé. L’échelle calculée à partir des cotes écrites est recalculée ; une échelle estimée est conservée, pour ne pas changer la taille des autres pièces. Une pièce redimensionnée devient rectangulaire ; déplacée, elle garde son contour. Sur téléphone, un doigt posé sur une pièce ou une poignée la modifie ; ailleurs, il fait défiler la fenêtre. Chaque pièce garde sa couleur pendant les modifications.
 
 ## Gemini et gratuité
 
@@ -72,6 +85,6 @@ Une seule tâche éphémère reste en mémoire. Fermer le Studio ou recharger l�
 
 ## Limites de validation
 
-Aucun appel Gemini réel avec une clé dans cette session : les tests simulent le fournisseur et ne mesurent pas la précision de reconnaissance, à juger sur de vrais plans. Build et installation Linux Supervisor, Safari/iOS et matériel tactile restent à valider. Trous internes, mobilier, ouvertures, undo/redo et déplacement graphique direct des sommets restent à développer.
+Aucun appel Gemini réel avec une clé dans cette session : les tests simulent le fournisseur et ne mesurent pas la précision de reconnaissance, à juger sur de vrais plans. Build et installation Linux Supervisor, Safari/iOS et matériel tactile restent à valider. Trous internes, mobilier, ouvertures et déplacement graphique des sommets d’un contour non rectangulaire restent à développer ; les poignées ajustent le rectangle d’une pièce.
 
 Le mode Gemini direct, le rendu et les commandes HA fonctionnent sans add-on. HA Container peut utiliser le même worker en conteneur séparé ; l’usage quotidien reste dans le Studio.

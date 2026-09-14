@@ -14,7 +14,7 @@ from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .spatial_contract import validate_geometry
-from .spatial_gemini import DEFAULT_MODEL, QUALITIES, request_gemini, selected_backend
+from .spatial_gemini import DEFAULT_MODEL, MAX_ROOMS, QUALITIES, SpatialError, normalize_result, request_gemini, selected_backend, valid_detection
 
 _LOGGER = logging.getLogger(__name__)
 KEY = "mp_glass_spatial"
@@ -56,7 +56,7 @@ class SpatialRuntime:
             session = async_get_clientsession(self.hass)
             if self.backend == "gemini":
                 result = await request_gemini(session, data, content_type, self.api_key, model or self.model, page)
-                job.update(status="done", plan=result["plan"], warnings=result["warnings"], source=result["source"])
+                job.update(status="done", plan=result["plan"], warnings=result["warnings"], source=result["source"], detection=result["detection"])
                 return
             async with session.post(
                 self.url + "/analyze", params={"page": page}, data=data,
@@ -81,7 +81,9 @@ class SpatialRuntime:
                 if not isinstance(warnings, list) or len(warnings) > 20 or any(not isinstance(w, str) or len(w) > 500 for w in warnings):
                     raise ValueError("invalid_geometry")
                 source = _source(result.get("source"))
-                job.update(status="done", plan=plan, warnings=warnings, **({"source": source} if source else {}))
+                # Rooms to edit in the Studio; validated again whenever they are sent back to normalize.
+                detection = valid_detection(result.get("detection"))
+                job.update(status="done", plan=plan, warnings=warnings, **({"source": source} if source else {}), **({"detection": detection} if source and detection else {}))
         except asyncio.CancelledError:
             job.update(status="error", error="cancelled")
             raise
@@ -175,6 +177,26 @@ def websocket_job(hass, connection, msg):
         connection.send_error(msg["id"], "job_missing", "Analysis expired; retry the import")
         return
     connection.send_result(msg["id"], job)
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "mp_glass/spatial/normalize",
+    vol.Required("rooms"): vol.All(list, vol.Length(max=MAX_ROOMS * 2)),
+    vol.Required("width"): vol.All(int, vol.Range(min=1, max=30000)),
+    vol.Required("height"): vol.All(int, vol.Range(min=1, max=30000)),
+    vol.Optional("scale"): vol.All([vol.All(vol.Coerce(float), vol.Range(min=1e-6, max=1000))], vol.Length(min=2, max=2)),
+})
+@websocket_api.require_admin
+@websocket_api.async_response
+async def websocket_normalize(hass, connection, msg):
+    """Plan rebuilt from rooms edited in the Studio (moved, resized, added, removed): local geometry, no Gemini call."""
+    rooms = [{key: value for key, value in room.items() if key != "id"} if isinstance(room, dict) else room for room in msg["rooms"]]
+    try:
+        result = await hass.async_add_executor_job(normalize_result, {"rooms": rooms, "scaleKnown": False, "warnings": []}, (msg["width"], msg["height"]), msg.get("scale"))
+    except SpatialError as err:
+        connection.send_error(msg["id"], err.code, err.detail or err.code)
+        return
+    connection.send_result(msg["id"], result)
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/spatial/cancel", vol.Required("job_id"): str})

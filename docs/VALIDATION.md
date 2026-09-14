@@ -1,5 +1,11 @@
 # Validation — incrément lumière 0.1.0
 
+## Pièces détectées modifiables 0.4.0 — 14 septembre 2026
+
+Retour utilisateur sur l’import réel de la 0.3.1 (13 pièces, 136 m², 19 × 8,7 m) : améliorer encore la détection, pouvoir modifier les zones détectées, en ajouter et en supprimer. Réponse : éditeur de zones sur le plan d’origine (poignées, déplacement, tracé, suppression, renommage, annulation), murs dessinés repérés dans le navigateur et bords des pièces posés sur leur axe, plan recalculé par Home Assistant (`mp_glass/spatial/normalize`, administrateur) avec la géométrie de l’analyse.
+
+Validé localement : 43 tests Python (pièces renvoyées pour édition puis plan identique, ajout et retrait, échelle estimée conservée pendant les retouches et échelle invalide ignorée, pièces du worker mal formées rejetées), 34 tests Vitest, 29 scénarios Playwright (sur une image de plan dessinée : bord de cuisine décalé de 10 px posé sur son mur, poignée tirée librement puis collée à un mur, annulation, pièce tracée et renommée, suppression par la liste et par la touche Suppr, couleurs conservées, application au niveau ; au doigt : poignée tirée sans faire défiler, défilement de la fenêtre ailleurs), build. Non validé : repérage des murs sur le vrai plan de l’utilisateur (murs gris clair ou hachurés, filigrane), à juger au prochain import.
+
 ## Gemini surchargé 0.3.1 — 14 septembre 2026
 
 Premier essai réel de la 0.3.0 : `HTTP 503 UNAVAILABLE This model is currently experiencing high demand` avec Gemini 3.8 Flash. La requête (schéma, réflexion, image) est donc acceptée ; seule la capacité du modèle manquait. Parade : deux nouveaux envois après 4 et 12 s pour les erreurs 5xx, puis choix de l’autre modèle pour l’analyse en cours, depuis la fenêtre d’échec.

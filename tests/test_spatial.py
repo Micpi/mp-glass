@@ -124,6 +124,50 @@ class GeometryTest(unittest.TestCase):
         self.assertIn("Contour illisible ignoré : Trait", result["warnings"])
         self.assertEqual(result["warnings"][-1], "Cotes partielles")
 
+    def test_detected_rooms_come_back_for_editing_and_rebuild_the_same_plan(self):
+        rooms = [{"name": "Séjour", "label": "LIVING 21X16", "box_2d": [0, 0, 488, 320], "size": [6.4, 4.88]},
+                 {"name": "Chambre 3", "box_2d": [0, 320, 335, 472.5], "size": [3.35, 3.05]},
+                 {"name": "Cuisine", "box_2d": [492, 3, 1000, 322]}]  # walls a few pixels off
+        first = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 500))
+        detection = first["detection"]
+        self.assertEqual([r["id"] for r in detection], ["room-1", "room-2", "room-3"])
+        self.assertEqual(detection[0]["label"], "LIVING 21X16")
+        self.assertEqual(detection[2]["box_2d"][:2], [488, 0])  # aligned with the living room's walls
+        # The Studio sends them back (without ids) after an edit: same plan when nothing changed.
+        edited = [{k: v for k, v in room.items() if k != "id"} for room in detection]
+        again = server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 500))
+        self.assertEqual(rooms_of(again), rooms_of(first))
+        # Removing a room and adding another one.
+        edited = edited[:2] + [{"name": "Pièce 4", "box_2d": [488, 320, 1000, 600]}]
+        names = rooms_of(server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 500)))
+        self.assertEqual(list(names), ["Séjour", "Chambre 3", "Pièce 4"])
+
+    def test_editing_rooms_keeps_the_scale_of_the_analysis(self):
+        # No written size: the scale comes from the usual room areas and would change with each room added or removed.
+        rooms = [{"name": "Séjour", "box_2d": [0, 0, 500, 500]}, {"name": "Chambre", "box_2d": [0, 500, 500, 800]}, {"name": "WC", "box_2d": [500, 0, 600, 100]}]
+        first = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        edited = [{k: v for k, v in room.items() if k != "id"} for room in first["detection"][:2]]
+        kept = server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 1000), first["source"]["scale"])
+        self.assertEqual(rooms_of(kept)["Séjour"], rooms_of(first)["Séjour"])
+        self.assertEqual(kept["source"]["scale"], first["source"]["scale"])
+        self.assertIn("Échelle de l’analyse conservée : vérifiez-la avec une cote connue.", kept["warnings"])
+        estimated = server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        self.assertNotEqual(estimated["source"]["scale"], first["source"]["scale"])
+        # Written sizes still calibrate the plan; a malformed scale is ignored.
+        for scale in ([float("nan"), 1], [0, 0], [1]):
+            self.assertEqual(server.normalize_result({"rooms": edited, "scaleKnown": False, "warnings": []}, (1000, 1000), scale)["source"]["scale"], estimated["source"]["scale"])
+
+    def test_worker_detection_is_kept_only_when_well_formed(self):
+        rooms = [{"name": "Séjour", "label": "LIVING", "box_2d": [0, 0, 500, 500], "size": [5, 5]}, {"name": "Coin", "box_2d": [500, 0, 1000, 500], "polygon": [[500, 0], [1000, 0], [1000, 500]]}]
+        detection = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 1000))["detection"]
+        self.assertEqual(gemini.valid_detection(detection), detection)
+        room = detection[0]
+        for bad in ({**room, "box_2d": [0, 0, 500]}, {**room, "box_2d": [0, 0, "500;x", 500]}, {**room, "box_2d": [0, 0, float("inf"), 500]},
+                    {**room, "name": 3}, {**room, "polygon": [[0, 0, 1]]}, {**room, "size": [True, 2]}, {**room, "style": "x"}, "Séjour"):
+            self.assertIsNone(gemini.valid_detection([bad, detection[1]]))
+        for bad in (None, [], {"rooms": detection}, [room] * (gemini.MAX_ROOMS * 2 + 1)):
+            self.assertIsNone(gemini.valid_detection(bad))
+
     def test_implausible_room_sizes_are_flagged(self):
         rooms = [{"name": f"Pièce {i}", "box_2d": [0, 100 * i, 100, 100 * i + 100], "size": [1, 1]} for i in range(3)]
         warnings = server.normalize_result({"rooms": rooms, "scaleKnown": True, "warnings": []}, (1000, 1000))["warnings"]

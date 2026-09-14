@@ -1,5 +1,5 @@
 FROM python:3.12.12-slim-bookworm
-ARG BUILD_VERSION=0.3.1
+ARG BUILD_VERSION=0.4.0
 ARG BUILD_ARCH
 LABEL io.hass.version="${BUILD_VERSION}" io.hass.type="addon" io.hass.arch="${BUILD_ARCH}"
 WORKDIR /app

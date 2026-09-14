@@ -1,20 +1,17 @@
-import { LitElement, css, html, nothing, svg, type PropertyValues } from 'lit';
+import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { HAArea } from '../../shared/models';
 import { examplePlan, parseSpatial, polygonArea, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import type { Hass } from '../ha/client';
 import { mpIcon } from '../icons';
 import './viewer';
+import { detectWalls, snapBox, type DetectionRoom, type Source, type Walls } from './zones';
 
-/** Maps the plan (metres) back onto the analysed image: pixel = metre / scale + origin. */
-interface Source { width:number; height:number; scale:number[]; origin:number[] }
-interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string }
+interface Job { id:string; status:'running'|'done'|'error'; plan?:SpatialPlan; error?:string; detail?:string; warnings?:string[]; source?:Source; model?:string; detection?:DetectionRoom[] }
 type Quality='precise'|'fast';
 /** Models offered in the integration options; the other one is proposed when Gemini is overloaded. */
 const MODELS:Record<string,{label:string;quality:Quality}>={'gemini-3.8-flash':{label:'Gemini 3.8 Flash',quality:'precise'},'gemini-3.5-flash-lite':{label:'Gemini 3.5 Flash-Lite',quality:'fast'}};
 const ACCEPTED=['application/pdf','image/png','image/jpeg','image/webp'];
 const MAX_UPLOAD=8*1024*1024, MAX_SIDE=3072, MAX_WAIT=6*60_000;
-/** Distinct colour per room (golden angle), shared by the overlay and the review list. */
-const roomColor=(index:number)=>`hsl(${Math.round(index*137.5)%360} 78% 62%)`;
 const MESSAGES:Record<string,string>={
   not_configured:'Ouvrez Configurer Gemini et collez votre clé API dans les options de MP Glass. Aucun add-on nécessaire en mode direct.',
   not_installed:'Service d’import introuvable : mettez à jour l’intégration MP Glass, puis redémarrez Home Assistant.',
@@ -86,7 +83,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},edits:{state:true},view:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
@@ -103,10 +100,6 @@ export class MPSpatialEditor extends LitElement {
     .warnings{margin:12px 0 0;padding:10px 14px 10px 30px;border-radius:12px;background:#ffd36a12;border:1px solid #ffd36a33;color:#ffe3a3;font-size:12px}
     .job-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}.job mp-spatial-viewer{--mp-stage-height:min(42vh,360px);margin:16px 0 0}
     .tabs{display:inline-flex;gap:2px;margin:16px 0 0;padding:3px;border-radius:12px;background:#ffffff0d;border:1px solid #d6ecff1f}.tabs button{min-height:34px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:#b9cfe2}.tabs button[aria-selected=true]{background:#2a648e;color:#fff}
-    .overlay{position:relative;max-width:100%;margin:12px auto 0;overflow:hidden;border-radius:14px;background:#fff;box-shadow:0 10px 30px #0006}.overlay img{display:block;width:100%;height:100%}.overlay svg{position:absolute;inset:0;width:100%;height:100%}
-    .overlay polygon{fill-opacity:.3;stroke-opacity:.95;stroke-linejoin:round}.overlay text{fill:#fff;paint-order:stroke;stroke:#061421;text-anchor:middle;dominant-baseline:middle;font-family:system-ui,sans-serif;font-weight:650}
-    .review{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px}.review li{display:flex;align-items:center;gap:8px;padding:4px 8px;border-radius:10px;background:#ffffff08;border:1px solid #d6ecff14}.review li.off{opacity:.45}
-    .review input[type=checkbox]{width:18px;height:18px;min-height:0;margin:0;padding:0}.review .rename{flex:1;min-width:0;min-height:32px;padding:4px 8px}.review small{color:#9fb6ca;white-space:nowrap}.swatch{width:12px;height:12px;flex:0 0 auto;border-radius:4px}
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
   `;
@@ -115,12 +108,14 @@ export class MPSpatialEditor extends LitElement {
   private timer?:ReturnType<typeof setTimeout>;private disposed=false;private generation=0;private startedAt=0;
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
-  /** Review of the draft: image sent to Gemini, rooms kept and renamed, overlay or 3D. */
   /** Model of the running or last analysis, as reported by Home Assistant (direct mode only). */
   private model='';private quality?:Quality;private errorCode='';
   private get modelLabel(){return MODELS[this.model]?.label??'Gemini';}
   private get alternative(){const current=MODELS[this.model];return current?Object.values(MODELS).find(m=>m.quality!==current.quality):undefined;}
-  private source?:Source;private sourceUrl='';private edits:{name:string;include:boolean}[]=[];private view:'overlay'|'3d'='overlay';
+  /** Image sent to Gemini and the mapping of the draft onto it, for the rooms drawn over the plan. */
+  private source?:Source;private sourceUrl='';private sourceBlob?:Blob;private view:'overlay'|'3d'='overlay';
+  /** Rooms as detected (0-1000 over the image), edited in the result window; undo keeps the previous states. */
+  private detection?:DetectionRoom[];private history:DetectionRoom[][]=[];private walls?:Walls;private recomputing=false;
   connectedCallback(){super.connectedCallback();this.disposed=false;}
   disconnectedCallback(){
     super.disconnectedCallback();this.disposed=true;this.generation++;clearTimeout(this.timer);clearInterval(this.ticker);
@@ -145,7 +140,7 @@ export class MPSpatialEditor extends LitElement {
   }
   private mutate(edit:(plan:SpatialPlan)=>void){if(!this.draft)return;const copy=structuredClone(this.draft);edit(copy);this.commit(copy);}
   private editRoom(edit:(room:SpatialRoom)=>void){const id=this.room?.id;this.mutate(plan=>{const room=plan.floors[this.floorIndex]?.rooms.find(r=>r.id===id);if(room)edit(room);});}
-  private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';}
+  private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';this.sourceBlob=blob;}
   /** `quality`: the other offered model for this analysis only (after an overload); none: the one in the options. */
   private async analyze(quality?:Quality){
     if(!this.file||!this.hass?.fetchWithAuth||!this.confirmed||this.busy)return;
@@ -190,7 +185,9 @@ export class MPSpatialEditor extends LitElement {
       this.candidate=parseSpatial(job.plan);this.warnings=job.warnings??[];
       const source=job.source,numbers=source?[source.width,source.height,...source.scale,...source.origin]:[];
       this.source=numbers.length===6&&numbers.every(Number.isFinite)?source:undefined;
-      this.edits=this.candidate.floors[0]!.rooms.map(r=>({name:r.name,include:true}));this.view=this.source&&this.sourceUrl?'overlay':'3d';this.previewPlan=this.candidate;
+      this.detection=this.source&&Array.isArray(job.detection)?job.detection.map((room,hue)=>({...room,hue})):undefined;this.history=[];this.walls=undefined;
+      this.view=this.detection&&this.sourceUrl?'overlay':'3d';
+      if(this.detection&&this.sourceBlob)void this.fitToWalls(generation);
       this.message=`Brouillon reçu : ${this.candidate.floors[0]!.rooms.length} pièce(s). Vérifiez l’échelle et les pièces avant de l’utiliser. ${this.warnings.join(' ')}`;
       this.finish('done');
     }catch(error){if(!this.disposed&&generation===this.generation)this.fail(error);}
@@ -201,16 +198,10 @@ export class MPSpatialEditor extends LitElement {
     this.busy=false;this.phase=undefined;this.dialogOpen=false;this.jobId='';this.message='Analyse annulée. Le plan enregistré est conservé.';this.detail='';
     if(id)void this.stopJob(id);
   };
-  /** Draft as reviewed: rooms left out and names changed in the result window. */
-  private get reviewed(){
-    if(!this.candidate)return undefined;
-    const floor=structuredClone(this.candidate.floors[0]!);
-    floor.rooms=floor.rooms.flatMap((room,i)=>{const edit=this.edits[i];if(edit?.include===false)return [];return [{...room,name:edit?.name.trim().slice(0,80)||room.name}];});
-    return floor;
-  }
   private applyCandidate(){
-    const incoming=this.reviewed;
-    if(!incoming?.rooms.length)return;
+    if(!this.candidate||this.recomputing)return;
+    const incoming=structuredClone(this.candidate.floors[0]!);
+    if(!incoming.rooms.length)return;
     for(const r of incoming.rooms)r.id=`room-${crypto.randomUUID().slice(0,8)}`;
     if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;}}}
     const plan=this.draft?structuredClone(this.draft):{version:1 as const,enabled:true,floors:[]};
@@ -218,21 +209,40 @@ export class MPSpatialEditor extends LitElement {
     this.commit(plan);this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
   }
   private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
-  /** 3D preview of the reviewed draft, rebuilt when a room is left out or renamed (not at each keystroke). */
-  private previewPlan?:SpatialPlan;
-  private edit(index:number,patch:Partial<{name:string;include:boolean}>,refresh=false){
-    this.edits=this.edits.map((edit,i)=>i===index?{...edit,...patch}:edit);
-    if(refresh&&this.candidate){const floor=this.reviewed;this.previewPlan=floor?.rooms.length?{...this.candidate,floors:[floor]}:undefined;}
+  /** Right after the analysis, the edges of Gemini's boxes are moved onto the walls drawn on the plan (undoable). */
+  private async fitToWalls(generation:number){
+    try{
+      const walls=await detectWalls(this.sourceBlob!);
+      if(generation!==this.generation||!this.detection)return;
+      this.walls=walls;
+      let moved=0;
+      const fitted=this.detection.map(room=>{
+        if(room.polygon)return room;
+        const box=snapBox(room.box_2d,walls,20,20).map(v=>Math.round(v*100)/100);
+        moved+=box.filter((v,i)=>Math.abs(v-room.box_2d[i]!)>.01).length;
+        return {...room,box_2d:box};
+      });
+      if(moved)await this.recompute(fitted,this.detection,`${moved} bord${moved>1?'s':''} de pièce ajusté${moved>1?'s':''} aux murs du plan.`);
+    }catch{/* Walls unknown: the rooms stay as detected. */}
   }
-  /** Rooms drawn over the image Gemini analysed, to check the detection at a glance. */
-  private renderOverlay(rooms:SpatialRoom[],source:Source){
-    const [kx,ky]=source.scale as [number,number],[ox,oy]=source.origin as [number,number],size=Math.max(source.width,source.height);
-    return html`<figure class="overlay" style=${`aspect-ratio:${source.width}/${source.height};width:min(100%,calc(48vh * ${source.width/source.height}))`}><img src=${this.sourceUrl} alt="Plan analysé par Gemini"><svg viewBox=${`0 0 ${source.width} ${source.height}`} preserveAspectRatio="none" aria-hidden="true">${rooms.map((room,i)=>{
-      if(this.edits[i]?.include===false)return nothing;
-      const points=room.polygon.map(([x,y])=>[x/kx+ox,y/ky+oy]),xs=points.map(p=>p[0]!),ys=points.map(p=>p[1]!);
-      return svg`<g><polygon points=${points.map(p=>p.join(',')).join(' ')} style=${`fill:${roomColor(i)};stroke:${roomColor(i)};stroke-width:${size/350}`}></polygon><text x=${(Math.min(...xs)+Math.max(...xs))/2} y=${(Math.min(...ys)+Math.max(...ys))/2} font-size=${size/50} stroke-width=${size/300}>${this.edits[i]?.name||room.name}</text></g>`;
-    })}</svg></figure>`;
+  /** Plan rebuilt by Home Assistant from edited rooms: same geometry as the analysis, no Gemini call. `previous` goes to the undo history. */
+  private async recompute(detection:DetectionRoom[],previous:DetectionRoom[]|null=this.detection??null,note=''){
+    if(!this.hass||!this.source||this.recomputing)return;
+    this.recomputing=true;const generation=this.generation;
+    try{
+      // Browser-only keys stay here; the colours come back with the rooms, in the same order.
+      const rooms=detection.map(room=>{const copy={...room};delete copy.id;delete copy.hue;return copy;});
+      const result=await this.hass.callWS<{plan:SpatialPlan;warnings:string[];source:Source;detection:DetectionRoom[]}>({type:'mp_glass/spatial/normalize',rooms,width:this.source.width,height:this.source.height,scale:this.source.scale});
+      if(!this.candidate||generation!==this.generation)return;  // Discarded or replaced in the meantime.
+      this.candidate=parseSpatial(result.plan);this.source=result.source;
+      this.detection=result.detection.length===detection.length?result.detection.map((room,i)=>({...room,hue:detection[i]!.hue??i})):result.detection;
+      this.warnings=note?[note,...result.warnings]:result.warnings;
+      if(previous)this.history=[...this.history,previous].slice(-30);
+    }catch(error){this.warnings=[`Modification impossible : ${(error as {message?:string})?.message??String(error)}`,...this.warnings];}
+    finally{this.recomputing=false;}
   }
+  private zonesChanged=(e:CustomEvent<DetectionRoom[]>)=>{void this.recompute(e.detail);};
+  private zonesUndo=()=>{const previous=this.history.at(-1);if(!previous)return;this.history=this.history.slice(0,-1);void this.recompute(previous,null);};
   private addRoom(){
     if(!this.draft){this.commit({version:1,enabled:true,floors:[{id:'ground',name:'Rez-de-chaussée',elevation:0,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]}]});return;}
     this.mutate(p=>{const f=p.floors[this.floorIndex]!;const x=Math.max(...f.rooms.flatMap(r=>r.polygon.map(v=>v[0])))+.3;const id=`room-${crypto.randomUUID().slice(0,8)}`;f.rooms.push({id,name:'Nouvelle pièce',polygon:[[x,0],[x+4,0],[x+4,4],[x,4]]});this.selected=id;});
@@ -255,12 +265,11 @@ export class MPSpatialEditor extends LitElement {
       const rooms=this.candidate.floors[0]!.rooms,area=rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0),xs=rooms.flatMap(r=>r.polygon.map(p=>p[0])),ys=rooms.flatMap(r=>r.polygon.map(p=>p[1]));
       const metres=(value:number)=>new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(value),plural=rooms.length>1?'s':'';
       body=html`<header class="job-head"><span class="job-orb ok">${mpIcon('check',26)}</span><div><small>Brouillon IA · non enregistré</small><h3 id="job-title">${rooms.length} pièce${plural} reconnue${plural}</h3><p>${metres(area)} m² · ${metres(Math.max(...xs)-Math.min(...xs))} × ${metres(Math.max(...ys)-Math.min(...ys))} m · analysé en ${time}</p></div></header>
-        ${this.source&&this.sourceUrl?html`<div class="tabs" role="tablist" aria-label="Affichage du brouillon"><button role="tab" aria-selected=${this.view==='overlay'} @click=${()=>{this.view='overlay';}}>Sur le plan d’origine</button><button role="tab" aria-selected=${this.view==='3d'} @click=${()=>{this.view='3d';}}>En 3D</button></div>`:nothing}
-        ${this.view==='overlay'&&this.source&&this.sourceUrl?this.renderOverlay(rooms,this.source):html`<mp-spatial-viewer preview .plan=${this.previewPlan}></mp-spatial-viewer>`}
-        <ul class="review" aria-label="Pièces du brouillon">${rooms.map((room,i)=>{const edit=this.edits[i]??{name:room.name,include:true};return html`<li class=${edit.include?'':'off'}><input type="checkbox" .checked=${edit.include} aria-label=${`Garder ${edit.name||room.name}`} @change=${(e:Event)=>this.edit(i,{include:(e.target as HTMLInputElement).checked},true)}><span class="swatch" style=${`background:${roomColor(i)}`}></span><input class="rename" maxlength="80" .value=${edit.name} aria-label=${`Nom de la pièce ${i+1}`} @input=${(e:Event)=>this.edit(i,{name:(e.target as HTMLInputElement).value})} @change=${()=>this.edit(i,{},true)}><small>${metres(polygonArea(room.polygon))} m²</small></li>`;})}</ul>
+        ${this.detection&&this.source&&this.sourceUrl?html`<div class="tabs" role="tablist" aria-label="Affichage du brouillon"><button role="tab" aria-selected=${this.view==='overlay'} @click=${()=>{this.view='overlay';}}>Sur le plan d’origine</button><button role="tab" aria-selected=${this.view==='3d'} @click=${()=>{this.view='3d';}}>En 3D</button></div>`:nothing}
+        ${this.view==='overlay'&&this.detection&&this.source&&this.sourceUrl?html`<mp-plan-zones .src=${this.sourceUrl} .source=${this.source} .plan=${this.candidate} .detection=${this.detection} .walls=${this.walls} ?busy=${this.recomputing} ?canUndo=${this.history.length>0} @zones-change=${this.zonesChanged} @zones-undo=${this.zonesUndo}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer>`}
         ${this.warnings.length?html`<ul class="warnings">${this.warnings.map(w=>html`<li>${w}</li>`)}</ul>`:nothing}
         <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises.</p>
-        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||!this.edits.some(e=>e.include)} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
+        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||this.recomputing||!rooms.length} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
     }else{
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>Plan 3D · Gemini</small><h3 id="job-title">Analyse impossible</h3><p>Le plan enregistré est conservé.</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>

@@ -9,7 +9,7 @@ from homeassistant.helpers.storage import Store
 from .const import DOMAIN, VERSION
 from .frontend import async_register, async_unregister
 from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
-from .spatial import KEY as SPATIAL_KEY, SpatialRuntime, SpatialUploadView, websocket_cancel, websocket_job
+from .spatial import KEY as SPATIAL_KEY, SpatialRuntime, SpatialUploadView, websocket_cancel, websocket_job, websocket_normalize
 
 
 async def async_setup_entry(hass, entry):
@@ -31,6 +31,7 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_save)
         websocket_api.async_register_command(hass, websocket_job)
         websocket_api.async_register_command(hass, websocket_cancel)
+        websocket_api.async_register_command(hass, websocket_normalize)
         hass.http.register_view(SpatialUploadView())
         hass.data["mp_glass_ws_registered"] = True
     await async_register(hass, entry.options.get("show_settings", True))

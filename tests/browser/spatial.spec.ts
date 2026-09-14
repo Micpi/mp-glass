@@ -31,18 +31,43 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
     },callWS:async<T>(message:Record<string,unknown>)=>{
       messages.push(message);
       if(message.type==='mp_glass/spatial/cancel'&&message.job_id==='job-test')return {cancelled:true} as T;
+      if(message.type==='mp_glass/spatial/normalize'){
+        // Stand-in for Home Assistant's geometry (tested in Python): each room is its box, 100 px per metre.
+        const rooms=message.rooms as {name:string;box_2d:number[]}[],width=message.width as number,height=message.height as number;
+        const floor={id:'imported',name:'Niveau importé',elevation:0,height:2.6,rooms:rooms.map((room,i)=>{
+          const [y0,x0,y1,x1]=room.box_2d.map((v,k)=>v*(k%2?width:height)/100000) as [number,number,number,number];
+          return {id:`room-${i+1}`,name:room.name,polygon:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]};
+        })};
+        return {plan:{version:1,enabled:true,floors:[floor]},warnings:[],source:{width,height,scale:[.01,.01],origin:[0,0]},detection:rooms.map((room,i)=>({...room,id:`room-${i+1}`}))} as T;
+      }
       if(message.type!=='mp_glass/spatial/job'||message.job_id!=='job-test')throw Error('unexpected_command');
       if(options.pending)return {id:'job-test',status:'running'} as T;
       const incoming=examplePlan();incoming.floors[0].rooms[0].name='Pièce importée';
       const failure=options.jobError??(jobError?{error:'quota'}:undefined);
       // The example plan (13 x 8 m) drawn at 100 px per metre on the analysed image.
-      const source=options.source?{source:{width:1300,height:800,scale:[.01,.01],origin:[0,0]}}:{};
+      // Rooms as detected, in 0-1000 over the image; the kitchen's west side is drawn 10 px beside its wall.
+      const detection=incoming.floors[0].rooms.map((room:{id:string;name:string;polygon:number[][]})=>{
+        const xs=room.polygon.map(p=>p[0]!*100/1.3),ys=room.polygon.map(p=>p[1]!*125);
+        return {id:room.id,name:room.name,box_2d:[Math.min(...ys),room.id==='kitchen'?700:Math.min(...xs),Math.max(...ys),Math.max(...xs)]};
+      });
+      const source=options.source?{source:{width:1300,height:800,scale:[.01,.01],origin:[0,0]},detection}:{};
       return (failure?{id:'job-test',status:'error',...failure}:{id:'job-test',status:'done',plan:incoming,warnings:['Échelle estimée'],...source}) as T;
     }};
     editor.addEventListener('spatial-change',e=>changed.push((e as CustomEvent).detail));
     document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages}});
   },{isAdmin,jobError,options});
 }
+/** Chooses a PNG of the example plan drawn at 100 px per metre: exterior and interior walls, 8 px thick. */
+const choosePlanImage=(page:Page)=>page.evaluate(async()=>{
+  const canvas=document.createElement('canvas');canvas.width=1300;canvas.height=800;const context=canvas.getContext('2d')!;
+  context.fillStyle='#fff';context.fillRect(0,0,1300,800);context.lineWidth=8;context.strokeRect(4,4,1292,792);
+  for(const [x0,y0,x1,y1] of [[500,0,500,400],[900,0,900,400],[0,400,1300,400],[400,400,400,800],[700,400,700,800],[1000,400,1000,800]]){context.beginPath();context.moveTo(x0!,y0!);context.lineTo(x1!,y1!);context.stroke();}
+  const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));
+  const input=document.querySelector('mp-spatial-editor')!.shadowRoot!.querySelector<HTMLInputElement>('input[type=file]')!;
+  const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
+});
+/** Rooms sent to Home Assistant by the last edit of the draft. */
+const editedRooms=async(page:Page)=>(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string;rooms?:{name:string;box_2d:number[]}[]}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize'))).at(-1)!.rooms!;
 const consentAndGenerate=async(page:Page)=>{await page.getByRole('checkbox',{name:'Envoyer ce plan à Google pour l’analyser'}).check();await page.getByRole('button',{name:'Générer le brouillon 3D'}).click();};
 const demoCalls=(page:Page)=>page.evaluate(()=>(window as unknown as {demo:{calls:unknown[]}}).demo.calls);
 /** Points of the canvas: its centre is the house (first one not covered by a label), a bottom corner is beside it. */
@@ -125,6 +150,30 @@ test.describe('touch',()=>{
     await swipe(beside,0,-160);
     await expect.poll(()=>page.evaluate(()=>scrollY)).toBeGreaterThan(40);
     expect(await labelOffset(page,'living')).toEqual(rotated);
+  });
+  test('on a phone a finger on a handle resizes the room, elsewhere it scrolls the result window',async({page})=>{
+    await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+    const dialog=page.getByRole('dialog'),figure=dialog.locator('mp-plan-zones figure');
+    await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+    const frame=(await figure.boundingBox())!;
+    await page.touchscreen.tap(frame.x+frame.width*.18,frame.y+frame.height*.25);
+    await expect(figure.locator('.handle')).toHaveCount(8);
+    const cdp=await page.context().newCDPSession(page);
+    const swipe=async(from:{x:number;y:number},dx:number,dy:number)=>{
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:from.x,y:from.y}]});
+      for(let i=1;i<=10;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:from.x+dx*i/10,y:from.y+dy*i/10}]});
+      await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    };
+    const scrolled=()=>dialog.evaluate(d=>d.scrollTop);
+    // Beside the square itself, still on its larger target: 8 px below the south handle, dragged 20 px down.
+    const south=(await figure.locator('.handle[data-handle=s]').boundingBox())!;
+    const before=await editedRooms(page),top=await scrolled();
+    await swipe({x:south.x+south.width/2,y:south.y+south.height/2+8},0,20);
+    await expect.poll(async()=>(await editedRooms(page))[0]!.box_2d[2]).toBeGreaterThan(before[0]!.box_2d[2]!+20);
+    expect(await scrolled()).toBe(top);
+    const list=dialog.locator('mp-plan-zones li').nth(3),item=(await list.boundingBox())!;
+    await swipe({x:item.x+item.width/2,y:item.y+item.height/2},0,-200);
+    await expect.poll(scrolled).toBeGreaterThan(top+40);
   });
 });
 
@@ -257,33 +306,84 @@ test('result window previews the draft and can discard it',async({page})=>{
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
 });
 
-test('result window draws the rooms over the analysed plan; rooms can be renamed or left out',async({page})=>{
+test('detected rooms fit the drawn walls and can be moved, resized, drawn, deleted and renamed',async({page})=>{
   await mountEditor(page,true,false,{source:true});
-  await page.evaluate(async()=>{
-    const canvas=document.createElement('canvas');canvas.width=1300;canvas.height=800;const context=canvas.getContext('2d')!;
-    context.fillStyle='#fff';context.fillRect(0,0,1300,800);context.lineWidth=8;context.strokeRect(4,4,1292,792);
-    const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));
-    const input=document.querySelector('mp-spatial-editor')!.shadowRoot!.querySelector<HTMLInputElement>('input[type=file]')!;
-    const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
-  });
+  await choosePlanImage(page);
   await consentAndGenerate(page);
-  const dialog=page.getByRole('dialog',{name:'7 pièces reconnues'});
+  await expect(page.getByRole('dialog',{name:'7 pièces reconnues'})).toBeVisible();
+  const dialog=page.getByRole('dialog');  // Its title follows the rooms added and removed.
   await expect(dialog.getByRole('tab',{name:'Sur le plan d’origine'})).toHaveAttribute('aria-selected','true');
-  const overlay=dialog.locator('figure.overlay');
-  await expect(overlay.locator('img')).toHaveJSProperty('naturalWidth',1300);
-  await expect(overlay.locator('polygon')).toHaveCount(7);
-  await expect(overlay.locator('text',{hasText:'Pièce importée'})).toHaveCount(1);
-  await page.screenshot({path:'artifacts/spatial-import-overlay.png'});
-  await dialog.getByRole('textbox',{name:'Nom de la pièce 1'}).fill('Salon');
-  await dialog.getByRole('checkbox',{name:'Garder Cuisine'}).uncheck();
-  await expect(overlay.locator('polygon')).toHaveCount(6);
-  await expect(overlay.locator('text',{hasText:'Salon'})).toHaveCount(1);
+  const zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  const lastRooms=()=>editedRooms(page);
+  await expect(figure.locator('img')).toHaveJSProperty('naturalWidth',1300);
+  // Right after the analysis, the rooms' sides are moved onto the walls drawn on the plan.
+  await expect(dialog.getByRole('listitem').filter({hasText:/bords? de pièce ajustés? aux murs du plan/})).toBeVisible();
+  const kitchen=(await lastRooms()).find(r=>r.name==='Cuisine')!;
+  expect(kitchen.box_2d[1]).toBeCloseTo(692.3,0);
+  await expect(figure.locator('polygon')).toHaveCount(7);
+  await expect(figure.locator('.label',{hasText:'Pièce importée'})).toHaveCount(1);
+  await page.screenshot({path:'artifacts/spatial-import-zones.png'});
+
+  // Select the living room, then pull its east handle 60 px: away from any wall, the side follows the finger.
+  const box=async()=>(await figure.boundingBox())!;
+  let frame=await box();
+  await page.mouse.click(frame.x+frame.width*.18,frame.y+frame.height*.25);
+  await expect(figure.locator('.handle')).toHaveCount(8);
+  const east=(await figure.locator('.handle[data-handle=e]').boundingBox())!;
+  await page.mouse.move(east.x+east.width/2,east.y+east.height/2);await page.mouse.down();
+  await page.mouse.move(east.x+east.width/2+30,east.y+east.height/2,{steps:4});await page.mouse.move(east.x+east.width/2+60,east.y+east.height/2,{steps:4});await page.mouse.up();
+  await expect.poll(async()=>(await lastRooms())[0]!.box_2d[3]).toBeGreaterThan(450);
+  const living=(await lastRooms())[0]!;
+  expect(living.box_2d[3]).toBeCloseTo(385+60/frame.width*1000,-1);
+  expect(living.name).toBe('Pièce importée');
+
+  // Close to a wall, the side is attracted by it: the living room back onto its east wall.
+  const handle=(await figure.locator('.handle[data-handle=e]').boundingBox())!;
+  await page.mouse.move(handle.x+handle.width/2,handle.y+handle.height/2);await page.mouse.down();
+  await page.mouse.move(frame.x+frame.width*.385+5,handle.y+handle.height/2,{steps:6});await page.mouse.up();
+  await expect.poll(async()=>(await lastRooms())[0]!.box_2d[3]).toBeLessThan(400);
+  expect((await lastRooms())[0]!.box_2d[3]).toBeCloseTo(385,-0.5);
+
+  // Undo restores the previous state.
+  await zones.getByRole('button',{name:'Annuler'}).click();
+  await expect.poll(async()=>(await lastRooms())[0]!.box_2d[3]).toBeGreaterThan(450);
+
+  // Draw a new room, then name it.
+  frame=await box();
+  await zones.getByRole('button',{name:'Ajouter une pièce'}).click();
+  await expect(zones.getByRole('button',{name:'Ajouter une pièce'})).toHaveAttribute('aria-pressed','true');
+  await page.mouse.move(frame.x+frame.width*.55,frame.y+frame.height*.6);await page.mouse.down();
+  await page.mouse.move(frame.x+frame.width*.6,frame.y+frame.height*.7,{steps:3});await page.mouse.move(frame.x+frame.width*.64,frame.y+frame.height*.8,{steps:3});await page.mouse.up();
+  await expect(figure.locator('polygon')).toHaveCount(8);
+  await expect(dialog.getByRole('heading',{name:'8 pièces reconnues'})).toBeVisible();
+  const name=zones.getByRole('textbox',{name:'Nom de la pièce 8'});
+  await expect(name).toBeFocused();await expect(name).toHaveValue('Pièce 8');
+  await name.fill('Cellier');await name.press('Enter');
+  await expect.poll(async()=>(await lastRooms()).map(r=>r.name)).toContain('Cellier');
+  const cellar=(await lastRooms()).at(-1)!.box_2d;
+  // Drawn 7 px beside the wall at x = 700 px: its west side is put on that wall, the others stay where they were drawn.
+  expect(Math.abs(cellar[1]!-538.5)).toBeLessThan(2);expect(cellar[3]).toBeCloseTo(640,-1);expect(cellar[0]).toBeCloseTo(600,-1);expect(cellar[2]).toBeCloseTo(800,-1);
+
+  // Delete a room from the list, another one with the keyboard; each room keeps its colour.
+  const swatch=()=>zones.getByRole('listitem').filter({has:page.getByRole('textbox',{name:'Nom de la pièce 4'})}).locator('.swatch').getAttribute('style');
+  const bedroom=await swatch();
+  await zones.getByRole('button',{name:'Supprimer Cuisine'}).click();
+  await expect(figure.locator('polygon')).toHaveCount(7);
+  await expect(zones.getByRole('textbox',{name:'Nom de la pièce 3'})).toHaveValue('Chambre');
+  expect(await zones.getByRole('listitem').filter({has:page.getByRole('textbox',{name:'Nom de la pièce 3'})}).locator('.swatch').getAttribute('style')).toBe(bedroom);
+  await page.mouse.click(frame.x+frame.width*.85,frame.y+frame.height*.75);
+  await expect(zones.locator('li.selected input')).toHaveValue('Salle de bain');
+  await page.keyboard.press('Delete');
+  await expect(figure.locator('polygon')).toHaveCount(6);
+  expect((await lastRooms()).map(r=>r.name)).not.toContain('Salle de bain');
+  await page.screenshot({path:'artifacts/spatial-import-zones-edited.png'});
+
   await dialog.getByRole('tab',{name:'En 3D'}).click();
   await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
   await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
   const names=saved.floors[0]!.rooms.map(r=>r.name);
-  expect(names).toHaveLength(6);expect(names).toContain('Salon');expect(names).not.toContain('Cuisine');
+  expect(names).toHaveLength(6);expect(names).toContain('Cellier');expect(names).not.toContain('Cuisine');
 });
 
 test('a PDF page is drawn in the browser and only that image is sent',async({page})=>{

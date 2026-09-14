@@ -26,7 +26,7 @@ const MESSAGES:Record<string,string>={
   provider_unreachable:'Home Assistant n’arrive pas à joindre Google Gemini. Vérifiez sa connexion Internet et son DNS.',
   provider_blocked:'Gemini a interrompu l’analyse de ce document. Essayez une autre page ou une image du plan.',
   worker_unavailable:'Add-on inaccessible. Vérifiez son démarrage, son adresse et la clé de liaison.',
-  model_unavailable:'Modèle Gemini indisponible. Vérifiez le modèle Gemini configuré.',
+  model_unavailable:'Google refuse le modèle Gemini utilisé (retiré ou non ouvert à ce projet). Mettez à jour MP Glass puis redémarrez Home Assistant ; en mode add-on, corrigez l’option « model » du worker. Voir le détail ci-dessous.',
   timeout:'L’analyse a dépassé le délai. Réessayez avec une page plus simple.',
   job_missing:'L’analyse a été interrompue (MP Glass rechargé ou Home Assistant redémarré). Relancez-la.',
 };

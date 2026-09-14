@@ -110,6 +110,13 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
             with self.assertRaises(ValueError):
                 await gemini.request_gemini(None, data, mime, "test-key", model, page)
 
+    async def test_gemini_3_keeps_default_temperature_and_room_for_thoughts(self):
+        config = gemini.build_request(image_bytes(), "image/png", gemini.DEFAULT_MODEL)["generationConfig"]
+        self.assertEqual(gemini.DEFAULT_MODEL, "gemini-3.5-flash-lite")
+        self.assertNotIn("temperature", config)
+        self.assertEqual(config["maxOutputTokens"], 65536)
+        self.assertEqual(gemini.build_request(image_bytes(), "image/png", "gemini-2.5-flash-lite")["generationConfig"]["temperature"], 0)
+
     async def test_preserves_existing_worker_choice(self):
         self.assertEqual(gemini.selected_backend({}), "gemini")
         self.assertEqual(gemini.selected_backend({"spatial_url": "http://worker:8099"}), "addon")
@@ -136,7 +143,7 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
         result = await gemini.request_gemini(session, image_bytes(), "image/png", "test-key")
         self.assertEqual(result["plan"]["floors"][0]["rooms"][0]["name"], "Salon")
         url, args = session.calls[0]
-        self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-lite:generateContent")
+        self.assertEqual(url, "https://generativelanguage.googleapis.com/v1beta/models/gemini-3.5-flash-lite:generateContent")
         self.assertEqual(args["headers"], {"x-goog-api-key": "test-key"})
         self.assertNotIn("test-key", str(args["json"]))
         self.assertFalse(args["allow_redirects"])
@@ -154,6 +161,7 @@ class DirectGeminiTest(unittest.IsolatedAsyncioTestCase):
             (400, google(400, "INVALID_ARGUMENT", "Invalid JSON payload received."), "provider_request"),
             (403, google(403, "PERMISSION_DENIED", "Generative Language API has not been used in project."), "provider_auth"),
             (404, google(404, "NOT_FOUND", "models/gemini-x is not found"), "model_unavailable"),
+            (404, google(404, "NOT_FOUND", "This model models/gemini-2.5-flash-lite is no longer available to new users."), "model_unavailable"),
             (429, google(429, "RESOURCE_EXHAUSTED", "Quota exceeded"), "quota"),
             (503, google(503, "UNAVAILABLE", "The model is overloaded."), "provider_unavailable"),
             (502, b"<html>Bad gateway</html>", "provider_unavailable"),

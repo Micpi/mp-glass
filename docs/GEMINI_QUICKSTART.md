@@ -10,7 +10,7 @@ Après mise à jour de l’intégration et redémarrage de Home Assistant :
 
 Le lien **Configurer Gemini** dans le Studio ouvre la fiche de l’intégration. Le lien **Obtenir une clé API** ouvre [Google AI Studio](https://aistudio.google.com/api-keys). La clé reste dans les options de l’intégration, jamais dans l’export du projet, le JavaScript ou les diagnostics MP Glass.
 
-Le modèle utilisé par défaut est `gemini-2.5-flash-lite`. Pour rester dans les quotas gratuits, utiliser une clé provenant d’un projet Google sans facturation activée. Les quotas peuvent évoluer ; aucune relance ni substitution de modèle n’est déclenchée automatiquement.
+Le modèle utilisé par défaut est `gemini-3.5-flash-lite` (`gemini-2.5-flash-lite` est refusé aux nouveaux projets Google depuis septembre 2026). Pour rester dans les quotas gratuits, utiliser une clé provenant d’un projet Google sans facturation activée. Les quotas peuvent évoluer ; aucune relance ni substitution de modèle n’est déclenchée automatiquement.
 
 **Envoi du document :** en mode direct, Google reçoit le fichier complet, y compris ses métadonnées et les autres pages du PDF. Le numéro de page est une instruction d’analyse, pas une extraction locale. Importer un PDF contenant seulement la page utile pour limiter l’envoi. MP Glass vérifie taille, type annoncé et signature, puis laisse Google décoder le document. Les fichiers malformés peuvent être refusés par Google.
 
@@ -25,6 +25,7 @@ Depuis 0.2.2, le Studio affiche la cause et, sous le message, le **détail techn
 | Service d’import introuvable | L’intégration n’est pas à jour : remplacer `custom_components/mp_glass`, redémarrer HA, vider le cache du navigateur. |
 | Clé API Gemini refusée | Recoller la clé dans les options (elle commence par `AIza`), vérifier que l’API est activée pour ce projet. |
 | Accès refusé (région ou facturation) | Le palier gratuit n’est pas ouvert à ce projet ou à ce pays : voir le détail Google. |
+| Modèle refusé (HTTP 404 `NOT_FOUND`, « no longer available to new users ») | Le modèle n’est plus ouvert à ce projet : mettre à jour MP Glass (modèle par défaut `gemini-3.5-flash-lite`) et redémarrer HA. En mode add-on, corriger l’option `model` du worker. |
 | Gemini surchargé | Réessayer quelques minutes plus tard. |
 | Aucune pièce reconnue / réponse coupée | Vérifier le numéro de page, importer un seul niveau, une image plus nette ou recadrée. |
 | Google injoignable | Vérifier l’accès Internet et le DNS de Home Assistant. |
@@ -35,4 +36,4 @@ Le mode avancé **Add-on Spatial** conserve la conversion locale de la page choi
 
 Version préparée et testée localement ; mise à jour de l’instance HA et appel Gemini réel restant à effectuer.
 
-[Traitement natif des PDF par Gemini](https://ai.google.dev/gemini-api/docs/generate-content/document-processing) · [Tarification](https://ai.google.dev/gemini-api/docs/pricing#gemini-2.5-flash-lite).
+[Traitement natif des PDF par Gemini](https://ai.google.dev/gemini-api/docs/generate-content/document-processing) · [Tarification](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite).

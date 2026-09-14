@@ -37,11 +37,11 @@ Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. R
 
 ## Gemini et gratuité
 
-Le modèle par défaut est `gemini-2.5-flash-lite`, configurable. Ses entrées/sorties standard sont proposées au palier gratuit lors de la vérification du 14 septembre 2026, sous quotas et disponibilité du projet Google. Utiliser un projet API **sans facturation activée** pour éviter les frais ; l’application ne peut pas vérifier le statut de facturation via la clé. Un abonnement Gemini grand public ne remplace pas une clé API.
+Le modèle par défaut est `gemini-3.5-flash-lite` (configurable en mode add-on), qui accepte PDF, images et sortie JSON structurée. `gemini-2.5-flash-lite`, l’ancien défaut, est refusé aux nouveaux projets Google (HTTP 404). Les entrées/sorties standard de `gemini-3.5-flash-lite` sont proposées au palier gratuit lors de la vérification du 14 septembre 2026, sous quotas et disponibilité du projet Google ; au-delà, il coûte plus cher que la génération 2.5. La température reste à la valeur par défaut recommandée par Google pour Gemini 3 ; la réflexion du modèle (niveau minimal par défaut) est comptée dans le budget de 65 536 jetons de sortie. Utiliser un projet API **sans facturation activée** pour éviter les frais ; l’application ne peut pas vérifier le statut de facturation via la clé. Un abonnement Gemini grand public ne remplace pas une clé API.
 
 En mode direct, le fichier complet (métadonnées et autres pages PDF incluses) est envoyé à Google ; le numéro de page guide le modèle sans extraction locale. En mode add-on, seule la page rasterisée est envoyée. Ni les entités ni les états HA ne sont joints. Selon Google, les données du palier gratuit peuvent servir à améliorer leurs produits. L’accord d’envoi est présenté pour chaque fichier. Une erreur 429 est affichée sans relance, changement de modèle ni basculement payant.
 
-[Tarification officielle](https://ai.google.dev/gemini-api/docs/pricing#gemini-2.5-flash-lite) · [Sortie JSON structurée](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
+[Tarification officielle](https://ai.google.dev/gemini-api/docs/pricing#gemini-3.5-flash-lite) · [Sortie JSON structurée](https://ai.google.dev/gemini-api/docs/generate-content/structured-output).
 
 ## Contrat et confidentialité
 

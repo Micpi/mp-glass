@@ -8,7 +8,7 @@ import sys
 
 from aiohttp import ClientError, ClientSession, ClientTimeout, web
 
-from spatial_gemini import normalize_result, request_gemini
+from spatial_gemini import DEFAULT_MODEL, normalize_result, request_gemini
 
 ROOT = Path(__file__).parent
 MAX_FILE = 8 * 1024 * 1024
@@ -45,7 +45,7 @@ def create_app(options, analyze_fn=call_gemini, decode_fn=decode_source):
         return await handler(request)
 
     async def health(_request):
-        return web.json_response({"ready": bool(options.get("gemini_api_key")), "model": options.get("model", "gemini-2.5-flash-lite"), "busy": lock.locked()})
+        return web.json_response({"ready": bool(options.get("gemini_api_key")), "model": (options.get("model") or DEFAULT_MODEL), "busy": lock.locked()})
 
     async def analyze(request):
         if lock.locked():
@@ -59,7 +59,7 @@ def create_app(options, analyze_fn=call_gemini, decode_fn=decode_source):
                 async with asyncio.timeout(30):
                     data = await request.read()
                 image = await decode_fn(data, mime, page)
-                result = await analyze_fn(image, options.get("gemini_api_key", ""), options.get("model", "gemini-2.5-flash-lite"))
+                result = await analyze_fn(image, options.get("gemini_api_key", ""), (options.get("model") or DEFAULT_MODEL))
                 return web.json_response(result)
             except web.HTTPRequestEntityTooLarge:
                 return web.json_response({"error": "invalid_file"}, status=413)

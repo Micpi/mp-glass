@@ -1,13 +1,14 @@
 /*
  * Home Assistant draws its bar above every view, opaque, with a back arrow and the view title on a subview: on
  * MP Glass pages, all subviews but home, it made a dark band above the backdrop. While an MP Glass view is on
- * screen the bar lets the backdrop through and keeps only its actions (search, Assist, edit), as on the home
+ * screen the bar is hidden but for its actions (search, Assist, edit) and its sidebar button, as on the home
  * page; the MP Glass header names the page and navigates. Edit mode keeps the Home Assistant bar.
+ * Hidden rather than transparent: a theme may paint the bar, its toolbar or a pseudo-element, even with !important.
  * hui-root is Home Assistant internals: elsewhere, or if its structure changes, the bar stays as it is.
  */
 const ATTRIBUTE = 'mp-glass';
 const BAR = `:host([${ATTRIBUTE}]) div:not(.edit-mode)>.header`;
-const STYLE = `${BAR}{background:transparent;box-shadow:none;-webkit-backdrop-filter:none;backdrop-filter:none}${BAR} .toolbar{border-bottom:none}${BAR} :is(ha-icon-button-arrow-prev,.main-title){visibility:hidden}`;
+const STYLE = `${BAR}{visibility:hidden!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}${BAR} :is(.action-items,ha-menu-button){visibility:visible}`;
 /** MP Glass views on screen in each hui-root. */
 const views = new WeakMap<Element, Set<Element>>();
 

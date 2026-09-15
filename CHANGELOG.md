@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.8 — bandeau noir, suite
+
+Retour utilisateur : après 0.7.7, la flèche retour et le titre ont disparu mais le bandeau noir reste en haut des sous-vues.
+
+- **Cause** : 0.7.7 rendait la barre de Home Assistant transparente. Sur l’installation réelle, une autre règle continue de la peindre (un thème ou un module peut le faire, y compris en `!important`, sur la barre ou sa toolbar), alors que Home Assistant seul la laisserait transparente.
+- **Correction** : sur les vues MP Glass, la barre est désormais masquée, pas seulement transparente. Seules ses actions (recherche, Assist, modification) et, sur téléphone, le bouton du menu latéral restent visibles. Ce qui la peindrait ne s’affiche plus, et les clics au-dessus du contenu défilé atteignent MP Glass.
+- Mode édition et autres dashboards : inchangés.
+
 ## 0.7.7 — plus de bandeau noir sur les sous-vues
 
 Demande utilisateur : retirer le bandeau noir affiché en haut des pages Lumières, Pièces, des pièces et de l’Inventaire.

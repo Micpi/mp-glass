@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.7.1 — halo plus doux
+
+- Halo du plan 3D : diffusion plus douce, cœur légèrement éclairci et fondu progressif à proximité de chaque mur, y compris dans les pièces concaves. Le centre lumineux reste dans la pièce et la teinte uniforme du sol allumé est plus discrète.
+
 ## 0.7.0 — associations en un clic
 
 Demande utilisateur : simplifier l’association des entités avec le dashboard et le plan. Une seule règle désormais : **chaque pièce du plan est reliée à une pièce Home Assistant, et ses équipements suivent**.

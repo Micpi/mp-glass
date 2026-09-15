@@ -172,20 +172,47 @@ export class SpatialScene {
       surface.rotation.x=-Math.PI/2;surface.position.y=floor.elevation;surface.userData.roomId=room.id;this.group.add(surface);
       const bounds=new T.Box2().setFromPoints(room.polygon.map(p=>new T.Vector2(...p)));
       const center=bounds.getCenter(new T.Vector2());
-      // The glow shares the exact polygon: its radial falloff cannot spill through a partition.
       const size=bounds.getSize(new T.Vector2());
-      const glow=new T.Mesh(surface.geometry.clone(),new T.ShaderMaterial({
-        transparent:true,depthWrite:false,side:T.DoubleSide,
-        uniforms:{tint:{value:new T.Color('#ffd080')},strength:{value:0},center:{value:new T.Vector2(center.x,-center.y)},extent:{value:new T.Vector2(Math.max(size.x,.01),Math.max(size.y,.01))}},
-        vertexShader:'varying vec2 spot; void main(){spot=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
-        fragmentShader:'varying vec2 spot; uniform vec3 tint; uniform float strength; uniform vec2 center; uniform vec2 extent; void main(){float d=length((spot-center)/extent*1.6);float a=(1.-smoothstep(0.,1.,d))*strength;gl_FragColor=vec4(tint,a);}',
-      }));
-      glow.rotation.x=-Math.PI/2;glow.position.y=floor.elevation+.008;glow.renderOrder=1;this.group.add(glow);
-      // Keep the label inside concave rooms, using the widest horizontal slice through the centre.
+      // Keep the label and light source inside concave rooms, on the widest centre slice.
       const crossings:number[]=[];const y=center.y;
       room.polygon.forEach((a,i)=>{const b=room.polygon[(i+1)%room.polygon.length]!;if((a[1]>y)!==(b[1]>y))crossings.push(a[0]+(y-a[1])*(b[0]-a[0])/(b[1]-a[1]));});
       crossings.sort((a,b)=>a-b);let widest=0;
       for(let i=0;i+1<crossings.length;i+=2){const width=crossings[i+1]!-crossings[i]!;if(width>widest){widest=width;center.x=(crossings[i]!+crossings[i+1]!)/2;}}
+      // Fade at every wall, including concave corners, within the exact floor polygon.
+      const glow=new T.Mesh(surface.geometry.clone(),new T.ShaderMaterial({
+        transparent:true,depthWrite:false,side:T.DoubleSide,forceSinglePass:true,
+        defines:{POINT_COUNT:room.polygon.length},
+        uniforms:{tint:{value:new T.Color('#ffd080')},strength:{value:0},center:{value:new T.Vector2(center.x,-center.y)},extent:{value:new T.Vector2(Math.max(size.x,.01),Math.max(size.y,.01))},boundary:{value:room.polygon.map(p=>new T.Vector2(p[0],-p[1]))},feather:{value:Math.max(.01,Math.min(size.x,size.y)*.16)}},
+        vertexShader:'varying vec2 spot; void main(){spot=position.xy;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}',
+        fragmentShader:`
+          varying vec2 spot;
+          uniform vec3 tint;
+          uniform float strength;
+          uniform vec2 center;
+          uniform vec2 extent;
+          uniform vec2 boundary[POINT_COUNT];
+          uniform float feather;
+          void main(){
+            float wallDistance=1000.;
+            for(int i=0;i<POINT_COUNT;i++){
+              vec2 a=boundary[i];
+              vec2 b=boundary[(i+1)%POINT_COUNT];
+              vec2 edge=b-a;
+              float t=clamp(dot(spot-a,edge)/max(dot(edge,edge),.000001),0.,1.);
+              wallDistance=min(wallDistance,length(spot-a-t*edge));
+            }
+            vec2 offset=(spot-center)/extent;
+            float radius2=dot(offset,offset);
+            float diffusion=exp(-5.*radius2);
+            float core=exp(-22.*radius2);
+            float edgeFade=smoothstep(0.,feather,wallDistance);
+            float alpha=(.58*diffusion+.36*core)*edgeFade*strength;
+            vec3 lightColor=mix(tint,vec3(1.),.08*core);
+            gl_FragColor=vec4(lightColor,alpha);
+          }
+        `,
+      }));
+      glow.rotation.x=-Math.PI/2;glow.position.y=floor.elevation+.008;glow.renderOrder=1;this.group.add(glow);
       this.rooms.set(room.id,{surface,glow,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(size.length()/2,1)});
       this.surfaces.push(surface);this.solids.push(surface);
     }
@@ -211,7 +238,7 @@ export class SpatialScene {
     for(const [id,{surface,glow}] of this.rooms){
       const state=ambient.get(id),on=!!state?.strength,picked=id===selected,muted=!!selected&&!picked;
       surface.material.color.set(on?state!.color:picked?'#8fd8ff':'#3496d1');
-      surface.material.opacity=picked?.3:on?.18:muted?.1:.18;
+      surface.material.opacity=on?(picked?.16:muted?.07:.1):picked?.3:muted?.1:.18;
       glow.material.uniforms.tint!.value.set(state?.color??'#ffd080');
       glow.material.uniforms.strength!.value=(state?.strength??0)*(muted?.65:1);
     }

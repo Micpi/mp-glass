@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.7 — plus de bandeau noir sur les sous-vues
+
+Demande utilisateur : retirer le bandeau noir affiché en haut des pages Lumières, Pièces, des pièces et de l’Inventaire.
+
+- Ce bandeau était la barre de Home Assistant, opaque sur une sous-vue avec sa flèche retour et le titre de la vue. Sur les vues MP Glass, elle est désormais transparente comme sur l’accueil : le fond passe dessous et seules restent ses actions (recherche, Assist, modification). La flèche retour et le titre, redondants avec l’en-tête MP Glass, ne sont plus affichés ; le retour du navigateur ramène toujours à la page précédente.
+- En mode édition, la barre de Home Assistant reprend son aspect habituel. Les autres dashboards ne sont pas concernés.
+
 ## 0.7.6 — cause trouvée : le registre des éléments remplacé
 
 Retour utilisateur : après 0.7.5, `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` aussi sur ordinateur.

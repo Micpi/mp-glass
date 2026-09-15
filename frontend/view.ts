@@ -4,6 +4,7 @@ import { MP_GLASS_BACKGROUND } from './background';
 import { mpIcon } from './icons';
 import type { SpatialPlan } from '../shared/spatial';
 import type { Hass } from './ha/client';
+import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
 
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
@@ -58,6 +59,18 @@ export class MPGlassView extends LitElement {
   private viewTitle = 'Maison';
   private areas: AreaSummary[] = [];
   private inventory?: ViewConfig['mp_inventory'];
+  /** hui-root whose bar this view made transparent. */
+  private header?: Element;
+
+  connectedCallback() {
+    super.connectedCallback();
+    this.header = claimHeader(this);
+  }
+  disconnectedCallback() {
+    super.disconnectedCallback();
+    if (this.header) releaseHeader(this.header, this);
+    this.header = undefined;
+  }
 
   setConfig(config: ViewConfig) {
     this.spatial = config?.mp_spatial;

@@ -18,6 +18,10 @@ describe('discovery and presentation contract',()=>{
     expect(dashboard.views[2]).toMatchObject({mp_view_kind:'rooms',cards:[]});
     expect(dashboard.views[0]?.mp_navigation.items).toEqual(['home','lights','rooms']);
   });
+  it('keeps Home Assistant from drawing a view tab bar',()=>{
+    const dashboard=MPDashboardComposer.compose(MPDiscoveryEngine.discover(home(),defaultProject()),defaultProject());
+    expect(dashboard.views.filter(view=>!view.subview).map(view=>view.path)).toEqual(['home']);
+  });
   it('keeps independent circuits on one device and parent relationships',()=>{
     const graph=MPDiscoveryEngine.discover(home(),defaultProject());
     expect(graph.devices).toHaveLength(3);
@@ -65,6 +69,7 @@ describe('discovery and presentation contract',()=>{
     expect(dashboard.views[0]?.cards).toHaveLength(1);
     expect(dashboard.views.find(v=>v.path==='area-salon')?.cards).toHaveLength(1);
     expect(dashboard.views.find(v=>v.path==='inventory')?.cards).toHaveLength(600);
+    expect(dashboard.views.find(v=>v.path==='rooms')?.mp_inventory).toEqual({title:'Inventory',count:600});
   });
 });
 describe('capabilities',()=>{

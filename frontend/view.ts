@@ -18,6 +18,7 @@ interface ViewConfig {
   mp_view_path?: string;
   mp_view_title?: string;
   mp_areas?: AreaSummary[];
+  mp_inventory?: { title:string; count:number };
 }
 
 export class MPGlassView extends LitElement {
@@ -56,6 +57,7 @@ export class MPGlassView extends LitElement {
   private viewPath = 'home';
   private viewTitle = 'Maison';
   private areas: AreaSummary[] = [];
+  private inventory?: ViewConfig['mp_inventory'];
 
   setConfig(config: ViewConfig) {
     this.spatial = config?.mp_spatial;
@@ -68,6 +70,7 @@ export class MPGlassView extends LitElement {
     this.viewPath = config?.mp_view_path ?? 'home';
     this.viewTitle = config?.mp_view_title ?? this.projectName;
     this.areas = config?.mp_areas ?? [];
+    this.inventory = config?.mp_inventory;
     this.toggleAttribute('motion', this.appearance.motion !== false);
     this.setAttribute('density', this.appearance.density ?? 'comfortable');
     this.setAttribute('card-style', this.appearance.cardStyle ?? 'standard');
@@ -121,7 +124,7 @@ export class MPGlassView extends LitElement {
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'rooms' ? html`
           ${this.section('Pièces','Ouvrez une pièce pour retrouver uniquement ses équipements')}
-          <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${area.deviceCount} équipement${area.deviceCount>1?'s':''} · ${area.lightCount} lumière${area.lightCount>1?'s':''}</p></div></a>`)}</main>
+          <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${area.deviceCount} équipement${area.deviceCount>1?'s':''} · ${area.lightCount} lumière${area.lightCount>1?'s':''}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${this.inventory.count} entité${this.inventory.count>1?'s':''} sans carte dédiée</p></div></a>` : nothing}</main>
         ` : html`
           ${this.section(this.viewKind === 'home' ? (a.sectionTitle ?? 'Lumières') : title,this.viewKind === 'home' ? (a.sectionSubtitle ?? 'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           <main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>

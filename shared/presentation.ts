@@ -62,6 +62,8 @@ export class MPDashboardComposer {
       title,
       path,
       icon,
+      // HA shows its view tab bar only above several top-level views: the others are subviews, reached from the MP Glass header.
+      ...(kind === 'home' ? {} : { subview: true }),
       type: 'custom:mp-glass-view-v5',
       mp_project_name: project.project.name,
       mp_appearance: project.appearance,
@@ -71,6 +73,7 @@ export class MPDashboardComposer {
       mp_view_title: title,
       mp_areas: areas,
       ...(kind === 'home' ? { mp_spatial: spatial, mp_spatial_origin: spatialOrigin } : {}),
+      ...(kind === 'rooms' && inventory.length ? { mp_inventory: { title: inventoryTitle, count: inventory.length } } : {}),
       cards: viewCards,
     });
     return {

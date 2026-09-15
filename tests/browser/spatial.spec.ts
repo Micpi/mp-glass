@@ -206,6 +206,31 @@ test('mobile layout, top view and wall controls remain usable',async({page})=>{
   await page.screenshot({path:'artifacts/spatial-mobile.png',fullPage:true});
 });
 
+test('the room list stays on one line under the plan and scrolls with its arrows',async({page})=>{
+  await page.setViewportSize({width:1000,height:900});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer'),strip=viewer.locator('nav.strip'),chips=strip.getByRole('button');
+  await expect(chips.first()).toBeVisible();
+  const [stage,list,card]=await Promise.all([viewer.locator('.stage').boundingBox(),strip.boundingBox(),viewer.locator('.card').boundingBox()]);
+  expect(list!.y).toBeGreaterThan(stage!.y+stage!.height);
+  expect(Math.abs(list!.x-stage!.x)).toBeLessThan(1);expect(Math.abs(list!.width-stage!.width)).toBeLessThan(1);
+  expect(card!.x).toBeGreaterThan(stage!.x+stage!.width);
+  expect(await chips.evaluateAll(els=>new Set(els.map(el=>Math.round(el.getBoundingClientRect().top))).size)).toBe(1);
+  const next=viewer.getByTitle('Pièces suivantes'),previous=viewer.getByTitle('Pièces précédentes');
+  await expect(next).toBeVisible();await expect(previous).toBeHidden();
+  await next.click();
+  await expect.poll(()=>strip.evaluate(el=>el.scrollLeft)).toBeGreaterThan(100);
+  await expect(previous).toBeVisible();
+  await previous.click();
+  await expect.poll(()=>strip.evaluate(el=>el.scrollLeft)).toBe(0);
+  await expect(previous).toBeHidden();
+  // A room chosen on the plan brings its chip into view.
+  const chip=strip.getByRole('button',{name:'Salle de bain'});
+  await viewer.locator('[data-room="bath"]').dispatchEvent('click');
+  await expect(chip).toHaveAttribute('aria-pressed','true');
+  await expect.poll(async()=>{const [s,c]=await Promise.all([strip.boundingBox(),chip.boundingBox()]);return c!.x>=s!.x&&c!.x+c!.width<=s!.x+s!.width;}).toBe(true);
+  await page.screenshot({path:'artifacts/spatial-room-list.png'});
+});
+
 test('AI import needs consent and stays a draft until explicitly applied',async({page})=>{
   await mountEditor(page);
   await expect(page.getByRole('link',{name:'Configurer Gemini',exact:true})).toHaveAttribute('href','https://my.home-assistant.io/redirect/integration/?domain=mp_glass');

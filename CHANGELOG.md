@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.3 — pièces sous le plan
+
+Demande utilisateur : toujours afficher les pièces sous le plan, sur une seule ligne.
+
+- Sur grand écran, la liste des pièces quitte la colonne de droite, où elle s’étalait sur plusieurs lignes au-dessus de la fiche. Elle se place sous le plan, à sa largeur, et la fiche de la pièce ou du niveau remonte en haut de la colonne de droite. Sur téléphone, l’ordre ne change pas : plan, pièces, fiche.
+- La liste reste sur une seule ligne quel que soit l’écran. Un fondu signale de chaque côté les pièces cachées ; à la souris, des flèches font défiler la liste, au doigt on la fait glisser. Une pièce choisie sur le plan est ramenée dans la partie visible de la liste.
+
 ## 0.7.2 — sans barre d’onglets
 
 Demande utilisateur : retirer la barre de navigation affichée en bas de l’écran.

@@ -43,9 +43,9 @@ Un geste ne pilote le plan que s’il commence **sur la maison** (sols ou murs d
 - Clavier : focus sur le canevas, flèches pour déplacer, +/− pour zoomer ; boutons et liste de pièces accessibles au clavier.
 - Commandes réduites à une barre d’icônes : zoom (masqué sur écran tactile, le pincement suffit), recentrer, vue de dessus, murs. Niveaux en onglets au-dessus du plan quand il y en a plusieurs.
 - Chaque mur est dessiné une seule fois ; les murs extérieurs sont plus épais et plus lumineux que les cloisons.
-- Liste des pièces sous le plan (défilement horizontal sur téléphone) ; un point doré signale une lumière allumée, aussi visible en 3D (halo doux contenu dans la pièce, intensité liée à la luminosité).
+- Liste des pièces sous le plan, toujours sur une seule ligne : elle défile horizontalement (au doigt, ou avec les flèches qui apparaissent à la souris quand des pièces sont cachées) et amène la pièce choisie sur le plan en vue. Un point doré signale une lumière allumée, aussi visible en 3D (halo doux contenu dans la pièce, intensité liée à la luminosité).
 - Pièce sélectionnée : caméra centrée sur la pièce, fiche avec surface et dimensions, lumières allumées, température et humidité, **Tout allumer / Tout éteindre**, interrupteur et variateur par lumière, capteurs (valeur et dernière mise à jour), thermostats, ouvertures et présence. Toucher un équipement ouvre sa fiche Home Assistant ; **Ouvrir la pièce** mène à la page de la zone associée. Aucune commande via le worker.
-- Sur grand écran, la fiche s’affiche à droite du plan ; sur téléphone et tablette en portrait, sous le plan.
+- Sur grand écran, la fiche s’affiche à droite du plan ; sur téléphone et tablette en portrait, sous la liste des pièces.
 
 Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. Rendu à la demande, ressources GPU libérées en quittant la vue.
 

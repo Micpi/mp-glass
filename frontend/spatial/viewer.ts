@@ -20,6 +20,9 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
 const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'window',climate:'flame',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
 const HVAC:Record<string,string>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
+const motion=():ScrollBehavior=>matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+/** Width of the fade at each end of the room list, where its arrows sit. */
+const EDGE=40;
 const numeric=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
 function kindOf(id:string,state?:HAState):Kind{
   const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??''),unit=String(state?.attributes.unit_of_measurement??'');
@@ -45,7 +48,7 @@ export class MPSpatialViewer extends LitElement {
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
     button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #a2d7ff;outline-offset:2px}
     .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
-    .layout{display:grid;gap:12px;align-items:start}.side{display:grid;gap:12px;min-width:0;align-content:start}
+    .layout{display:grid;gap:12px;align-items:start}.stage-col,.side{display:grid;gap:12px;min-width:0;align-content:start}
     .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 60%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.14),rgba(3,16,29,.44));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18)}
     .canvas{position:absolute;inset:0}.canvas canvas{display:block;width:100%;height:100%;touch-action:pan-y;outline-offset:-4px}
     .glass{background:rgba(5,20,34,.58);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(140%);box-shadow:0 10px 28px rgba(0,8,18,.28)}
@@ -77,7 +80,14 @@ export class MPSpatialViewer extends LitElement {
     .cover-controls label{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.cover-controls output{font-size:11px;white-space:nowrap}
     .labels i{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:#8fd3ff;box-shadow:0 0 8px rgba(143,211,255,.7)}.labels .lit i{background:var(--warm);box-shadow:0 0 10px #ffc53d}
     .labels button[aria-pressed=true]{z-index:1;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 80%,transparent),rgba(38,94,149,.78));border-color:color-mix(in srgb,var(--accent) 70%,white);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent),0 10px 24px rgba(0,8,18,.45)}
-    .strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;scroll-snap-type:x proximity;-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 28px),transparent)}.strip::-webkit-scrollbar{display:none}
+    .rooms{position:relative;min-width:0}
+    .strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding-inline:40px}.strip::-webkit-scrollbar{display:none}
+    .rooms[data-after] .strip{-webkit-mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,#000 calc(100% - 40px),transparent)}
+    .rooms[data-before] .strip{-webkit-mask-image:linear-gradient(90deg,transparent,#000 40px);mask-image:linear-gradient(90deg,transparent,#000 40px)}
+    .rooms[data-before][data-after] .strip{-webkit-mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 40px),transparent);mask-image:linear-gradient(90deg,transparent,#000 40px,#000 calc(100% - 40px),transparent)}
+    .more{position:absolute;top:6px;z-index:1;display:none;place-items:center;width:32px;height:32px;padding:0;border-radius:50%;border:1px solid rgba(206,230,255,.22);background:rgba(6,22,38,.82);backdrop-filter:blur(10px);box-shadow:0 4px 14px rgba(0,8,18,.4);color:#eef7ff}
+    .more:hover{border-color:color-mix(in srgb,var(--accent) 60%,transparent)}.more.before{left:0}.more.before .mp-icon{transform:scaleX(-1)}.more.after{right:0}
+    .rooms[data-before] .more.before,.rooms[data-after] .more.after{display:grid}
     .chip{flex:0 0 auto;scroll-snap-align:start;display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px 0 11px;border-radius:999px;border:1px solid rgba(206,230,255,.16);background:rgba(6,24,40,.5);backdrop-filter:blur(14px);font-size:12.5px;color:#dce9f5;transition:background .2s,border-color .2s}
     .chip:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
     .chip[aria-pressed=true]{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 72%,transparent),rgba(38,94,149,.66));border-color:color-mix(in srgb,var(--accent) 78%,white);box-shadow:0 6px 20px color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -124,9 +134,9 @@ export class MPSpatialViewer extends LitElement {
     .open{display:flex;align-items:center;justify-content:space-between;gap:8px;min-height:44px;margin-top:14px;padding:0 14px;border-radius:14px;color:#eef7ff;text-decoration:none;border:1px solid color-mix(in srgb,var(--accent) 40%,transparent);background:color-mix(in srgb,var(--accent) 12%,transparent)}.open:hover{background:color-mix(in srgb,var(--accent) 22%,transparent)}
     .error{margin:0;padding:10px 14px;border-radius:14px;color:#ffc3ad;background:rgba(80,20,10,.35);border:1px solid rgba(255,170,140,.25)}.empty{padding:60px 24px;text-align:center}
     @container (min-width:560px) and (max-width:899px){.stats{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}.stat:last-child:nth-child(odd){grid-column:auto}}
-    @container (min-width:900px){.layout{grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px}.strip{flex-wrap:wrap;overflow:visible;-webkit-mask-image:none;mask-image:none}}
-    :host([preview]) .side{display:none}:host([preview]) .layout{grid-template-columns:1fr}
-    @media (pointer:coarse){.rail .zoom{display:none}.rail button{width:40px;height:40px}.hint .touch{display:inline}.hint .fine{display:none}}
+    @container (min-width:900px){.layout{grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px}}
+    :host([preview]) .side,:host([preview]) .rooms{display:none}:host([preview]) .layout{grid-template-columns:1fr}
+    @media (pointer:coarse){.rail .zoom{display:none}.rail button{width:40px;height:40px}.hint .touch{display:inline}.hint .fine{display:none}.more{display:none!important}}
     @keyframes rise{from{opacity:0;transform:translateY(8px)}}
     @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
@@ -148,12 +158,14 @@ export class MPSpatialViewer extends LitElement {
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   private scene?: SpatialScene;
   private loading = false;
+  private resize = new ResizeObserver(()=>this.edges());
   private get currentFloor() { return this.plan?.floors.find(f=>f.id===this.floor) ?? this.plan?.floors[0]; }
   private get room() { return this.currentFloor?.rooms.find(r=>r.id===this.selected); }
   private get locale() { return this.hass?.locale?.language ?? this.hass?.language ?? 'fr'; }
-  connectedCallback() { super.connectedCallback(); this.requestUpdate(); }
-  disconnectedCallback() { super.disconnectedCallback(); this.scene?.dispose(); this.scene=undefined; }
+  connectedCallback() { super.connectedCallback(); this.resize.observe(this); this.requestUpdate(); }
+  disconnectedCallback() { super.disconnectedCallback(); this.resize.disconnect(); this.scene?.dispose(); this.scene=undefined; }
   protected async updated(changed: PropertyValues) {
+    this.edges();
     if (!this.plan || !this.currentFloor) return;
     if (!this.scene && !this.loading && !this.error) {
       this.loading=true;
@@ -204,13 +216,24 @@ export class MPSpatialViewer extends LitElement {
     this.dispatchEvent(new CustomEvent('room-select',{detail:{floorId:this.currentFloor.id,roomId:id}}));
     void this.updateComplete.then(()=>this.reveal());
   }
-  /** On a phone the room card sits under the plan and the room list scrolls sideways: show both for the selected room. */
+  /** The room list scrolls sideways under the plan, and on a phone the room card sits below it: show both for the selected room. */
   private reveal() {
-    const behavior=matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
+    const behavior=motion();
     const strip=this.renderRoot.querySelector<HTMLElement>('.strip'),chip=strip?.querySelector<HTMLElement>('[aria-pressed="true"]');
-    if(strip && chip && strip.scrollWidth>strip.clientWidth){const s=strip.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<s.left||c.right>s.right-28)strip.scrollBy({left:c.left-s.left-(s.width-c.width)/2,behavior});}
+    if(strip && chip && strip.scrollWidth>strip.clientWidth){const s=strip.getBoundingClientRect(),c=chip.getBoundingClientRect();if(c.left<s.left+EDGE||c.right>s.right-EDGE)strip.scrollBy({left:c.left-s.left-(s.width-c.width)/2,behavior});}
     const card=this.renderRoot.querySelector<HTMLElement>('.card');
     if(card && card.getBoundingClientRect().top>innerHeight-96) card.scrollIntoView({behavior,block:'nearest'});
+  }
+  /** The room list stays on one line: fade and arrows mark the ends that hide more rooms. */
+  private edges=()=>{
+    const rooms=this.renderRoot.querySelector<HTMLElement>('.rooms'),strip=rooms?.querySelector<HTMLElement>('.strip');
+    if(!rooms||!strip) return;
+    rooms.toggleAttribute('data-before',strip.scrollLeft>1);
+    rooms.toggleAttribute('data-after',strip.scrollLeft+strip.clientWidth<strip.scrollWidth-1);
+  };
+  private scrollRooms(direction: 1|-1) {
+    const strip=this.renderRoot.querySelector<HTMLElement>('.strip');
+    strip?.scrollBy({left:direction*(strip.clientWidth-2*EDGE),behavior:motion()});
   }
   private close=()=>{ this.selected=''; this.scene?.overview(); };
   private showFloor(id: string) { this.floor=id; this.selected=''; this.topView=false; }
@@ -281,6 +304,7 @@ export class MPSpatialViewer extends LitElement {
     if(!floor) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
     const lit=this.litRooms(floor);
     return html`<div class="layout">
+      <div class="stage-col">
       <div class="stage">
         <div class="canvas"></div>
         <div class="labels">${floor.rooms.map(r=>html`<button class=${lit.has(r.id)?'lit':''} style="visibility:hidden" data-room=${r.id} aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}><i></i><span>${r.name}</span>${this.preview?nothing:this.planReadings(r)}</button>`)}</div>
@@ -299,10 +323,15 @@ export class MPSpatialViewer extends LitElement {
         </div>
         <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error}><span class="touch">Touchez la maison pour la manipuler</span><span class="fine">Glissez la maison pour la tourner · molette pour zoomer</span></p>
       </div>
+      <div class="rooms">
+        <button class="more before" tabindex="-1" aria-hidden="true" title="Pièces précédentes" @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>
+        <nav class="strip" aria-label="Pièces du niveau" @scroll=${this.edges}>${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>
+        <button class="more after" tabindex="-1" aria-hidden="true" title="Pièces suivantes" @click=${()=>this.scrollRooms(1)}>${mpIcon('arrow',16)}</button>
+      </div>
+      </div>
       <p class="sr">Sur la maison : glisser pour tourner, pincer ou molette pour zoomer, deux doigts ou clic droit pour déplacer. À côté de la maison, la page défile normalement. Clavier : flèches pour déplacer, + et − pour zoomer.</p>
       <div class="side">
         ${this.error?html`<p role="alert" class="error">${this.error}</p>`:nothing}
-        <nav class="strip" aria-label="Pièces du niveau">${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>
         ${room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
       </div>
     </div>`;

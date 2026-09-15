@@ -27,6 +27,41 @@ export function validPolygon(points: Point[]): boolean {
   }
   return true;
 }
+/** Repeated vertices, and those on the line of their neighbours (the fold of a notch closed by `alignRooms` included), removed. */
+function tidyRing(points: Point[]): Point[] {
+  const ring = [...points];
+  for (let changed = true; changed;) {
+    changed = false;
+    for (let i = 0; i < ring.length && ring.length > 3; i++) {
+      const a = ring[(i + ring.length - 1) % ring.length]!, b = ring[i]!, c = ring[(i + 1) % ring.length]!;
+      if (Math.hypot(b[0] - a[0], b[1] - a[1]) < .02 || Math.abs(cross(a, b, c)) < 1e-6) { ring.splice(i--, 1); changed = true; }
+    }
+  }
+  return ring;
+}
+/**
+ * Rooms as the 3D plan draws them. Read from a drawing, two neighbouring rooms keep the thickness of the wall between them:
+ * sides closer than `gap` metres along x, or along y, are brought together halfway, so that neighbours share one wall instead
+ * of each having its own. Only the drawing changes, never the saved plan; a room that would lose its shape keeps it.
+ */
+export function alignRooms(rooms: SpatialRoom[], gap = .3): SpatialRoom[] {
+  const snap = (values: number[]) => {
+    const mapping = new Map<number, number>();
+    let group: number[] = [];
+    const settle = () => { const middle = (group[0]! + group.at(-1)!) / 2; for (const value of group) mapping.set(value, middle); };
+    for (const value of [...new Set(values)].sort((a, b) => a - b)) {
+      if (group.length && value - group[0]! > gap) { settle(); group = []; }
+      group.push(value);
+    }
+    if (group.length) settle();
+    return mapping;
+  };
+  const xs = snap(rooms.flatMap(r => r.polygon.map(p => p[0]))), ys = snap(rooms.flatMap(r => r.polygon.map(p => p[1])));
+  return rooms.map(room => {
+    const polygon = tidyRing(room.polygon.map(([x, y]) => [xs.get(x)!, ys.get(y)!] as Point));
+    return validPolygon(polygon) ? { ...room, polygon } : room;
+  });
+}
 export interface WallSegment { a: Point; b: Point; rooms: string[] }
 /**
  * Walls of a floor, each drawn once: room edges are split where another room's corner lies on them,

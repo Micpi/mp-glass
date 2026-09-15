@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.10 — des murs nets
+
+Demande utilisateur : des murs moins brouillons sur le plan 3D.
+
+- **Une cloison entre deux pièces, pas deux murs** : un plan lu sur un dessin garde l’épaisseur du mur entre deux pièces voisines. Chacune avait donc son propre mur, épais et lumineux comme un mur extérieur, d’où les doubles traits. Les côtés distants de moins de 30 cm sont désormais réunis au milieu de cette épaisseur : les voisines partagent une seule cloison, plus fine. Seul l’affichage change ; le plan enregistré, les surfaces et le Studio restent tels quels.
+- **Plus de contours de boîtes** : chaque morceau de mur était une boîte dont les 12 arêtes étaient tracées, avec des traits parasites à chaque jonction et à chaque coupure d’un mur. Un mur est maintenant une paroi de verre soulignée en haut et au pied ; ses morceaux et les murs qui se rejoignent se raccordent sans couture. Un trait vertical marque seulement les angles de la maison.
+- **Vue de dessus sans perspective** : vus d’au-dessus avec l’objectif du plan 3D, les murs penchaient vers l’extérieur, d’où le haut et le pied de chaque mur décalés et les diagonales aux angles. La vue de dessus utilise un objectif quasi sans perspective : elle se lit comme un plan. Zoom, rotation et recentrage fonctionnent comme avant ; quitter la vue de dessus rend la perspective.
+- Un plan qui change pendant la vue de dessus y reste cadré au lieu de revenir à la vue 3D.
+
 ## 0.7.9 — étiquettes du plan plus lisibles
 
 Demande utilisateur : améliorer l’affichage des noms de pièce sur le plan 3D et ne plus proposer de température vide quand aucune entité n’est liée.

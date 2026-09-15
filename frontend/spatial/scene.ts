@@ -5,9 +5,11 @@ import type { RoomAmbient } from '../../shared/spatial-state';
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
 interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
-interface WallParts { rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; edges:T.LineBasicMaterial; exterior:boolean }
+interface WallParts { rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
 const SLOP=14;
+/** Field of view of the house in perspective; from above almost none, so that walls stand straight instead of leaning outwards. */
+const FOV=38,TOP_FOV=5;
 /** A wheel gesture keeps its first target (plan or page) while its events follow each other. */
 const WHEEL_GAP=300;
 
@@ -17,7 +19,7 @@ const WHEEL_GAP=300;
  */
 export class SpatialScene {
   private renderer: T.WebGLRenderer;
-  private camera = new T.PerspectiveCamera(38,1,.05,2000);
+  private camera = new T.PerspectiveCamera(FOV,1,.05,2000);
   private scene = new T.Scene();
   private group = new T.Group();
   private controls: OrbitControls;
@@ -144,8 +146,20 @@ export class SpatialScene {
     };
     step(began);
   }
+  /** How much farther the camera stands than with the perspective lens, to frame the same. */
+  private get reach(){return Math.tan(T.MathUtils.degToRad(FOV/2))/Math.tan(T.MathUtils.degToRad(this.camera.fov/2));}
+  /** Another field of view, framing the same: the camera moves back as the lens narrows, and its limits with it. */
+  private lens(fov:number){
+    if(this.camera.fov===fov)return;
+    const ratio=Math.tan(T.MathUtils.degToRad(this.camera.fov/2))/Math.tan(T.MathUtils.degToRad(fov/2));
+    this.camera.position.sub(this.controls.target).multiplyScalar(ratio).add(this.controls.target);
+    this.camera.fov=fov;
+    const reach=this.reach;
+    this.camera.near=.05*reach;this.camera.far=2000*reach;this.camera.updateProjectionMatrix();
+    this.controls.minDistance=reach;this.controls.maxDistance=1000*reach;
+  }
   /** Leaves a margin around the house: room for the floating controls and for scrolling the page beside it. */
-  private fit(){return this.radius*3/Math.min(this.camera.aspect,1);}
+  private fit(){return this.radius*3/Math.min(this.camera.aspect,1)*this.reach;}
   private clear() {
     this.group.traverse(object=>{if(object instanceof T.Mesh || object instanceof T.LineSegments){object.geometry.dispose();for(const material of Array.isArray(object.material)?object.material:[object.material])material.dispose();}});
     this.group.clear();this.rooms.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';
@@ -163,8 +177,11 @@ export class SpatialScene {
     const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:this.halo,color:0x2f8fe0,transparent:true,opacity:.3,depthWrite:false}));
     plane.rotation.x=-Math.PI/2;plane.position.set(this.center.x,elevation-.02,this.center.z);plane.renderOrder=-1;this.group.add(plane);
   }
-  /** `segments`: the floor's walls, each once (wallSegments), computed by the caller to keep this lazy chunk free of app code. */
-  setFloor(floor:SpatialFloor,segments:WallSegment[],walls:boolean,reset=true) {
+  /**
+   * `segments`: the floor's walls, each once (wallSegments), computed by the caller to keep this lazy chunk free of app code.
+   * `reset` frames the house again, from above when `top` is set.
+   */
+  setFloor(floor:SpatialFloor,segments:WallSegment[],walls:boolean,reset=true,top=false) {
     this.clear();this.walls=walls;
     for(const room of floor.rooms) {
       const shape=new T.Shape(room.polygon.map(p=>new T.Vector2(p[0],-p[1])));
@@ -216,19 +233,32 @@ export class SpatialScene {
       this.rooms.set(room.id,{surface,glow,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(size.length()/2,1)});
       this.surfaces.push(surface);this.solids.push(surface);
     }
-    // Each wall once: a shared partition is not drawn twice; exterior walls are thicker and brighter.
+    // Each wall once (a shared partition is not drawn twice), a pane of glass lit along its top and at its foot. No box outline:
+    // the pieces of a wall, and walls meeting at a corner, join without seams. Exterior walls are thicker and brighter, and the
+    // corners of the house stand out with a vertical line.
+    const ends=new Map<string,{mesh:T.Mesh;x:number;direction:number}[]>();
     for(const {a,b,rooms} of segments){
-      const exterior=rooms.length===1,length=Math.hypot(b[0]-a[0],b[1]-a[1]);
-      const geometry=new T.BoxGeometry(length,walls?floor.height:.035,exterior?.14:.07);
-      const mesh=new T.Mesh(geometry,new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false}));
-      mesh.position.set((a[0]+b[0])/2,floor.elevation+(walls?floor.height/2:.02),(a[1]+b[1])/2);mesh.rotation.y=-Math.atan2(b[1]-a[1],b[0]-a[0]);
-      const edges=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6});
-      mesh.add(new T.LineSegments(new T.EdgesGeometry(geometry),edges));this.group.add(mesh);
-      this.wallParts.push({rooms,mesh,edges,exterior});this.solids.push(mesh);
+      const exterior=rooms.length===1,length=Math.hypot(b[0]-a[0],b[1]-a[1]),height=walls?floor.height:.035,direction=Math.atan2(b[1]-a[1],b[0]-a[0]);
+      const mesh=new T.Mesh(new T.BoxGeometry(length,height,exterior?.14:.07),new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false}));
+      mesh.position.set((a[0]+b[0])/2,floor.elevation+height/2,(a[1]+b[1])/2);mesh.rotation.y=-direction;
+      // In the wall's frame (x from a to b, y up), along its middle.
+      const lines=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6}),x=length/2,y=height/2;
+      mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[-x,y,0,x,y,0,-x,-y,0,x,-y,0]:[-x,y,0,x,y,0],3)),lines));
+      this.group.add(mesh);this.wallParts.push({rooms,mesh,lines,exterior});this.solids.push(mesh);
+      if(exterior&&walls)for(const [end,at,away] of [[a,-x,direction],[b,x,direction+Math.PI]] as const){
+        const key=`${Math.round(end[0]*1000)},${Math.round(end[1]*1000)}`;
+        ends.set(key,[...ends.get(key)??[],{mesh,x:at,direction:away}]);
+      }
+    }
+    for(const meeting of ends.values()){
+      const corner=meeting.find(w=>meeting.some(o=>Math.abs(Math.sin(o.direction-w.direction))>.17));
+      if(!corner)continue;
+      const y=floor.height/2,wall=this.wallParts.find(p=>p.mesh===corner.mesh)!;
+      corner.mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([corner.x,-y,0,corner.x,y,0],3)),wall.lines));
     }
     const box=new T.Box3().setFromObject(this.group);box.getCenter(this.center);this.radius=Math.max(box.getSize(new T.Vector3()).length()/2,2);
     this.addHalo(box,floor.elevation);
-    if(reset)this.reset();else this.render();
+    if(!reset)this.render();else if(top)this.top();else this.reset();
   }
   /** Selected room in light, rooms with a light on in warm tones, the others muted while a room is selected. */
   highlight(selected:string,ambient:ReadonlyMap<string,RoomAmbient>=new Map()) {
@@ -242,11 +272,11 @@ export class SpatialScene {
       glow.material.uniforms.tint!.value.set(state?.color??'#ffd080');
       glow.material.uniforms.strength!.value=(state?.strength??0)*(muted?.65:1);
     }
-    for(const {rooms,mesh,edges,exterior} of this.wallParts){
+    for(const {rooms,mesh,lines,exterior} of this.wallParts){
       const picked=rooms.includes(selected),muted=!!selected&&!picked;
       mesh.material.opacity=this.walls?(picked?.16:muted?.04:exterior?.1:.06):(picked?.55:muted?.15:exterior?.35:.2);
-      edges.color.setHex(picked?0xf1fbff:exterior?0xb5e2ff:0x94d5ff);
-      edges.opacity=picked?1:muted?.35:exterior?.95:.6;
+      lines.color.setHex(picked?0xf1fbff:exterior?0xb5e2ff:0x94d5ff);
+      lines.opacity=picked?1:muted?.35:exterior?.95:.6;
     }
     return true;
   }
@@ -254,11 +284,12 @@ export class SpatialScene {
   focus(id:string){
     const room=this.rooms.get(id);if(!room)return;
     const current=this.camera.position.distanceTo(this.controls.target);
-    this.fly(room.anchor.clone().setY(room.anchor.y+.3),Math.min(current,Math.max(room.radius*3.6/Math.min(this.camera.aspect,1),3)));
+    this.fly(room.anchor.clone().setY(room.anchor.y+.3),Math.min(current,Math.max(room.radius*3.6/Math.min(this.camera.aspect,1),3)*this.reach));
   }
   overview(){this.fly(this.center.clone(),this.fit());}
-  reset(){this.stopTween();this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(.95,1.05,1.3).normalize().multiplyScalar(this.fit()));this.controls.update();this.render();}
-  top(){this.stopTween();this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(0,this.radius*3.3/Math.min(this.camera.aspect,1),.001));this.controls.update();this.render();}
+  reset(){this.stopTween();this.lens(FOV);this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(.95,1.05,1.3).normalize().multiplyScalar(this.fit()));this.controls.update();this.render();}
+  /** Seen from above, as a plan: the narrow lens keeps each wall over its own footprint. */
+  top(){this.stopTween();this.lens(TOP_FOV);this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(0,this.radius*3.3/Math.min(this.camera.aspect,1)*this.reach,.001));this.controls.update();this.render();}
   zoom(factor:number){this.stopTween();const offset=this.camera.position.clone().sub(this.controls.target);offset.multiplyScalar(factor).clampLength(this.controls.minDistance,this.controls.maxDistance);this.camera.position.copy(this.controls.target).add(offset);this.controls.update();this.render();}
   render=()=>{
     this.renderer.render(this.scene,this.camera);

@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { alignRooms, polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
 import type { SpatialScene } from './scene';
@@ -181,11 +181,11 @@ export class MPSpatialViewer extends LitElement {
         const host=this.renderRoot.querySelector<HTMLElement>('.canvas');
         if (!this.isConnected || !host || !this.currentFloor) return;
         this.scene=new SpatialScene(host, id=>this.select(id), positions=>this.place(positions), ()=>{this.engaged=true;});
-        this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls);
+        this.draw(this.currentFloor);
       } catch { this.error='La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'; }
       finally { this.loading=false; }
     } else if (this.scene && (changed.has('plan') || changed.has('floor') || changed.has('walls'))) {
-      this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls, !changed.has('walls'));
+      this.draw(this.currentFloor, !changed.has('walls'));
     }
     if(this.scene&&this.currentFloor){
       const mode=this.planMode(this.currentFloor);
@@ -195,6 +195,11 @@ export class MPSpatialViewer extends LitElement {
       const readings=changed.has('hass')&&this.currentFloor.rooms.some(r=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
       if(styled||readings||changed.has('mode')||changed.has('plan')||changed.has('floor'))this.scene.render();
     }
+  }
+  /** The floor as drawn: neighbouring rooms brought onto the wall they share (the saved plan is unchanged). */
+  private draw(floor: SpatialFloor, reset=true) {
+    const rooms=alignRooms(floor.rooms);
+    this.scene?.setFloor({...floor,rooms}, wallSegments(rooms), this.walls, reset, this.topView);
   }
   /** Room labels follow the camera; the selected one first, overlapping ones hidden. */
   private place(positions: Map<string,{x:number;y:number;visible:boolean}>) {

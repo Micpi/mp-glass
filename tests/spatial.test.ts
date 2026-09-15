@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { defaultSpatialPlan, examplePlan, parseSpatial, validPolygon, wallSegments } from '../shared/spatial';
+import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, validPolygon, wallSegments } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
@@ -15,6 +15,24 @@ describe('spatial geometry and project persistence',()=>{
     const partitions=walls.filter(w=>w.rooms.length===2).map(w=>w.rooms.sort().join('|')).sort();
     expect(partitions).toEqual(['A|B','A|C','B|C']);
     expect(walls.filter(w=>w.rooms.length===1)).toHaveLength(7);
+  });
+  it('draws the wall between rooms read from a drawing once, in the middle of its thickness',()=>{
+    const room=(id:string,x0:number,y0:number,x1:number,y1:number)=>({id,name:id,polygon:[[x0,y0],[x1,y0],[x1,y1],[x0,y1]] as [number,number][]});
+    // 20 cm of wall between A and B, a 5 cm step between their tops; C keeps a 60 cm corridor away from them.
+    const rooms=[room('A',0,0,4,4),room('B',4.2,.05,8,4),room('C',0,4.6,8,7)],saved=structuredClone(rooms);
+    const drawn=alignRooms(rooms);
+    expect(rooms).toEqual(saved);
+    expect(drawn[0]!.polygon).toEqual([[0,.025],[4.1,.025],[4.1,4],[0,4]]);
+    expect(drawn[1]!.polygon).toEqual([[4.1,.025],[8,.025],[8,4],[4.1,4]]);
+    expect(drawn[2]!.polygon).toEqual(saved[2]!.polygon);
+    const walls=wallSegments(drawn);
+    expect(walls.filter(w=>w.rooms.length===2).map(w=>w.rooms.join('|'))).toEqual(['A|B']);
+    expect(wallSegments(rooms).every(w=>w.rooms.length===1)).toBe(true);
+    // A notch narrower than a wall closes; a room narrower than a wall keeps its shape.
+    const notched={id:'N',name:'N',polygon:[[0,0],[3,0],[3,2],[2.9,2],[2.9,3],[0,3]] as [number,number][]};
+    expect(alignRooms([notched])[0]!.polygon).toEqual([[0,0],[2.95,0],[2.95,3],[0,3]]);
+    const closet=room('D',5,0,5.25,1);
+    expect(alignRooms([closet])[0]).toEqual(closet);
   });
   it('accepts concave rooms and rejects crossings, touching edges, duplicate points and zero area',()=>{
     expect(validPolygon([[0,0],[4,0],[4,2],[2,2],[2,4],[0,4]])).toBe(true);

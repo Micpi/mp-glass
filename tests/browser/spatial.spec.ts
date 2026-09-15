@@ -685,6 +685,37 @@ test('climate and shutter position update on the plan and cover commands target 
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
+test('plan labels show a temperature only in rooms that measure it, and no climate mode without any',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();
+  const label=(room:string)=>viewer.locator(`[data-room="${room}"]`);
+  const setStates=(patch:Record<string,{state:string}|null>)=>page.evaluate(patch=>{
+    const view=document.querySelector('mp-glass-view-v4') as HTMLElement&{hass:import('../../frontend/ha/client').Hass},states={...view.hass.states};
+    for(const [id,value] of Object.entries(patch)){if(value)states[id]={...states[id]!,...value};else delete states[id];}
+    view.hass={...view.hass,states};
+  },patch);
+  await page.evaluate(()=>(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo.hass.callService('light','turn_on',{entity_id:'light.circuit_1'}));
+  // Lights: a warm dot on the lit kitchen only, names alone where there is nothing to read.
+  await expect(label('kitchen').locator('i')).toHaveCount(1);await expect(label('dining').locator('i')).toHaveCount(0);
+  await expect(label('dining')).toHaveText('Séjour');await expect(label('dining').locator('.readings')).toHaveCount(0);
+  await viewer.getByRole('button',{name:'Climat',exact:true}).click();
+  await expect(label('bedroom').locator('.reading')).toHaveText('19,5 °C');
+  for(const room of ['kitchen','dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
+  await expect(label('kitchen').locator('i')).toHaveCount(0);
+  // An offline thermometer still says so; its room keeps its shutter.
+  await setStates({'sensor.salon_temperature':{state:'unavailable'}});
+  await expect(label('living').locator('.reading.temp')).toHaveText('—');
+  await expect(label('living').locator('.reading.temp')).toHaveAttribute('title','Température indisponible');
+  await expect(label('living')).toContainText('65 %');
+  await viewer.screenshot({path:'artifacts/spatial-labels-climate.png'});
+  // No thermometer left on the floor: no climate mode to offer, the plan shows the lights.
+  await setStates({'sensor.salon_temperature':null,'climate.chambre':null});
+  await expect(viewer.getByRole('button',{name:'Climat',exact:true})).toHaveCount(0);
+  await expect(viewer.locator('.legend')).toHaveCount(0);
+  await expect(label('bedroom').locator('.readings')).toHaveCount(0);
+  await expect(label('kitchen').locator('i')).toHaveCount(1);
+});
+
 test('wall fitting follows concave outlines and does not count duplicate wall fragments twice',async({page})=>{
   await page.goto('/?spatial');
   const result=await page.evaluate(async()=>{

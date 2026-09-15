@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.9 — étiquettes du plan plus lisibles
+
+Demande utilisateur : améliorer l’affichage des noms de pièce sur le plan 3D et ne plus proposer de température vide quand aucune entité n’est liée.
+
+- **Température seulement là où elle se mesure** : en mode Climat, une pièce sans capteur de température ni thermostat qui mesure la pièce n’affiche plus « 🌡 — », seulement son nom. « — » reste pour un capteur lié mais hors ligne, avec l’infobulle « Température indisponible ».
+- **Pas de mode Climat vide** : si aucune pièce du niveau ne mesure sa température, les boutons Lumières / Climat et la légende ne sont plus affichés ; le plan montre les lumières.
+- **Étiquettes plus nettes** : le nom tient sur une ligne dans une pastille de verre compacte, un peu plus grande et plus contrastée. Une deuxième ligne n’apparaît que s’il y a une valeur à lire (température, volets). Le point bleu présent sur chaque pièce disparaît : seul reste le point doré d’une lumière allumée, et seulement en mode Lumières, où il ne se confond plus avec la légende des températures. Un nom trop long se termine par « … », en entier au survol, et une étiquette près du bord du plan garde sa largeur.
+- Sur l’étiquette de la pièce sélectionnée, la température garde un fond sombre : un bleu sous 18 °C reste lisible.
+
 ## 0.7.8 — bandeau noir, suite
 
 Retour utilisateur : après 0.7.7, la flèche retour et le titre ont disparu mais le bandeau noir reste en haut des sous-vues.

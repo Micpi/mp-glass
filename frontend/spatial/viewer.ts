@@ -6,7 +6,7 @@ import { polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type Sp
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
 import type { SpatialScene } from './scene';
-import { canCover, coverPosition, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
+import { canCover, coverPosition, hasThermometer, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
 
 type Kind = 'light'|'cover'|'climate'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
@@ -65,21 +65,24 @@ export class MPSpatialViewer extends LitElement {
     .hint{position:absolute;left:50%;bottom:12px;z-index:1;max-width:calc(100% - 24px);margin:0;padding:6px 13px;transform:translateX(-50%);border-radius:999px;font-size:11px;color:#cbdced;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
     .hint[hidden]{display:none}.hint .touch{display:none}
     .labels{position:absolute;inset:0;z-index:1;pointer-events:none}
-    .labels button{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:inline-flex;align-items:center;gap:6px;max-width:150px;min-height:28px;padding:0 11px 0 9px;border-radius:999px;border:1px solid rgba(206,230,255,.24);background:rgba(6,22,38,.66);box-shadow:0 6px 18px rgba(0,8,18,.4);backdrop-filter:blur(10px);font-size:11.5px;font-weight:600;letter-spacing:.01em;color:#eef7ff;transition:background .2s,border-color .2s,box-shadow .2s}
-    .labels button span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .labels button{flex-wrap:wrap;justify-content:center;padding:5px 9px;max-width:170px;border-radius:12px;gap:4px 6px}
-    .readings{display:flex;align-items:center;justify-content:center;gap:7px;flex-basis:100%;font-size:11px;font-weight:500;color:#cce3f2}
-    .reading{display:inline-flex;align-items:center;gap:4px}.labels .readings i{box-shadow:none}
-    .shutter{display:inline-block;position:relative;width:15px;height:17px;border:1px solid currentColor;border-radius:2px;background:transparent;overflow:hidden;flex:none}
+    /* A room's name on the plan: a one-line capsule, its readings on a second line when it has some. Its own width, even near the edge of the plan. */
+    .labels button{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:max-content;max-width:160px;min-height:26px;padding:3px 12px;border-radius:999px;border:1px solid rgba(206,230,255,.2);background:rgba(6,22,38,.62);box-shadow:inset 0 1px rgba(255,255,255,.08),0 6px 18px rgba(0,8,18,.36);backdrop-filter:blur(12px) saturate(140%);font-size:12px;font-weight:600;line-height:1.3;letter-spacing:.01em;color:#f2f8ff;text-shadow:0 1px 2px rgba(0,8,18,.45);transition:background .2s,border-color .2s,box-shadow .2s}
+    .labels button.rich{padding:4px 12px 5px;border-radius:14px}
+    .labels .name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}.labels .name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .readings{display:flex;align-items:center;justify-content:center;gap:8px;font-size:11.5px;font-weight:600;color:#cce3f2;font-variant-numeric:tabular-nums}
+    .reading{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.reading.temp{color:var(--tone)}
+    /* On the selected label's blue, every temperature colour keeps a dark ground. */
+    .labels button[aria-pressed=true] .reading.temp{margin:0 -2px;padding:0 6px;border-radius:99px;background:rgba(3,16,29,.5)}
+    .shutter{display:inline-block;position:relative;width:12px;height:13px;border:1px solid currentColor;border-radius:2px;background:transparent;overflow:hidden;flex:none}
     .shutter::before{content:'';position:absolute;inset:0 0 auto;height:var(--closed,100%);background:repeating-linear-gradient(0deg,currentColor 0 1px,transparent 1px 3px);transition:height .3s}
-    .shutter.unknown{opacity:.45}.shutter.unknown::before{background:none}.shutter.unknown::after{content:'?';position:absolute;inset:0;text-align:center;font:11px/15px system-ui}
+    .shutter.unknown{opacity:.45}.shutter.unknown::before{background:none}.shutter.unknown::after{content:'?';position:absolute;inset:0;text-align:center;font:9px/11px system-ui}
     .modes{position:absolute;left:12px;bottom:12px;z-index:2;display:flex;gap:3px;padding:3px;border-radius:13px}
     .modes button{display:flex;align-items:center;gap:6px;border:0;border-radius:10px;background:transparent;padding:7px 10px;min-height:34px;color:#bed4e4;font-size:12px}
     .modes button[aria-pressed=true]{background:#74b9eb30;color:#fff}.legend{position:absolute;bottom:62px;left:12px;right:62px;color:#cde0eb;font-size:10px;pointer-events:none}
     .legend b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.legend span{margin-right:8px;white-space:nowrap}
     .cover-controls{grid-column:1/-1;display:flex;gap:6px;align-items:center;padding:4px 8px 8px}.cover-controls button{border:1px solid var(--line);border-radius:9px;background:#14354d;min-width:38px;min-height:36px}
     .cover-controls label{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.cover-controls output{font-size:11px;white-space:nowrap}
-    .labels i{width:6px;height:6px;flex:0 0 auto;border-radius:50%;background:#8fd3ff;box-shadow:0 0 8px rgba(143,211,255,.7)}.labels .lit i{background:var(--warm);box-shadow:0 0 10px #ffc53d}
+    .labels i{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--warm);box-shadow:0 0 10px #ffc53d}
     .labels button[aria-pressed=true]{z-index:1;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 80%,transparent),rgba(38,94,149,.78));border-color:color-mix(in srgb,var(--accent) 70%,white);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent),0 10px 24px rgba(0,8,18,.45)}
     .rooms{position:relative;min-width:0}
     .strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding-inline:40px}.strip::-webkit-scrollbar{display:none}
@@ -157,6 +160,9 @@ export class MPSpatialViewer extends LitElement {
   private mode:PlanMode='lights';
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
+  /** Whether a room of the floor measures its temperature: without one, the plan has no climate mode to offer. */
+  private thermometers(floor:SpatialFloor){const states=this.hass?.states??{};return floor.rooms.some(r=>hasThermometer(r,states));}
+  private planMode(floor:SpatialFloor):PlanMode{return this.mode==='climate'&&this.thermometers(floor)?'climate':'lights';}
   private scene?: SpatialScene;
   private loading = false;
   private resize = new ResizeObserver(()=>this.edges());
@@ -182,7 +188,8 @@ export class MPSpatialViewer extends LitElement {
       this.scene.setFloor(this.currentFloor, wallSegments(this.currentFloor.rooms), this.walls, !changed.has('walls'));
     }
     if(this.scene&&this.currentFloor){
-      const styled=this.scene.highlight(this.room?.id??'',new Map(this.currentFloor.rooms.map(r=>[r.id,roomAmbient(r,this.hass?.states??{},this.mode,this.temperatureUnit)])));
+      const mode=this.planMode(this.currentFloor);
+      const styled=this.scene.highlight(this.room?.id??'',new Map(this.currentFloor.rooms.map(r=>[r.id,roomAmbient(r,this.hass?.states??{},mode,this.temperatureUnit)])));
       // Labels change size when sensor values or the mode changes, even if the camera stays still.
       const previous=changed.get('hass') as Hass|undefined;
       const readings=changed.has('hass')&&this.currentFloor.rooms.some(r=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
@@ -292,25 +299,32 @@ export class MPSpatialViewer extends LitElement {
     catch{this.error='Commande du volet refusée ou équipement indisponible.';}
     finally{this.busy=false;}
   }
-  private planReadings(room:SpatialRoom){
-    const temperature=this.temperature(room),covers=(room.entityIds??[]).filter(id=>id.startsWith('cover.'));
-    if(!covers.length&&this.mode!=='climate')return nothing;
+  /** Under a room's name: in climate mode its temperature, only when it has a thermometer (— while it is offline); its shutters. */
+  private planReadings(room:SpatialRoom,climate:boolean){
+    const temperature=climate?this.temperature(room):undefined,covers=(room.entityIds??[]).filter(id=>id.startsWith('cover.'));
+    const thermometer=climate&&(!!temperature||hasThermometer(room,this.hass?.states??{}));
+    if(!covers.length&&!thermometer)return nothing;
     return html`<span class="readings">
-      ${this.mode==='climate'?html`<span class="reading" style=${`color:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Aucune température disponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span>`:nothing}
+      ${thermometer?html`<span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Température indisponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span>`:nothing}
       ${covers.map(id=>{const state=this.hass?.states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?'Indisponible':position===undefined?'Position inconnue':`${this.format(position,0)} % ouvert`}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':`${this.format(position,0)} %`}</span></span>`;})}
     </span>`;
+  }
+  /** A room on the plan: its name, a warm dot while a light is on, and its readings. */
+  private planLabel(room:SpatialRoom,lit:boolean,climate:boolean){
+    const readings=this.preview?nothing:this.planReadings(room,climate);
+    return html`<button class=${readings===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}</button>`;
   }
   render() {
     const floor=this.currentFloor,room=this.room;
     if(!floor) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
-    const lit=this.litRooms(floor);
+    const lit=this.litRooms(floor),climate=this.planMode(floor)==='climate';
     return html`<div class="layout">
       <div class="stage-col">
       <div class="stage">
         <div class="canvas"></div>
-        <div class="labels">${floor.rooms.map(r=>html`<button class=${lit.has(r.id)?'lit':''} style="visibility:hidden" data-room=${r.id} aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}><i></i><span>${r.name}</span>${this.preview?nothing:this.planReadings(r)}</button>`)}</div>
-        ${this.preview?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${this.mode==='lights'} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${this.mode==='climate'} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
-          ${this.mode==='climate'?html`<div class="legend"><span><b style="background:#69b7ff"></b>&lt; 18 °C</span><span><b style="background:#71d7c0"></b>18–21</span><span><b style="background:#ffc574"></b>21–24</span><span><b style="background:#ff816b"></b>≥ 24 °C</span></div>`:nothing}`}
+        <div class="labels">${floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&!climate,climate))}</div>
+        ${this.preview||!this.thermometers(floor)?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${!climate} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${climate} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
+          ${climate?html`<div class="legend"><span><b style="background:#69b7ff"></b>&lt; 18 °C</span><span><b style="background:#71d7c0"></b>18–21</span><span><b style="background:#ffc574"></b>21–24</span><span><b style="background:#ff816b"></b>≥ 24 °C</span></div>`:nothing}`}
         ${this.plan!.floors.length>1
           ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.plan!.floors.map(f=>html`<button aria-pressed=${f.id===floor.id} @click=${()=>this.showFloor(f.id)}>${f.name}</button>`)}</div>`
           : html`<div class="floor-tag glass">${mpIcon('rooms',13)}<span>${floor.name}</span></div>`}

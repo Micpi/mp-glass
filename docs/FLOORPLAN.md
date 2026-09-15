@@ -51,7 +51,9 @@ Sans WebGL 2, les pièces et leurs fiches restent accessibles depuis la liste. R
 
 ## Ambiances et volets
 
-**Lumières / Climat** en bas du plan change l’ambiance affichée. En mode Lumières, les pièces allumées ont un halo doré ; en mode Climat, le halo et l’étiquette suivent la température du premier capteur dédié disponible dans l’ordre des associations, puis du thermostat en repli. Le sélecteur **Température principale** place le capteur choisi en premier. Les autres capteurs restent accessibles dans la fiche. Sans mesure disponible, aucun halo thermique et « — » dans l’étiquette.
+**Lumières / Climat** en bas du plan change l’ambiance affichée. En mode Lumières, les pièces allumées ont un halo doré ; en mode Climat, le halo et l’étiquette suivent la température du premier capteur dédié disponible dans l’ordre des associations, puis du thermostat en repli. Le sélecteur **Température principale** place le capteur choisi en premier. Les autres capteurs restent accessibles dans la fiche. Une pièce sans capteur de température ni thermostat qui mesure la pièce n’affiche que son nom, sans halo thermique ; « — » signale un capteur hors ligne. Sans aucune pièce mesurée sur le niveau, le mode Climat n’est pas proposé.
+
+Sur le plan, l’étiquette d’une pièce tient sur une ligne, son nom ; un point doré y signale une lumière allumée en mode Lumières. Une deuxième ligne n’apparaît que s’il y a quelque chose à lire : la température en mode Climat, la position des volets.
 
 Échelle identique pour toutes les pièces : bleu sous 18 °C, vert de 18 à 21 °C, ambre de 21 à 24 °C, corail à partir de 24 °C. Les valeurs °F gardent leur unité à l’affichage et sont converties en °C pour la couleur. Ces couleurs représentent la température mesurée, pas l’activité du chauffage.
 

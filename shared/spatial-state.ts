@@ -13,11 +13,23 @@ export function coverPosition(state?:HAState){
   const value=finite(state?.attributes.current_position);
   return value!==undefined&&value>=0&&value<=100?value:state?.state==='closed'?0:undefined;
 }
+const temperatureSensor=(s:HAState)=>s.entity_id.startsWith('sensor.')&&(s.attributes.device_class==='temperature'||/^°[CF]$/.test(String(s.attributes.unit_of_measurement)));
+/**
+ * Whether the room has something that measures its temperature, even offline: a temperature sensor, or a thermostat that
+ * reports the room temperature (an offline one no longer tells, it counts). Without one, the plan shows no temperature at all.
+ */
+export function hasThermometer(room:SpatialRoom,states:Record<string,HAState>){
+  return (room.entityIds??[]).some(id=>{
+    const s=states[id];
+    if(!s)return false;
+    return id.startsWith('climate.')?!available(s)||finite(s.attributes.current_temperature)!==undefined:temperatureSensor(s);
+  });
+}
 /** First available dedicated sensor in the user's selection; thermostat temperature is the fallback. */
 export function roomTemperature(room:SpatialRoom,states:Record<string,HAState>,defaultUnit='°C'){
   const selected=(room.entityIds??[]).map(id=>states[id]).filter((s):s is HAState=>available(s));
   for(const climate of [false,true])for(const s of selected){
-    if(climate?!s.entity_id.startsWith('climate.'):!s.entity_id.startsWith('sensor.')||!(s.attributes.device_class==='temperature'||/^°[CF]$/.test(String(s.attributes.unit_of_measurement))))continue;
+    if(climate?!s.entity_id.startsWith('climate.'):!temperatureSensor(s))continue;
     const value=finite(climate?s.attributes.current_temperature:s.state),unit=String(s.attributes.unit_of_measurement??defaultUnit);
     if(value===undefined||!['°C','°F'].includes(unit))continue;
     return {id:s.entity_id,value,unit,celsius:unit==='°F'?(value-32)*5/9:value};

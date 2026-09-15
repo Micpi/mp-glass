@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { canCover,coverPosition,roomAmbient,roomTemperature } from '../shared/spatial-state';
+import { canCover,coverPosition,hasThermometer,roomAmbient,roomTemperature } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -22,6 +22,19 @@ describe('room runtime information',()=>{
     expect(roomTemperature(r,states)?.id).toBe('climate.a');
     states['climate.a']=state('climate.a','unavailable',{current_temperature:25});
     expect(roomAmbient(r,states,'climate').strength).toBe(0);
+  });
+  it('knows which rooms measure their temperature, even while offline',()=>{
+    const states={'light.a':state('light.a','on'),'sensor.power':state('sensor.power','12',{device_class:'power',unit_of_measurement:'W'}),
+      'sensor.t':state('sensor.t','unavailable',{device_class:'temperature'}),'sensor.f':state('sensor.f','70',{unit_of_measurement:'°F'}),
+      'climate.silent':state('climate.silent','heat',{temperature:20}),'climate.off':state('climate.off','unavailable')};
+    expect(hasThermometer(room(['light.a','sensor.power','sensor.missing']),states)).toBe(false);
+    expect(hasThermometer(room([]),states)).toBe(false);
+    // A thermostat that never reports the room temperature is no thermometer; an offline one may be.
+    expect(hasThermometer(room(['climate.silent']),states)).toBe(false);
+    expect(hasThermometer(room(['climate.off']),states)).toBe(true);
+    expect(hasThermometer(room(['sensor.t']),states)).toBe(true);
+    expect(roomTemperature(room(['sensor.t']),states)).toBeUndefined();
+    expect(hasThermometer(room(['sensor.f']),states)).toBe(true);
   });
   it('keeps unknown cover positions unknown and obeys supported features',()=>{
     expect(coverPosition(state('cover.a','open'))).toBeUndefined();

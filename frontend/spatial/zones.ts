@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, svg, type PropertyValues } from 'lit';
 import { polygonArea, validPolygon, type Point, type SpatialPlan } from '../../shared/spatial';
 import { mpIcon } from '../icons';
+import { defineElement } from '../registry';
 
 /**
  * A room as detected on the image, in 0-1000 coordinates (Gemini's convention: box_2d is [ymin, xmin, ymax, xmax], a point [y, x]).
@@ -523,4 +524,4 @@ export class MPPlanZones extends LitElement {
       })}</ul>`;
   }
 }
-if(!customElements.get('mp-plan-zones'))customElements.define('mp-plan-zones',MPPlanZones);
+defineElement('mp-plan-zones',MPPlanZones);

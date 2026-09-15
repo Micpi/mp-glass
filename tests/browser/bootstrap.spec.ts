@@ -4,6 +4,22 @@ import { test, expect, type Page } from '@playwright/test';
 const TAG = 'll-strategy-dashboard-mp-glass';
 type Strategy = { generate:(config:object,hass:object)=>Promise<unknown>; shouldRegenerate:(config:object,oldHass:object,newHass:object)=>boolean };
 
+/**
+ * What the scoped custom element registry polyfill loaded by some add-ons does, as seen on a real installation:
+ * window.customElements becomes a new registry, blind to the elements defined before it.
+ */
+const replaceRegistry=()=>{
+  const definitions=new Map<string,CustomElementConstructor>(),waiting=new Map<string,(element:CustomElementConstructor)=>void>();
+  Object.defineProperty(window,'customElements',{configurable:true,writable:true,value:{
+    get:(name:string)=>definitions.get(name),
+    define:(name:string,element:CustomElementConstructor)=>{
+      if(definitions.has(name)) throw new DOMException(`"${name}" has already been used with this registry`,'NotSupportedError');
+      definitions.set(name,element);waiting.get(name)?.(element);
+    },
+    whenDefined:(name:string)=>definitions.has(name)?Promise.resolve(definitions.get(name)):new Promise(resolve=>waiting.set(name,resolve)),
+  }});
+};
+
 /** A page of the test server without the demo, which would register the full strategy first. */
 async function blankPage(page:Page){
   await page.route('**/blank.html',route=>route.fulfill({contentType:'text/html',body:'<!doctype html><title>blank</title>'}));
@@ -24,7 +40,38 @@ test('the bootstrap registers the strategy at once and retries an engine that fa
   expect(dashboard).toEqual({views:[{title:'ok'}]});
   expect(engine).toHaveLength(2);
   expect(new URL(engine[1]!).searchParams.get('retry')).toBe('1');
+  // A later generation on the page reuses the engine that loaded.
+  await page.evaluate(tag=>(customElements.get(tag) as unknown as {generate:(config:object,hass:object)=>Promise<unknown>}).generate({},{name:'again'}),TAG);
+  expect(engine).toHaveLength(2);
   expect(logs.some(line=>line.includes('interface injoignable, nouvel essai dans 1 s'))).toBe(true);
+});
+
+test('a registry polyfill that replaces customElements after the bootstrap still gets the strategy',async({page})=>{
+  const logs:string[]=[];page.on('console',message=>logs.push(message.text()));
+  await blankPage(page);
+  await page.addScriptTag({content:`window.replaceRegistry=${replaceRegistry.toString()}`});
+  const found=await page.evaluate(async tag=>{
+    const bootstrap='/frontend/bootstrap.ts';await import(bootstrap);
+    const registered=customElements.get(tag);
+    (window as unknown as {replaceRegistry:()=>void}).replaceRegistry();
+    // Home Assistant waits on the new registry, as it did in vain before.
+    const defined=await Promise.race([customElements.whenDefined(tag),new Promise(resolve=>setTimeout(()=>resolve(null),2000))]);
+    return defined===registered;
+  },TAG);
+  expect(found).toBe(true);
+  expect(logs.some(line=>line.includes('stratégie enregistrée à nouveau : un module a remplacé le registre des éléments'))).toBe(true);
+});
+
+test('the engine defines its elements again on a registry that replaces customElements',async({page})=>{
+  await page.goto('/');
+  await expect(page.locator('mp-glass-light-v4').first()).toBeVisible();
+  await page.addScriptTag({content:`window.replaceRegistry=${replaceRegistry.toString()}`});
+  const missing=await page.evaluate(async()=>{
+    (window as unknown as {replaceRegistry:()=>void}).replaceRegistry();
+    await new Promise(resolve=>setTimeout(resolve,1000));
+    return ['ll-strategy-dashboard-mp-glass','mp-glass-view-v5','mp-glass-light-v4','mp-glass-generic-v4','mp-spatial-viewer'].filter(name=>!customElements.get(name));
+  });
+  expect(missing).toEqual([]);
 });
 
 test('registered after Home Assistant gave up, the strategy asks once for a new generation',async({page})=>{

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.6 — cause trouvée : le registre des éléments remplacé
+
+Retour utilisateur : après 0.7.5, `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` aussi sur ordinateur.
+
+- **Cause, observée sur l’installation réelle** : un module HACS charge le polyfill `scoped-custom-element-registry`, qui remplace le registre des éléments du navigateur (`window.customElements`) par un nouveau registre ignorant tout ce qui a été déclaré avant lui. MP Glass, chargé très tôt, s’y trouvait donc absent, et Home Assistant l’y attendait en vain. L’erreur dépendait de l’ordre de chargement, d’où son côté aléatoire, surtout sur tablette et téléphone.
+- **Correction** : MP Glass déclare à nouveau sa stratégie, ses vues, ses cartes et son plan dans tout registre qui remplace le précédent. Même si c’est après les 5 s d’attente, le dashboard remplace l’erreur de lui-même. Aucune ressource ni réglage à ajouter.
+- Téléchargement de l’interface : une nouvelle génération du dashboard sur la même page ne réessaie plus des adresses déjà en échec.
+- Page de diagnostic : message explicite quand elle est ouverte comme fichier local plutôt que depuis Home Assistant.
+
 ## 0.7.5 — le dashboard se rattrape seul
 
 Retour utilisateur : l’erreur `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` persiste après 0.7.4.

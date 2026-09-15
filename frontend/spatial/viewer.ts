@@ -4,6 +4,7 @@ import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
 import { polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
+import { defineElement } from '../registry';
 import type { SpatialScene } from './scene';
 import { canCover, coverPosition, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
 
@@ -386,4 +387,4 @@ export class MPSpatialViewer extends LitElement {
     </li>`;
   }
 }
-if(!customElements.get('mp-spatial-viewer')) customElements.define('mp-spatial-viewer',MPSpatialViewer);
+defineElement('mp-spatial-viewer',MPSpatialViewer);

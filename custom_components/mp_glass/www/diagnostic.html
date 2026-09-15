@@ -32,6 +32,10 @@
       var logs = [], info = console.info;
       console.info = function () { logs.push(Array.prototype.join.call(arguments, ' ')); return info.apply(console, arguments); };
 
+      if (location.protocol === 'file:') {
+        add('ko', 'Page ouverte comme fichier', 'ouvrez-la depuis Home Assistant : http://<adresse de Home Assistant>:8123/mp_glass_static/diagnostic.html');
+        return;
+      }
       add('info', 'Navigateur', navigator.userAgent);
       add('info', 'Connexion', location.protocol + ' · contexte sécurisé : ' + (window.isSecureContext ? 'oui' : 'non') + ' · service worker : ' + (navigator.serviceWorker && navigator.serviceWorker.controller ? 'actif' : 'aucun'));
       add('findLast' in Array.prototype ? 'ok' : 'info', 'Version de Home Assistant servie', 'findLast' in Array.prototype ? 'moderne probable' : 'ancienne (legacy) : navigateur de plus de 2 ans');

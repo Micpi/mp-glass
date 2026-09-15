@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.4 — chargement fiable sur tablette et téléphone
+
+Retour utilisateur : `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered`, par moments, sur tablette et téléphone.
+
+La stratégie était déjà déclarée par un bootstrap sans import, avant le chargement du bundle principal. L’erreur venait du moment où ce bootstrap est ajouté aux pages, et de la reprise après un échec réseau :
+
+- Home Assistant sert les pages avant d’avoir chargé les intégrations personnalisées et n’ajoute le bootstrap qu’aux pages servies ensuite. MP Glass l’ajoutait à la fin de son démarrage, après la lecture de son schéma et de son projet : il l’ajoute désormais en tout premier, ce qui réduit fortement la période pendant laquelle une page ouverte au démarrage de Home Assistant n’a pas la stratégie.
+- Changer les options de MP Glass recharge l’intégration : le bootstrap était retiré puis remis, et une page ouverte entre-temps affichait l’erreur. Il reste désormais en place ; il n’est retiré qu’à la suppression de l’intégration.
+- Un échec de téléchargement du bundle principal (réseau qui revient après la veille, connexion lente) laissait le dashboard en erreur jusqu’au rechargement de la page. MP Glass réessaie seul, sous une nouvelle adresse, pendant une quinzaine de secondes.
+- Pendant un démarrage ou un rechargement de l’intégration, le dashboard attend MP Glass (jusqu’à 20 s) au lieu d’échouer. Home Assistant garde son écran de chargement pendant ce temps.
+- Diagnostic dans la console JS : `[MP Glass x.y.z] stratégie du dashboard enregistrée (… ms après l’ouverture de la page)`, puis `dashboard demandé par Home Assistant`. Leur absence sur un appareil indique que la page a été ouverte avant le chargement de MP Glass ([dépannage](docs/TROUBLESHOOTING.md)).
+
 ## 0.7.3 — pièces sous le plan
 
 Demande utilisateur : toujours afficher les pièces sous le plan, sur une seule ligne.

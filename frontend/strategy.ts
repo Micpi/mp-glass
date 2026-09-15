@@ -15,9 +15,19 @@ async function readProjectWhenReady(hass: Hass) {
     }
   }
 }
+/** Registries whose change regenerates a strategy dashboard, as Home Assistant does by default. */
+const REGISTRIES = ['entities', 'devices', 'areas', 'floors'];
+let generated = false;
+let healed = false;
 export class MPGlassStrategy extends HTMLElement {
   static getCreateSuggestions() { return { title: 'MP Glass', icon: 'mdi:view-dashboard' }; }
+  /** Registered after Home Assistant gave up waiting for it, the strategy replaces the timeout error once (see the bootstrap). */
+  static shouldRegenerate(_config: unknown, oldHass: Record<string, unknown>, newHass: Record<string, unknown>) {
+    if (!generated && !healed) return healed = true;
+    return REGISTRIES.some(key => oldHass[key] !== newHass[key]);
+  }
   static async generate(config: { debug?: boolean }, hass: Hass) {
+    generated = true;
     const [snapshot, {project}] = await Promise.all([HARegistryReader.read(hass), readProjectWhenReady(hass)]);
     return MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot, project), project, !!config.debug && !!hass.user?.is_admin, t(hass.locale?.language ?? hass.language, 'inventory'));
   }

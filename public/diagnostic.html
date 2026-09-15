@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>MP Glass · diagnostic</title>
+  <style>
+    body{margin:0;padding:20px;font:15px/1.5 system-ui,-apple-system,sans-serif;background:#061421;color:#eef6ff}
+    h1{margin:0 0 6px;font:26px Georgia,serif}p{margin:0 0 16px;color:#b7ccdf}
+    ol{margin:0;padding-left:22px}li{margin:8px 0}b{font-weight:600}
+    .ok b{color:#7be1aa}.ko b{color:#ffb4a0}.info b{color:#9ad4ff}
+    code{font:12px/1.4 ui-monospace,monospace;overflow-wrap:anywhere;color:#cfe6ff}
+  </style>
+</head>
+<body>
+  <h1>MP Glass · diagnostic de cet appareil</h1>
+  <p>Ouvrez cette page sur l’appareil qui affiche l’erreur, dans le même navigateur ou la même application, puis envoyez une capture d’écran de la liste.</p>
+  <ol id="results"><li class="info"><b>Analyse en cours…</b></li></ol>
+  <script>
+    // Written for old browsers (ES2017): this page must report even where MP Glass cannot run.
+    (function () {
+      var list = document.getElementById('results');
+      var started = false;
+      function add(state, label, text) {
+        if (!started) { list.innerHTML = ''; started = true; }
+        var item = document.createElement('li'), title = document.createElement('b'), detail = document.createElement('code');
+        item.className = state; title.textContent = label + ' : '; detail.textContent = text;
+        item.appendChild(title); item.appendChild(detail); list.appendChild(item);
+      }
+      function describe(error) { return (error && error.name ? error.name + ' : ' : '') + (error && error.message ? error.message : String(error)); }
+      function url(file) { return new URL(file + '?v=diagnostic-' + Date.now(), location.href).href; }
+      var logs = [], info = console.info;
+      console.info = function () { logs.push(Array.prototype.join.call(arguments, ' ')); return info.apply(console, arguments); };
+
+      add('info', 'Navigateur', navigator.userAgent);
+      add('info', 'Connexion', location.protocol + ' · contexte sécurisé : ' + (window.isSecureContext ? 'oui' : 'non') + ' · service worker : ' + (navigator.serviceWorker && navigator.serviceWorker.controller ? 'actif' : 'aucun'));
+      add('findLast' in Array.prototype ? 'ok' : 'info', 'Version de Home Assistant servie', 'findLast' in Array.prototype ? 'moderne probable' : 'ancienne (legacy) : navigateur de plus de 2 ans');
+
+      var load;
+      try { load = new Function('address', 'return import(address)'); }
+      catch (error) { add('ko', 'Modules JavaScript', 'non pris en charge (' + describe(error) + ') : MP Glass ne peut pas se charger ici'); return; }
+
+      var bootstrap = url('mp-glass-bootstrap.js'), engine = url('mp-glass.js');
+      var t0 = performance.now();
+      fetch(bootstrap, { cache: 'no-store' }).then(function (response) {
+        add(response.ok ? 'ok' : 'ko', 'Téléchargement du bootstrap', 'HTTP ' + response.status + ' en ' + Math.round(performance.now() - t0) + ' ms');
+      }).catch(function (error) {
+        add('ko', 'Téléchargement du bootstrap', describe(error));
+      }).then(function () {
+        var t1 = performance.now();
+        return load(bootstrap).then(function () {
+          var defined = !!customElements.get('ll-strategy-dashboard-mp-glass');
+          var line = logs.filter(function (entry) { return entry.indexOf('[MP Glass') === 0; })[0];
+          add(defined ? 'ok' : 'ko', 'Stratégie du dashboard', (defined ? 'enregistrée en ' + Math.round(performance.now() - t1) + ' ms' : 'non enregistrée') + (line ? ' · ' + line : ''));
+        }, function (error) {
+          add('ko', 'Stratégie du dashboard', 'bootstrap illisible par ce navigateur (' + describe(error) + ')');
+        });
+      }).then(function () {
+        var t2 = performance.now();
+        return load(engine).then(function () {
+          add('ok', 'Interface MP Glass', 'chargée en ' + Math.round(performance.now() - t2) + ' ms');
+        }, function (error) {
+          add('ko', 'Interface MP Glass', (error && error.name === 'SyntaxError' ? 'navigateur trop ancien, il faut au minimum Chrome 107, Safari 16 ou Firefox 104 (' : 'non chargée (') + describe(error) + ')');
+        });
+      }).then(function () {
+        add('info', 'Terminé', new Date().toLocaleString());
+      });
+    })();
+  </script>
+</body>
+</html>

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.5 — le dashboard se rattrape seul
+
+Retour utilisateur : l’erreur `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` persiste après 0.7.4.
+
+- **Rattrapage automatique** : si la stratégie est déclarée après l’abandon de Home Assistant (5 s), MP Glass remplace l’erreur par le dashboard à la mise à jour d’état suivante, sans recharger la page. Home Assistant interroge pour cela la stratégie à chaque mise à jour.
+- **Anciennes tablettes** : le bootstrap utilisait une syntaxe (`??=`) illisible par iOS 12 et 13 ou les vieilles WebView Android. La stratégie n’était alors jamais déclarée, d’où l’erreur de délai. Il est désormais compilé pour ES2017. Si l’interface elle-même ne peut pas s’exécuter (il faut au minimum Chrome 107, Safari 16 ou Firefox 104), le dashboard l’indique avec le nom du navigateur au lieu de l’erreur de délai.
+- **Page de diagnostic** : `/mp_glass_static/diagnostic.html`, à ouvrir sur l’appareil concerné, affiche sans console le navigateur, le téléchargement et la déclaration de la stratégie, et le chargement de l’interface ([dépannage](docs/TROUBLESHOOTING.md)).
+
 ## 0.7.4 — chargement fiable sur tablette et téléphone
 
 Retour utilisateur : `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered`, par moments, sur tablette et téléphone.

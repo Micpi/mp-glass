@@ -24,8 +24,10 @@ for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 
 }
 const registeredStrategy = customElements.get('ll-strategy-dashboard-mp-glass') as typeof MPGlassStrategy | undefined;
 if (registeredStrategy && registeredStrategy !== MPGlassStrategy) {
-  Object.defineProperty(registeredStrategy, 'generate', { configurable: true, value: MPGlassStrategy.generate.bind(MPGlassStrategy) });
-  Object.defineProperty(registeredStrategy, 'getCreateSuggestions', { configurable: true, value: MPGlassStrategy.getCreateSuggestions.bind(MPGlassStrategy) });
+  // shouldRegenerate goes with generate: both follow what this engine has generated.
+  for (const key of ['generate', 'getCreateSuggestions', 'shouldRegenerate'] as const) {
+    Object.defineProperty(registeredStrategy, key, { configurable: true, value: MPGlassStrategy[key].bind(MPGlassStrategy) });
+  }
 }
 const registeredSettings = customElements.get('mp-glass-settings') as typeof MPGlassSettings | undefined;
 if (registeredSettings && registeredSettings !== MPGlassSettings) {

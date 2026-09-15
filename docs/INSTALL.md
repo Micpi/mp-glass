@@ -17,6 +17,8 @@ Une installation copiée à la main est reprise telle quelle : HACS remplace les
 
 Chaque nouvelle release apparaît ensuite dans **Paramètres → Mises à jour** : **Installer**, redémarrer Home Assistant, puis recharger la page du navigateur ou de l’application pour obtenir le nouveau frontend.
 
+Navigateurs : au minimum Chrome 107, Safari 16 (iOS/iPadOS 16) ou Firefox 104, y compris dans l’application Home Assistant et les navigateurs kiosque. Pour vérifier une tablette, ouvrir sur celle-ci `/mp_glass_static/diagnostic.html` à l’adresse de Home Assistant ([dépannage](TROUBLESHOOTING.md)).
+
 L’add-on facultatif MP Glass Spatial n’est pas distribué par HACS : voir [sa documentation](../addons/mp_glass_spatial/DOCS.md).
 
 ## Installation de développement

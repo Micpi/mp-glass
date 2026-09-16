@@ -78,6 +78,8 @@ const planPoints=(page:Page)=>page.evaluate(()=>{
   if(!house)throw Error('house hidden by labels');
   return {house,beside:{x:r.x+16,y:r.y+r.height-16}};
 });
+/** Longer than the press Recentrer waits for before offering to save the view. */
+const HOLD=750;
 /** Label position relative to the canvas, independent of the page scroll. */
 const labelOffset=async(page:Page,room:string)=>{
   const viewer=page.locator('mp-spatial-viewer');const [label,canvas]=await Promise.all([viewer.locator(`[data-room="${room}"]`).boundingBox(),viewer.locator('canvas').boundingBox()]);
@@ -114,6 +116,34 @@ test('3D rotates, zooms, pans, resets and controls a bound light',async({page})=
   await expect(viewer.getByRole('region',{name:'Vue d’ensemble du niveau'})).toBeVisible();
   await page.screenshot({path:'artifacts/spatial-desktop.png',fullPage:true});
   expect(errors).toEqual([]);
+});
+
+test('holding Recentrer saves the view after a confirmation, and the plan opens on it',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('[data-room="living"]')).toBeVisible();
+  const {house}=await planPoints(page);
+  await page.mouse.move(house.x,house.y);await page.mouse.down();await page.mouse.move(house.x+110,house.y+25,{steps:8});await page.mouse.up();
+  const chosen=await labelOffset(page,'living');
+  // Held down, the button asks before keeping the view; a plain click meanwhile only recentres.
+  await viewer.getByRole('button',{name:'Recentrer',exact:true}).hover();
+  await page.mouse.down();await page.waitForTimeout(HOLD);await page.mouse.up();
+  await expect(viewer.getByText('Enregistrer cette vue ?')).toBeVisible();
+  await viewer.getByRole('button',{name:'Enregistrer',exact:true}).click();
+  await expect(viewer.getByText('Enregistrer cette vue ?')).toBeHidden();
+  expect(await labelOffset(page,'living')).toEqual(chosen);
+  await page.mouse.move(house.x,house.y);await page.mouse.down();await page.mouse.move(house.x-90,house.y+45,{steps:8});await page.mouse.up();
+  await expect.poll(()=>labelOffset(page,'living')).not.toEqual(chosen);
+  await viewer.getByRole('button',{name:'Revenir à la vue enregistrée'}).click();
+  await expect.poll(()=>labelOffset(page,'living')).toEqual(chosen);
+  // Kept in this browser: the plan is framed that way again on the next visit.
+  await page.reload();await expect(viewer.locator('[data-room="living"]')).toBeVisible();
+  await expect.poll(()=>labelOffset(page,'living')).toEqual(chosen);
+  await viewer.getByRole('button',{name:'Revenir à la vue enregistrée'}).hover();
+  await page.mouse.down();await page.waitForTimeout(HOLD);await page.mouse.up();
+  await viewer.getByRole('button',{name:'Oublier la vue enregistrée'}).click();
+  await expect(viewer.getByRole('button',{name:'Recentrer',exact:true})).toBeVisible();
+  await page.reload();await expect(viewer.locator('[data-room="living"]')).toBeVisible();
+  await expect.poll(()=>labelOffset(page,'living')).not.toEqual(chosen);
 });
 
 test('beside the house the mouse wheel and drags act on the page, on the house they drive the plan',async({page})=>{

@@ -4,6 +4,8 @@ import type { SpatialFloor, WallSegment } from '../../shared/spatial';
 import type { RoomAmbient } from '../../shared/spatial-state';
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
+/** A camera kept as the user left it, told relative to the house so a redrawn or edited plan keeps the same view. */
+export interface CameraView { target:[number,number,number]; offset:[number,number,number]; fov:number }
 interface RoomParts { surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
 interface WallParts { rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
@@ -291,6 +293,19 @@ export class SpatialScene {
   /** Seen from above, as a plan: the narrow lens keeps each wall over its own footprint. */
   top(){this.stopTween();this.lens(TOP_FOV);this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(0,this.radius*3.3/Math.min(this.camera.aspect,1)*this.reach,.001));this.controls.update();this.render();}
   zoom(factor:number){this.stopTween();const offset=this.camera.position.clone().sub(this.controls.target);offset.multiplyScalar(factor).clampLength(this.controls.minDistance,this.controls.maxDistance);this.camera.position.copy(this.controls.target).add(offset);this.controls.update();this.render();}
+  /** The camera as it stands, to be saved and framed again later. */
+  view():CameraView{
+    const target=this.controls.target.clone().sub(this.center).divideScalar(this.radius);
+    const offset=this.camera.position.clone().sub(this.controls.target).divideScalar(this.radius);
+    return {target:[target.x,target.y,target.z],offset:[offset.x,offset.y,offset.z],fov:this.camera.fov};
+  }
+  /** Frames the house as `view` framed it, whatever its centre and size are now. */
+  show(view:CameraView){
+    this.stopTween();this.lens(view.fov);
+    this.controls.target.copy(this.center).add(new T.Vector3(...view.target).multiplyScalar(this.radius));
+    this.camera.position.copy(this.controls.target).add(new T.Vector3(...view.offset).multiplyScalar(this.radius).clampLength(this.controls.minDistance,this.controls.maxDistance));
+    this.controls.update();this.render();
+  }
   render=()=>{
     this.renderer.render(this.scene,this.camera);
     const positions:Projection=new Map();const {clientWidth:w,clientHeight:h}=this.host;

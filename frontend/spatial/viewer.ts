@@ -5,7 +5,7 @@ import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/c
 import { alignRooms, polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
-import type { SpatialScene } from './scene';
+import type { CameraView, SpatialScene } from './scene';
 import { canCover, coverPosition, hasThermometer, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
 
 type Kind = 'light'|'cover'|'climate'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
@@ -24,6 +24,33 @@ const HVAC:Record<string,string>={off:'Arrêt',heat:'Chauffage',cool:'Climatisat
 const motion=():ScrollBehavior=>matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
 /** Width of the fade at each end of the room list, where its arrows sit. */
 const EDGE=40;
+/** The view Recentrer brings back, per floor, kept in this browser. */
+const VIEW_KEY='mp-glass.spatial.views';
+type PlanView=CameraView&{top:boolean};
+/** How long Recentrer is held down before it offers to save the view on screen. */
+const HOLD=550;
+/** A click that follows the window opening is the end of that press, not a request to recentre. */
+const AFTER_HOLD=800;
+const triple=(value:unknown):value is [number,number,number]=>Array.isArray(value)&&value.length===3&&value.every(n=>typeof n==='number'&&Number.isFinite(n));
+/** Saved views come from storage, where anything can be written: keep only cameras that can be framed. */
+function parseViews(raw:string|null):Record<string,PlanView>{
+  const views:Record<string,PlanView>={};
+  let stored:unknown;
+  try{stored=raw?JSON.parse(raw):undefined;}catch{return views;}
+  if(!stored||typeof stored!=='object')return views;
+  for(const [id,value] of Object.entries(stored as Record<string,unknown>)){
+    const view=value as Partial<PlanView>|null;
+    if(!view||typeof view!=='object'||!triple(view.target)||!triple(view.offset)||Math.hypot(...view.offset)<.01)continue;
+    if(typeof view.fov!=='number'||!(view.fov>0&&view.fov<180))continue;
+    views[id]={target:view.target,offset:view.offset,fov:view.fov,top:view.top===true};
+  }
+  return views;
+}
+const readViews=()=>{try{return parseViews(localStorage.getItem(VIEW_KEY));}catch{return {};}};
+const writeViews=(views:Record<string,PlanView>)=>{
+  try{if(Object.keys(views).length)localStorage.setItem(VIEW_KEY,JSON.stringify(views));else localStorage.removeItem(VIEW_KEY);}
+  catch{/* Storage blocked: the view holds for this page only. */}
+};
 const numeric=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
 function kindOf(id:string,state?:HAState):Kind{
   const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??''),unit=String(state?.attributes.unit_of_measurement??'');
@@ -43,7 +70,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true} };
+  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -58,8 +85,10 @@ export class MPSpatialViewer extends LitElement {
     .floors button{flex:0 0 auto;min-height:32px;padding:0 12px;border:0;border-radius:11px;background:transparent;font-size:12px;white-space:nowrap;color:#cfe0ef}
     .floors button[aria-pressed=true]{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 75%,transparent),rgba(38,94,149,.7));box-shadow:inset 0 1px rgba(255,255,255,.2)}
     .rail{position:absolute;top:12px;right:12px;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border-radius:16px}
-    .rail button{display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid transparent;border-radius:12px;background:transparent;color:#d6e6f5;transition:background .15s,color .15s}
+    .rail button{position:relative;display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid transparent;border-radius:12px;background:transparent;color:#d6e6f5;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:background .15s,color .15s}
     .rail button:hover{background:rgba(255,255,255,.09);color:#fff}
+    /* A saved view of its own: the dot says Recentrer brings that one back. */
+    .rail button.saved::after{content:'';position:absolute;top:4px;right:4px;width:6px;height:6px;border-radius:50%;background:var(--accent);box-shadow:0 0 6px var(--accent)}
     .rail button[aria-pressed=true]{color:#fff;background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
     .rail .sep{width:18px;height:1px;margin:3px 0;background:var(--line)}
     .hint{position:absolute;left:50%;bottom:12px;z-index:1;max-width:calc(100% - 24px);margin:0;padding:6px 13px;transform:translateX(-50%);border-radius:999px;font-size:11px;color:#cbdced;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;pointer-events:none}
@@ -141,6 +170,14 @@ export class MPSpatialViewer extends LitElement {
     @container (min-width:900px){.layout{grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px}}
     :host([preview]) .side,:host([preview]) .rooms{display:none}:host([preview]) .layout{grid-template-columns:1fr}
     @media (pointer:coarse){.rail .zoom{display:none}.rail button{width:40px;height:40px}.hint .touch{display:inline}.hint .fine{display:none}.more{display:none!important}}
+    dialog.ask{width:min(380px,calc(100vw - 32px));padding:20px;border:1px solid rgba(159,210,255,.25);border-radius:20px;color:#eef6ff;background:linear-gradient(150deg,rgba(18,52,79,.96),rgba(7,26,44,.98) 70%);box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px rgba(255,255,255,.12)}
+    dialog.ask::backdrop{background:rgba(2,10,20,.6);backdrop-filter:blur(6px)}
+    dialog.ask h3{margin:0;font:22px/1.15 var(--mp-display-font,Georgia,serif);font-weight:400}
+    dialog.ask p{margin:10px 0 0;font-size:12.5px;color:#b7ccdf}
+    .ask-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}
+    .ask-actions button{min-height:42px;padding:0 14px;border-radius:12px;border:1px solid var(--line);background:rgba(11,37,61,.8);color:#dbe9f5}
+    .ask-actions .primary{background:#2a648e;border-color:#8acbff;color:#fff}
+    dialog.ask .forget{margin-top:12px;min-height:38px;padding:0;border:0;background:transparent;color:#ffbda9;text-decoration:underline;text-underline-offset:3px}
     @keyframes rise{from{opacity:0;transform:translateY(8px)}}
     @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
@@ -158,6 +195,11 @@ export class MPSpatialViewer extends LitElement {
   private engaged = false;
   private busy = false;
   private mode:PlanMode='lights';
+  /** View saved by the user for each floor, and the window that asks before replacing it. */
+  private views:Record<string,PlanView>={};
+  private asking = false;
+  private hold = 0;
+  private asked = 0;
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   /** Whether a room of the floor measures its temperature: without one, the plan has no climate mode to offer. */
@@ -169,10 +211,12 @@ export class MPSpatialViewer extends LitElement {
   private get currentFloor() { return this.plan?.floors.find(f=>f.id===this.floor) ?? this.plan?.floors[0]; }
   private get room() { return this.currentFloor?.rooms.find(r=>r.id===this.selected); }
   private get locale() { return this.hass?.locale?.language ?? this.hass?.language ?? 'fr'; }
-  connectedCallback() { super.connectedCallback(); this.resize.observe(this); this.requestUpdate(); }
-  disconnectedCallback() { super.disconnectedCallback(); this.resize.disconnect(); this.scene?.dispose(); this.scene=undefined; }
+  connectedCallback() { super.connectedCallback(); this.resize.observe(this); this.views=readViews(); this.requestUpdate(); }
+  disconnectedCallback() { super.disconnectedCallback(); this.resize.disconnect(); clearTimeout(this.hold); this.asking=false; this.scene?.dispose(); this.scene=undefined; }
   protected async updated(changed: PropertyValues) {
     this.edges();
+    const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
+    if(ask&&this.asking&&!ask.open)ask.showModal();else if(ask&&!this.asking&&ask.open)ask.close();
     if (!this.plan || !this.currentFloor) return;
     if (!this.scene && !this.loading && !this.error) {
       this.loading=true;
@@ -200,6 +244,9 @@ export class MPSpatialViewer extends LitElement {
   private draw(floor: SpatialFloor, reset=true) {
     const rooms=alignRooms(floor.rooms);
     this.scene?.setFloor({...floor,rooms}, wallSegments(rooms), this.walls, reset, this.topView);
+    // The plan opens on the view saved for this floor, the one Recentrer brings back.
+    const view=reset&&!this.preview?this.views[floor.id]:undefined;
+    if(view){this.topView=view.top;this.scene?.show(view);}
   }
   /** Room labels follow the camera; the selected one first, overlapping ones hidden. */
   private place(positions: Map<string,{x:number;y:number;visible:boolean}>) {
@@ -250,8 +297,52 @@ export class MPSpatialViewer extends LitElement {
   }
   private close=()=>{ this.selected=''; this.scene?.overview(); };
   private showFloor(id: string) { this.floor=id; this.selected=''; this.topView=false; }
-  private recenter=()=>{ if(this.topView) this.scene?.top(); else this.scene?.reset(); };
-  private toggleTop=()=>{ this.topView=!this.topView; this.recenter(); };
+  /** Standard framing of the floor, the one a level without a saved view opens on. */
+  private frame() { if(this.topView) this.scene?.top(); else this.scene?.reset(); }
+  private get savedView() { return this.preview||!this.currentFloor?undefined:this.views[this.currentFloor.id]; }
+  private recenter=()=>{
+    const view=this.savedView;
+    if(!view||!this.scene) { this.frame(); return; }
+    this.topView=view.top; this.scene.show(view);
+  };
+  private toggleTop=()=>{ this.topView=!this.topView; this.frame(); };
+  /** Hold Recentrer down (or right-click it) to make the view on screen the one it brings back. */
+  private startHold=(e:PointerEvent)=>{
+    if(e.button) return;
+    clearTimeout(this.hold);
+    this.hold=setTimeout(()=>{ this.hold=0; this.ask(); },HOLD) as unknown as number;
+  };
+  private endHold=()=>{ clearTimeout(this.hold); this.hold=0; };
+  private ask=()=>{
+    if(this.preview||!this.currentFloor||!this.scene) return;
+    this.asked=performance.now(); this.asking=true;
+  };
+  /** The press that opened the window ends in a click: it must not recentre on its way out. */
+  private tapRecenter=()=>{ if(performance.now()-this.asked>AFTER_HOLD) this.recenter(); };
+  private saveView=()=>{
+    const floor=this.currentFloor,view=this.scene?.view();
+    if(floor&&view){ this.views={...this.views,[floor.id]:{...view,top:this.topView}}; writeViews(this.views); }
+    this.asking=false;
+  };
+  private forgetView=()=>{
+    const floor=this.currentFloor;
+    if(floor){ const rest={...this.views}; delete rest[floor.id]; this.views=rest; writeViews(rest); }
+    this.asking=false;
+  };
+  /** Asks before the view on screen becomes the one this floor opens on. */
+  private askDialog() {
+    const saved=!!this.savedView;
+    return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking=false;}}>
+      <h3 id="ask-title">Enregistrer cette vue ?</h3>
+      <p>La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue de ce niveau : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.</p>
+      <p>${saved?'Elle remplace la vue déjà enregistrée. ':''}Cette vue n’est gardée que dans ce navigateur.</p>
+      ${saved?html`<button class="forget" @click=${this.forgetView}>Oublier la vue enregistrée</button>`:nothing}
+      <div class="ask-actions">
+        <button @click=${()=>{this.asking=false;}}>Annuler</button>
+        <button class="primary" autofocus @click=${this.saveView}>Enregistrer</button>
+      </div>
+    </dialog>`;
+  }
   private format(value: number, digits=1) { return new Intl.NumberFormat(this.locale,{maximumFractionDigits:digits}).format(value); }
   private device(id: string, room: SpatialRoom): Device {
     const state=this.hass?.states[id],kind=kindOf(id,state),ready=available(state),on=ready&&state!.state==='on';
@@ -337,7 +428,10 @@ export class MPSpatialViewer extends LitElement {
           <button class="zoom" aria-label="Zoom avant" title="Zoom avant" @click=${()=>this.scene?.zoom(.8)}>${mpIcon('plus',18)}</button>
           <button class="zoom" aria-label="Zoom arrière" title="Zoom arrière" @click=${()=>this.scene?.zoom(1.25)}>${mpIcon('minus',18)}</button>
           <span class="sep zoom"></span>
-          <button aria-label="Recentrer" title="Recentrer" @click=${this.recenter}>${mpIcon('target',18)}</button>
+          <button class=${this.savedView?'saved':''} aria-label=${this.savedView?'Revenir à la vue enregistrée':'Recentrer'}
+            title=${this.savedView?'Revenir à la vue enregistrée · appui long pour la remplacer':'Recentrer · appui long pour enregistrer la vue'}
+            @click=${this.tapRecenter} @pointerdown=${this.startHold} @pointerup=${this.endHold} @pointerleave=${this.endHold} @pointercancel=${this.endHold}
+            @contextmenu=${(e:Event)=>{e.preventDefault();this.ask();}}>${mpIcon('target',18)}</button>
           <button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>
           <button aria-label="Murs" title="Afficher les murs" aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
         </div>
@@ -354,6 +448,7 @@ export class MPSpatialViewer extends LitElement {
         ${this.error?html`<p role="alert" class="error">${this.error}</p>`:nothing}
         ${room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
       </div>
+      ${this.preview?nothing:this.askDialog()}
     </div>`;
   }
   private lightsStat(total: number, on: number) {

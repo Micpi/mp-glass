@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.11 — la vue du plan, enregistrée
+
+Demande utilisateur : pouvoir enregistrer la position actuelle du plan en maintenant le bouton Recentrer appuyé, pour la rappeler ensuite d’un simple appui, avec une fenêtre de validation.
+
+- **Appui long sur Recentrer** : garder le bouton appuyé une demi-seconde (ou faire un clic droit dessus) ouvre une fenêtre qui demande si la maison, telle qu’elle est cadrée à l’écran, doit devenir la vue du niveau. Rien n’est enregistré sans **Enregistrer**.
+- **Un appui la rappelle** : une fois la vue enregistrée, le bouton y ramène — angle, zoom et position — au lieu du cadrage par défaut, et un point bleu le signale. Le niveau s’ouvre également sur cette vue.
+- **La remplacer ou l’oublier** : un nouvel appui long propose d’enregistrer la vue courante à la place, ou d’**oublier la vue enregistrée** pour revenir au cadrage automatique.
+- Chaque niveau garde sa propre vue ; **Vue de dessus** continue de donner le cadrage standard. Les vues sont gardées dans le navigateur, sans rien changer au plan enregistré ni aux autres appareils.
+
 ## 0.7.10 — des murs nets
 
 Demande utilisateur : des murs moins brouillons sur le plan 3D.

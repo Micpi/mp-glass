@@ -374,8 +374,9 @@ export class MPSpatialViewer extends LitElement {
     const relative=new Intl.RelativeTimeFormat(this.locale,{numeric:'auto'});
     return `Mis à jour ${minutes<1?'à l’instant':minutes<60?relative.format(-minutes,'minute'):minutes<1440?relative.format(-Math.round(minutes/60),'hour'):relative.format(-Math.round(minutes/1440),'day')}`;
   }
-  private async lights(room: SpatialRoom, service: 'turn_on'|'turn_off', ids: string[], data: Record<string,unknown> = {}) {
-    const allowed=ids.filter(id=>id.startsWith('light.')&&room.entityIds?.includes(id)&&available(this.hass?.states[id]));
+  /** Only lights placed in the rooms given (one room, or every room of a floor) can be switched from the plan. */
+  private async lights(rooms: SpatialRoom[], service: 'turn_on'|'turn_off', ids: string[], data: Record<string,unknown> = {}) {
+    const allowed=[...new Set(ids)].filter(id=>id.startsWith('light.')&&rooms.some(r=>r.entityIds?.includes(id))&&available(this.hass?.states[id]));
     if(!this.hass || this.busy || !allowed.length) return;
     this.busy=true; this.error='';
     try { await this.hass.callService('light',service,{...data,entity_id:allowed.length===1?allowed[0]:allowed}); }
@@ -384,7 +385,7 @@ export class MPSpatialViewer extends LitElement {
   }
   private toggle(room: SpatialRoom, id: string) {
     const state=this.hass?.states[id]?.state;
-    if(state==='on'||state==='off') void this.lights(room,state==='on'?'turn_off':'turn_on',[id]);
+    if(state==='on'||state==='off') void this.lights([room],state==='on'?'turn_off':'turn_on',[id]);
   }
   private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
   private async cover(room:SpatialRoom,id:string,action:CoverAction,position?:number){
@@ -457,10 +458,11 @@ export class MPSpatialViewer extends LitElement {
   private overviewCard(floor: SpatialFloor) {
     const area=floor.rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0);
     const lights=floor.rooms.flatMap(r=>(r.entityIds??[]).filter(id=>id.startsWith('light.')));
-    const on=lights.filter(id=>this.hass?.states[id]?.state==='on').length;
+    const lit=lights.filter(id=>this.hass?.states[id]?.state==='on'),on=lit.length;
     return html`<section class="card ${on?'lit':''}" aria-label="Vue d’ensemble du niveau">
       <header><span class="orb">${mpIcon('home',24)}</span><div class="title"><small>Vue d’ensemble</small><h3>${floor.name}</h3></div></header>
       <div class="stats"><div class="stat"><small>Pièces</small><strong>${floor.rooms.length}</strong></div><div class="stat"><small>Surface</small><strong>${this.format(area,0)} m²</strong></div>${lights.length?this.lightsStat(lights.length,on):nothing}</div>
+      ${lights.length?html`<button class="master ${on?'on':''}" ?disabled=${this.busy||!on} @click=${()=>this.lights(floor.rooms,'turn_off',lit)}>${mpIcon('power',16)}<span>${on?'Éteindre tout le niveau':'Tout est éteint'}</span></button>`:nothing}
       <p class="lead">Touchez une pièce sur le plan ou dans la liste pour afficher ses équipements.</p>
     </section>`;
   }
@@ -481,7 +483,7 @@ export class MPSpatialViewer extends LitElement {
         ${temperature===undefined?nothing:html`<div class="stat"><small>Température</small><strong title=${temperature.id}>${this.format(temperature.value)}${temperature.unit==='°C'?'°':temperature.unit}</strong></div>`}
         ${humidity===undefined?nothing:html`<div class="stat"><small>Humidité</small><strong>${this.format(humidity,0)} %</strong></div>`}
       </div>
-      ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights(room,on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?'Tout éteindre':'Tout allumer'}</span></button>`:nothing}
+      ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights([room],on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?'Tout éteindre':'Tout allumer'}</span></button>`:nothing}
       ${devices.length?html`<ul class="devices">${devices.map(d=>this.deviceRow(room,d))}</ul>`:html`<p class="lead">Aucun équipement associé à cette pièce. Choisissez-les dans Studio → Plan 3D.</p>`}
       ${href?html`<a class="open" href=${href}><span>Ouvrir la pièce</span>${mpIcon('arrow',16)}</a>`:nothing}
     </section>`;
@@ -493,7 +495,7 @@ export class MPSpatialViewer extends LitElement {
       ${d.kind==='light'
         ? html`<button class="switch ${d.on?'on':''}" aria-label=${action} title=${`${action} ${d.name}`} ?disabled=${this.busy||!d.switchable} @click=${()=>this.toggle(room,d.id)}><span></span></button>`
         : d.value?html`<strong class="value">${d.value}</strong>`:nothing}
-      ${d.on&&d.dimmable?html`<label class="dim">${mpIcon('sun',14)}<input type="range" min="1" max="100" .value=${String(d.percent??1)} aria-label=${`Luminosité ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.lights(room,'turn_on',[d.id],{brightness_pct:Number((e.target as HTMLInputElement).value)})}><output>${d.percent===undefined?'—':`${d.percent} %`}</output></label>`:nothing}
+      ${d.on&&d.dimmable?html`<label class="dim">${mpIcon('sun',14)}<input type="range" min="1" max="100" .value=${String(d.percent??1)} aria-label=${`Luminosité ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.lights([room],'turn_on',[d.id],{brightness_pct:Number((e.target as HTMLInputElement).value)})}><output>${d.percent===undefined?'—':`${d.percent} %`}</output></label>`:nothing}
       ${d.kind==='cover'?html`<div class="cover-controls">
         ${([['open_cover','Ouvrir le volet','↑'],['stop_cover','Arrêter le volet','■'],['close_cover','Fermer le volet','↓']] as const).map(([action,label,icon])=>html`<button aria-label=${`${label} ${d.name}`} ?disabled=${this.busy||!canCover(this.hass?.states[d.id],action)} @click=${()=>this.cover(room,d.id,action)}>${icon}</button>`)}
         ${canCover(this.hass?.states[d.id],'set_cover_position')?html`<label><input type="range" min="0" max="100" .value=${String(d.percent??50)} aria-label=${`Ouverture ${d.name}`} aria-valuetext=${d.percent===undefined?'Position actuelle inconnue':`${this.format(d.percent,0)} % ouvert`} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_position',Number((e.target as HTMLInputElement).value))}><output>${d.percent===undefined?'—':`${this.format(d.percent,0)} %`}</output></label>`:nothing}

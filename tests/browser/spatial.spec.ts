@@ -227,6 +227,20 @@ test('room card groups the lights of a room and shows its climate',async({page})
   await page.screenshot({path:'artifacts/spatial-room-mobile.png',fullPage:true});
 });
 
+test('the floor overview turns off every light still on, in one call',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer'),overview=viewer.getByRole('region',{name:'Vue d’ensemble du niveau'});
+  await expect(overview.getByRole('button',{name:'Tout est éteint'})).toBeDisabled();
+  await page.evaluate(()=>(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo.hass.callService('light','turn_on',{entity_id:['light.circuit_0','light.circuit_2']}));
+  await expect(overview.locator('.stat',{hasText:'Lumières'})).toContainText('2 / 3');
+  await viewer.locator('.side').screenshot({path:'artifacts/spatial-overview-lit.png'});
+  await overview.getByRole('button',{name:'Éteindre tout le niveau'}).click();
+  expect((await demoCalls(page)).at(-1)).toEqual({domain:'light',service:'turn_off',data:{entity_id:['light.circuit_0','light.circuit_2']}});
+  await expect(overview.getByRole('button',{name:'Tout est éteint'})).toBeDisabled();
+  await expect(overview.locator('.stat',{hasText:'Lumières'})).toContainText('0 / 3');
+  await viewer.locator('.side').screenshot({path:'artifacts/spatial-overview-off.png'});
+});
+
 test('mobile layout, top view and wall controls remain usable',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/?spatial');
   const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();

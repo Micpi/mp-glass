@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.7.13 — éteindre tout un niveau
+
+Demande utilisateur : un bouton dans la fiche « Vue d’ensemble » pour éteindre tout le niveau.
+
+- **Éteindre tout le niveau** : sous le compteur de lumières, un bouton éteint d’un appui toutes les lumières allumées des pièces du niveau affiché, en une seule commande Home Assistant. Seules les lumières associées aux pièces du plan sont concernées ; volets, thermostats et autres équipements ne sont pas touchés.
+- Quand plus rien n’est allumé, le bouton indique **Tout est éteint** et reste inactif. Il n’apparaît pas sur un niveau sans lumière.
+
 ## 0.7.12 — version de l’intégration alignée
 
 Retour utilisateur après la mise à jour 0.7.11.

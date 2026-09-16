@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.12 — version de l’intégration alignée
+
+Retour utilisateur après la mise à jour 0.7.11.
+
+- **Cause** : 0.7.11 n’avait pas mis à jour la version dans `const.py`. Home Assistant continuait donc d’annoncer 0.7.10 et de servir le dashboard sous l’adresse de 0.7.10 : un navigateur pouvait garder l’ancien fichier en cache et chercher le module 3D de 0.7.10, supprimé par la mise à jour (plan 3D indisponible), et le Studio demandait sans fin de recharger la page.
+- **Correction** : la même version, 0.7.12, dans le paquet, le manifeste et `const.py`. Un test vérifie désormais que ces versions et le dashboard compilé concordent avant chaque publication.
+- Aucune autre modification : la vue enregistrée de 0.7.11 est inchangée.
+
 ## 0.7.11 — la vue du plan, enregistrée
 
 Demande utilisateur : pouvoir enregistrer la position actuelle du plan en maintenant le bouton Recentrer appuyé, pour la rappeler ensuite d’un simple appui, avec une fenêtre de validation.

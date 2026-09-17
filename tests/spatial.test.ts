@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point } from '../shared/spatial';
+import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point, type SpatialFloor } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
@@ -113,6 +113,22 @@ describe('spatial geometry and project persistence',()=>{
     // Clear space over the tallest floor, more for a wider house.
     expect(gap).toBeGreaterThanOrEqual(2.8+1.5);
     expect(stackFloors([floor('a',0,2.6,40,30),floor('b',3,2.6,40,30)])[1]!.elevation).toBeGreaterThan(stackFloors([floor('a',0,2.6),floor('b',3,2.6)])[1]!.elevation);
+  });
+  it('brings every floor over the middle of the house, whatever its size and where it was drawn',()=>{
+    const box=(id:string,x:number,y:number,w:number,d:number)=>({id,name:id,polygon:[[x,y],[x+w,y],[x+w,y+d],[x,y+d]] as Point[]});
+    // A wide ground floor, and a small first floor drawn well off to the side of it.
+    const floors:SpatialFloor[]=[{id:'ground',name:'ground',elevation:0,height:2.6,rooms:[box('a',0,0,12,9)]},
+      {id:'up',name:'up',elevation:2.7,height:2.5,rooms:[box('b',20,4,6,4),box('c',26,4,2,4)]}];
+    const saved=structuredClone(floors),stack=stackFloors(floors);
+    expect(floors).toEqual(saved);
+    const middle=(f:SpatialFloor)=>{const p=f.rooms.flatMap(r=>r.polygon);
+      return [(Math.min(...p.map(q=>q[0]))+Math.max(...p.map(q=>q[0])))/2,(Math.min(...p.map(q=>q[1]))+Math.max(...p.map(q=>q[1])))/2];};
+    // Both floors about one centre, that of the house as drawn.
+    expect(middle(stack[0]!)).toEqual(middle(stack[1]!));
+    expect(middle(stack[0]!)[0]).toBeCloseTo(14,9);expect(middle(stack[0]!)[1]).toBeCloseTo(4.5,9);
+    // Each floor is only moved: its rooms keep their shape and their places relative to one another.
+    expect(stack[1]!.rooms.map(r=>roomArea(r))).toEqual([24,8]);
+    expect(stack[1]!.rooms[1]!.polygon[0]![0]-stack[1]!.rooms[0]!.polygon[0]![0]).toBeCloseTo(6,9);
   });
   it('accepts concave rooms and rejects crossings, touching edges, duplicate points and zero area',()=>{
     expect(validPolygon([[0,0],[4,0],[4,2],[2,2],[2,4],[0,4]])).toBe(true);

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.18 — niveaux alignés sur leur centre
+
+Demande utilisateur : « ce serait mieux d’aligner les plans par leur point central, l’affichage en cas de superficie différente aura un meilleur rendu ». Sur une maison dont les niveaux n’ont ni la même superficie ni la même origine, la pile partait en escalier : chaque niveau restait là où il avait été dessiné.
+
+- **Tous les niveaux** : chaque niveau est maintenant amené sur le milieu de la maison avant d’être empilé. Un sous-sol plus petit que le rez-de-chaussée, ou un étage importé depuis son propre plan, se pose au centre de la pile au lieu de déborder d’un côté.
+- Le milieu d’un niveau est celui de son emprise, murs courbes compris ; les pièces d’un même niveau gardent leurs positions les unes par rapport aux autres, et l’écart entre niveaux suit l’emprise ainsi recentrée.
+- Seul l’affichage de **Tous** est concerné : le plan enregistré, les coordonnées des pièces et la vue d’un niveau seul ne changent pas.
+
 ## 0.7.17 — supprimer un plan, supprimer un niveau
 
 Demande utilisateur : « une fois les plans enregistrés, je ne sais pas comment le modifier ou le supprimer ». Le Studio savait ajouter un niveau et supprimer une pièce, mais rien ne retirait un niveau ni le plan lui-même : décocher **Afficher le plan sur l’accueil** ne faisait que le masquer.

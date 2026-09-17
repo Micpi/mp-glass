@@ -249,16 +249,33 @@ export function wallSegments(rooms: SpatialRoom[]): WallSegment[] {
   });
   return [...pieces.values()];
 }
+/** Middle of the footprint of `rooms`, curved walls included; undefined without a room. */
+function footprintCenter(rooms: SpatialRoom[]): Point | undefined {
+  const points = rooms.flatMap(r => roomOutline(r));
+  if (!points.length) return undefined;
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  return [(Math.min(...xs) + Math.max(...xs)) / 2, (Math.min(...ys) + Math.max(...ys)) / 2];
+}
 /**
- * The floors of the house one above the other, lowest first, as the overview of every floor draws them: apart enough to
- * see into each one, whatever their saved elevations (a wide house needs more room between its floors). Only the drawing
- * uses these elevations, never the saved plan.
+ * The floors of the house one above the other, lowest first, as the overview of every floor draws them: each floor brought
+ * over the middle of the house, so that floors of different sizes stack about one centre instead of drifting apart, and
+ * apart enough to see into each one, whatever their saved elevations (a wide house needs more room between its floors).
+ * Only the drawing uses these positions, never the saved plan.
  */
 export function stackFloors(floors: SpatialFloor[]): SpatialFloor[] {
-  const points = floors.flatMap(f => f.rooms.flatMap(r => r.polygon)), xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const house = footprintCenter(floors.flatMap(f => f.rooms)) ?? [0, 0];
+  const centred = floors.map(floor => {
+    const middle = footprintCenter(floor.rooms);
+    if (!middle) return floor;
+    const dx = house[0] - middle[0], dy = house[1] - middle[1];
+    if (!dx && !dy) return floor;
+    return { ...floor, rooms: floor.rooms.map(room => ({ ...room, polygon: room.polygon.map(([x, y]): Point => [x + dx, y + dy]) })) };
+  });
+  // The house as it now stands, floors centred: what the stack takes up on screen, and so how far apart its floors sit.
+  const points = centred.flatMap(f => f.rooms.flatMap(r => roomOutline(r))), xs = points.map(p => p[0]), ys = points.map(p => p[1]);
   const span = points.length ? Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 0;
   const spacing = Math.max(0, ...floors.map(f => f.height)) + Math.max(1.5, span * .3);
-  return floors.map((floor, index) => ({ floor, index }))
+  return centred.map((floor, index) => ({ floor, index }))
     .sort((a, b) => a.floor.elevation - b.floor.elevation || a.index - b.index)
     .map(({ floor }, level) => ({ ...floor, elevation: level * spacing }));
 }

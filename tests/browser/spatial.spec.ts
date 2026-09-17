@@ -241,6 +241,85 @@ test('the floor overview turns off every light still on, in one call',async({pag
   await viewer.locator('.side').screenshot({path:'artifacts/spatial-overview-off.png'});
 });
 
+test('a house of several floors opens on all of them with their state, and each floor opens on its own view',async({page})=>{
+  await page.setViewportSize({width:1440,height:1000});
+  const errors:string[]=[];page.on('pageerror',e=>errors.push(e.message));
+  await page.goto('/?spatial&floors');
+  const viewer=page.locator('mp-spatial-viewer'),floors=viewer.getByRole('group',{name:'Niveau affiché'});
+  const label=(id:string)=>viewer.locator(`[data-floor="${id}"]`);
+  await expect(floors.getByRole('button',{name:'Tous les niveaux'})).toHaveAttribute('aria-pressed','true');
+  await expect(label('upstairs')).toBeVisible();await expect(label('ground')).toBeVisible();await expect(label('basement')).toBeVisible();
+  await expect(label('upstairs')).toHaveText(/Étage\s*2 lumières allumées/);
+  await expect(label('ground')).toHaveText(/Rez-de-chaussée\s*Tout est éteint/);
+  await expect(label('basement')).toHaveText(/Sous-sol\s*1 lumière allumée/);
+  // Labels stand beside their floors, one above the other, in the order of the floors.
+  const [up,ground,down]=await Promise.all(['upstairs','ground','basement'].map(id=>label(id).boundingBox()));
+  expect(up!.y+up!.height).toBeLessThan(ground!.y);expect(ground!.y+ground!.height).toBeLessThan(down!.y);
+  await expect(viewer.locator('[data-room]')).toHaveCount(0);
+  await expect(viewer.getByRole('button',{name:'Vue de dessus'})).toHaveCount(0);
+  const house=viewer.getByRole('region',{name:'Vue d’ensemble de la maison'});
+  await expect(house.locator('.stat',{hasText:'Niveaux'})).toContainText('3');
+  await expect(house.locator('.stat',{hasText:'Lumières'})).toContainText('3 / 8');
+  // From the top floor down, each with its rooms, lights and temperatures.
+  await expect(house.getByRole('listitem')).toHaveText([/Étage.*5 pièces · 2 lumières allumées.*19,2–22,6 °C/s,/Rez-de-chaussée.*7 pièces · lumières éteintes.*19,5–21,5 °C/s,/Sous-sol.*3 pièces · 1 lumière allumée/s]);
+  await viewer.getByRole('button',{name:'Climat',exact:true}).click();
+  await expect(label('upstairs')).toHaveText(/Étage\s*19,2–22,6 °C/);
+  await expect(label('basement')).toHaveText('Sous-sol');
+  await viewer.locator('.layout').screenshot({path:'artifacts/spatial-house.png'});
+  await viewer.getByRole('button',{name:'Lumières',exact:true}).click();
+  // A floor label opens that floor, as its tab would.
+  await label('upstairs').click();
+  await expect(floors.getByRole('button',{name:'Étage',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(viewer.locator('[data-room="room-1"]')).toBeVisible();
+  await expect(viewer.locator('[data-floor]')).toHaveCount(0);
+  await expect(viewer.getByRole('region',{name:'Vue d’ensemble du niveau'}).getByRole('heading',{name:'Étage'})).toBeVisible();
+  await expect(viewer.getByRole('navigation',{name:'Pièces du niveau'}).getByRole('button')).toHaveCount(5);
+  await floors.getByRole('button',{name:'Tous les niveaux'}).click();
+  await expect(label('ground')).toBeVisible();
+  // Touching a floor on the plan opens it too: the middle of the stack is the ground floor.
+  const canvas=(await viewer.locator('canvas').boundingBox())!;
+  await page.mouse.click(canvas.x+canvas.width/2,canvas.y+canvas.height/2);
+  await expect(floors.getByRole('button',{name:'Rez-de-chaussée',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(viewer.locator('[data-room="living"]')).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('the whole house turns off the lights still on, on every floor, in one call',async({page})=>{
+  await page.setViewportSize({width:1440,height:1000});await page.goto('/?spatial&floors');
+  const viewer=page.locator('mp-spatial-viewer'),house=viewer.getByRole('region',{name:'Vue d’ensemble de la maison'});
+  await house.getByRole('button',{name:'Éteindre toute la maison'}).click();
+  expect((await demoCalls(page)).at(-1)).toEqual({domain:'light',service:'turn_off',data:{entity_id:['light.buanderie','light.suite','light.palier']}});
+  await expect(house.getByRole('button',{name:'Tout est éteint'})).toBeDisabled();
+  await expect(viewer.locator('[data-floor="upstairs"]')).toHaveText(/Étage\s*Tout est éteint/);
+});
+
+test('on a phone the floors of the house leave room for their labels',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await page.goto('/?spatial&floors');
+  const viewer=page.locator('mp-spatial-viewer'),labels=viewer.locator('[data-floor]');
+  await expect(labels.first()).toBeVisible();
+  const boxes=await Promise.all([0,1,2].map(async i=>{await expect(labels.nth(i)).toBeVisible();return (await labels.nth(i).boundingBox())!;}));
+  const [stage,tabs]=await Promise.all([viewer.locator('.stage').boundingBox(),viewer.locator('.floors').boundingBox()]);
+  for(const [i,a] of boxes.entries()){
+    expect(a.x).toBeGreaterThanOrEqual(stage!.x);expect(a.x+a.width).toBeLessThanOrEqual(stage!.x+stage!.width);
+    expect(a.y).toBeGreaterThanOrEqual(tabs!.y+tabs!.height);
+    for(const b of boxes.slice(i+1))expect(a.y+a.height<=b.y||b.y+b.height<=a.y).toBe(true);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:'artifacts/spatial-house-mobile.png',fullPage:true});
+});
+
+test('in the Studio, a floor opened on the plan becomes the floor edited',async({page})=>{
+  await mountEditor(page);
+  await page.getByRole('button',{name:'Ajouter un niveau',exact:true}).click();
+  const level=page.getByRole('combobox',{name:'Niveau à modifier'});
+  await expect(page.getByRole('textbox',{name:'Nom du niveau',exact:true})).toHaveValue('Niveau 1');
+  const viewer=page.locator('mp-spatial-viewer');
+  await viewer.locator('[data-floor="ground"]').click();
+  await expect(page.getByRole('textbox',{name:'Nom du niveau',exact:true})).toHaveValue('Rez-de-chaussée');
+  await expect(level).toHaveValue('ground');
+  await expect(viewer.locator('[data-room="living"]')).toBeVisible();
+});
+
 test('mobile layout, top view and wall controls remain usable',async({page})=>{
   await page.setViewportSize({width:390,height:844});await page.goto('/?spatial');
   const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();

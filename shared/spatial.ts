@@ -90,6 +90,19 @@ export function wallSegments(rooms: SpatialRoom[]): WallSegment[] {
   });
   return [...pieces.values()];
 }
+/**
+ * The floors of the house one above the other, lowest first, as the overview of every floor draws them: apart enough to
+ * see into each one, whatever their saved elevations (a wide house needs more room between its floors). Only the drawing
+ * uses these elevations, never the saved plan.
+ */
+export function stackFloors(floors: SpatialFloor[]): SpatialFloor[] {
+  const points = floors.flatMap(f => f.rooms.flatMap(r => r.polygon)), xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const span = points.length ? Math.hypot(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys)) : 0;
+  const spacing = Math.max(0, ...floors.map(f => f.height)) + Math.max(1.5, span * .3);
+  return floors.map((floor, index) => ({ floor, index }))
+    .sort((a, b) => a.floor.elevation - b.floor.elevation || a.index - b.index)
+    .map(({ floor }, level) => ({ ...floor, elevation: level * spacing }));
+}
 export function parseSpatial(value: unknown): SpatialPlan {
   if (!validate(value)) throw new Error('Plan invalide : vérifiez les pièces et les coordonnées.');
   const ids = new Set<string>();

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, validPolygon, wallSegments } from '../shared/spatial';
+import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, stackFloors, validPolygon, wallSegments } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
@@ -33,6 +33,20 @@ describe('spatial geometry and project persistence',()=>{
     expect(alignRooms([notched])[0]!.polygon).toEqual([[0,0],[2.95,0],[2.95,3],[0,3]]);
     const closet=room('D',5,0,5.25,1);
     expect(alignRooms([closet])[0]).toEqual(closet);
+  });
+  it('stacks the floors of the house lowest first, far enough apart to see into each one, without changing the plan',()=>{
+    const room=(w:number,d:number)=>({id:'r',name:'r',polygon:[[0,0],[w,0],[w,d],[0,d]] as [number,number][]});
+    const floor=(id:string,elevation:number,height:number,w=12,d=9)=>({id,name:id,elevation,height,rooms:[room(w,d)]});
+    // Saved out of order, the attic at the same elevation as the first floor, a basement right under the ground floor.
+    const floors=[floor('ground',0,2.6),floor('up',2.7,2.5),floor('attic',2.7,2.2),floor('basement',-.5,2.8)],saved=structuredClone(floors);
+    const stack=stackFloors(floors);
+    expect(floors).toEqual(saved);
+    expect(stack.map(f=>f.id)).toEqual(['basement','ground','up','attic']);
+    const gap=stack[1]!.elevation-stack[0]!.elevation;
+    expect(stack.map(f=>f.elevation)).toEqual([0,gap,2*gap,3*gap]);
+    // Clear space over the tallest floor, more for a wider house.
+    expect(gap).toBeGreaterThanOrEqual(2.8+1.5);
+    expect(stackFloors([floor('a',0,2.6,40,30),floor('b',3,2.6,40,30)])[1]!.elevation).toBeGreaterThan(stackFloors([floor('a',0,2.6),floor('b',3,2.6)])[1]!.elevation);
   });
   it('accepts concave rooms and rejects crossings, touching edges, duplicate points and zero area',()=>{
     expect(validPolygon([[0,0],[4,0],[4,2],[2,2],[2,4],[0,4]])).toBe(true);

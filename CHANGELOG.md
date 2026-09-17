@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.7.14 — tous les niveaux d’un coup d’œil
+
+Demande utilisateur : voir les niveaux de la maison superposés dans la vue plan pour connaître d’un coup d’œil l’état de chacun, puis arriver sur la vue actuelle en choisissant un niveau.
+
+- **Tous les niveaux** : une maison de plusieurs niveaux s’ouvre sur tous ses niveaux en 3D, superposés du plus bas au plus haut et assez écartés pour voir l’intérieur de chacun. Les halos restent visibles sur chaque niveau : lumières allumées, ou températures en mode Climat. Seul l’affichage les écarte ; les hauteurs du plan enregistré ne changent pas.
+- **L’état de chaque niveau à côté de lui** : son nom, un point doré si une lumière y est allumée, le nombre de lumières allumées (« Tout est éteint » sinon) et, en mode Climat, la température de sa pièce la plus fraîche à sa plus chaude.
+- **Choisir un niveau** : le toucher sur le plan, toucher son étiquette, son onglet ou sa ligne dans la fiche : la caméra plonge sur ce niveau et la vue habituelle du niveau prend le relais, avec ses pièces et leurs commandes. L’onglet **Tous**, en tête des niveaux, y ramène en reculant depuis le niveau quitté. Survoler un niveau l’éclaire et estompe les autres.
+- **Fiche Toute la maison** : nombre de niveaux et de pièces, surface, lumières allumées, **Éteindre toute la maison** en une commande (lumières des pièces du plan uniquement), puis chaque niveau du plus haut au plus bas avec ses pièces, ses lumières et ses températures.
+- La vue de tous les niveaux a sa propre vue enregistrée (appui long sur **Recentrer**), distincte de celle de chaque niveau. La vue de dessus n’y est pas proposée : les niveaux s’y cacheraient. Sur téléphone, la maison se décale pour laisser la place aux étiquettes.
+- **Studio** : le niveau ouvert sur le plan devient le **Niveau à modifier**.
+- Une maison d’un seul niveau et l’aperçu d’un import restent inchangés.
+
 ## 0.7.13 — éteindre tout un niveau
 
 Demande utilisateur : un bouton dans la fiche « Vue d’ensemble » pour éteindre tout le niveau.

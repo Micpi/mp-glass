@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { canCover,coverPosition,hasThermometer,roomAmbient,roomTemperature } from '../shared/spatial-state';
+import { canCover,coverPosition,hasThermometer,roomAmbient,roomTemperature,temperatureRange } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -35,6 +35,15 @@ describe('room runtime information',()=>{
     expect(hasThermometer(room(['sensor.t']),states)).toBe(true);
     expect(roomTemperature(room(['sensor.t']),states)).toBeUndefined();
     expect(hasThermometer(room(['sensor.f']),states)).toBe(true);
+  });
+  it('gives the coldest and warmest rooms of a floor, compared in Celsius',()=>{
+    const states={'sensor.a':state('sensor.a','21.5',{device_class:'temperature',unit_of_measurement:'°C'}),'sensor.b':state('sensor.b','64.4',{unit_of_measurement:'°F'}),
+      'climate.c':state('climate.c','heat',{current_temperature:23}),'sensor.off':state('sensor.off','unavailable',{device_class:'temperature'})};
+    const rooms=[room(['sensor.a']),room(['sensor.b']),room(['climate.c']),room(['sensor.off']),room([])];
+    // 64.4 °F is 18 °C: the coldest, though its number is the largest.
+    expect(temperatureRange(rooms,states)).toMatchObject({low:{id:'sensor.b',value:64.4,unit:'°F'},high:{id:'climate.c',value:23}});
+    expect(temperatureRange([room(['sensor.a'])],states)).toMatchObject({low:{id:'sensor.a'},high:{id:'sensor.a'}});
+    expect(temperatureRange([room(['sensor.off']),room([])],states)).toBeUndefined();
   });
   it('keeps unknown cover positions unknown and obeys supported features',()=>{
     expect(coverPosition(state('cover.a','open'))).toBeUndefined();

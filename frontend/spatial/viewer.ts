@@ -2,11 +2,11 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { alignRooms, polygonArea, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { alignRooms, polygonArea, stackFloors, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
-import type { CameraView, SpatialScene } from './scene';
-import { canCover, coverPosition, hasThermometer, roomAmbient, roomTemperature, temperatureColor, type CoverAction, type PlanMode } from '../../shared/spatial-state';
+import type { CameraView, LevelProjection, SceneLevel, SpatialScene } from './scene';
+import { canCover, coverPosition, hasThermometer, roomAmbient, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type PlanMode } from '../../shared/spatial-state';
 
 type Kind = 'light'|'cover'|'climate'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
@@ -26,6 +26,12 @@ const motion=():ScrollBehavior=>matchMedia('(prefers-reduced-motion: reduce)').m
 const EDGE=40;
 /** The view Recentrer brings back, per floor, kept in this browser. */
 const VIEW_KEY='mp-glass.spatial.views';
+/** The saved view of every floor at once: never a floor id, which only has letters, digits, _ and -. */
+const HOUSE='*';
+/** Gap between a floor and its label beside it, in pixels. */
+const LABEL_GAP=12;
+/** Below this stage width, floor labels have no room beside the house unless it moves over for them. */
+const NARROW=640;
 type PlanView=CameraView&{top:boolean};
 /** How long Recentrer is held down before it offers to save the view on screen. */
 const HOLD=550;
@@ -70,7 +76,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true} };
+  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -78,11 +84,13 @@ export class MPSpatialViewer extends LitElement {
     .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
     .layout{display:grid;gap:12px;align-items:start}.stage-col,.side{display:grid;gap:12px;min-width:0;align-content:start}
     .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 60%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.14),rgba(3,16,29,.44));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18)}
+    /* Every floor at once needs more height on a phone. */
+    :host([stacked]) .stage{height:var(--mp-stage-height,clamp(360px,min(62cqw,72vh),620px))}
     .canvas{position:absolute;inset:0}.canvas canvas{display:block;width:100%;height:100%;touch-action:pan-y;outline-offset:-4px}
     .glass{background:rgba(5,20,34,.58);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(140%);box-shadow:0 10px 28px rgba(0,8,18,.28)}
     .floor-tag{position:absolute;top:12px;left:12px;z-index:2;display:inline-flex;align-items:center;gap:7px;max-width:calc(100% - 84px);min-height:32px;padding:0 12px;border-radius:999px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#cfe0ef;pointer-events:none;white-space:nowrap;overflow:hidden}
     .floors{position:absolute;top:12px;left:12px;z-index:2;display:flex;gap:2px;max-width:calc(100% - 84px);padding:3px;border-radius:14px;overflow-x:auto;scrollbar-width:none}.floors::-webkit-scrollbar{display:none}
-    .floors button{flex:0 0 auto;min-height:32px;padding:0 12px;border:0;border-radius:11px;background:transparent;font-size:12px;white-space:nowrap;color:#cfe0ef}
+    .floors button{flex:0 0 auto;display:inline-flex;align-items:center;gap:6px;min-height:32px;padding:0 12px;border:0;border-radius:11px;background:transparent;font-size:12px;white-space:nowrap;color:#cfe0ef}
     .floors button[aria-pressed=true]{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 75%,transparent),rgba(38,94,149,.7));box-shadow:inset 0 1px rgba(255,255,255,.2)}
     .rail{position:absolute;top:12px;right:12px;z-index:2;display:flex;flex-direction:column;align-items:center;gap:2px;padding:4px;border-radius:16px}
     .rail button{position:relative;display:grid;place-items:center;width:36px;height:36px;padding:0;border:1px solid transparent;border-radius:12px;background:transparent;color:#d6e6f5;touch-action:manipulation;-webkit-touch-callout:none;-webkit-user-select:none;user-select:none;transition:background .15s,color .15s}
@@ -112,6 +120,9 @@ export class MPSpatialViewer extends LitElement {
     .cover-controls{grid-column:1/-1;display:flex;gap:6px;align-items:center;padding:4px 8px 8px}.cover-controls button{border:1px solid var(--line);border-radius:9px;background:#14354d;min-width:38px;min-height:36px}
     .cover-controls label{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.cover-controls output{font-size:11px;white-space:nowrap}
     .labels i{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--warm);box-shadow:0 0 10px #ffc53d}
+    /* A floor of the whole house, labelled beside it with its state: pointing at the label or at the floor lights that floor up. */
+    .labels button[data-floor]{min-height:30px;padding:4px 14px;font-size:13px}.labels button[data-floor].rich{padding:5px 14px 6px}
+    .labels button[data-floor]:hover,.labels button[data-floor].pointed{z-index:1;border-color:color-mix(in srgb,var(--accent) 75%,white);background:rgba(12,44,72,.82);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 20%,transparent),0 8px 22px rgba(0,8,18,.4)}
     .labels button[aria-pressed=true]{z-index:1;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 80%,transparent),rgba(38,94,149,.78));border-color:color-mix(in srgb,var(--accent) 70%,white);box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 22%,transparent),0 10px 24px rgba(0,8,18,.45)}
     .rooms{position:relative;min-width:0}
     .strip{display:flex;gap:8px;overflow-x:auto;padding:2px 2px 4px;scrollbar-width:none;scroll-snap-type:x proximity;scroll-padding-inline:40px}.strip::-webkit-scrollbar{display:none}
@@ -122,7 +133,7 @@ export class MPSpatialViewer extends LitElement {
     .more:hover{border-color:color-mix(in srgb,var(--accent) 60%,transparent)}.more.before{left:0}.more.before .mp-icon{transform:scaleX(-1)}.more.after{right:0}
     .rooms[data-before] .more.before,.rooms[data-after] .more.after{display:grid}
     .chip{flex:0 0 auto;scroll-snap-align:start;display:inline-flex;align-items:center;gap:8px;min-height:40px;padding:0 14px 0 11px;border-radius:999px;border:1px solid rgba(206,230,255,.16);background:rgba(6,24,40,.5);backdrop-filter:blur(14px);font-size:12.5px;color:#dce9f5;transition:background .2s,border-color .2s}
-    .chip:hover{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+    .chip:hover,.chip.pointed{border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
     .chip[aria-pressed=true]{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--accent) 72%,transparent),rgba(38,94,149,.66));border-color:color-mix(in srgb,var(--accent) 78%,white);box-shadow:0 6px 20px color-mix(in srgb,var(--accent) 22%,transparent)}
     .chip .glow{width:7px;height:7px;border-radius:50%;background:var(--warm);box-shadow:0 0 10px #ffc53d}
     .card{position:relative;overflow:hidden;padding:18px;border-radius:var(--mp-radius,22px);background:linear-gradient(150deg,color-mix(in srgb,var(--mp-tint,#12344f) 74%,transparent),rgba(6,22,38,.82) 70%);border:1px solid color-mix(in srgb,var(--accent) 22%,rgba(224,239,255,.22));box-shadow:0 22px 50px rgba(0,8,18,.34),inset 0 1px rgba(255,255,255,.1);backdrop-filter:blur(var(--mp-blur,24px)) saturate(140%);animation:rise .32s ease both}
@@ -147,7 +158,13 @@ export class MPSpatialViewer extends LitElement {
     .device.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}.device.offline{opacity:.6}
     .main{display:flex;align-items:center;gap:11px;min-width:0;min-height:50px;padding:4px 6px;border:0;border-radius:12px;background:transparent;text-align:left}.main:hover{background:rgba(255,255,255,.045)}
     .dev-icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:12px;color:#cfe0f0;background:rgba(197,220,243,.08);border:1px solid rgba(220,237,255,.1);transition:.25s ease}
-    .device.on .dev-icon{color:#ffe175;background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.08));border-color:rgba(255,225,138,.3);box-shadow:0 0 22px rgba(255,192,45,.26)}
+    .levels{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
+    .level{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:6px 12px 6px 6px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(214,236,255,.08);text-align:left;transition:background .25s,border-color .25s}
+    .level:hover,.level.pointed{background:rgba(255,255,255,.07);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
+    .level.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}
+    .level .text{flex:1}.level>.mp-icon{color:#9fb6cb}
+    .temps{display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;color:#cce3f2}.readings .temps{font-size:inherit}
+    .device.on .dev-icon,.level.on .dev-icon{color:#ffe175;background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.08));border-color:rgba(255,225,138,.3);box-shadow:0 0 22px rgba(255,192,45,.26)}
     .device[data-kind=temperature] .dev-icon,.device[data-kind=climate] .dev-icon{color:#ffbf96}.device[data-kind=humidity] .dev-icon{color:#8fd3ff}
     .device[data-kind=opening].on .dev-icon,.device[data-kind=motion].on .dev-icon{color:#fff;background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:color-mix(in srgb,var(--accent) 50%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--accent) 30%,transparent)}
     .text{min-width:0}.text strong{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -187,7 +204,12 @@ export class MPSpatialViewer extends LitElement {
   areaHref?: (areaId: string) => string | undefined;
   /** Plan only, without the room list and card (import draft). */
   preview = false;
+  /** The floor shown; '' shows every floor of a house that has several, one above the other. */
   private floor = '';
+  /** Floor of the stack under the pointer, and the one the camera is flying into. */
+  private pointed = '';
+  private opening = '';
+  private flight = 0;
   private selected = '';
   private error = '';
   private walls = true;
@@ -202,17 +224,23 @@ export class MPSpatialViewer extends LitElement {
   private asked = 0;
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
-  /** Whether a room of the floor measures its temperature: without one, the plan has no climate mode to offer. */
-  private thermometers(floor:SpatialFloor){const states=this.hass?.states??{};return floor.rooms.some(r=>hasThermometer(r,states));}
-  private planMode(floor:SpatialFloor):PlanMode{return this.mode==='climate'&&this.thermometers(floor)?'climate':'lights';}
+  /** Whether a room of the floors shown measures its temperature: without one, the plan has no climate mode to offer. */
+  private thermometers(floors:SpatialFloor[]){const states=this.hass?.states??{};return floors.some(f=>f.rooms.some(r=>hasThermometer(r,states)));}
+  private planMode(floors:SpatialFloor[]):PlanMode{return this.mode==='climate'&&this.thermometers(floors)?'climate':'lights';}
   private scene?: SpatialScene;
   private loading = false;
   private resize = new ResizeObserver(()=>this.edges());
+  /** Every floor at once, until one is chosen: the state of the whole house at a glance. */
+  private get stacked() { return !this.preview && !this.floor && (this.plan?.floors.length ?? 0) > 1; }
+  private get shownFloors() { return this.stacked ? this.plan!.floors : this.currentFloor ? [this.currentFloor] : []; }
+  /** Rooms of the stack are told apart by their floor: two floors can each have a "room-1". */
+  private roomKey(floor: SpatialFloor, room: SpatialRoom) { return this.stacked ? `${floor.id}/${room.id}` : room.id; }
   private get currentFloor() { return this.plan?.floors.find(f=>f.id===this.floor) ?? this.plan?.floors[0]; }
   private get room() { return this.currentFloor?.rooms.find(r=>r.id===this.selected); }
   private get locale() { return this.hass?.locale?.language ?? this.hass?.language ?? 'fr'; }
   connectedCallback() { super.connectedCallback(); this.resize.observe(this); this.views=readViews(); this.requestUpdate(); }
   disconnectedCallback() { super.disconnectedCallback(); this.resize.disconnect(); clearTimeout(this.hold); this.asking=false; this.scene?.dispose(); this.scene=undefined; }
+  protected willUpdate() { this.toggleAttribute('stacked', this.stacked); }
   protected async updated(changed: PropertyValues) {
     this.edges();
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
@@ -224,37 +252,55 @@ export class MPSpatialViewer extends LitElement {
         const {SpatialScene}=await import('./scene');
         const host=this.renderRoot.querySelector<HTMLElement>('.canvas');
         if (!this.isConnected || !host || !this.currentFloor) return;
-        this.scene=new SpatialScene(host, id=>this.select(id), positions=>this.place(positions), ()=>{this.engaged=true;});
-        this.draw(this.currentFloor);
+        this.scene=new SpatialScene(host, (room,floor)=>this.touch(room,floor), (rooms,levels)=>this.place(rooms,levels), ()=>{this.engaged=true;}, floor=>{this.pointed=floor;});
+        this.draw();
       } catch { this.error='La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'; }
       finally { this.loading=false; }
     } else if (this.scene && (changed.has('plan') || changed.has('floor') || changed.has('walls'))) {
-      this.draw(this.currentFloor, !changed.has('walls'));
+      this.draw(!changed.has('walls'), changed.get('floor') as string|undefined);
     }
     if(this.scene&&this.currentFloor){
-      const mode=this.planMode(this.currentFloor);
-      const styled=this.scene.highlight(this.room?.id??'',new Map(this.currentFloor.rooms.map(r=>[r.id,roomAmbient(r,this.hass?.states??{},mode,this.temperatureUnit)])));
+      const floors=this.shownFloors,mode=this.planMode(floors),states=this.hass?.states??{};
+      const rooms=floors.flatMap(f=>f.rooms.map(r=>[this.roomKey(f,r),r] as const));
+      const styled=this.scene.highlight(this.room?.id??'',new Map(rooms.map(([key,r])=>[key,roomAmbient(r,states,mode,this.temperatureUnit)])),this.stacked?this.opening||this.pointed:'');
       // Labels change size when sensor values or the mode changes, even if the camera stays still.
       const previous=changed.get('hass') as Hass|undefined;
-      const readings=changed.has('hass')&&this.currentFloor.rooms.some(r=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
+      const readings=changed.has('hass')&&rooms.some(([,r])=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
       if(styled||readings||changed.has('mode')||changed.has('plan')||changed.has('floor'))this.scene.render();
     }
   }
-  /** The floor as drawn: neighbouring rooms brought onto the wall they share (the saved plan is unchanged). */
-  private draw(floor: SpatialFloor, reset=true) {
-    const rooms=alignRooms(floor.rooms);
-    this.scene?.setFloor({...floor,rooms}, wallSegments(rooms), this.walls, reset, this.topView);
+  /**
+   * The floor as drawn: neighbouring rooms brought onto the wall they share (the saved plan is unchanged). Every floor of the
+   * house when none is chosen, apart from each other; coming back from the floor `from`, the camera draws back from it.
+   */
+  private draw(reset=true, from?: string) {
+    const level=(floor:SpatialFloor):SceneLevel=>{const rooms=alignRooms(floor.rooms).map(r=>({...r,id:this.roomKey(floor,r)}));return {floor:{...floor,rooms},segments:wallSegments(rooms)};};
+    if(!this.scene||!this.currentFloor) return;
+    this.scene.setFloors((this.stacked?stackFloors(this.plan!.floors):[this.currentFloor]).map(level), this.walls, reset, this.topView);
     // The plan opens on the view saved for this floor, the one Recentrer brings back.
-    const view=reset&&!this.preview?this.views[floor.id]:undefined;
-    if(view){this.topView=view.top;this.scene?.show(view);}
+    const view=reset&&!this.preview?this.views[this.viewKey]:undefined;
+    if(view){this.topView=view.top;this.scene.show(view);}
+    else if(reset&&from&&this.stacked)this.scene.rise(from);
   }
-  /** Room labels follow the camera; the selected one first, overlapping ones hidden. */
-  private place(positions: Map<string,{x:number;y:number;visible:boolean}>) {
-    const labels=new Map(Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-room]')).map(el=>[el.dataset.room!,el]));
-    const stage=this.renderRoot.querySelector<HTMLElement>('.stage')!,frame=stage.getBoundingClientRect();
-    const occupied=Array.from(this.renderRoot.querySelectorAll<HTMLElement>('.rail,.floor-tag,.floors,.modes,.legend,.hint:not([hidden])')).map(el=>{
+  /** Touching the plan selects a room, or on the whole house opens the floor touched. */
+  private touch(room: string, floor: string) {
+    if(this.stacked) void this.openFloor(floor); else this.select(room);
+  }
+  /** Boxes the floating controls take up on the stage, which labels keep clear of. */
+  private occupied(frame: DOMRect) {
+    return Array.from(this.renderRoot.querySelectorAll<HTMLElement>('.rail,.floor-tag,.floors,.modes,.legend,.hint:not([hidden])')).map(el=>{
       const r=el.getBoundingClientRect();return {left:r.left-frame.left-3,right:r.right-frame.left+3,top:r.top-frame.top-3,bottom:r.bottom-frame.top+3};
     });
+  }
+  /** Room labels follow the camera; the selected one first, overlapping ones hidden. On the whole house, floor labels instead. */
+  private place(positions: Map<string,{x:number;y:number;visible:boolean}>, levels: LevelProjection) {
+    const stage=this.renderRoot.querySelector<HTMLElement>('.stage')!,frame=stage.getBoundingClientRect(),occupied=this.occupied(frame);
+    // On a narrow stage the floors of the house stand between their labels and the controls; the plan then comes back here, drawn again.
+    const aside=this.stacked&&frame.width<NARROW?Array.from(this.renderRoot.querySelectorAll<HTMLElement>('[data-floor]'),l=>l.offsetWidth):[];
+    const rail=this.renderRoot.querySelector<HTMLElement>('.rail')?.offsetWidth??0;
+    if(this.scene?.reserve(aside.length?Math.max(...aside)+2*LABEL_GAP:0,aside.length?rail+LABEL_GAP:0)) return;
+    if(this.stacked){this.placeLevels(levels,frame,occupied);return;}
+    const labels=new Map(Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-room]')).map(el=>[el.dataset.room!,el]));
     const ordered=[...positions].sort(([a],[b])=>a===this.selected?-1:b===this.selected?1:0);
     for (const [id, position] of ordered) {
       const label=labels.get(id);
@@ -263,6 +309,32 @@ export class MPSpatialViewer extends LitElement {
       const visible=position.visible&&box.left>=0&&box.right<=frame.width&&box.top>=0&&box.bottom<=frame.height&&!occupied.some(b=>box.left<b.right&&box.right>b.left&&box.top<b.bottom&&box.bottom>b.top);
       if(visible)occupied.push(box);
       label.style.left=`${position.x}px`;label.style.top=`${position.y}px`;label.style.visibility=visible?'visible':'hidden';
+    }
+  }
+  /**
+   * A floor's label stands beside the floor, on its left, else on its right. When neither side has room (a phone), it keeps to
+   * the edge with more room, over the floor, moved up or down off the controls and labels it would hide or cover.
+   */
+  private placeLevels(levels: LevelProjection, frame: DOMRect, occupied: {left:number;right:number;top:number;bottom:number}[]) {
+    type Box=(typeof occupied)[number];
+    const overlap=(a:Box,b:Box)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;
+    for (const label of this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-floor]')) {
+      const position=levels.get(label.dataset.floor!);
+      if(!position) continue;
+      const width=label.offsetWidth,height=label.offsetHeight,half=width/2+3;
+      const box=(x:number,y:number):Box=>({left:x-half,right:x+half,top:y-height/2-3,bottom:y+height/2+3});
+      const left=position.left-LABEL_GAP-width/2,right=position.right+LABEL_GAP+width/2;
+      let y=position.y,x=[left,right].find(x=>x-half>=0&&x+half<=frame.width&&!occupied.some(o=>overlap(box(x,y),o)));
+      if(x===undefined){
+        x=Math.min(Math.max(position.left>frame.width-position.right?left:right,half),frame.width-half);
+        let down:boolean|undefined;
+        for(let blocker=occupied.find(o=>overlap(box(x!,y),o));blocker;blocker=occupied.find(o=>overlap(box(x!,y),o))){
+          down??=y>=(blocker.top+blocker.bottom)/2;
+          y=down?blocker.bottom+height/2+4:blocker.top-height/2-4;
+        }
+      }
+      occupied.push(box(x,y));
+      label.style.left=`${x}px`;label.style.top=`${y}px`;label.style.visibility=position.visible&&y>=0&&y<=frame.height?'visible':'hidden';
     }
   }
   private litRooms(floor: SpatialFloor) {
@@ -296,10 +368,33 @@ export class MPSpatialViewer extends LitElement {
     strip?.scrollBy({left:direction*(strip.clientWidth-2*EDGE),behavior:motion()});
   }
   private close=()=>{ this.selected=''; this.scene?.overview(); };
-  private showFloor(id: string) { this.floor=id; this.selected=''; this.topView=false; }
+  private showFloor(id: string) {
+    this.flight++; this.floor=id; this.selected=''; this.topView=false; this.pointed=''; this.opening='';
+    // The Studio edits the floor opened on the plan.
+    if(id) this.dispatchEvent(new CustomEvent('floor-select',{detail:{floorId:id}}));
+  }
+  private showHouse=()=>{
+    // Already on the whole house, flying into a floor: the flight is called off.
+    if(this.stacked&&this.opening) this.recenter();
+    this.showFloor(''); this.engaged=true;
+  };
+  /** Opens a floor; from the whole house, the camera first flies into it. */
+  private async openFloor(id: string) {
+    if(!this.plan?.floors.some(f=>f.id===id)) return;
+    this.engaged=true;
+    if(this.stacked&&this.scene){
+      const flight=++this.flight;
+      this.opening=id;
+      await this.scene.dive(id);
+      if(flight!==this.flight) return;
+    }
+    this.showFloor(id);
+  }
   /** Standard framing of the floor, the one a level without a saved view opens on. */
   private frame() { if(this.topView) this.scene?.top(); else this.scene?.reset(); }
-  private get savedView() { return this.preview||!this.currentFloor?undefined:this.views[this.currentFloor.id]; }
+  /** Each floor keeps its own saved view, and the whole house its own. */
+  private get viewKey() { return this.stacked ? HOUSE : this.currentFloor?.id ?? ''; }
+  private get savedView() { return this.preview||!this.currentFloor?undefined:this.views[this.viewKey]; }
   private recenter=()=>{
     const view=this.savedView;
     if(!view||!this.scene) { this.frame(); return; }
@@ -320,21 +415,21 @@ export class MPSpatialViewer extends LitElement {
   /** The press that opened the window ends in a click: it must not recentre on its way out. */
   private tapRecenter=()=>{ if(performance.now()-this.asked>AFTER_HOLD) this.recenter(); };
   private saveView=()=>{
-    const floor=this.currentFloor,view=this.scene?.view();
-    if(floor&&view){ this.views={...this.views,[floor.id]:{...view,top:this.topView}}; writeViews(this.views); }
+    const key=this.viewKey,view=this.scene?.view();
+    if(key&&view){ this.views={...this.views,[key]:{...view,top:this.topView}}; writeViews(this.views); }
     this.asking=false;
   };
   private forgetView=()=>{
-    const floor=this.currentFloor;
-    if(floor){ const rest={...this.views}; delete rest[floor.id]; this.views=rest; writeViews(rest); }
+    const key=this.viewKey;
+    if(key){ const rest={...this.views}; delete rest[key]; this.views=rest; writeViews(rest); }
     this.asking=false;
   };
-  /** Asks before the view on screen becomes the one this floor opens on. */
+  /** Asks before the view on screen becomes the one this floor, or the whole house, opens on. */
   private askDialog() {
     const saved=!!this.savedView;
     return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking=false;}}>
       <h3 id="ask-title">Enregistrer cette vue ?</h3>
-      <p>La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue de ce niveau : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.</p>
+      <p>La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue ${this.stacked?'de tous les niveaux':'de ce niveau'} : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.</p>
       <p>${saved?'Elle remplace la vue déjà enregistrée. ':''}Cette vue n’est gardée que dans ce navigateur.</p>
       ${saved?html`<button class="forget" @click=${this.forgetView}>Oublier la vue enregistrée</button>`:nothing}
       <div class="ask-actions">
@@ -411,19 +506,41 @@ export class MPSpatialViewer extends LitElement {
     const readings=this.preview?nothing:this.planReadings(room,climate);
     return html`<button class=${readings===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}</button>`;
   }
+  /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */
+  private lightsOf(rooms: SpatialRoom[]) {
+    const all=[...new Set(rooms.flatMap(r=>(r.entityIds??[]).filter(id=>id.startsWith('light.'))))];
+    return {all,on:all.filter(id=>this.hass?.states[id]?.state==='on')};
+  }
+  /** The coldest and warmest rooms of a floor, each value in its colour on the scale; one value when they agree. */
+  private temperatures(floor: SpatialFloor) {
+    const range=temperatureRange(floor.rooms,this.hass?.states??{},this.temperatureUnit);
+    if(!range) return floor.rooms.some(r=>hasThermometer(r,this.hass?.states??{}))?html`<span class="temps" title="Température indisponible">${mpIcon('thermo',12)}—</span>`:nothing;
+    const {low,high}=range,value=(t:typeof low)=>html`<span style=${`color:${temperatureColor(t.celsius)}`}>${this.format(t.value)}</span>`;
+    return html`<span class="temps" title="Température des pièces du niveau">${mpIcon('thermo',12)}<span>${value(low)}${this.format(low.value)===this.format(high.value)&&low.unit===high.unit?nothing:html`–${value(high)}`} ${high.unit}</span></span>`;
+  }
+  /** A floor of the whole house on the plan: its name, a warm dot while a light is on, and how many are on, or its temperatures. */
+  private levelLabel(floor: SpatialFloor, climate: boolean) {
+    const {all,on}=this.lightsOf(floor.rooms);
+    const readings=climate?this.temperatures(floor):all.length?html`<span class="reading">${on.length?`${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:'Tout est éteint'}</span>`:nothing;
+    return html`<button class="${readings===nothing?'':'rich'} ${this.pointed===floor.id||this.opening===floor.id?'pointed':''}" style="visibility:hidden" data-floor=${floor.id} title="Ouvrir ce niveau"
+      @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
+      <span class="name">${on.length&&!climate?html`<i></i>`:nothing}<span>${floor.name}</span></span>${readings===nothing?nothing:html`<span class="readings">${readings}</span>`}</button>`;
+  }
   render() {
-    const floor=this.currentFloor,room=this.room;
-    if(!floor) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
-    const lit=this.litRooms(floor),climate=this.planMode(floor)==='climate';
+    const floor=this.currentFloor,room=this.room,plan=this.plan;
+    if(!floor||!plan) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
+    const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),climate=this.planMode(floors)==='climate';
+    // From above, the floors of the whole house would hide one another.
+    const top=stacked?nothing:html`<button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>`;
     return html`<div class="layout">
       <div class="stage-col">
       <div class="stage">
         <div class="canvas"></div>
-        <div class="labels">${floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&!climate,climate))}</div>
-        ${this.preview||!this.thermometers(floor)?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${!climate} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${climate} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
+        <div class="labels">${stacked?plan.floors.map(f=>this.levelLabel(f,climate)):floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&!climate,climate))}</div>
+        ${this.preview||!this.thermometers(floors)?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${!climate} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${climate} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
           ${climate?html`<div class="legend"><span><b style="background:#69b7ff"></b>&lt; 18 °C</span><span><b style="background:#71d7c0"></b>18–21</span><span><b style="background:#ffc574"></b>21–24</span><span><b style="background:#ff816b"></b>≥ 24 °C</span></div>`:nothing}`}
-        ${this.plan!.floors.length>1
-          ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.plan!.floors.map(f=>html`<button aria-pressed=${f.id===floor.id} @click=${()=>this.showFloor(f.id)}>${f.name}</button>`)}</div>`
+        ${plan.floors.length>1
+          ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.preview?nothing:html`<button aria-pressed=${stacked} aria-label="Tous les niveaux" title="Tous les niveaux" @click=${this.showHouse}>${mpIcon('layers',14)}Tous</button>`}${plan.floors.map(f=>html`<button aria-pressed=${!stacked&&f.id===floor.id} @click=${()=>this.openFloor(f.id)}>${f.name}</button>`)}</div>`
           : html`<div class="floor-tag glass">${mpIcon('rooms',13)}<span>${floor.name}</span></div>`}
         <div class="rail glass" role="toolbar" aria-label="Commandes du plan" aria-orientation="vertical">
           <button class="zoom" aria-label="Zoom avant" title="Zoom avant" @click=${()=>this.scene?.zoom(.8)}>${mpIcon('plus',18)}</button>
@@ -433,21 +550,23 @@ export class MPSpatialViewer extends LitElement {
             title=${this.savedView?'Revenir à la vue enregistrée · appui long pour la remplacer':'Recentrer · appui long pour enregistrer la vue'}
             @click=${this.tapRecenter} @pointerdown=${this.startHold} @pointerup=${this.endHold} @pointerleave=${this.endHold} @pointercancel=${this.endHold}
             @contextmenu=${(e:Event)=>{e.preventDefault();this.ask();}}>${mpIcon('target',18)}</button>
-          <button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>
+          ${top}
           <button aria-label="Murs" title="Afficher les murs" aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
         </div>
         <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error}><span class="touch">Touchez la maison pour la manipuler</span><span class="fine">Glissez la maison pour la tourner · molette pour zoomer</span></p>
       </div>
       <div class="rooms">
-        <button class="more before" tabindex="-1" aria-hidden="true" title="Pièces précédentes" @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>
-        <nav class="strip" aria-label="Pièces du niveau" @scroll=${this.edges}>${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>
-        <button class="more after" tabindex="-1" aria-hidden="true" title="Pièces suivantes" @click=${()=>this.scrollRooms(1)}>${mpIcon('arrow',16)}</button>
+        <button class="more before" tabindex="-1" aria-hidden="true" title=${stacked?'Niveaux précédents':'Pièces précédentes'} @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>
+        ${stacked
+          ? html`<nav class="strip" aria-label="Niveaux de la maison" @scroll=${this.edges}>${plan.floors.map(f=>html`<button class=${`chip ${this.pointed===f.id?'pointed':''}`} @click=${()=>this.openFloor(f.id)} @pointerenter=${()=>{this.pointed=f.id;}} @pointerleave=${()=>{if(this.pointed===f.id)this.pointed='';}}>${mpIcon('layers',16)}<span>${f.name}</span>${this.lightsOf(f.rooms).on.length?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>`
+          : html`<nav class="strip" aria-label="Pièces du niveau" @scroll=${this.edges}>${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>`}
+        <button class="more after" tabindex="-1" aria-hidden="true" title=${stacked?'Niveaux suivants':'Pièces suivantes'} @click=${()=>this.scrollRooms(1)}>${mpIcon('arrow',16)}</button>
       </div>
       </div>
       <p class="sr">Sur la maison : glisser pour tourner, pincer ou molette pour zoomer, deux doigts ou clic droit pour déplacer. À côté de la maison, la page défile normalement. Clavier : flèches pour déplacer, + et − pour zoomer.</p>
       <div class="side">
         ${this.error?html`<p role="alert" class="error">${this.error}</p>`:nothing}
-        ${room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
+        ${stacked?this.houseCard(plan.floors):room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
       </div>
       ${this.preview?nothing:this.askDialog()}
     </div>`;
@@ -465,6 +584,27 @@ export class MPSpatialViewer extends LitElement {
       ${lights.length?html`<button class="master ${on?'on':''}" ?disabled=${this.busy||!on} @click=${()=>this.lights(floor.rooms,'turn_off',lit)}>${mpIcon('power',16)}<span>${on?'Éteindre tout le niveau':'Tout est éteint'}</span></button>`:nothing}
       <p class="lead">Touchez une pièce sur le plan ou dans la liste pour afficher ses équipements.</p>
     </section>`;
+  }
+  /** Every floor at a glance: the house in figures, a command for all its lights, then each floor from the top one down. */
+  private houseCard(floors: SpatialFloor[]) {
+    const rooms=floors.flatMap(f=>f.rooms),area=rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0),{all,on}=this.lightsOf(rooms);
+    const order=floors.map((floor,index)=>({floor,index})).sort((a,b)=>b.floor.elevation-a.floor.elevation||b.index-a.index).map(({floor})=>floor);
+    return html`<section class="card ${on.length?'lit':''}" aria-label="Vue d’ensemble de la maison">
+      <header><span class="orb">${mpIcon('layers',24)}</span><div class="title"><small>Vue d’ensemble</small><h3>Toute la maison</h3></div></header>
+      <div class="stats"><div class="stat"><small>Niveaux</small><strong>${floors.length}</strong></div><div class="stat"><small>Pièces</small><strong>${rooms.length}</strong></div><div class="stat"><small>Surface</small><strong>${this.format(area,0)} m²</strong></div>${all.length?this.lightsStat(all.length,on.length):nothing}</div>
+      ${all.length?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy||!on.length} @click=${()=>this.lights(rooms,'turn_off',on)}>${mpIcon('power',16)}<span>${on.length?'Éteindre toute la maison':'Tout est éteint'}</span></button>`:nothing}
+      <ul class="levels" aria-label="Niveaux">${order.map(f=>this.levelRow(f))}</ul>
+      <p class="lead">Touchez un niveau sur le plan ou dans la liste pour l’ouvrir.</p>
+    </section>`;
+  }
+  private levelRow(floor: SpatialFloor) {
+    const {all,on}=this.lightsOf(floor.rooms),count=floor.rooms.length;
+    const lights=!all.length?'':on.length?` · ${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:' · lumières éteintes';
+    return html`<li><button class="level ${on.length?'on':''} ${this.pointed===floor.id?'pointed':''}" title="Ouvrir ce niveau" @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
+      <span class="dev-icon">${mpIcon(on.length?'bulb':'layers',20)}</span>
+      <span class="text"><strong>${floor.name}</strong><small>${count} ${count>1?'pièces':'pièce'}${lights}</small></span>
+      ${this.temperatures(floor)}${mpIcon('arrow',16)}
+    </button></li>`;
   }
   private roomCard(room: SpatialRoom, floor: SpatialFloor, lit: boolean) {
     const devices=(room.entityIds??[]).map(id=>this.device(id,room));

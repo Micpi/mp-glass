@@ -9,7 +9,10 @@ import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPGlassView } from '../frontend/view';
 const snapshot = home();
 const project = defaultProject('Maison de démonstration');
-const spatial = new URLSearchParams(location.search).has('spatial');
+const params = new URLSearchParams(location.search);
+const spatial = params.has('spatial');
+/** With ?spatial&floors, a house of three floors: a basement below the example floor and an upstairs above it. */
+const floors = spatial && params.has('floors');
 if(spatial) {
   project.spatial=examplePlan();
   const rooms=project.spatial.floors[0]!.rooms;
@@ -17,6 +20,14 @@ if(spatial) {
   rooms[0]!.entityIds=['light.circuit_0','sensor.salon_temperature','sensor.salon_humidity','cover.salon'];
   rooms[2]!.entityIds=['light.circuit_1','light.circuit_2'];
   rooms[3]!.entityIds=['climate.chambre','binary_sensor.chambre_fenetre'];
+  if(floors){
+    const room=(id:string,name:string,x:number,z:number,w:number,d:number,entityIds?:string[])=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]] as [number,number][],...(entityIds?{entityIds}:{})});
+    project.spatial.floors.unshift({id:'basement',name:'Sous-sol',elevation:-2.4,height:2.2,rooms:[room('garage','Garage',0,0,7,8,['light.garage']),room('cellar','Cave',7,0,6,4),room('laundry','Buanderie',7,4,6,4,['light.buanderie'])]});
+    project.spatial.floors.push({id:'upstairs',name:'Étage',elevation:2.6,height:2.5,rooms:[
+      room('room-1','Suite parentale',0,0,6,4,['light.suite','sensor.suite_temperature']),room('room-2','Chambre Léo',6,0,4,4,['light.leo','sensor.leo_temperature']),
+      room('room-3','Salle d’eau',10,0,3,4),room('room-4','Palier',0,4,6,4,['light.palier']),room('room-5','Bureau',6,4,7,4),
+    ]});
+  }
 }
 const calls: unknown[] = [];
 const cards: MPGlassLight[] = [];
@@ -35,6 +46,13 @@ if(spatial) hass.states={...hass.states,
   'sensor.salon_humidity':{entity_id:'sensor.salon_humidity',state:'46',last_changed:new Date(Date.now()-18*60_000).toISOString(),attributes:{friendly_name:'Salon · Humidité',device_class:'humidity',unit_of_measurement:'%'}},
   'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20}},
   'binary_sensor.chambre_fenetre':{entity_id:'binary_sensor.chambre_fenetre',state:'off',attributes:{friendly_name:'Chambre · Fenêtre',device_class:'window'}},
+};
+const light=(id:string,name:string,on=false)=>({entity_id:id,state:on?'on':'off',attributes:{friendly_name:name,supported_color_modes:['brightness'],brightness:200}});
+const temperature=(id:string,name:string,value:string)=>({entity_id:id,state:value,attributes:{friendly_name:name,device_class:'temperature',unit_of_measurement:'°C'}});
+if(floors) hass.states={...hass.states,
+  'light.garage':light('light.garage','Garage · Néon'),'light.buanderie':light('light.buanderie','Buanderie · Plafonnier',true),
+  'light.suite':light('light.suite','Suite parentale · Plafonnier',true),'light.leo':light('light.leo','Chambre Léo · Veilleuse'),'light.palier':light('light.palier','Palier · Applique',true),
+  'sensor.suite_temperature':temperature('sensor.suite_temperature','Suite parentale · Température','19.2'),'sensor.leo_temperature':temperature('sensor.leo_temperature','Chambre Léo · Température','22.6'),
 };
 for(const config of dashboard.views[0]!.cards) {
   const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config);card.hass={...hass};cards.push(card);

@@ -36,6 +36,13 @@ export function roomTemperature(room:SpatialRoom,states:Record<string,HAState>,d
   }
   return undefined;
 }
+export type RoomTemperature=NonNullable<ReturnType<typeof roomTemperature>>;
+/** The coldest and the warmest room among `rooms` (a floor), compared in Celsius; undefined while none has a reading. */
+export function temperatureRange(rooms:SpatialRoom[],states:Record<string,HAState>,defaultUnit='°C'){
+  const readings=rooms.map(r=>roomTemperature(r,states,defaultUnit)).filter((t):t is RoomTemperature=>!!t);
+  if(!readings.length)return undefined;
+  return {low:readings.reduce((a,b)=>b.celsius<a.celsius?b:a),high:readings.reduce((a,b)=>b.celsius>a.celsius?b:a)};
+}
 /** A fixed Celsius scale, shared by every room; a missing reading produces no thermal halo. */
 export function temperatureColor(celsius:number){return celsius<18?'#69b7ff':celsius<21?'#71d7c0':celsius<24?'#ffc574':'#ff816b';}
 export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C'):RoomAmbient{

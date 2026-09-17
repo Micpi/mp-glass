@@ -107,7 +107,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true},asking:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
@@ -115,6 +115,11 @@ export class MPSpatialEditor extends LitElement {
     .entity-list{display:grid;gap:5px;max-height:250px;overflow:auto;margin:8px 0;padding:3px}.entity-list label{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.entity-list input{flex:none;min-height:20px;width:18px;height:18px;accent-color:#69b7ff}.entity-list span{min-width:0;overflow:hidden;text-overflow:ellipsis}.entity-list small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis}.entity-list label:has(:checked){background:#69b7ff15;border-color:#69b7ff55}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
     dialog.job::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}
+    button.danger{border-color:#ffbda94d;color:#ffbda9}button.danger:disabled{color:#eef6ff}
+    dialog.ask{width:min(400px,calc(100vw - 24px));padding:20px;border:1px solid #9fd2ff40;border-radius:20px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
+    dialog.ask::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}
+    dialog.ask h3{margin:0;font:22px/1.15 Georgia,serif;font-weight:400}dialog.ask p{margin:10px 0 0;font-size:12.5px;color:#b7ccdf}
+    .ask-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:9px;margin-top:18px}
     .job-head{display:flex;align-items:center;gap:14px}.job-head small{display:block;font-size:10px;letter-spacing:.2em;text-transform:uppercase;color:#a9c0d6}.job-head h3{margin:3px 0 0;font:26px/1.1 Georgia,serif;font-weight:400}.job-head p{margin:5px 0 0;font-size:12px;overflow-wrap:anywhere}
     .job-orb{position:relative;display:grid;place-items:center;width:52px;height:52px;flex:0 0 auto;overflow:hidden;border-radius:16px;color:#dff0ff;background:radial-gradient(circle at 30% 25%,#69b7ff66,#69b7ff14);border:1px solid #69b7ff55;box-shadow:0 0 28px #69b7ff33}
     .job-orb.scan::after{content:'';position:absolute;left:9px;right:9px;top:12px;height:2px;border-radius:2px;background:#a6e3ff;box-shadow:0 0 10px #a6e3ff;animation:scan 1.5s ease-in-out infinite alternate}
@@ -138,6 +143,8 @@ export class MPSpatialEditor extends LitElement {
   /** Draft as the dashboard will show it. */
   private get shown(){if(!this.draft)return undefined;if(this.resolved?.draft!==this.draft||this.resolved.devices!==this.devices)this.resolved={draft:this.draft,devices:this.devices,plan:resolvePlan(this.draft,this.devices)};return this.resolved.plan;}
   private draft?:SpatialPlan;private usingDefault=false;private candidate?:SpatialPlan;private message='';private detail='';private busy=false;private selected='';private floorIndex=0;private file?:File;private page=1;private confirmed=false;
+  /** What the confirmation window is about to remove, nothing while it is closed. */
+  private asking:''|'plan'|'floor'='';
   private timer?:ReturnType<typeof setTimeout>;private disposed=false;private generation=0;private startedAt=0;
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
@@ -163,6 +170,9 @@ export class MPSpatialEditor extends LitElement {
   protected updated(){
     const dialog=this.renderRoot.querySelector<HTMLDialogElement>('dialog.job');
     if(dialog&&this.dialogOpen&&!dialog.open)dialog.showModal();else if(dialog&&!this.dialogOpen&&dialog.open)dialog.close();
+    // Closing the confirmation takes its window off the page, so it only ever has to be opened.
+    const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
+    if(ask&&!ask.open)ask.showModal();
   }
   protected willUpdate(changed:PropertyValues){
     if(changed.has('plan')&&this.plan!==this.draft){this.draft=this.plan?structuredClone(this.plan):undefined;this.usingDefault=false;this.floorIndex=0;}
@@ -336,6 +346,37 @@ export class MPSpatialEditor extends LitElement {
     this.floorIndex=index;this.selected='';this.entitySearch='';
   };
   private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
+  /** The saved plan goes away: the schematic plan of the Home Assistant areas takes over until the Studio is saved. */
+  private removePlan=()=>{
+    this.asking='';
+    if(!this.plan)return;
+    // `draft` is left to `willUpdate`, which swaps in the schematic plan once the Studio drops the saved one.
+    this.selected='';this.entitySearch='';
+    this.message='Plan supprimé. Cliquez sur Enregistrer dans le Studio pour le retirer pour de bon ; sans plan enregistré, MP Glass repart de vos pièces Home Assistant.';this.detail='';
+    this.dispatchEvent(new CustomEvent<SpatialPlan|undefined>('spatial-change',{detail:undefined,bubbles:true,composed:true}));
+  };
+  /** The level on screen goes away, never the last one: a plan always keeps a level. */
+  private removeFloor=()=>{
+    this.asking='';
+    if((this.draft?.floors.length??0)<=1)return;
+    const name=this.floor?.name??'';
+    this.mutate(p=>{p.floors.splice(this.floorIndex,1);});
+    this.floorIndex=Math.min(this.floorIndex,(this.draft?.floors.length??1)-1);this.selected='';this.entitySearch='';
+    this.message=`Niveau « ${name} » supprimé. Cliquez sur Enregistrer dans le Studio.`;
+  };
+  /** Asks before a level or the whole saved plan goes away; both come back by leaving the Studio without saving. */
+  private askDialog(){
+    if(!this.asking)return nothing;
+    const plan=this.asking==='plan';
+    return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking='';}}>
+      <h3 id="ask-title">${plan?'Supprimer le plan enregistré ?':`Supprimer le niveau « ${this.floor?.name??''} » ?`}</h3>
+      <p>${plan
+        ?'Ses niveaux, ses pièces et leurs associations aux pièces de Home Assistant sont perdus. Le dashboard repart alors du plan déduit de vos pièces Home Assistant.'
+        :'Ses pièces et leurs associations sont perdues. Les autres niveaux ne changent pas.'}</p>
+      <p>Rien n’est retiré tant que vous n’avez pas cliqué sur Enregistrer dans le Studio.</p>
+      <div class="ask-actions"><button autofocus @click=${()=>{this.asking='';}}>Annuler</button><button class="danger" @click=${plan?this.removePlan:this.removeFloor}>Supprimer</button></div>
+    </dialog>`;
+  }
   /** Can the draft still be corrected? Only with the analysed image and its rooms at hand. */
   private get editable(){return !!(this.detection&&this.source&&this.sourceUrl);}
   /** The result window closed on a kept draft: it reopens where the rooms are corrected, without a new analysis. */
@@ -477,12 +518,13 @@ export class MPSpatialEditor extends LitElement {
     ${this.usingDefault?html`<div class="box default" role="note"><strong>Plan par défaut</strong><p>Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau ; chaque pièce affiche d’elle-même les équipements de sa zone. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le, ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
       <div class="box"><strong>Générer depuis un plan · Gemini</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">Configurer Gemini</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">Obtenir une clé API</a></div><p>PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.</p><div class="row"><label>Plan à importer<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>Page du PDF<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label>${this.renderModelChoice()}</div>${this.info?.backend==='addon'?html`<p class="muted">Mode add-on : le modèle est celui de l’option « model » de l’add-on.</p>`:nothing}<label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>Envoyer ce plan à Google pour l’analyser</label><p class="note">En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas ; chaque modèle a son propre quota : si l’un est épuisé, choisissez l’autre. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>Générer le brouillon 3D</button></div>
-      <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}</div>
+      <div class="row"><button @click=${this.addRoom}>Ajouter une pièce</button>${!this.draft?html`<button @click=${()=>this.commit(examplePlan())}>Charger un exemple</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>Repartir du plan par défaut</button>`:nothing}${this.plan?html`<button class="danger" @click=${()=>{this.asking='plan';}}>Supprimer le plan</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}
     ${this.renderJob(floor?.name)}
+    ${this.askDialog()}
     ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?'Modifier le brouillon':'Revoir le brouillon'}</button><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${this.discard}>Ignorer</button><p>${this.editable?'Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse. ':''}Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
-    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>Afficher le plan sur l’accueil</label><div class="row"><label>Niveau à modifier<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:`Niveau ${p.floors.length}`,elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>Ajouter un niveau</button></div><div class="row"><label>Nom du niveau<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>Hauteur des murs (m)<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
+    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>Afficher le plan sur l’accueil</label><div class="row"><label>Niveau à modifier<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:`Niveau ${p.floors.length}`,elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>Ajouter un niveau</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>Supprimer ce niveau</button></div><div class="row"><label>Nom du niveau<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>Hauteur des murs (m)<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{for(const r of p.floors[this.floorIndex]!.rooms)r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);});}}>Appliquer l’échelle</button></div>
       ${this.renderLinks(suggestions)}</fieldset>
       <mp-spatial-viewer .plan=${this.shown} .hass=${this.hass} @room-select=${this.roomSelected} @floor-select=${this.floorSelected}></mp-spatial-viewer>

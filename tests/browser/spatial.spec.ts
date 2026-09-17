@@ -55,7 +55,8 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       const source=options.source?{source:{width:1300,height:800,scale:[.01,.01],origin:[0,0]},detection}:{};
       return (failure?{id:'job-test',status:'error',...failure}:{id:'job-test',status:'done',plan:incoming,warnings:['Échelle estimée'],...source}) as T;
     }};
-    editor.addEventListener('spatial-change',e=>changed.push((e as CustomEvent).detail));
+    // Like the Studio: what the editor gives back becomes the saved plan it is shown next, removal included.
+    editor.addEventListener('spatial-change',e=>{const detail=(e as CustomEvent).detail;changed.push(detail);editor.plan=detail as typeof plan|undefined;});
     document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages}});
   },{isAdmin,jobError,options});
 }
@@ -546,6 +547,43 @@ test('result window previews the draft and can discard it',async({page})=>{
   await expect(page.getByRole('dialog')).toHaveCount(0);
   await expect(page.getByRole('status')).toContainText('Brouillon ignoré');
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
+});
+
+test('the saved plan is removed only once confirmed, and the schematic plan takes over',async({page})=>{
+  await mountEditor(page,true,false,{fallback:true});
+  const remove=page.getByRole('button',{name:'Supprimer le plan'});
+  // Cancelling leaves the saved plan exactly as it was.
+  await remove.click();
+  await page.getByRole('button',{name:'Annuler'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
+  await remove.click();
+  const ask=page.getByRole('dialog',{name:'Supprimer le plan enregistré ?'});
+  await expect(ask).toBeVisible();
+  await page.screenshot({path:'artifacts/spatial-remove-plan.png'});
+  await ask.getByRole('button',{name:'Supprimer'}).click();
+  // The Studio is handed no plan at all (an `undefined` detail reaches the test as null), and the schematic plan of the Home Assistant areas is what is shown next.
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed.map(p=>p??'aucun'))).toEqual(['aucun']);
+  await expect(page.getByText('Plan par défaut')).toBeVisible();
+  await expect(page.getByRole('status')).toContainText('Cliquez sur Enregistrer dans le Studio');
+  await expect(page.getByRole('combobox',{name:'Niveau à modifier'})).toHaveValue('ground');
+  await expect(remove).toHaveCount(0);
+});
+
+test('a level is removed, never the last one',async({page})=>{
+  await mountEditor(page);
+  const removeFloor=page.getByRole('button',{name:'Supprimer ce niveau'});
+  await expect(removeFloor).toBeDisabled();
+  await page.getByRole('button',{name:'Ajouter un niveau',exact:true}).click();
+  await page.getByRole('textbox',{name:'Nom du niveau',exact:true}).fill('Étage');await page.getByRole('textbox',{name:'Nom du niveau',exact:true}).blur();
+  await removeFloor.click();
+  const ask=page.getByRole('dialog',{name:'Supprimer le niveau « Étage » ?'});
+  await expect(ask).toBeVisible();
+  await ask.getByRole('button',{name:'Supprimer'}).click();
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  expect(saved.floors.map(f=>f.name)).toEqual(['Rez-de-chaussée']);
+  await expect(page.getByRole('status')).toContainText('Niveau « Étage » supprimé');
+  await expect(removeFloor).toBeDisabled();
 });
 
 test('the result window closed on a kept draft reopens from the card',async({page})=>{

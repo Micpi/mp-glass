@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.17 — supprimer un plan, supprimer un niveau
+
+Demande utilisateur : « une fois les plans enregistrés, je ne sais pas comment le modifier ou le supprimer ». Le Studio savait ajouter un niveau et supprimer une pièce, mais rien ne retirait un niveau ni le plan lui-même : décocher **Afficher le plan sur l’accueil** ne faisait que le masquer.
+
+- **Supprimer le plan** : dans **Plan 3D**, à côté de **Repartir du plan par défaut**, un bouton retire le plan enregistré après confirmation. MP Glass repart alors du plan déduit de vos pièces Home Assistant, celui qui s’affiche quand rien n’est enregistré.
+- **Supprimer ce niveau** : à côté de **Ajouter un niveau**, retire le niveau affiché avec ses pièces, après confirmation. Le bouton reste grisé sur un plan d’un seul niveau : un plan garde toujours un niveau.
+- Les deux suppressions passent par une fenêtre de confirmation qui dit ce qui est perdu, et rien n’est retiré tant que **Enregistrer** n’a pas été cliqué dans le Studio : quitter le Studio sans enregistrer laisse le plan intact.
+
 ## 0.7.16 — revenir sur un brouillon
 
 Demande utilisateur : « je ne sais pas comment modifier le brouillon ». La fenêtre de résultat fermée par mégarde (touche Échap), le brouillon restait à l’écran mais plus rien ne permettait de le corriger.

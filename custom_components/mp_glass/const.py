@@ -1,5 +1,5 @@
 """MP Glass constants."""
 DOMAIN = "mp_glass"
-VERSION = "0.7.15"
+VERSION = "0.7.16"
 MODULE_URL = f"/mp_glass_static/mp-glass.js?v={VERSION}"
 BOOTSTRAP_URL = f"/mp_glass_static/mp-glass-bootstrap.js?v={VERSION}"

@@ -548,6 +548,38 @@ test('result window previews the draft and can discard it',async({page})=>{
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed)).toHaveLength(0);
 });
 
+test('the result window closed on a kept draft reopens from the card',async({page})=>{
+  await mountEditor(page,true,false,{source:true});
+  await choosePlanImage(page);
+  await consentAndGenerate(page);
+  await expect(page.getByRole('dialog',{name:'7 pièces reconnues'})).toBeVisible();
+  // Escape keeps the draft; the card then offers to correct it rather than a new analysis.
+  await page.keyboard.press('Escape');
+  const card=page.locator('mp-spatial-editor .box').filter({hasText:'Brouillon IA · non enregistré'});
+  await card.screenshot({path:'artifacts/spatial-draft-card.png'});
+  await card.getByRole('button',{name:'Modifier le brouillon'}).click();
+  const dialog=page.getByRole('dialog',{name:'7 pièces reconnues'});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('tab',{name:'Sur le plan d’origine'})).toHaveAttribute('aria-selected','true');
+  await expect(dialog.locator('mp-plan-zones figure polygon')).toHaveCount(7);
+  // The same draft as the one received: nothing was sent to Google a second time.
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{uploads:unknown[]}}).spatialTest.uploads)).toHaveLength(1);
+});
+
+test('without the analysed image the card reopens the draft in 3D',async({page})=>{
+  await mountEditor(page);
+  await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
+  await consentAndGenerate(page);
+  await expect(page.getByRole('dialog',{name:'7 pièces reconnues'})).toBeVisible();
+  await page.keyboard.press('Escape');
+  const card=page.locator('mp-spatial-editor .box').filter({hasText:'Brouillon IA · non enregistré'});
+  await card.getByRole('button',{name:'Revoir le brouillon'}).click();
+  const dialog=page.getByRole('dialog',{name:'7 pièces reconnues'});
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole('tab')).toHaveCount(0);
+  await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
+});
+
 test('detected rooms fit the drawn walls and can be moved, resized, drawn, deleted and renamed',async({page})=>{
   await mountEditor(page,true,false,{source:true});
   await choosePlanImage(page);

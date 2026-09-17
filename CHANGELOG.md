@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.16 — revenir sur un brouillon
+
+Demande utilisateur : « je ne sais pas comment modifier le brouillon ». La fenêtre de résultat fermée par mégarde (touche Échap), le brouillon restait à l’écran mais plus rien ne permettait de le corriger.
+
+- **Modifier le brouillon** : sur la carte « Brouillon IA · non enregistré », un bouton rouvre la fenêtre de résultat directement sur **Sur le plan d’origine**, là où les pièces se déplacent, se redimensionnent, se renomment, s’ajoutent et se suppriment. Aucune nouvelle analyse n’est lancée : ni quota Gemini consommé, ni plan renvoyé à Google, et les corrections déjà faites restent en place avec leur historique d’annulation.
+- Quand l’image analysée n’est plus disponible, le bouton s’appelle **Revoir le brouillon** et rouvre l’aperçu 3D seul.
+- **Ignorer**, depuis la carte, libère maintenant l’image analysée et affiche le même message que dans la fenêtre.
+
 ## 0.7.15 — murs courbes et pièces en biais
 
 Demande utilisateur : sur un vrai plan, certaines pièces sont arrondies ou dessinées dans une autre orientation ; il faut pouvoir les reproduire pour que la 3D soit fidèle.

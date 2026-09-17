@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { alignRooms, polygonArea, stackFloors, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { alignRooms, roomArea, roomOutline, roomSize, stackFloors, wallSegments, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
 import type { CameraView, LevelProjection, SceneLevel, SpatialScene } from './scene';
@@ -274,7 +274,12 @@ export class MPSpatialViewer extends LitElement {
    * house when none is chosen, apart from each other; coming back from the floor `from`, the camera draws back from it.
    */
   private draw(reset=true, from?: string) {
-    const level=(floor:SpatialFloor):SceneLevel=>{const rooms=alignRooms(floor.rooms).map(r=>({...r,id:this.roomKey(floor,r)}));return {floor:{...floor,rooms},segments:wallSegments(rooms)};};
+    // Curved walls are drawn as the walls follow them; the floors and their halos take the same outline, kept short enough for the GPU.
+    const level=(floor:SpatialFloor):SceneLevel=>{
+      const rooms=alignRooms(floor.rooms).map(r=>({...r,id:this.roomKey(floor,r)}));
+      const drawn=rooms.map(({arcs:_,...room})=>({...room,polygon:roomOutline(rooms.find(r=>r.id===room.id)!,64)}));
+      return {floor:{...floor,rooms:drawn},segments:wallSegments(rooms)};
+    };
     if(!this.scene||!this.currentFloor) return;
     this.scene.setFloors((this.stacked?stackFloors(this.plan!.floors):[this.currentFloor]).map(level), this.walls, reset, this.topView);
     // The plan opens on the view saved for this floor, the one Recentrer brings back.
@@ -575,7 +580,7 @@ export class MPSpatialViewer extends LitElement {
     return html`<div class="stat ${on?'warm':''}"><small>Lumières</small><strong>${on}<em> / ${total}</em></strong><span>${on>1?'allumées':'allumée'}</span></div>`;
   }
   private overviewCard(floor: SpatialFloor) {
-    const area=floor.rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0);
+    const area=floor.rooms.reduce((sum,r)=>sum+roomArea(r),0);
     const lights=floor.rooms.flatMap(r=>(r.entityIds??[]).filter(id=>id.startsWith('light.')));
     const lit=lights.filter(id=>this.hass?.states[id]?.state==='on'),on=lit.length;
     return html`<section class="card ${on?'lit':''}" aria-label="Vue d’ensemble du niveau">
@@ -587,7 +592,7 @@ export class MPSpatialViewer extends LitElement {
   }
   /** Every floor at a glance: the house in figures, a command for all its lights, then each floor from the top one down. */
   private houseCard(floors: SpatialFloor[]) {
-    const rooms=floors.flatMap(f=>f.rooms),area=rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0),{all,on}=this.lightsOf(rooms);
+    const rooms=floors.flatMap(f=>f.rooms),area=rooms.reduce((sum,r)=>sum+roomArea(r),0),{all,on}=this.lightsOf(rooms);
     const order=floors.map((floor,index)=>({floor,index})).sort((a,b)=>b.floor.elevation-a.floor.elevation||b.index-a.index).map(({floor})=>floor);
     return html`<section class="card ${on.length?'lit':''}" aria-label="Vue d’ensemble de la maison">
       <header><span class="orb">${mpIcon('layers',24)}</span><div class="title"><small>Vue d’ensemble</small><h3>Toute la maison</h3></div></header>
@@ -609,8 +614,8 @@ export class MPSpatialViewer extends LitElement {
   private roomCard(room: SpatialRoom, floor: SpatialFloor, lit: boolean) {
     const devices=(room.entityIds??[]).map(id=>this.device(id,room));
     const lights=devices.filter(d=>d.kind==='light'),on=lights.filter(d=>d.on);
-    const surface=polygonArea(room.polygon),xs=room.polygon.map(p=>p[0]),ys=room.polygon.map(p=>p[1]);
-    const width=Math.max(...xs)-Math.min(...xs),depth=Math.max(...ys)-Math.min(...ys),rectangle=Math.abs(width*depth-surface)<surface*.03;
+    // Dimensions along the room's own walls: a room drawn at an angle gives its real width and depth.
+    const surface=roomArea(room),{width,depth,rectangle}=roomSize(room);
     const temperature=this.temperature(room);
     const humidity=devices.find(d=>d.kind==='humidity'&&d.numeric!==undefined)?.numeric;
     const href=room.areaId?this.areaHref?.(room.areaId):undefined;

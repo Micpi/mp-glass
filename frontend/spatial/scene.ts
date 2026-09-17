@@ -1,7 +1,38 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { SpatialFloor, WallSegment } from '../../shared/spatial';
+import type { Point, SpatialFloor, WallSegment } from '../../shared/spatial';
 import type { RoomAmbient } from '../../shared/spatial-state';
+
+/**
+ * A wall following `points` on the floor, `thickness` thick and `height` tall, built as one piece so that a curved wall
+ * shows no facets: its two faces, its top, its foot and its two ends, each wound outwards as a box's are. Its own frame
+ * stands on the floor: y goes from 0 to `height`.
+ */
+function wallGeometry(points:readonly Point[],thickness:number,height:number){
+  const half=thickness/2;
+  const sides=points.map((p,i)=>{
+    const before=points[i-1]??p,after=points[i+1]??p;
+    const dx=after[0]-before[0],dz=after[1]-before[1],length=Math.hypot(dx,dz)||1;
+    return {p,offset:[-dz/length*half,dx/length*half]};
+  });
+  const position:number[]=[];
+  const quad=(a:number[],b:number[],c:number[],d:number[])=>{position.push(...a,...b,...c,...a,...c,...d);};
+  const at=(p:number[],y:number)=>[p[0]!,y,p[1]!];
+  const face=(p:{p:Point;offset:number[]},sign:number)=>[p.p[0]+sign*p.offset[0]!,p.p[1]+sign*p.offset[1]!];
+  for(let i=1;i<sides.length;i++){
+    const [outer0,outer1]=[face(sides[i-1]!,1),face(sides[i]!,1)],[inner0,inner1]=[face(sides[i-1]!,-1),face(sides[i]!,-1)];
+    quad(at(outer0,0),at(outer1,0),at(outer1,height),at(outer0,height));
+    quad(at(inner1,0),at(inner0,0),at(inner0,height),at(inner1,height));
+    quad(at(outer0,height),at(outer1,height),at(inner1,height),at(inner0,height));
+    quad(at(inner0,0),at(inner1,0),at(outer1,0),at(outer0,0));
+  }
+  for(const [side,first] of [[sides[0]!,true],[sides.at(-1)!,false]] as const){
+    const [outer,inner]=[face(side,1),face(side,-1)];
+    if(first)quad(at(inner,0),at(outer,0),at(outer,height),at(inner,height));
+    else quad(at(outer,0),at(inner,0),at(inner,height),at(outer,height));
+  }
+  return new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(position,3));
+}
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
 /** Where each floor of a stack stands on screen: the middle of the floor, and the left and right ends of its footprint. */
@@ -11,7 +42,7 @@ export interface CameraView { target:[number,number,number]; offset:[number,numb
 /** A floor to draw at its elevation, with its walls. Room ids must be unique across the floors drawn together. */
 export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[] }
 interface RoomParts { floor:string; surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
-interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BoxGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
+interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
 /** A floor of a stack: the middle of its box, its size, and the corners of its footprint halfway up. */
 interface LevelParts { center:T.Vector3; radius:number; corners:T.Vector3[] }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
@@ -280,27 +311,41 @@ export class SpatialScene {
       this.surfaces.push(surface);this.solids.push(surface);
     }
     // Each wall once (a shared partition is not drawn twice), a pane of glass lit along its top and at its foot. No box outline:
-    // the pieces of a wall, and walls meeting at a corner, join without seams. Exterior walls are thicker and brighter, and the
-    // corners of the house stand out with a vertical line.
-    const ends=new Map<string,{mesh:T.Mesh;x:number;direction:number}[]>();
-    for(const {a,b,rooms} of segments){
-      const exterior=rooms.length===1,length=Math.hypot(b[0]-a[0],b[1]-a[1]),height=walls?floor.height:.035,direction=Math.atan2(b[1]-a[1],b[0]-a[0]);
-      const mesh=new T.Mesh(new T.BoxGeometry(length,height,exterior?.14:.07),new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false}));
-      mesh.position.set((a[0]+b[0])/2,floor.elevation+height/2,(a[1]+b[1])/2);mesh.rotation.y=-direction;mesh.userData.floorId=floor.id;
-      // In the wall's frame (x from a to b, y up), along its middle.
-      const lines=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6}),x=length/2,y=height/2;
-      mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[-x,y,0,x,y,0,-x,-y,0,x,-y,0]:[-x,y,0,x,y,0],3)),lines));
+    // the pieces of a wall, and walls meeting at a corner, join without seams. A curved wall is one piece following its curve,
+    // so it has no facets either. Exterior walls are thicker and brighter, and the corners of the house stand out with a vertical line.
+    const ends=new Map<string,{lines:T.LineBasicMaterial;at:[number,number];direction:number}[]>();
+    for(const {a,b,rooms,path} of segments){
+      const exterior=rooms.length===1,height=walls?floor.height:.035,thickness=exterior?.14:.07;
+      const points=[a,...path??[],b],curved=points.length>2;
+      const material=new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false});
+      const lines=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6});
+      let mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>;
+      if(curved){
+        mesh=new T.Mesh(wallGeometry(points,thickness,height),material);
+        mesh.position.y=floor.elevation;
+        // Along the middle of the wall, at its top and at its foot: the curve is drawn, not its chord.
+        const rail=(y:number)=>points.flatMap((p,i)=>i?[points[i-1]![0],y,points[i-1]![1],p[0],y,p[1]]:[]);
+        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[...rail(height),...rail(0)]:rail(height),3)),lines));
+      }else{
+        const length=Math.hypot(b[0]-a[0],b[1]-a[1]),direction=Math.atan2(b[1]-a[1],b[0]-a[0]),x=length/2,y=height/2;
+        mesh=new T.Mesh(new T.BoxGeometry(length,height,thickness),material);
+        mesh.position.set((a[0]+b[0])/2,floor.elevation+height/2,(a[1]+b[1])/2);mesh.rotation.y=-direction;
+        // In the wall's frame (x from a to b, y up), along its middle.
+        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[-x,y,0,x,y,0,-x,-y,0,x,-y,0]:[-x,y,0,x,y,0],3)),lines));
+      }
+      mesh.userData.floorId=floor.id;
       group.add(mesh);this.wallParts.push({floor:floor.id,rooms,mesh,lines,exterior});this.solids.push(mesh);
-      if(exterior&&walls)for(const [end,at,away] of [[a,-x,direction],[b,x,direction+Math.PI]] as const){
+      if(exterior&&walls)for(const [end,near] of [[a,points[1]!],[b,points.at(-2)!]] as const){
         const key=`${Math.round(end[0]*1000)},${Math.round(end[1]*1000)}`;
-        ends.set(key,[...ends.get(key)??[],{mesh,x:at,direction:away}]);
+        // Where the wall leaves this end, so that a smooth join between two pieces gets no line.
+        ends.set(key,[...ends.get(key)??[],{lines,at:[end[0],end[1]],direction:Math.atan2(near[1]-end[1],near[0]-end[0])}]);
       }
     }
     for(const meeting of ends.values()){
       const corner=meeting.find(w=>meeting.some(o=>Math.abs(Math.sin(o.direction-w.direction))>.17));
       if(!corner)continue;
-      const y=floor.height/2,wall=this.wallParts.find(p=>p.mesh===corner.mesh)!;
-      corner.mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([corner.x,-y,0,corner.x,y,0],3)),wall.lines));
+      const [x,z]=corner.at,y=floor.elevation;
+      group.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([x,y,z,x,y+floor.height,z],3)),corner.lines));
     }
     if(!stacked)return;
     const box=new T.Box3().setFromObject(group),center=box.getCenter(new T.Vector3()),points=floor.rooms.flatMap(r=>r.polygon);

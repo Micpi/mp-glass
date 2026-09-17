@@ -11,9 +11,9 @@ from aiohttp import ClientTimeout
 from jsonschema import Draft7Validator, ValidationError
 
 if __package__:
-    from .spatial_contract import valid_ring, validate_geometry
+    from .spatial_contract import bend, bent, outline, ring_area, valid_ring, validate_geometry
 else:
-    from spatial_contract import valid_ring, validate_geometry
+    from spatial_contract import bend, bent, outline, ring_area, valid_ring, validate_geometry
 
 _LOGGER = logging.getLogger(__name__)
 ROOT = Path(__file__).parent
@@ -51,7 +51,8 @@ EXTRACTION_SCHEMA = {
                 "box_2d": {"type": "array", "items": {"type": "number"},
                            "description": "Intérieur de la pièce, d'un mur à l'autre : [ymin, xmin, ymax, xmax] normalisés de 0 à 1000."},
                 "polygon": {"type": "array", "items": {"type": "array", "items": {"type": "number"}},
-                            "description": "Seulement pour une pièce non rectangulaire : sommets [y, x] normalisés de 0 à 1000, dans l'ordre du contour."},
+                            "description": "Dès que la pièce n'est pas un rectangle droit (forme en L, pièce inclinée, mur courbe) : "
+                                           "sommets [y, x] normalisés de 0 à 1000, dans l'ordre du contour, en suivant les courbes point par point."},
                 "size": {"type": "array", "items": {"type": "number"},
                          "description": "Cotes écrites pour cette pièce, en mètres : [dimension horizontale, dimension verticale] telles que dessinées. Omettre sans cote écrite."},
             }}},
@@ -69,6 +70,8 @@ RESULT_VALIDATOR = Draft7Validator({
             "properties": {"name": {"type": "string"}, "label": {"type": "string"},
                            "box_2d": {"type": "array", "items": {"type": "number"}},
                            "polygon": {"type": "array", "items": {"type": "array", "items": {"type": "number"}}},
+                           # Curved sides, sent back by the Studio; Gemini is not asked for them.
+                           "arcs": {"type": "array", "items": {"type": "number"}},
                            "size": {"type": "array", "items": {"type": "number"}}}}},
         "scaleKnown": {"type": "boolean"},
         "warnings": {"type": "array", "items": {"type": "string"}},
@@ -82,7 +85,10 @@ Coordinates are normalized to 0-1000 over the whole image, as in object detectio
 1. building: the box of the exterior walls.
 2. For each room, box_2d: the inside of the room, from wall face to wall face, following the drawn walls (not the label or the furniture).
    Neighbouring rooms meet along their shared wall: their boxes touch or overlap by the wall thickness only, never more. Keep wall thickness and intentional voids; never invent a room to fill a gap.
-3. Only for a room that is clearly not rectangular (L-shaped, angled wall): also give polygon, its outline as [y, x] points in boundary order; box_2d is then the box around it.
+3. Whenever a room is not an upright rectangle, also give polygon, its outline as [y, x] points in boundary order; box_2d is then the box around it. That covers:
+   - a room that is not rectangular (L-shaped, T-shaped, a room with an angled wall);
+   - a room whose walls are not parallel to the image edges (a wing of the plan drawn at an angle): give its four real corners, never an upright box;
+   - a room with a curved or rounded wall: follow the curve with points about every 15° of it (at least 4 points along a quarter circle), so its shape can be rebuilt.
    Trace every recess along partitions, including corridors around bathrooms and laundries. Never replace an L-shaped circulation space with a rectangle covering its neighbours.
    Follow wall segments across door openings, ignoring door swing arcs. In an open kitchen/living space, use labelled functional zones only when their boundary can be located; otherwise keep a single room and report the uncertainty.
    Before returning, check the plan from top to bottom: each label belongs to one room, small enclosed rooms are included, outlines stay inside their walls, adjacent rooms do not cover each other. Mention ambiguous boundaries or unreadable labels in warnings rather than inventing them.
@@ -133,21 +139,34 @@ def _median(values):
     return (ordered[(len(ordered) - 1) // 2] + ordered[len(ordered) // 2]) / 2
 
 
-def _clean(ring):
-    """Drop repeated, closing and aligned vertices, then the least significant ones beyond MAX_POINTS."""
-    points = []
-    for point in ring:
+def _clean(ring, arcs=None):
+    """Drop repeated, closing and aligned vertices, then the least significant ones beyond MAX_POINTS.
+
+    A vertex where a curved side starts or ends is kept, and every bend follows its side. Returns the ring and its bends,
+    or None when nothing is curved.
+    """
+    points, bends = [], []
+    for index, point in enumerate(ring):
         if not points or math.dist(points[-1], point) >= .02:
             points.append(point)
+            bends.append(bend(arcs, index))
+        else:
+            # The side leaving a repeated vertex now leaves the one kept.
+            bends[-1] = bend(arcs, index)
     while len(points) > 1 and math.dist(points[0], points[-1]) < .02:
         points.pop()
+        bends.pop()
     while len(points) > 3:
-        weights = [abs(_cross(points[i-1], points[i], points[(i+1) % len(points)])) for i in range(len(points))]
+        plain = [abs(_cross(points[i-1], points[i], points[(i+1) % len(points)])) for i in range(len(points))]
+        weights = [math.inf if bent(bends[i-1]) or bent(bends[i]) else plain[i] for i in range(len(points))]
         index = min(range(len(points)), key=weights.__getitem__)
-        if weights[index] >= .01 and len(points) <= MAX_POINTS:
+        if len(points) <= MAX_POINTS and (math.isinf(weights[index]) or weights[index] >= .01):
             break
+        if math.isinf(weights[index]):
+            index = min(range(len(points)), key=plain.__getitem__)  # nothing but curves over the limit: the flattest goes
         points.pop(index)
-    return points
+        bends.pop(index)
+    return points, (bends if any(map(bent, bends)) else None)
 
 
 def _hull(points):
@@ -266,6 +285,121 @@ def _corners(box):
     return [[box[0], box[1]], [box[2], box[1]], [box[2], box[3]], [box[0], box[3]]]
 
 
+def _circumcircle(a, b, c):
+    """Centre and radius of the circle through three points; None when they are in line."""
+    d = 2 * (a[0] * (b[1] - c[1]) + b[0] * (c[1] - a[1]) + c[0] * (a[1] - b[1]))
+    if abs(d) < 1e-12:
+        return None
+    squares = [p[0] * p[0] + p[1] * p[1] for p in (a, b, c)]
+    x = (squares[0] * (b[1] - c[1]) + squares[1] * (c[1] - a[1]) + squares[2] * (a[1] - b[1])) / d
+    y = (squares[0] * (c[0] - b[0]) + squares[1] * (a[0] - c[0]) + squares[2] * (b[0] - a[0])) / d
+    return (x, y), math.dist((x, y), a)
+
+
+def _fit_arc(ring, run, tolerance):
+    """Bend of one curved side replacing the vertices of `run`, or None when they do not follow a single circle."""
+    a, b = ring[(run[0] - 1) % len(ring)], ring[(run[-1] + 1) % len(ring)]
+    middle = ring[run[len(run) // 2]]
+    circle = _circumcircle(a, middle, b)
+    if not circle:
+        return None
+    center, radius = circle
+    if any(abs(math.dist(center, ring[i]) - radius) > max(tolerance, .02 * radius) for i in run):
+        return None
+
+    def angle(point):
+        return math.atan2(point[1] - center[1], point[0] - center[0])
+
+    # The sweep from a to b that goes through the middle point, at most a half circle.
+    direction = math.copysign(1, (angle(middle) - angle(a) + math.pi) % (2 * math.pi) - math.pi)
+    sweep = direction * (((angle(b) - angle(a)) * direction) % (2 * math.pi))
+    if not .05 <= abs(sweep) <= math.pi + 1e-9:
+        return None
+    bulge = round(math.tan(-sweep / 4), 4)
+    return bulge if bent(bulge) and abs(bulge) <= 1 else None
+
+
+def _fit_arcs(ring, tolerance):
+    """Vertices following the same circle replaced by one curved side: a rounded wall drawn point by point becomes an arc.
+
+    Gemini traces a curve as a run of short sides, all turning the same way by a little; sharp corners and bay windows,
+    which turn by more, are left alone. Returns the ring and its bends, or the ring and None.
+    """
+    count = len(ring)
+    if count < 5:
+        return ring, None
+    turns = []
+    for index in range(count):
+        a, b, c = ring[(index - 1) % count], ring[index], ring[(index + 1) % count]
+        first, second = math.atan2(b[1] - a[1], b[0] - a[0]), math.atan2(c[1] - b[1], c[0] - b[0])
+        turns.append((second - first + math.pi) % (2 * math.pi) - math.pi)
+    smooth = [math.radians(1.5) < abs(turn) < math.radians(40) for turn in turns]
+    runs, corner = [], next((i for i in range(count) if not smooth[i]), None)
+    if corner is None:
+        # Nothing but gentle turns: a round room, kept as three arcs between three of its vertices.
+        kept = sorted({round(k * count / 3) % count for k in range(3)})
+        runs = [[(kept[k] + 1 + step) % count for step in range((kept[(k + 1) % 3] - kept[k]) % count - 1)] for k in range(3)] if len(kept) == 3 else []
+    else:
+        run = []
+        for step in range(1, count + 1):
+            index = (corner + step) % count
+            if smooth[index] and (not run or math.copysign(1, turns[run[-1]]) == math.copysign(1, turns[index])):
+                run.append(index)
+                continue
+            if len(run) >= 2:
+                runs.append(run)
+            run = [index] if smooth[index] else []
+        if len(run) >= 2:
+            runs.append(run)
+    arcs, dropped = [0.0] * count, set()
+    for run in runs:
+        # A room keeps at least three corners: a curve that would leave fewer is cut into arcs meeting at a corner.
+        pieces = [run]
+        while count - len(dropped) - sum(len(piece) for piece in pieces) < 3:
+            longest = max(pieces, key=len)
+            if len(longest) < 2:
+                pieces = []
+                break
+            at, middle = pieces.index(longest), len(longest) // 2
+            pieces[at:at + 1] = [longest[:middle], longest[middle + 1:]]
+        for piece in pieces:
+            # A vertex where the curve meets a straight wall turns by half a step: the run is tried without its ends too.
+            for lead, tail in ((0, 0), (1, 0), (0, 1), (1, 1)):
+                attempt = piece[lead:len(piece) - tail]
+                if len(attempt) < 2:
+                    continue
+                bulge = _fit_arc(ring, attempt, tolerance)
+                if bulge is not None:
+                    arcs[(attempt[0] - 1) % count] = bulge
+                    dropped.update(attempt)
+                    break
+    if not dropped:
+        return ring, None
+    points = [p for index, p in enumerate(ring) if index not in dropped]
+    bends = [b for index, b in enumerate(arcs) if index not in dropped]
+    return (points, bends) if valid_ring(points, bends) else (ring, None)
+
+
+def _axial(shape, arcs):
+    """Whether each vertex's x, then its y, follows a straight side almost along that axis: only those meet a neighbour's wall.
+
+    A wing drawn at an angle keeps its shape instead of having its corners pulled onto the axes.
+    """
+    limit = math.tan(math.radians(3))
+    flags = []
+    for index, _ in enumerate(shape):
+        vertical = horizontal = False
+        for side in ((index - 1) % len(shape), index):
+            if bent(bend(arcs, side)):
+                continue
+            a, b = shape[side], shape[(side + 1) % len(shape)]
+            dx, dy = abs(b[0] - a[0]), abs(b[1] - a[1])
+            vertical = vertical or dx <= limit * dy
+            horizontal = horizontal or dy <= limit * dx
+        flags.append((vertical, horizontal))
+    return flags
+
+
 def _orthogonal(ring):
     """Horizontal and vertical sides only (an L, T or U-shaped room): the grid of `_partition` follows it exactly."""
     return all(a[0] == b[0] or a[1] == b[1] for a, b in zip(ring, ring[1:] + ring[:1]))
@@ -340,6 +474,9 @@ def normalize_result(value, size=None, scale=None):
     (taken as square when unknown). The result's `source` maps the plan back onto the image for review.
     `scale` (metres per pixel along x and y) is kept when the rooms' written sizes do not give one: editing rooms
     in the Studio must not change the size of the others.
+
+    A room may carry `arcs`, one bend per side of its `polygon`, told in the image's own geometry (see `spatial_contract`);
+    curves drawn by Gemini as runs of short sides are recognised here.
     """
     try:
         RESULT_VALIDATOR.validate(value)
@@ -347,33 +484,48 @@ def normalize_result(value, size=None, scale=None):
         raise SpatialError("invalid_geometry", "Réponse Gemini hors du format attendu.") from err
     width, height = size or (1000, 1000)
     fx, fy = width / 1000, height / 1000
-    names, boxes, shapes, sizes = [], [], [], []
+    # A supplied valid scale identifies a Studio correction: preserve its precise coordinates and its own curves.
+    editing = bool(scale and len(scale) == 2 and all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in scale))
+    names, boxes, shapes, bends, sizes = [], [], [], [], []
     for index, room in enumerate(value["rooms"][:MAX_ROOMS * 2], 1):
         names.append(" ".join(room["name"].split())[:80] or f"Pièce {index}")
-        shape = [[min(max(float(p[1]), 0), 1000) * fx, min(max(float(p[0]), 0), 1000) * fy] for p in room.get("polygon", [])
+        drawn = room.get("polygon", [])
+        shape = [[min(max(float(p[1]), 0), 1000) * fx, min(max(float(p[0]), 0), 1000) * fy] for p in drawn
                  if len(p) >= 2 and all(math.isfinite(v) for v in p[:2])]
+        given = room.get("arcs")
+        arcs = ([max(-1, min(1, float(b))) for b in given] if isinstance(given, list) and len(given) == len(drawn) == len(shape)
+                and all(isinstance(b, (int, float)) and not isinstance(b, bool) and math.isfinite(b) for b in given) else None)
+        if len(shape) >= 3 and arcs is None and not editing:
+            shape, arcs = _fit_arcs(shape, .004 * max(width, height))
         box = _box(room["box_2d"])
         if len(shape) >= 3:
             # The outline, drawn in the Studio or given by Gemini, is more precise than a box written beside it.
-            box = (min(p[0] for p in shape) / fx, min(p[1] for p in shape) / fy, max(p[0] for p in shape) / fx, max(p[1] for p in shape) / fy)
+            drawing = outline(shape, arcs)
+            box = (min(p[0] for p in drawing) / fx, min(p[1] for p in drawing) / fy, max(p[0] for p in drawing) / fx, max(p[1] for p in drawing) / fy)
         boxes.append(box and (box[0] * fx, box[1] * fy, box[2] * fx, box[3] * fy))
         shapes.append(shape if len(shape) >= 3 else None)
+        bends.append(arcs if len(shape) >= 3 and arcs and any(map(bent, arcs)) else None)
         sizes.append(room.get("size"))
     if not any(boxes):
         raise SpatialError("no_rooms")
-    # A supplied valid scale identifies a Studio correction: preserve its precise coordinates.
-    editing = bool(scale and len(scale) == 2 and all(isinstance(v, (int, float)) and math.isfinite(v) and v > 0 for v in scale))
     tolerance = 0 if editing else SNAP * max(width, height)
-    snap_x = _snap([v for b in boxes if b for v in (b[0], b[2])] + [p[0] for s in shapes if s for p in s], tolerance)
-    snap_y = _snap([v for b in boxes if b for v in (b[1], b[3])] + [p[1] for s in shapes if s for p in s], tolerance)
+    # Only a corner following a wall almost along an axis joins its neighbours' walls: a wing at an angle, and a curve,
+    # keep their coordinates.
+    axial = [s and _axial(s, bends[k]) for k, s in enumerate(shapes)]
+    snap_x = _snap([v for b in boxes if b for v in (b[0], b[2])]
+                   + [p[0] for k, s in enumerate(shapes) if s for i, p in enumerate(s) if axial[k][i][0]], tolerance)
+    snap_y = _snap([v for b in boxes if b for v in (b[1], b[3])]
+                   + [p[1] for k, s in enumerate(shapes) if s for i, p in enumerate(s) if axial[k][i][1]], tolerance)
     boxes = [b and (snap_x[b[0]], snap_y[b[1]], snap_x[b[2]], snap_y[b[3]]) for b in boxes]
     boxes = [b if b and b[2] > b[0] and b[3] > b[1] else None for b in boxes]
-    shapes = [s and [[snap_x[x], snap_y[y]] for x, y in s] for s in shapes]
+    shapes = [s and [[snap_x[x] if axial[k][i][0] else x, snap_y[y] if axial[k][i][1] else y] for i, (x, y) in enumerate(s)]
+              for k, s in enumerate(shapes)]
     # Rectangles and outlines with right angles share one grid, so none overlaps another; an outline with a slanted
-    # side is kept as drawn.
-    members = [k for k, b in enumerate(boxes) if b and (not shapes[k] or _orthogonal(shapes[k]))]
+    # or curved side is kept as drawn.
+    members = [k for k, b in enumerate(boxes) if b and (not shapes[k] or (not bends[k] and _orthogonal(shapes[k])))]
     outlines = dict(zip(members, _partition([shapes[k] or _corners(boxes[k]) for k in members]))) if members else {}
     regions = [outlines[k] if k in outlines else shapes[k] for k in range(len(names))]
+    curves = [None if k in outlines else bends[k] for k in range(len(names))]
     notes = []
     calibrated = None if editing else _scale(boxes, sizes, size is not None)
     if calibrated:
@@ -383,26 +535,26 @@ def normalize_result(value, size=None, scale=None):
         kx, ky = scale
         notes.append("Échelle de l’analyse conservée : vérifiez-la avec une cote connue.")
     else:
-        drawn = sum(_area(r) for r in regions if r)
+        drawn = sum(ring_area(r, curves[k]) for k, r in enumerate(regions) if r)
         kx = ky = math.sqrt(sum(_typical(n) for n, r in zip(names, regions) if r) / drawn) if drawn else .01
         notes.append("Échelle estimée d’après la taille habituelle des pièces : calibrez le plan avec une cote connue.")
         if size is None:
             notes.append("Proportions de l’image inconnues : vérifiez la forme des pièces.")
-    points = [p for r in regions if r for p in r]
+    points = [p for k, r in enumerate(regions) if r for p in outline(r, curves[k])]
     ox, oy = min(p[0] for p in points), min(p[1] for p in points)
     rooms, simplified, skipped, ids = [], [], [], {}
     for index, (name, region) in enumerate(zip(names, regions)):
-        ring = _clean([[round((x - ox) * kx, 3), round((y - oy) * ky, 3)] for x, y in region]) if region else []
+        ring, arcs = _clean([[round((x - ox) * kx, 3), round((y - oy) * ky, 3)] for x, y in region], curves[index]) if region else ([], None)
         repaired = False
-        if len(ring) >= 3 and not valid_ring(ring):
-            ring, repaired = _clean(_hull(ring)), True
-        if len(rooms) >= MAX_ROOMS or len(ring) < 3 or not valid_ring(ring):
+        if len(ring) >= 3 and not valid_ring(ring, arcs):
+            (ring, _), arcs, repaired = _clean(_hull(ring)), None, True
+        if len(rooms) >= MAX_ROOMS or len(ring) < 3 or not valid_ring(ring, arcs):
             skipped.append(name)
             continue
         if repaired:
             simplified.append(name)
         ids[index] = f"room-{len(rooms)+1}"
-        rooms.append({"id": ids[index], "name": name, "polygon": ring})
+        rooms.append({"id": ids[index], "name": name, "polygon": ring, **({"arcs": [round(b, 4) for b in arcs]} if arcs else {})})
     if not rooms:
         raise SpatialError("no_rooms", f"{len(names)} pièce(s) reçue(s), aucune exploitable.")
     plan = {"version": 1, "enabled": True, "floors": [{"id": "imported", "name": "Niveau importé", "elevation": 0, "height": 2.6, "rooms": rooms}]}
@@ -412,7 +564,7 @@ def normalize_result(value, size=None, scale=None):
     except (ValidationError, ValueError) as err:
         raise SpatialError("invalid_geometry") from err
     warnings = notes
-    average = sum(_area(room["polygon"]) for room in rooms) / len(rooms)
+    average = sum(ring_area(room["polygon"], room.get("arcs")) for room in rooms) / len(rooms)
     if not 2 <= average <= 60:
         warnings.append(f"Surface moyenne de {average:.1f} m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue.".replace(".", ",", 1))
     if simplified:
@@ -421,13 +573,15 @@ def normalize_result(value, size=None, scale=None):
         warnings.append(f"Contour illisible ignoré : {', '.join(skipped)}"[:500])
     warnings += [" ".join(w.split())[:500] for w in value.get("warnings", []) if w.strip()]
     source = {"width": width, "height": height, "scale": [kx, ky], "origin": [ox, oy]}
-    return {"plan": plan, "warnings": warnings[:20], "source": source, "detection": _detection(value["rooms"], names, boxes, shapes, sizes, ids, fx, fy)}
+    return {"plan": plan, "warnings": warnings[:20], "source": source,
+            "detection": _detection(value["rooms"], names, boxes, shapes, bends, sizes, ids, fx, fy)}
 
 
-def _detection(answer, names, boxes, shapes, sizes, ids, fx, fy):
+def _detection(answer, names, boxes, shapes, bends, sizes, ids, fx, fy):
     """Rooms as used, walls aligned, back in normalised coordinates: what the Studio edits and sends to normalize again.
 
-    `id` links each one to its room in the plan (absent when the room was left out).
+    `id` links each one to its room in the plan (absent when the room was left out). `arcs` keeps the bend of each
+    curved side, told in the image's pixel geometry whatever its proportions.
     """
     rooms = []
     for index, box in enumerate(boxes):
@@ -436,6 +590,8 @@ def _detection(answer, names, boxes, shapes, sizes, ids, fx, fy):
         room = {"name": names[index], "box_2d": [round(box[1] / fy, 2), round(box[0] / fx, 2), round(box[3] / fy, 2), round(box[2] / fx, 2)]}
         if shapes[index]:
             room["polygon"] = [[round(y / fy, 2), round(x / fx, 2)] for x, y in shapes[index]]
+            if bends[index]:
+                room["arcs"] = [round(b, 4) for b in bends[index]]
         if isinstance(sizes[index], list) and len(sizes[index]) == 2:
             room["size"] = sizes[index]
         if isinstance(answer[index].get("label"), str) and answer[index]["label"].strip():
@@ -667,8 +823,10 @@ def valid_detection(value):
 
     def room(r):
         polygon = r.get("polygon", []) if isinstance(r, dict) else None
-        return (isinstance(r, dict) and set(r) <= {"name", "box_2d", "polygon", "size", "label", "id"} and text(r.get("name"), 80)
+        arcs = r.get("arcs", []) if isinstance(r, dict) else None
+        return (isinstance(r, dict) and set(r) <= {"name", "box_2d", "polygon", "arcs", "size", "label", "id"} and text(r.get("name"), 80)
                 and numbers(r.get("box_2d"), 4) and isinstance(polygon, list) and len(polygon) <= 400 and all(numbers(p, 2) for p in polygon)
+                and isinstance(arcs, list) and (not arcs or (len(arcs) == len(polygon) and numbers(arcs, len(arcs)) and all(abs(b) <= 1 for b in arcs)))
                 and ("size" not in r or numbers(r["size"], 2)) and text(r.get("label", ""), 120) and text(r.get("id", ""), 40))
 
     return value if isinstance(value, list) and 0 < len(value) <= MAX_ROOMS * 2 and all(map(room, value)) else None

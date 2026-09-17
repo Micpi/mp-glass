@@ -3,7 +3,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
-import { examplePlan, parseSpatial, polygonArea, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { bent, examplePlan, outline, parseSpatial, roomArea, roomOutline, splitSide, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { roomTemperature } from '../../shared/spatial-state';
 import type { Hass } from '../ha/client';
 import { mpIcon, type MPIconName } from '../icons';
@@ -109,7 +109,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 export class MPSpatialEditor extends LitElement {
   static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true}};
   static styles=css`
-    :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:1fr 1fr auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
+    :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
     .equipment{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:5px;margin:8px 0;padding:0}.equipment li{display:flex;align-items:center;gap:10px;min-height:48px;padding:5px 6px 5px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.equipment .mp-icon{color:#9ad4ff}.equipment li>span:not(.mp-icon){flex:1;min-width:0}.equipment small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.equipment select{flex:0 1 auto;width:11em;min-width:0;min-height:38px;padding:6px 8px}.equipment button{flex:none;min-height:38px;padding:0 12px}
     .entity-list{display:grid;gap:5px;max-height:250px;overflow:auto;margin:8px 0;padding:3px}.entity-list label{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.entity-list input{flex:none;min-height:20px;width:18px;height:18px;accent-color:#69b7ff}.entity-list span{min-width:0;overflow:hidden;text-overflow:ellipsis}.entity-list small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis}.entity-list label:has(:checked){background:#69b7ff15;border-color:#69b7ff55}
@@ -192,6 +192,29 @@ export class MPSpatialEditor extends LitElement {
   }
   private mutate(edit:(plan:SpatialPlan)=>void){if(!this.draft)return;const copy=structuredClone(this.draft);edit(copy);this.commit(copy);}
   private editRoom(edit:(room:SpatialRoom)=>void){const id=this.room?.id;this.mutate(plan=>{const room=plan.floors[this.floorIndex]?.rooms.find(r=>r.id===id);if(room)edit(room);});}
+  /** Bend of the side leaving a corner: 0 straightens it, ±1 is a half circle. A room with nothing curved keeps no bends at all. */
+  private editBend(index:number,value:number){
+    this.editRoom(room=>{
+      const bend=Math.max(-1,Math.min(1,Number.isFinite(value)?value:0));
+      const arcs=room.polygon.map((_,i)=>i===index?bend:room.arcs?.[i]??0);
+      if(arcs.some(bent))room.arcs=arcs;else delete room.arcs;
+    });
+  }
+  private dropVertex(index:number){
+    this.editRoom(room=>{
+      room.polygon.splice(index,1);
+      room.arcs?.splice(index,1);
+      if(!room.arcs?.some(bent))delete room.arcs;
+    });
+  }
+  /** A corner added in the middle of the last side, on its curve when it is curved. */
+  private addVertex(){
+    this.editRoom(room=>{
+      const shape=splitSide(room.polygon,room.arcs,room.polygon.length-1);
+      room.polygon=shape.polygon;
+      if(shape.arcs)room.arcs=shape.arcs;
+    });
+  }
   private setSource(blob?:Blob){if(this.sourceUrl)URL.revokeObjectURL(this.sourceUrl);this.sourceUrl=blob?URL.createObjectURL(blob):'';this.sourceBlob=blob;}
   /** With the model chosen in the Studio; none chosen: the one in the integration options. */
   private async analyze(){
@@ -324,9 +347,11 @@ export class MPSpatialEditor extends LitElement {
       let moved=0;
       const fitted=this.detection.map(room=>{
         if(room.polygon){
-          const polygon=snapOutline(room.polygon,walls,20,20);
+          // Straight sides along the axes are put on the walls; a curved or slanted side is left as it was drawn.
+          const polygon=snapOutline(room.polygon,walls,20,20,room.arcs);
           moved+=polygon.filter((p,i)=>p.some((v,k)=>Math.abs(v-room.polygon![i]![k]!)>.01)).length;
-          const xs=polygon.map(p=>p[1]!),ys=polygon.map(p=>p[0]!);
+          const drawn=outline(polygon.map(([y,x])=>[x!,y!] as [number,number]),room.arcs);
+          const xs=drawn.map(p=>p[0]),ys=drawn.map(p=>p[1]);
           return {...room,polygon,box_2d:[Math.min(...ys),Math.min(...xs),Math.max(...ys),Math.max(...xs)]};
         }
         const box=snapBox(room.box_2d,walls,20,20).map(v=>Math.round(v*100)/100);
@@ -373,7 +398,8 @@ export class MPSpatialEditor extends LitElement {
         <p class="muted">Généralement moins d’une minute, jusqu’à quelques minutes pour un grand plan. Le plan enregistré n’est pas modifié.</p>
         <div class="job-actions"><button @click=${this.cancelAnalysis}>Annuler l’analyse</button></div>`;
     }else if(this.phase==='done'&&this.candidate){
-      const rooms=this.candidate.floors[0]!.rooms,area=rooms.reduce((sum,r)=>sum+polygonArea(r.polygon),0),xs=rooms.flatMap(r=>r.polygon.map(p=>p[0])),ys=rooms.flatMap(r=>r.polygon.map(p=>p[1]));
+      const rooms=this.candidate.floors[0]!.rooms,area=rooms.reduce((sum,r)=>sum+roomArea(r),0);
+      const drawn=rooms.flatMap(r=>roomOutline(r)),xs=drawn.map(p=>p[0]),ys=drawn.map(p=>p[1]);
       const metres=(value:number)=>new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(value),plural=rooms.length>1?'s':'';
       body=html`<header class="job-head"><span class="job-orb ok">${mpIcon('check',26)}</span><div><small>Brouillon IA · non enregistré</small><h3 id="job-title">${rooms.length} pièce${plural} reconnue${plural}</h3><p>${metres(area)} m² · ${metres(Math.max(...xs)-Math.min(...xs))} × ${metres(Math.max(...ys)-Math.min(...ys))} m · analysé en ${time}</p></div></header>
         ${this.detection&&this.source&&this.sourceUrl?html`<div class="tabs" role="tablist" aria-label="Affichage du brouillon"><button role="tab" aria-selected=${this.view==='overlay'} @click=${()=>{this.view='overlay';}}>Sur le plan d’origine</button><button role="tab" aria-selected=${this.view==='3d'} @click=${()=>{this.view='3d';}}>En 3D</button></div>`:nothing}
@@ -456,7 +482,7 @@ export class MPSpatialEditor extends LitElement {
       <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{for(const r of p.floors[this.floorIndex]!.rooms)r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);});}}>Appliquer l’échelle</button></div>
       ${this.renderLinks(suggestions)}</fieldset>
       <mp-spatial-viewer .plan=${this.shown} .hass=${this.hass} @room-select=${this.roomSelected} @floor-select=${this.floorSelected}></mp-spatial-viewer>
-      ${room?html`<fieldset ?disabled=${!admin||this.busy}><div class="box"><label>Pièce à modifier<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;this.entitySearch='';}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><p class="muted">Ou touchez-la sur le plan.</p><div class="row"><label>Nom de la pièce<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>Pièce Home Assistant<select .value=${room.areaId??''} @change=${(e:Event)=>this.linkRoom((e.target as HTMLSelectElement).value)}><option value="" .selected=${!room.areaId}>Non associée</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${suggested?html`<button class="suggest" @click=${()=>this.linkRoom(suggested.area_id)}>Relier à « ${suggested.name} »</button>`:nothing}${followsArea(room)?this.automatic(room):this.entityPicker(room)}<details><summary>Corriger les sommets (X / Y en mètres)</summary>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${`Sommet ${i+1} X`} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Sommet ${i+1} Y`} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><button aria-label=${`Supprimer sommet ${i+1}`} ?disabled=${room.polygon.length<=3} @click=${()=>this.editRoom(r=>{r.polygon.splice(i,1);})}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.editRoom(r=>{const a=r.polygon.at(-1)!,b=r.polygon[0]!;r.polygon.push([(a[0]+b[0])/2,(a[1]+b[1])/2]);})}>Ajouter un sommet</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>Supprimer cette pièce</button></div></fieldset>`:nothing}`:nothing}`;
+      ${room?html`<fieldset ?disabled=${!admin||this.busy}><div class="box"><label>Pièce à modifier<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;this.entitySearch='';}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><p class="muted">Ou touchez-la sur le plan.</p><div class="row"><label>Nom de la pièce<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>Pièce Home Assistant<select .value=${room.areaId??''} @change=${(e:Event)=>this.linkRoom((e.target as HTMLSelectElement).value)}><option value="" .selected=${!room.areaId}>Non associée</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${suggested?html`<button class="suggest" @click=${()=>this.linkRoom(suggested.area_id)}>Relier à « ${suggested.name} »</button>`:nothing}${followsArea(room)?this.automatic(room):this.entityPicker(room)}<details><summary>Corriger les sommets (X / Y en mètres) et les courbes</summary><p class="muted">Courbure du côté qui part du sommet : 0 pour un mur droit, 1 pour un demi-cercle, négatif pour courber de l’autre côté.</p>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${`Sommet ${i+1} X`} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Sommet ${i+1} Y`} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Courbure du côté ${i+1}`} type="number" min="-1" max="1" step="0.05" .value=${String(room.arcs?.[i]??0)} @change=${(e:Event)=>this.editBend(i,Number((e.target as HTMLInputElement).value))}><button aria-label=${`Supprimer sommet ${i+1}`} ?disabled=${room.polygon.length<=3} @click=${()=>this.dropVertex(i)}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.addVertex()}>Ajouter un sommet</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>Supprimer cette pièce</button></div></fieldset>`:nothing}`:nothing}`;
   }
 }
 defineElement('mp-spatial-editor',MPSpatialEditor);

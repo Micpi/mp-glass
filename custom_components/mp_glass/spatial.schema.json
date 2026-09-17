@@ -30,6 +30,10 @@
                 "polygon": {
                   "type": "array", "minItems": 3, "maxItems": 40,
                   "items": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": -200, "maximum": 200}}
+                },
+                "arcs": {
+                  "type": "array", "minItems": 3, "maxItems": 40,
+                  "items": {"type": "number", "minimum": -1, "maximum": 1}
                 }
               }
             }

@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.7.15 — murs courbes et pièces en biais
+
+Demande utilisateur : sur un vrai plan, certaines pièces sont arrondies ou dessinées dans une autre orientation ; il faut pouvoir les reproduire pour que la 3D soit fidèle.
+
+- **Murs courbes** : chaque côté d’une pièce peut être courbé, du mur légèrement bombé au demi-cercle. Dans la fenêtre de résultat, toucher un côté puis **Courber le côté** le bombe vers l’extérieur en quart de cercle ; le rond au milieu du côté règle ensuite la courbure au doigt, en s’aimantant sur le mur droit, le quart de cercle, le demi-cercle et les raccords tangents aux murs voisins (couloir aux bouts arrondis, angle arrondi). **Redresser le côté** revient au mur droit.
+- **En 3D** : un mur courbe est une paroi d’un seul tenant qui suit sa courbe, sans facettes, ses lignes du haut et du pied comprises ; partagé par deux pièces, il n’est dessiné qu’une fois. Sols, halos, surfaces et cotes suivent la courbe exacte.
+- **Pièces en biais** : la marque **⟳** à côté de la pièce sélectionnée la fait tourner autour de son milieu. L’angle s’affiche pendant le geste et s’aimante sur les axes de l’image comme sur **les directions des murs du plan** : un corps de bâtiment dessiné de travers se met exactement dans son axe. Une pièce au bord du plan rentre dedans en tournant.
+- **Déplacer un côté** : glisser un côté du contour le déplace parallèlement à lui-même, ses angles suivant les murs voisins, qui gardent leur direction. Une pièce inclinée garde ses angles droits pendant qu’on ajuste sa largeur ou sa profondeur.
+- **Aimantation en biais** : MP Glass repère aussi les murs du plan qui ne suivent pas les bords de l’image, en tournant l’image dans les directions où ses traits sont les plus nombreux. Un point se pose sur le croisement des deux repères les plus proches — murs droits ou en biais, bords et angles des autres pièces, directions du plan — au lieu d’être rabattu sur les axes.
+- **Analyse** : Gemini rend désormais un contour dès qu’une pièce n’est pas un rectangle droit (forme en L, pièce inclinée, mur courbe suivi point par point). Une suite de points qui tournent régulièrement le long d’un même cercle devient un arc ; les angles francs et les pans coupés d’un bow-window restent des angles. L’alignement automatique des murs ne rabat plus sur les axes un mur en biais ou une courbe.
+- **Murs partagés en biais** : deux pièces séparées par l’épaisseur d’un mur partagent une seule cloison quelle que soit sa direction ; les angles suivent leurs deux murs et restent droits. Seul l’affichage change.
+- **Studio** : sous **Corriger les sommets**, une colonne donne la courbure du côté qui part de chaque sommet (0 pour un mur droit, 1 pour un demi-cercle, négatif de l’autre côté).
+- **Contrat** : une pièce peut porter `arcs`, une valeur par côté, bornée au demi-cercle et vérifiée côté navigateur, intégration et worker. Les plans enregistrés avant cette version restent valides et inchangés.
+
 ## 0.7.14 — tous les niveaux d’un coup d’œil
 
 Demande utilisateur : voir les niveaux de la maison superposés dans la vue plan pour connaître d’un coup d’œil l’état de chacun, puis arriver sur la vue actuelle en choisissant un niveau.

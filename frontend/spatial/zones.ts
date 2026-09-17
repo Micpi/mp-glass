@@ -1,23 +1,40 @@
 import { LitElement, css, html, nothing, svg, type PropertyValues } from 'lit';
-import { polygonArea, validPolygon, type Point, type SpatialPlan } from '../../shared/spatial';
+import { arcPoints, bent, outline, roomArea, roomOutline, sidePoint, splitSide, validRoom, type Point, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon } from '../icons';
 import { defineElement } from '../registry';
 
 /**
  * A room as detected on the image, in 0-1000 coordinates (Gemini's convention: box_2d is [ymin, xmin, ymax, xmax], a point [y, x]).
- * `id` links it to its room in the plan; `hue` keeps its colour while rooms are added and removed (both stay in the browser).
+ * `arcs` bends its sides (one per side of `polygon`), told in the image's pixel geometry so a curve stays a circle whatever
+ * the image's proportions. `id` links it to its room in the plan; `hue` keeps its colour while rooms are added and removed
+ * (both stay in the browser).
  */
-export interface DetectionRoom { name:string; box_2d:number[]; polygon?:number[][]; size?:number[]; label?:string; id?:string; hue?:number }
+export interface DetectionRoom { name:string; box_2d:number[]; polygon?:number[][]; arcs?:number[]; size?:number[]; label?:string; id?:string; hue?:number }
 /** Maps the plan (metres) back onto the analysed image: pixel = metre / scale + origin. */
 export interface Source { width:number; height:number; scale:number[]; origin:number[] }
 /** Centre line of a wall drawn on the image: `at` across it, `from`-`to` along it, in 0-1000. */
 export interface WallLine { at:number; from:number; to:number }
-export interface Walls { x:WallLine[]; y:WallLine[] }
-type Handle='n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'|'move'|'vertex';
-/** Lines a corner is drawn to: the walls of the plan (where they run), the sides and corners of the rooms. */
-interface Guides { walls:Walls; xs:number[]; ys:number[] }
-/** A room being moved or resized (`box`), or a corner of its outline being moved (`shape`, [x, y] points; `inserted`: just added on a side). */
-interface Drag { index:number; handle:Handle; start:[number,number]; origin:number[]; box:number[]; moved:boolean; shape?:number[][]; vertex?:number; inserted?:boolean; guides?:Guides }
+/** A wall of the plan that runs along neither axis, as a segment in 0-1000 coordinates. */
+export interface WallEdge { a:number[]; b:number[] }
+/** `slanted`: walls at an angle; `angles`: the directions they run in, in the image's pixels (a quarter turn, radians). */
+export interface Walls { x:WallLine[]; y:WallLine[]; slanted?:WallEdge[]; angles?:number[] }
+type Handle='n'|'s'|'e'|'w'|'ne'|'nw'|'se'|'sw'|'move'|'vertex'|'side'|'bend'|'rotate';
+/**
+ * A line the pointer is drawn to, in the plan's pixels: through `p` along the unit vector `u`, between `from` and `to` along
+ * it. `axis` marks a line along one axis and keeps its exact 0-1000 coordinate, so corners drawn onto it share it exactly.
+ */
+interface Line { p:Point; u:Point; from?:number; to?:number; axis?:{coordinate:0|1;value:number} }
+/**
+ * Lines a corner is drawn to: the walls of the plan (where they run), the sides and corners of the other rooms, and the
+ * directions the plan is drawn in. `sx`/`sy` turn 0-1000 coordinates into the plan's pixels; `tolerance` is in pixels, 0 with
+ * the magnet off.
+ */
+interface Guides { lines:Line[]; sx:number; sy:number; tolerance:number }
+/**
+ * A room being moved or resized (`box`), or its outline being reshaped (`shape`, [x, y] points, with `arcs`): a corner moved
+ * (`vertex`; `inserted`: just added on a side), a side moved or bent (`side`), or the room turned (`rotate`, `angle` in radians).
+ */
+interface Drag { index:number; handle:Handle; start:[number,number]; origin:number[]; box:number[]; moved:boolean; shape?:number[][]; from?:number[][]; arcs?:number[]; vertex?:number; side?:number; inserted?:boolean; guides?:Guides; angle?:number }
 
 /** Distinct colour per room (golden angle), shared by the zones and the list. */
 export const roomColor=(index:number)=>`hsl(${Math.round(index*137.5)%360} 78% 62%)`;
@@ -27,9 +44,16 @@ const MIN=5,MAX_POINTS=40;
 /** Outline points: [y, x] as sent to Home Assistant, [x, y] while editing. */
 const toXY=(points:number[][])=>points.map(([y,x])=>[x!,y!]);
 const toYX=(points:number[][])=>points.map(([x,y])=>[round(y!),round(x!)]);
+const tidyArcs=(arcs:number[]|undefined)=>arcs?.some(bent)?arcs.map(b=>Math.round(Math.max(-1,Math.min(1,b))*1e4)/1e4):undefined;
 /** [ymin, xmin, ymax, xmax] around [x, y] points, and back. */
 const bounds=(points:number[][])=>{const xs=points.map(p=>p[0]!),ys=points.map(p=>p[1]!);return [Math.min(...ys),Math.min(...xs),Math.max(...ys),Math.max(...xs)].map(round);};
 const corners=(box:number[])=>[[box[1]!,box[0]!],[box[3]!,box[0]!],[box[3]!,box[2]!],[box[1]!,box[2]!]];
+/** 0-1000 coordinates, stretched with the image, as the plan's own pixels, where a right angle is a right angle. */
+const toPixel=(p:number[],sx:number,sy:number):Point=>[p[0]!*sx,p[1]!*sy];
+const fromPixel=(p:Point,sx:number,sy:number):number[]=>[p[0]/sx,p[1]/sy];
+const direction=(a:Point,b:Point):Point=>{const length=Math.hypot(b[0]-a[0],b[1]-a[1])||1;return [(b[0]-a[0])/length,(b[1]-a[1])/length];};
+/** Bend of the side `index` of a shape, in the plan's pixels. */
+const bendOf=(arcs:number[]|undefined,index:number)=>arcs?.[index]??0;
 
 /** Runs of dark pixels at least 3 px thick and 4 % of the image long, merged across neighbouring rows or columns. Thin lines (furniture, dimensions) are left out. */
 function wallLines(dark:Uint8Array,w:number,h:number,vertical:boolean):WallLine[]{
@@ -54,32 +78,108 @@ function wallLines(dark:Uint8Array,w:number,h:number,vertical:boolean):WallLine[
   return bands.map(b=>({at:((b.a0+b.a1)/2+.5)/across*1000,from:b.from/along*1000,to:b.to/along*1000}));
 }
 
+const greyOf=(pixels:Uint8ClampedArray,count:number)=>{
+  const grey=new Uint8Array(count);
+  for(let i=0;i<count;i++)grey[i]=Math.round(pixels[i*4]!*.3+pixels[i*4+1]!*.59+pixels[i*4+2]!*.11);
+  return grey;
+};
+/** Bounded Otsu threshold: faded grey scans still have walls; pale paper never becomes a wall. */
+function inkThreshold(grey:Uint8Array){
+  const histogram=new Uint32Array(256);
+  for(const value of grey)histogram[value]!++;
+  let total=0,weight=0,sum=0,best=0,threshold=120;
+  for(let i=0;i<256;i++)total+=i*histogram[i]!;
+  for(let i=0;i<255;i++){
+    weight+=histogram[i]!;sum+=i*histogram[i]!;const rest=grey.length-weight;if(!weight||!rest)continue;
+    const variance=weight*rest*(sum/weight-(total-sum)/rest)**2;
+    if(variance>best){best=variance;const ink=sum/weight,paper=(total-sum)/rest;threshold=ink+(paper-ink)*.25;}
+  }
+  return Math.min(190,Math.max(120,threshold));
+}
+const inkOf=(grey:Uint8Array,threshold:number)=>{
+  const dark=new Uint8Array(grey.length);
+  for(let i=0;i<grey.length;i++)dark[i]=grey[i]!<threshold?1:0;
+  return dark;
+};
 /**
- * Walls drawn on the plan, found in the browser: dark, thick, long horizontal and vertical strokes. The image is brought to
- * 1200 pixels on its longer side (enlarged up to 3 times): on a small plan, walls 2 px thick then count as thick.
+ * Directions the plan's walls run in besides the image's own axes, strongest first, two at most (radians within a quarter
+ * turn: a wall and its square corner count together). A wing of the house drawn at an angle stands out in the strokes'
+ * directions, whatever the walls' own length.
+ */
+function dominantAngles(grey:Uint8Array,w:number,h:number):number[]{
+  const bins=180,step=Math.PI/2/bins,histogram=new Float64Array(bins);
+  for(let y=1;y<h-1;y++)for(let x=1;x<w-1;x++){
+    const i=y*w+x,gx=grey[i+1]!-grey[i-1]!,gy=grey[i+w]!-grey[i-w]!,strength=Math.hypot(gx,gy);
+    if(strength<50)continue;
+    // A stroke runs across its gradient.
+    const angle=Math.atan2(gy,gx)+Math.PI/2;
+    histogram[((Math.floor(angle/step)%bins)+bins)%bins]!+=strength;
+  }
+  const smooth=Array.from(histogram,(_,i)=>[-2,-1,0,1,2].reduce((sum,k)=>sum+histogram[(i+k+bins)%bins]!,0));
+  const strongest=Math.max(...smooth),gapTo=(a:number,b:number)=>{const gap=Math.abs(a-b)%bins;return Math.min(gap,bins-gap);};
+  const peaks:number[]=[];
+  for(let bin=0;bin<bins;bin++){
+    // At least 3° from the axes, a tenth of the strongest direction, and stronger than its neighbours.
+    if(gapTo(bin,0)<6||smooth[bin]!<strongest*.1)continue;
+    if(smooth[bin]!<smooth[(bin+1)%bins]!||smooth[bin]!<smooth[(bin+bins-1)%bins]!)continue;
+    peaks.push(bin);
+  }
+  const chosen:number[]=[];
+  for(const bin of peaks.sort((a,b)=>smooth[b]!-smooth[a]!)){
+    if(chosen.some(other=>gapTo(bin,other)<16))continue;
+    chosen.push(bin);
+    if(chosen.length===2)break;
+  }
+  return chosen.map(bin=>{
+    // Sharpened between its neighbours, to a fraction of a degree.
+    const [before,at,after]=[smooth[(bin+bins-1)%bins]!,smooth[bin]!,smooth[(bin+1)%bins]!],curve=before-2*at+after;
+    return (bin+.5+(curve?Math.max(-.5,Math.min(.5,(before-after)/(2*curve))):0))*step;
+  });
+}
+/**
+ * Walls drawn on the plan, found in the browser: dark, thick, long strokes. The image is brought to 1200 pixels on its
+ * longer side (enlarged up to 3 times): on a small plan, walls 2 px thick then count as thick. Walls along the image's
+ * axes are found first; the plan is then turned by each of its own wall directions, so that a wing drawn at an angle
+ * gives its walls too.
  */
 export async function detectWalls(blob:Blob):Promise<Walls>{
   const bitmap=await createImageBitmap(blob);
   try{
     const scale=Math.min(3,1200/Math.max(bitmap.width,bitmap.height));
     const w=Math.max(3,Math.round(bitmap.width*scale)),h=Math.max(3,Math.round(bitmap.height*scale));
-    const canvas=document.createElement('canvas');canvas.width=w;canvas.height=h;
-    const context=canvas.getContext('2d',{willReadFrequently:true});
-    if(!context)return {x:[],y:[]};
-    context.fillStyle='#fff';context.fillRect(0,0,w,h);context.drawImage(bitmap,0,0,w,h);
-    const pixels=context.getImageData(0,0,w,h).data,dark=new Uint8Array(w*h),histogram=new Uint32Array(256);
-    for(let i=0;i<w*h;i++){dark[i]=Math.round(pixels[i*4]!*.3+pixels[i*4+1]!*.59+pixels[i*4+2]!*.11);histogram[dark[i]!]!++;}
-    // Bounded Otsu threshold: faded grey scans still have walls; pale paper never becomes a wall.
-    let total=0,weight=0,sum=0,best=0,threshold=120;
-    for(let i=0;i<256;i++)total+=i*histogram[i]!;
-    for(let i=0;i<255;i++){
-      weight+=histogram[i]!;sum+=i*histogram[i]!;const rest=w*h-weight;if(!weight||!rest)continue;
-      const variance=weight*rest*(sum/weight-(total-sum)/rest)**2;
-      if(variance>best){best=variance;const ink=sum/weight,paper=(total-sum)/rest;threshold=ink+(paper-ink)*.25;}
+    /** The plan drawn turned by `-angle` around its middle, on a canvas large enough to hold it whole. */
+    const turned=(angle:number)=>{
+      const cos=Math.abs(Math.cos(angle)),sin=Math.abs(Math.sin(angle));
+      const width=Math.ceil(w*cos+h*sin),height=Math.ceil(w*sin+h*cos);
+      const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+      const context=canvas.getContext('2d',{willReadFrequently:true});
+      if(!context)return undefined;
+      context.fillStyle='#fff';context.fillRect(0,0,width,height);
+      context.translate(width/2,height/2);context.rotate(-angle);
+      context.drawImage(bitmap,-w/2,-h/2,w,h);
+      return {grey:greyOf(context.getImageData(0,0,width,height).data,width*height),width,height};
+    };
+    const upright=turned(0);
+    if(!upright)return {x:[],y:[]};
+    const threshold=inkThreshold(upright.grey),dark=inkOf(upright.grey,threshold);
+    const walls:Walls={x:wallLines(dark,w,h,true),y:wallLines(dark,w,h,false),slanted:[],angles:[]};
+    for(const angle of dominantAngles(upright.grey,w,h)){
+      const aside=turned(angle);
+      if(!aside)continue;
+      const {grey,width,height}=aside,mask=inkOf(grey,threshold);
+      /** A point of the turned canvas, back in the plan's 0-1000 coordinates. */
+      const back=(x:number,y:number)=>{
+        const dx=x-width/2,dy=y-height/2,cos=Math.cos(angle),sin=Math.sin(angle);
+        return [(dx*cos-dy*sin+w/2)/w*1000,(dx*sin+dy*cos+h/2)/h*1000];
+      };
+      walls.angles!.push(angle);
+      walls.slanted!.push(
+        ...wallLines(mask,width,height,true).map(line=>({a:back(line.at/1000*width,line.from/1000*height),b:back(line.at/1000*width,line.to/1000*height)})),
+        ...wallLines(mask,width,height,false).map(line=>({a:back(line.from/1000*width,line.at/1000*height),b:back(line.to/1000*width,line.at/1000*height)})),
+      );
+      if(walls.slanted!.length>400)break;
     }
-    threshold=Math.min(190,Math.max(120,threshold));
-    for(let i=0;i<w*h;i++)dark[i]=dark[i]!<threshold?1:0;
-    return {x:wallLines(dark,w,h,true),y:wallLines(dark,w,h,false)};
+    return walls;
   }finally{bitmap.close();}
 }
 
@@ -108,15 +208,16 @@ export function snapBox(box:number[],walls:Walls,tx:number,ty:number,edges='nsew
   if(snapped[3]-snapped[1]<MIN){snapped[1]=x0;snapped[3]=x1;}
   return snapped;
 }
-/** Adjust orthogonal outline edges together, keeping concave corners and diagonal walls intact. */
-export function snapOutline(polygon:number[][],walls:Walls,tx:number,ty:number):number[][]{
+/** Adjust orthogonal outline edges together, keeping concave corners, curved sides and diagonal walls intact. */
+export function snapOutline(polygon:number[][],walls:Walls,tx:number,ty:number,arcs?:number[]):number[][]{
   const original=toXY(polygon),points=original.map(p=>[...p]);
   original.forEach((a,i)=>{
     const j=(i+1)%original.length,b=original[j]!;
+    if(bent(arcs?.[i]))return;
     if(Math.abs(a[0]!-b[0]!)<.01){const x=nearest(walls.x,a[0]!,Math.min(a[1]!,b[1]!),Math.max(a[1]!,b[1]!),tx);points[i]![0]=points[j]![0]=x;}
     if(Math.abs(a[1]!-b[1]!)<.01){const y=nearest(walls.y,a[1]!,Math.min(a[0]!,b[0]!),Math.max(a[0]!,b[0]!),ty);points[i]![1]=points[j]![1]=y;}
   });
-  return validPolygon(points as Point[])?toYX(points):polygon;
+  return validRoom({polygon:points as Point[],arcs})?toYX(points):polygon;
 }
 /** Moved box kept on the walls: the smallest correction among its two opposite edges shifts it, without resizing it. */
 function snapMove(box:number[],walls:Walls,tx:number,ty:number){
@@ -129,12 +230,55 @@ function snapMove(box:number[],walls:Walls,tx:number,ty:number){
   return [y0+dy,x0+dx,y1+dy,x1+dx];
 }
 
-/** A corner drawn or moved: each axis goes onto the nearest guide within the tolerance, so sides stay square and on the walls. */
-function snapPoint(point:number[],guides:Guides,tx:number,ty:number):number[]{
-  const x=point[0]!,y=point[1]!;
-  const pick=(value:number,candidates:number[],tolerance:number)=>{let best=value,gap=tolerance;for(const c of candidates){const d=Math.abs(c-value);if(d<=gap){gap=d;best=c;}}return best;};
-  return [pick(x,[...guides.walls.x.filter(l=>l.from-ty<=y&&y<=l.to+ty).map(l=>l.at),...guides.xs],tx),
-    pick(y,[...guides.walls.y.filter(l=>l.from-tx<=x&&x<=l.to+tx).map(l=>l.at),...guides.ys],ty)];
+/** Distance from a point to a line, across it, in the plan's pixels; Infinity past its ends. */
+function lineGap(line:Line,p:Point,tolerance:number){
+  const along=(p[0]-line.p[0])*line.u[0]+(p[1]-line.p[1])*line.u[1];
+  if((line.from!==undefined&&along<line.from-tolerance)||(line.to!==undefined&&along>line.to+tolerance))return Infinity;
+  return Math.abs((p[0]-line.p[0])*line.u[1]-(p[1]-line.p[1])*line.u[0]);
+}
+function project(line:Line,p:Point):Point{
+  const along=(p[0]-line.p[0])*line.u[0]+(p[1]-line.p[1])*line.u[1];
+  return [line.p[0]+line.u[0]*along,line.p[1]+line.u[1]*along];
+}
+/** Where two lines cross; nothing when they run within 5° of each other. */
+function meet(a:Line,b:Line):Point|undefined{
+  const det=a.u[0]*b.u[1]-a.u[1]*b.u[0];
+  if(Math.abs(det)<.09)return undefined;
+  const t=((b.p[0]-a.p[0])*b.u[1]-(b.p[1]-a.p[1])*b.u[0])/det;
+  return [a.p[0]+a.u[0]*t,a.p[1]+a.u[1]*t];
+}
+/** A line along one axis, at an exact 0-1000 coordinate, so that corners drawn onto it share it to the last digit. */
+const axisLine=(coordinate:0|1,value:number,sx:number,sy:number,from?:number,to?:number):Line=>({
+  p:coordinate===0?[value*sx,0]:[0,value*sy],
+  u:coordinate===0?[0,1]:[1,0],
+  ...(from===undefined?{}:{from:from*(coordinate===0?sy:sx)}),...(to===undefined?{}:{to:to*(coordinate===0?sy:sx)}),
+  axis:{coordinate,value},
+});
+/** A line through two points of the plan, in pixels, kept between them. */
+const edgeLine=(a:Point,b:Point):Line=>({p:a,u:direction(a,b),from:0,to:Math.hypot(b[0]-a[0],b[1]-a[1])});
+/** A line through a point of the plan, in pixels, running in `angle` for ever. */
+const angleLine=(p:Point,angle:number):Line=>({p,u:[Math.cos(angle),Math.sin(angle)]});
+/** Back in 0-1000 coordinates, keeping the exact value of every axis guide used. */
+function exactly(p:Point,guides:Guides,lines:Line[]):number[]{
+  const point=fromPixel(p,guides.sx,guides.sy);
+  for(const line of lines)if(line.axis)point[line.axis.coordinate]=line.axis.value;
+  return point;
+}
+/**
+ * A corner drawn or moved: it lands on the crossing of the two nearest guides, or slides onto the nearest one, so that sides
+ * stay square, follow the walls drawn on the plan and line up with the other rooms — walls at an angle included.
+ */
+function snapPoint(point:number[],guides:Guides):number[]{
+  const p=toPixel(point,guides.sx,guides.sy),tolerance=guides.tolerance;
+  if(tolerance<=0)return [point[0]!,point[1]!];
+  const close=guides.lines.map(line=>({line,gap:lineGap(line,p,tolerance)})).filter(c=>c.gap<=tolerance).sort((a,b)=>a.gap-b.gap);
+  const best=close[0];
+  if(!best)return [point[0]!,point[1]!];
+  for(const {line} of close.slice(1)){
+    const crossing=meet(best.line,line);
+    if(crossing&&Math.hypot(crossing[0]-p[0],crossing[1]-p[1])<=tolerance*2)return exactly(crossing,guides,[best.line,line]);
+  }
+  return exactly(project(best.line,p),guides,[best.line]);
 }
 /** Where a room's name fits: the middle of the widest stretch inside it across its mid-height (the centre of an L-shaped room is outside it). */
 function labelSpot(points:number[][]){
@@ -155,7 +299,7 @@ const pairs=(points:number[][])=>points.map(p=>`${p[0]},${p[1]}`).join(' ');
  */
 export class MPPlanZones extends LitElement {
   static properties={src:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},
-    selected:{state:true},vertex:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
+    selected:{state:true},vertex:{state:true},side:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
     button{font:inherit;color:inherit;cursor:pointer;min-height:36px;padding:0 12px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;display:inline-flex;align-items:center;gap:6px}
@@ -185,6 +329,17 @@ export class MPPlanZones extends LitElement {
     .mid{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;background:#2a648e;border:2px solid #fff;cursor:copy}
     .mid::after{content:'+';position:absolute;inset:-2px;display:grid;place-items:center;color:#fff;font:700 11px/1 system-ui,sans-serif}
     @media (pointer:coarse){.mid{width:17px;height:17px;margin:-8.5px 0 0 -8.5px}}
+    /* Sides of the selected outline: wide enough for a finger to catch, highlighted once touched. */
+    .side{fill:none;stroke:#ffffff01;stroke-width:16;vector-effect:non-scaling-stroke;cursor:move;touch-action:none}
+    .side.active{stroke:#8acbff66}
+    /* The middle of the side last touched bends it; the mark above the room turns it. Neither is a resize handle. */
+    .bend,.rotate{position:absolute;pointer-events:auto;touch-action:none;box-shadow:0 2px 6px #0008;cursor:grab}
+    .bend::before,.rotate::before{content:'';position:absolute;inset:-9px}
+    .bend{width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;background:#8acbff;border:2px solid #fff}
+    .bend::after{content:'';position:absolute;inset:3px;border-radius:50%;background:#0b253d}
+    .rotate{width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#0b253d;border:2px solid #8acbff}
+    .rotate::after{content:'⟳';position:absolute;inset:-1px;display:grid;place-items:center;color:#8acbff;font:700 12px/1 system-ui,sans-serif}
+    @media (pointer:coarse){.bend{width:19px;height:19px;margin:-9.5px 0 0 -9.5px}.rotate{width:22px;height:22px;margin:-11px 0 0 -11px}.bend::before,.rotate::before{inset:-12px}}
     .point{width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#69b7ff;border:2px solid #fff;pointer-events:none}.point.first{width:18px;height:18px;margin:-9px 0 0 -9px;background:#fff;border:3px solid #69b7ff}
     ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
     li{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 8px;border-radius:10px;background:#ffffff08;border:1px solid #d6ecff14}li.selected{border-color:#8acbff;background:#69b7ff1a}
@@ -193,8 +348,8 @@ export class MPPlanZones extends LitElement {
     li button{min-height:30px;width:30px;padding:0;justify-content:center;border-color:transparent;background:transparent}li button:hover{background:#ff8a6a22}
   `;
   src='';source?:Source;plan?:SpatialPlan;detection:DetectionRoom[]=[];walls?:Walls;busy=false;canUndo=false;
-  /** Selected room and, on its outline, the corner last touched (-1: none). */
-  private selected=-1;private vertex=-1;private naming=-1;
+  /** Selected room and, on its outline, the corner and the side last touched (-1: none). */
+  private selected=-1;private vertex=-1;private side=-1;private naming=-1;
   /** Drawing a new room: a rectangle dragged diagonally, or an outline corner by corner ([x, y] points; `cursor`: the next one). */
   private mode:''|'rect'|'trace'='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
   private drag?:Drag;private notice='';private frame={width:0,height:0};
@@ -217,7 +372,9 @@ export class MPPlanZones extends LitElement {
   protected willUpdate(changed:PropertyValues){
     if(!changed.has('detection'))return;
     if(this.selected>=this.detection.length)this.selected=-1;
-    if(this.vertex>=(this.detection[this.selected]?.polygon?.length??0))this.vertex=-1;
+    const count=this.detection[this.selected]?.polygon?.length??0;
+    if(this.vertex>=count)this.vertex=-1;
+    if(this.side>=count)this.side=-1;
   }
   protected updated(changed:PropertyValues){
     if(!changed.has('detection')||this.naming<0)return;
@@ -232,100 +389,290 @@ export class MPPlanZones extends LitElement {
   /** Attraction of the walls: about 10 screen pixels, in 0-1000 units along each axis. */
   private get screenTolerance():[number,number]{return [10/Math.max(1,this.frame.width)*1000,10/Math.max(1,this.frame.height)*1000];}
   private get tolerance():[number,number]{return this.magnet?this.screenTolerance:[0,0];}
-  /** Guides for a corner: the walls, the sides and corners of the rooms other than `except`, and the `own` points of its outline. */
-  private guides(except:number,own:number[][]=[]):Guides{
-    const xs:number[]=[],ys:number[]=[];
+  /** 0-1000 coordinates are stretched with the image; the plan's own pixels keep right angles square and curves circular. */
+  private get unit(){const source=this.source;return {sx:(source?.width??1000)/1000,sy:(source?.height??1000)/1000};}
+  /** The same attraction, in the plan's pixels; 0 with the magnet off. */
+  private get pixelTolerance(){return this.magnet?10/Math.max(1,this.frame.width)*(this.source?.width??1000):0;}
+  private pixels(points:number[][]):Point[]{const {sx,sy}=this.unit;return points.map(p=>toPixel(p,sx,sy));}
+  /**
+   * Directions the plan is drawn in, each with its square angle: those found in the image's strokes and those of the rooms'
+   * slanted sides. The axes are left out, the corners and sides of the rooms already standing for them.
+   */
+  private get planAngles(){
+    const found:number[]=[];
+    const add=(angle:number)=>{
+      const turned=((angle%(Math.PI/2))+Math.PI/2)%(Math.PI/2);
+      if(turned>.03&&turned<Math.PI/2-.03&&!found.some(a=>Math.abs(a-turned)<.02)&&found.length<6)found.push(turned);
+    };
+    for(const angle of this.walls?.angles??[])add(angle);
+    for(const room of this.detection)if(room.polygon){
+      const shape=this.pixels(toXY(room.polygon));
+      shape.forEach((a,i)=>{const b=shape[(i+1)%shape.length]!;if(Math.hypot(b[0]-a[0],b[1]-a[1])>8)add(Math.atan2(b[1]-a[1],b[0]-a[0]));});
+    }
+    return found.flatMap(angle=>[angle,angle+Math.PI/2]);
+  }
+  /**
+   * Guides for a corner: the walls of the plan, the sides and corners of the rooms other than `except`, the `own` corners of
+   * the outline being edited, and lines through `through` along the plan's own directions, which keep a room drawn at an angle square.
+   */
+  private guides(except:number,own:number[][]=[],through:number[][]=[]):Guides{
+    const {sx,sy}=this.unit,walls=this.walls??{x:[],y:[]},lines:Line[]=[];
+    for(const line of walls.x)lines.push(axisLine(0,line.at,sx,sy,line.from,line.to));
+    for(const line of walls.y)lines.push(axisLine(1,line.at,sx,sy,line.from,line.to));
+    for(const edge of walls.slanted??[])lines.push(edgeLine(toPixel(edge.a,sx,sy),toPixel(edge.b,sx,sy)));
+    const corner=(x:number,y:number)=>{lines.push(axisLine(0,x,sx,sy),axisLine(1,y,sx,sy));};
     this.detection.forEach((room,i)=>{
       if(i===except)return;
-      xs.push(room.box_2d[1]!,room.box_2d[3]!);ys.push(room.box_2d[0]!,room.box_2d[2]!);
-      for(const [y,x] of room.polygon??[]){xs.push(x!);ys.push(y!);}
+      corner(room.box_2d[1]!,room.box_2d[0]!);corner(room.box_2d[3]!,room.box_2d[2]!);
+      for(const [y,x] of room.polygon??[])corner(x!,y!);
     });
-    for(const [x,y] of own){xs.push(x!);ys.push(y!);}
-    return {walls:this.walls??{x:[],y:[]},xs,ys};
+    for(const [x,y] of own)corner(x!,y!);
+    if(through.length)for(const angle of this.planAngles)for(const [x,y] of through)lines.push(angleLine(toPixel([x!,y!],sx,sy),angle));
+    return {lines,sx,sy,tolerance:this.pixelTolerance};
   }
-  /** A room's outline in the plan, back on the image ([x, y] in 0-1000): what is shown, carved by smaller rooms. */
-  private outline(room:DetectionRoom){
+  /** A room's shape in the plan, back on the image ([x, y] in 0-1000, with its bends): what is shown, carved by smaller rooms. */
+  private planShape(room:DetectionRoom){
     const source=this.source,plan=room.id?this.plan?.floors[0]?.rooms.find(r=>r.id===room.id):undefined;
     if(!source||!plan)return undefined;
     const [kx,ky]=source.scale as [number,number],[ox,oy]=source.origin as [number,number];
-    return plan.polygon.map(([x,y])=>[(x/kx+ox)/source.width*1000,(y/ky+oy)/source.height*1000]);
+    const points=plan.polygon.map(([x,y])=>[(x/kx+ox)/source.width*1000,(y/ky+oy)/source.height*1000]);
+    return {points,arcs:tidyArcs(plan.arcs)};
+  }
+  /** A shape as drawn, curved sides followed, in 0-1000 coordinates. */
+  private drawnPoints(points:number[][],arcs?:number[]){
+    if(!arcs?.some(bent))return points;
+    const {sx,sy}=this.unit;
+    return outline(this.pixels(points),arcs).map(p=>fromPixel(p,sx,sy));
+  }
+  /** A room's outline in the plan, back on the image and as drawn. */
+  private planOutline(room:DetectionRoom){
+    const shape=this.planShape(room);
+    return shape&&this.drawnPoints(shape.points,shape.arcs);
   }
   private emit(detection:DetectionRoom[]){this.notice='';this.dispatchEvent(new CustomEvent('zones-change',{detail:detection}));}
-  private drop(index:number){if(index<0||this.busy)return;this.selected=-1;this.vertex=-1;this.emit(this.detection.filter((_,i)=>i!==index));}
+  private drop(index:number){if(index<0||this.busy)return;this.selected=-1;this.vertex=-1;this.side=-1;this.emit(this.detection.filter((_,i)=>i!==index));}
   private rename(index:number,name:string){const clean=name.trim().slice(0,80);if(!clean||clean===this.detection[index]?.name)return;this.emit(this.detection.map((room,i)=>i===index?{...room,name:clean}:room));}
-  /** New outline of a room; refused when it crosses itself or is too small (the room stays as it was). */
-  private reshape(index:number,shape:number[][]){
-    const box=bounds(shape);
-    if(shape.length<3||box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!validPolygon(shape as Point[])){this.notice='Contour impossible : il se croise ou il est trop petit. La pièce reste comme avant.';return;}
-    this.emit(this.detection.map((room,i)=>i===index?{...room,polygon:toYX(shape),box_2d:box}:room));
+  /** Valid in the plan's own pixels, where a curved side is a circle: that is where its shape is checked. */
+  private validShape(shape:number[][],arcs?:number[]){return validRoom({polygon:this.pixels(shape),arcs} as SpatialRoom);}
+  /** New shape of a room, with the bends of its sides; refused when it crosses itself or is too small (the room stays as it was). */
+  private reshape(index:number,shape:number[][],arcs?:number[]){
+    const bends=tidyArcs(arcs),box=bounds(this.drawnPoints(shape,bends));
+    if(shape.length<3||box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(shape,bends)){this.notice='Contour impossible : il se croise ou il est trop petit. La pièce reste comme avant.';return;}
+    this.emit(this.detection.map((room,i)=>{
+      if(i!==index)return room;
+      const next={...room,polygon:toYX(shape),box_2d:box,...(bends?{arcs:bends}:{})};
+      if(!bends)delete next.arcs;
+      return next;
+    }));
   }
   /** « Forme libre » : the outline as shown (a room carved by a smaller one keeps its notch), with a handle on each corner. */
   private freeShape(){
     const room=this.detection[this.selected];
     if(!room||this.busy)return;
-    const outline=this.outline(room);
-    this.reshape(this.selected,outline&&outline.length>=3?outline:corners(room.box_2d));
+    const shape=this.planShape(room);
+    this.reshape(this.selected,shape&&shape.points.length>=3?shape.points:corners(room.box_2d),shape?.arcs);
   }
-  /** Back to the rectangle around the outline. */
+  /** Back to the rectangle around the outline, curves dropped. */
   private rectangle(){
     if(!this.detection[this.selected]?.polygon||this.busy)return;
-    this.vertex=-1;
-    this.emit(this.detection.map((room,i)=>{if(i!==this.selected)return room;const copy={...room};delete copy.polygon;return copy;}));
+    this.vertex=-1;this.side=-1;
+    this.emit(this.detection.map((room,i)=>{if(i!==this.selected)return room;const copy={...room};delete copy.polygon;delete copy.arcs;return copy;}));
   }
   private removeVertex(){
     const room=this.detection[this.selected];
     if(!room?.polygon||this.vertex<0||this.busy)return;
     if(room.polygon.length<=3){this.notice='Un contour garde au moins trois points.';return;}
     const shape=toXY(room.polygon).filter((_,k)=>k!==this.vertex);
-    this.vertex=-1;this.reshape(this.selected,shape);
+    const arcs=room.arcs?.filter((_,k)=>k!==this.vertex);
+    this.vertex=-1;this.side=-1;this.reshape(this.selected,shape,arcs);
   }
-  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.notice='';}
+  /**
+   * The bends that leave side `index` tangent to the straight side next to it: exactly a rounded corner between two walls,
+   * or a rounded end across a corridor.
+   */
+  private tangentBends(shape:number[][],index:number,arcs?:number[]){
+    const count=shape.length,points=this.pixels(shape),at=(i:number)=>points[((i%count)+count)%count]!;
+    const wrap=(angle:number)=>((angle+Math.PI)%(2*Math.PI)+2*Math.PI)%(2*Math.PI)-Math.PI;
+    const a=at(index),b=at(index+1),chord=Math.atan2(b[1]-a[1],b[0]-a[0]),bends:number[]=[];
+    if(!bent(arcs?.[(index+count-1)%count]))bends.push(Math.tan(wrap(Math.atan2(a[1]-at(index-1)[1],a[0]-at(index-1)[0])-chord)/2));
+    if(!bent(arcs?.[(index+1)%count]))bends.push(Math.tan(wrap(chord-Math.atan2(at(index+2)[1]-b[1],at(index+2)[0]-b[0]))/2));
+    return bends.filter(bulge=>bent(bulge)&&Math.abs(bulge)<=1);
+  }
+  /** Which way is out of the room: a bend of that sign pushes a wall outwards. */
+  private outward(shape:number[][]){
+    const signed=shape.reduce((sum,p,i)=>{const q=shape[(i+1)%shape.length]!;return sum+p[0]!*q[1]!-q[0]!*p[1]!;},0);
+    return signed>0?-1:1;
+  }
+  /** « Courber le côté » : the side last touched bows out as a quarter circle; « Redresser le côté » puts it back straight. */
+  private curveSide(){
+    const room=this.detection[this.selected];
+    if(!room?.polygon||this.side<0||this.busy)return;
+    const shape=toXY(room.polygon),arcs=shape.map((_,i)=>bendOf(room.arcs,i));
+    arcs[this.side]=bent(arcs[this.side])?0:.4142*this.outward(shape);
+    this.reshape(this.selected,shape,arcs);
+  }
+  /** A side moved sideways without turning: each of its corners follows the side next to it, which keeps its own direction. */
+  private slideSide(drag:Drag,p:number[]){
+    const {sx,sy}=this.unit,from=drag.from!,index=drag.side!,count=from.length;
+    const points=this.pixels(from),a=points[index]!,b=points[(index+1)%count]!;
+    const u=direction(a,b),n:Point=[-u[1],u[0]];
+    const pointer=toPixel(p,sx,sy),start=toPixel(drag.start,sx,sy);
+    const offset=this.snapOffset(a,b,n,(pointer[0]-start[0])*n[0]+(pointer[1]-start[1])*n[1],drag.index);
+    const shifted=(q:Point):Point=>[q[0]+n[0]*offset,q[1]+n[1]*offset];
+    const line:Line={p:shifted(a),u},moved=[...points];
+    for(const [corner,neighbour,side] of [[index,(index+count-1)%count,(index+count-1)%count],[(index+1)%count,(index+2)%count,(index+1)%count]] as const){
+      const own=points[corner]!,other=points[neighbour]!;
+      const crossing=bent(drag.arcs?.[side])?undefined:meet(line,{p:other,u:direction(other,own)});
+      moved[corner]=crossing??shifted(own);
+    }
+    return moved.map(q=>fromPixel(q,sx,sy));
+  }
+  /** The moved side drawn onto a wall of the plan, or onto a side of another room running the same way. */
+  private snapOffset(a:Point,b:Point,n:Point,offset:number,except:number){
+    const tolerance=this.pixelTolerance;
+    if(tolerance<=0)return offset;
+    const u=direction(a,b),middle:Point=[(a[0]+b[0])/2+n[0]*offset,(a[1]+b[1])/2+n[1]*offset];
+    let best=offset,gap=tolerance;
+    for(const line of this.guides(except).lines){
+      if(Math.abs(line.u[0]*u[1]-line.u[1]*u[0])>.03)continue;  // not running the same way: another wall
+      const along=(middle[0]-line.p[0])*line.u[0]+(middle[1]-line.p[1])*line.u[1];
+      if((line.from!==undefined&&along<line.from-tolerance)||(line.to!==undefined&&along>line.to+tolerance))continue;
+      const across=(line.p[0]-middle[0])*n[0]+(line.p[1]-middle[1])*n[1];
+      if(Math.abs(across)<=gap){gap=Math.abs(across);best=offset+across;}
+    }
+    return best;
+  }
+  /** The bend of the side being pulled; within a few pixels it settles on straight, a quarter or a half circle, or a tangent join. */
+  private bendSide(drag:Drag,p:number[]){
+    const {sx,sy}=this.unit,shape=drag.from!,index=drag.side!,count=shape.length;
+    const points=this.pixels(shape),a=points[index]!,b=points[(index+1)%count]!;
+    const u=direction(a,b),n:Point=[-u[1],u[0]],half=Math.hypot(b[0]-a[0],b[1]-a[1])/2;
+    const pointer=toPixel(p,sx,sy);
+    const sagitta=(pointer[0]-(a[0]+b[0])/2)*n[0]+(pointer[1]-(a[1]+b[1])/2)*n[1];
+    const pulled=half>1e-6?Math.max(-1,Math.min(1,sagitta/half)):0;
+    const arcs=[...drag.arcs??shape.map(()=>0)];
+    let gap=this.pixelTolerance,settled:number|undefined;
+    for(const candidate of [0,.4142,-.4142,1,-1,...this.tangentBends(shape,index,arcs)]){
+      const distance=Math.abs((candidate-pulled)*half);
+      if(distance<=gap){gap=distance;settled=candidate;}
+    }
+    arcs[index]=Math.round((settled??pulled)*1e4)/1e4;
+    return arcs;
+  }
+  /** The room turned around its middle; nothing when it would leave the plan. */
+  private turnShape(drag:Drag,p:number[]){
+    const {sx,sy}=this.unit,points=this.pixels(drag.from!);
+    const xs=points.map(q=>q[0]),ys=points.map(q=>q[1]);
+    const centre:Point=[(Math.min(...xs)+Math.max(...xs))/2,(Math.min(...ys)+Math.max(...ys))/2];
+    const from=toPixel(drag.start,sx,sy),to=toPixel(p,sx,sy);
+    const pulled=Math.atan2(to[1]-centre[1],to[0]-centre[0])-Math.atan2(from[1]-centre[1],from[0]-centre[0]);
+    const angle=this.snapRotation(points,pulled),cos=Math.cos(angle),sin=Math.sin(angle);
+    const turned=points.map(q=>{
+      const dx=q[0]-centre[0],dy=q[1]-centre[1];
+      return [centre[0]+dx*cos-dy*sin,centre[1]+dx*sin+dy*cos] as Point;
+    });
+    // A room along the edge of the plan slides back in as it turns; one too big to fit at that angle keeps its own.
+    const width=this.source?.width??1000,height=this.source?.height??1000;
+    const left=Math.min(...turned.map(q=>q[0])),right=Math.max(...turned.map(q=>q[0]));
+    const top=Math.min(...turned.map(q=>q[1])),bottom=Math.max(...turned.map(q=>q[1]));
+    const dx=left<0?-left:right>width?width-right:0,dy=top<0?-top:bottom>height?height-bottom:0;
+    const moved=turned.map(q=>[q[0]+dx,q[1]+dy] as Point);
+    if(moved.some(q=>q[0]<-.5||q[1]<-.5||q[0]>width+.5||q[1]>height+.5))return undefined;
+    return {shape:moved.map(q=>fromPixel(q,sx,sy)),angle};
+  }
+  /** Turning settles when the room's longest wall lines up with an axis or with a direction the plan is drawn in, within 2°. */
+  private snapRotation(points:Point[],pulled:number){
+    const tolerance=this.magnet?Math.PI/90:0;
+    if(!tolerance)return pulled;
+    let reference=0,longest=0;
+    points.forEach((a,i)=>{
+      const b=points[(i+1)%points.length]!,length=Math.hypot(b[0]-a[0],b[1]-a[1]);
+      if(length>longest){longest=length;reference=Math.atan2(b[1]-a[1],b[0]-a[0]);}
+    });
+    const quarter=(angle:number)=>((angle%(Math.PI/2))+Math.PI/2)%(Math.PI/2),current=quarter(reference+pulled);
+    let best=pulled,gap=tolerance;
+    for(const target of [0,Math.PI/2,...this.planAngles.map(quarter)]){
+      const difference=target-current;
+      if(Math.abs(difference)<=gap){gap=Math.abs(difference);best=pulled+difference;}
+    }
+    return best;
+  }
+  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.notice='';}
   /** Next corner of the outline being drawn (true when placed); back on the first corner, the outline is closed. */
   private tracePoint(p:number[]){
-    const [tx,ty]=this.tolerance,points=this.trace?.points??[],first=points[0],last=points.at(-1);
+    const points=this.trace?.points??[],first=points[0],last=points.at(-1);
     const [sx,sy]=this.screenTolerance;
     const near=(a:number[],b:number[],radius:number)=>Math.hypot((a[0]!-b[0]!)/sx,(a[1]!-b[1]!)/sy)<radius;
     if(first&&points.length>=3&&near(p,first,1.2)){this.finishTrace();return false;}
     // On the last corner again: a double click or tap closes the outline.
     if(last&&near(p,last,.8)){if(points.length>=3&&performance.now()-this.placedAt<450)this.finishTrace();return false;}
     if(points.length>=MAX_POINTS)return false;
-    this.trace={points:[...points,snapPoint(p,this.guides(-1,points),tx,ty)]};this.placedAt=performance.now();
+    this.trace={points:[...points,snapPoint(p,this.traceGuides(points))]};this.placedAt=performance.now();
     return true;
+  }
+  /**
+   * Guides while tracing: the walls and the other rooms, plus, from the corners already placed, the directions the plan is
+   * drawn in — so the sides of a room drawn at an angle stay parallel and square.
+   */
+  private traceGuides(points:number[][]){
+    const placed=points.length?[points.at(-1)!,points[0]!]:[];
+    return this.guides(-1,points,placed);
   }
   private finishTrace(){
     const points=this.trace?.points??[];
     if(points.length<3)return;
     const box=bounds(points);
-    if(box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!validPolygon(points as Point[])){this.notice='Contour impossible : il se croise ou il est trop petit. Retirez le dernier point (Retour arrière) ou recommencez.';return;}
+    if(box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(points)){this.notice='Contour impossible : il se croise ou il est trop petit. Retirez le dernier point (Retour arrière) ou recommencez.';return;}
     this.trace=undefined;this.mode='';
     this.add({box_2d:box,polygon:toYX(points)});
   }
   /** A room drawn on the plan, numbered after the others; its name is then selected, ready to be typed. */
   private add(shape:{box_2d:number[];polygon?:number[][]}){
-    this.selected=this.naming=this.detection.length;this.vertex=-1;
+    this.selected=this.naming=this.detection.length;this.vertex=-1;this.side=-1;
     const hue=Math.max(this.detection.length-1,...this.detection.map(r=>r.hue??0))+1;
     this.emit([...this.detection,{name:`Pièce ${this.detection.length+1}`,...shape,hue}]);
   }
-  /** What the pointer took: a corner or a side's + of the selected outline, a handle of the selected rectangle, or a room. */
+  /**
+   * What the pointer took: a corner, a side's + or a side of the selected outline, its bend or rotation handle, a handle of
+   * the selected rectangle, or a room.
+   */
   private grab(target:Element,p:[number,number]){
-    const element=target.closest<HTMLElement>('[data-vertex],[data-mid],[data-handle],[data-zone]'),room=this.detection[this.selected];
+    const element=target.closest<HTMLElement>('[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate],[data-handle],[data-zone]');
+    const room=this.detection[this.selected];
     if(!element)return false;
-    const {vertex,mid,handle,zone}=element.dataset;
+    const {vertex,mid,side,bend,rotate,handle,zone}=element.dataset;
+    const start=(handle:Handle,shape:number[][]|undefined,arcs:number[]|undefined,extra:Partial<Drag>={})=>{
+      this.drag={index:this.selected,handle,start:p,origin:[...room!.box_2d],box:[...room!.box_2d],moved:false,...(shape?{shape,from:shape}:{}),...(arcs?{arcs}:{}),...extra};
+      return true;
+    };
     if(room?.polygon&&(vertex!==undefined||mid!==undefined)){
       // A corner tapped twice goes away.
       if(vertex!==undefined&&this.lastTap?.vertex===Number(vertex)&&performance.now()-this.lastTap.time<450){this.lastTap=undefined;this.vertex=Number(vertex);this.removeVertex();return true;}
-      const shape=toXY(room.polygon);
+      let shape=toXY(room.polygon),arcs=room.arcs?.map(b=>b);
       let index=Number(vertex);
-      if(mid!==undefined){index=Number(mid)+1;const a=shape[index-1]!,b=shape[index%shape.length]!;shape.splice(index,0,[(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2]);}
-      this.vertex=index;
-      this.drag={index:this.selected,handle:'vertex',start:p,origin:[...room.box_2d],box:[...room.box_2d],moved:false,shape,vertex:index,inserted:mid!==undefined,
-        guides:this.guides(this.selected,shape.filter((_,k)=>k!==index))};
-      return true;
+      if(mid!==undefined){
+        // A corner added in the middle of the side, on its curve when it is curved; both halves keep bending the same way.
+        index=Number(mid)+1;
+        const split=splitSide(this.pixels(shape),arcs,Number(mid));
+        shape=split.polygon.map(q=>fromPixel(q,this.unit.sx,this.unit.sy));arcs=split.arcs;
+      }
+      this.vertex=index;this.side=-1;
+      return start('vertex',shape,arcs,{vertex:index,inserted:mid!==undefined,guides:this.guides(this.selected,shape.filter((_,k)=>k!==index),[shape[(index+shape.length-1)%shape.length]!,shape[(index+1)%shape.length]!])});
     }
-    if(handle&&room){this.drag={index:this.selected,handle:handle as Handle,start:p,origin:[...room.box_2d],box:[...room.box_2d],moved:false};return true;}
+    if(room?.polygon&&(side!==undefined||bend!==undefined)){
+      const index=Number(side??bend),shape=toXY(room.polygon),arcs=shape.map((_,i)=>bendOf(room.arcs,i));
+      if(bend===undefined){this.vertex=-1;this.side=index;}
+      return start(bend===undefined?'side':'bend',shape,arcs,{side:index});
+    }
+    if(room&&rotate!==undefined){
+      const shape=room.polygon?toXY(room.polygon):corners(room.box_2d);
+      this.vertex=-1;this.side=-1;
+      return start('rotate',shape,room.polygon?room.polygon.map((_,i)=>bendOf(room.arcs,i)):undefined,{angle:0});
+    }
+    if(handle&&room)return start(handle as Handle,undefined,undefined);
     if(zone===undefined)return false;
     const index=Number(zone),box=[...this.detection[index]!.box_2d];
-    this.selected=index;this.vertex=-1;
+    this.selected=index;this.vertex=-1;this.side=-1;
     this.drag={index,handle:'move',start:p,origin:box,box,moved:false};
     return true;
   }
@@ -351,8 +698,8 @@ export class MPPlanZones extends LitElement {
       if(!points?.length)return;
       const p=this.point(e),placed=points.slice(0,-1);
       // Held down, the corner just placed follows the finger; otherwise the next side follows the pointer.
-      if(this.tracing)this.trace={points:[...placed,snapPoint(p,this.guides(-1,placed),tx,ty)]};
-      else this.trace={points,cursor:snapPoint(p,this.guides(-1,points),tx,ty)};
+      if(this.tracing)this.trace={points:[...placed,snapPoint(p,this.traceGuides(placed))]};
+      else this.trace={points,cursor:snapPoint(p,this.traceGuides(points))};
       return;
     }
     if(!this.draft&&!this.drag)return;
@@ -367,8 +714,15 @@ export class MPPlanZones extends LitElement {
     if(!drag.moved&&!drag.inserted&&Math.hypot(dx/this.screenTolerance[0],dy/this.screenTolerance[1])<.4)return;  // a click is not a move
     if(drag.handle==='vertex'){
       const shape=drag.shape!.map(q=>[...q]);
-      shape[drag.vertex!]=snapPoint(p,drag.guides!,tx,ty);
+      shape[drag.vertex!]=snapPoint(p,drag.guides!);
       this.drag={...drag,shape,moved:true};
+      return;
+    }
+    if(drag.handle==='side'){this.drag={...drag,shape:this.slideSide(drag,p),moved:true};return;}
+    if(drag.handle==='bend'){this.drag={...drag,arcs:this.bendSide(drag,p),moved:true};return;}
+    if(drag.handle==='rotate'){
+      const turned=this.turnShape(drag,p);
+      if(turned)this.drag={...drag,shape:turned.shape,angle:turned.angle,moved:true};
       return;
     }
     let [y0,x0,y1,x1]=drag.origin as [number,number,number,number];
@@ -401,13 +755,14 @@ export class MPPlanZones extends LitElement {
     }
     if(drag.handle==='vertex'){
       const [tx,ty]=this.screenTolerance,v=drag.vertex!,count=drag.shape!.length;
-      let shape=drag.shape!;
+      let shape=drag.shape!,arcs=drag.arcs;
       // Dropped onto a neighbouring corner: this corner goes away.
       const onto=(k:number)=>Math.hypot((shape[v]![0]!-shape[k]![0]!)/tx,(shape[v]![1]!-shape[k]![1]!)/ty)<.8;
-      if(count>3&&(onto((v+1)%count)||onto((v+count-1)%count))){shape=shape.filter((_,k)=>k!==v);this.vertex=-1;}
-      this.reshape(drag.index,shape);
+      if(count>3&&(onto((v+1)%count)||onto((v+count-1)%count))){shape=shape.filter((_,k)=>k!==v);arcs=arcs?.filter((_,k)=>k!==v);this.vertex=-1;}
+      this.reshape(drag.index,shape,arcs);
       return;
     }
+    if(drag.handle==='side'||drag.handle==='bend'||drag.handle==='rotate'){this.reshape(drag.index,drag.shape!,drag.arcs);return;}
     const [dy,dx]=[drag.box[0]!-drag.origin[0]!,drag.box[1]!-drag.origin[1]!];
     this.emit(this.detection.map((room,i)=>{
       if(i!==drag.index)return room;
@@ -423,7 +778,7 @@ export class MPPlanZones extends LitElement {
       if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();const points=this.trace.points.slice(0,-1);this.trace=points.length?{points}:undefined;return;}
     }
     if((e.key==='Delete'||e.key==='Backspace')&&this.selected>=0){e.preventDefault();if(this.vertex>=0)this.removeVertex();else this.drop(this.selected);}
-    else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;}
+    else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;}
   };
   /** On a phone, a finger on a room, a handle or in drawing mode edits the plan instead of scrolling the window. */
   private touch={handleEvent:(e:TouchEvent)=>{
@@ -432,7 +787,7 @@ export class MPPlanZones extends LitElement {
       if(!this.pinch){this.pinch={distance:Math.max(1,distance),zoom:this.zoomLevel};this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}
       else this.zoomTo(this.pinch.zoom*distance/this.pinch.distance,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
     }else if(this.pinch){if(!e.touches.length)this.pinch=undefined;else e.preventDefault();}
-    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid]'))e.preventDefault();
+    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate]'))e.preventDefault();
   },passive:false};
   private label(index:number,room:DetectionRoom,points:number[][]){
     const spot=labelSpot(points),name=room.name;
@@ -445,9 +800,12 @@ export class MPPlanZones extends LitElement {
     const room=this.detection[this.selected],count=this.trace?.points.length??0;
     if(this.mode==='rect')return 'Glissez en diagonale sur le plan pour tracer un rectangle.';
     if(this.mode==='trace')return count<3?'Touchez les angles de la pièce l’un après l’autre ; les murs et les autres pièces attirent les points.'
-      :'Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Retour arrière retire le dernier point.';
-    if(room?.polygon)return 'Glissez un point pour le déplacer, un + pour en ajouter un ; touchez deux fois un point, ou déposez-le sur son voisin, pour le retirer.';
-    if(room)return 'Glissez la pièce ou ses poignées. « Forme libre » pour suivre un contour qui n’est pas rectangulaire.';
+      :'Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Les côtés restent parallèles et d’équerre au premier, même en biais.';
+    const turning=this.drag?.handle==='rotate'&&this.drag.angle!==undefined;
+    if(turning)return `Rotation : ${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(this.drag!.angle!*180/Math.PI)}° — relâchez pour valider.`;
+    if(room?.polygon&&this.side>=0)return `Glissez le côté pour le déplacer sans le tourner, son rond du milieu pour le courber${bent(room.arcs?.[this.side])?' ou le redresser':''} ; ⟳ tourne la pièce.`;
+    if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point, un côté touché se courbe.';
+    if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Forme libre » pour un contour qui n’est pas rectangulaire, ou pour courber un mur.';
     return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une.';
   }
   render(){
@@ -456,9 +814,22 @@ export class MPPlanZones extends LitElement {
     const rooms=new Map((this.plan?.floors[0]?.rooms??[]).map(r=>[r.id,r])),[kx,ky]=source.scale as [number,number],[ox,oy]=source.origin as [number,number];
     const normalised=([x,y]:number[])=>`${((x!/kx+ox)/source.width*1000).toFixed(1)},${((y!/ky+oy)/source.height*1000).toFixed(1)}`;
     const room=this.detection[this.selected],dragging=this.drag?.index===this.selected?this.drag:undefined;
-    // The selected room as it is being edited: its outline, or its rectangle.
-    const shape=room?.polygon?dragging?.shape??(dragging?shifted(toXY(room.polygon),dragging):toXY(room.polygon)):undefined;
-    const box=room&&!room.polygon?dragging?.box??room.box_2d:undefined;
+    // The selected room as it is being edited: its outline (with its bends), or its rectangle. Turning a rectangle gives it one.
+    const shape=dragging?.handle==='rotate'?dragging.shape:room?.polygon?dragging?.shape??(dragging?shifted(toXY(room.polygon),dragging):toXY(room.polygon)):undefined;
+    const bends=shape?dragging?.arcs??(room?.polygon?room.arcs:undefined):undefined;
+    const drawn=shape?this.drawnPoints(shape,bends):undefined;
+    const box=room&&!room.polygon&&!shape?dragging?.box??room.box_2d:undefined;
+    // The mark that turns the room stands beyond one of its corners, on the diagonal: well clear of its own handles, even
+    // under a finger, and on the corner that keeps it on the plan.
+    const frame=shape??(box?corners(box):undefined);
+    const turner=frame?(()=>{
+      const xs=frame.map(p=>p[0]!),ys=frame.map(p=>p[1]!);
+      const [x0,x1,y0,y1]=[Math.min(...xs),Math.max(...xs),Math.min(...ys),Math.max(...ys)];
+      const dx=34/Math.max(1,this.frame.width)*1000,dy=34/Math.max(1,this.frame.height)*1000;
+      const spots=[[x1+dx,y0-dy],[x0-dx,y0-dy],[x1+dx,y1+dy],[x0-dx,y1+dy]];
+      const [x,y]=spots.find(([x,y])=>x!>=2&&x!<=998&&y!>=2&&y!<=998)??spots[0]!;
+      return {x:x!,y:y!};
+    })():undefined;
     const handles:[Handle,number,number][]=box?[['nw',box[1]!,box[0]!],['n',(box[1]!+box[3]!)/2,box[0]!],['ne',box[3]!,box[0]!],['e',box[3]!,(box[0]!+box[2]!)/2],
       ['se',box[3]!,box[2]!],['s',(box[1]!+box[3]!)/2,box[2]!],['sw',box[1]!,box[2]!],['w',box[1]!,(box[0]!+box[2]!)/2]]:[];
     const at=(x:number,y:number)=>`left:${x/10}%;top:${y/10}%`;
@@ -466,8 +837,21 @@ export class MPPlanZones extends LitElement {
     const trace=this.trace,path=trace?[...trace.points,...(trace.cursor?[trace.cursor]:[])]:[];
     const spot=(r:DetectionRoom,i:number)=>{
       const editing=i===this.drag?.index?this.drag:undefined;
-      if(editing)return editing.shape??(r.polygon?shifted(toXY(r.polygon),editing):corners(editing.box));
-      return this.outline(r)??corners(r.box_2d);
+      if(editing?.shape)return this.drawnPoints(editing.shape,editing.arcs);
+      if(editing)return r.polygon?this.drawnPoints(shifted(toXY(r.polygon),editing),r.arcs):corners(editing.box);
+      return this.planOutline(r)??corners(r.box_2d);
+    };
+    /** The side `i` of the outline being edited, as drawn: its curve, or its chord. */
+    const sidePath=(points:number[][],i:number)=>{
+      const a=points[i]!,b=points[(i+1)%points.length]!,bulge=bendOf(bends,i);
+      if(!bent(bulge))return [a,b];
+      const {sx,sy}=this.unit;
+      return [a,...arcPoints(toPixel(a,sx,sy),toPixel(b,sx,sy),bulge).map(q=>fromPixel(q,sx,sy)),b];
+    };
+    /** Where the handle in the middle of side `i` sits: on its curve when it is curved. */
+    const middleOf=(points:number[][],i:number)=>{
+      const a=points[i]!,b=points[(i+1)%points.length]!,bulge=bendOf(bends,i),{sx,sy}=this.unit;
+      return bent(bulge)?fromPixel(sidePoint(toPixel(a,sx,sy),toPixel(b,sx,sy),bulge,.5),sx,sy):[(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2];
     };
     return html`
       <div class="tools">
@@ -476,6 +860,7 @@ export class MPPlanZones extends LitElement {
         ${this.mode==='trace'?html`<button ?disabled=${(trace?.points.length??0)<3} @click=${()=>this.finishTrace()}>${mpIcon('check',16)} Terminer le contour</button>`
           :html`<button ?disabled=${!room||!!this.mode||this.busy} @click=${()=>room?.polygon?this.rectangle():this.freeShape()}>${room?.polygon?'Rectangle':'Forme libre'}</button>`}
         <button ?disabled=${!room?.polygon||this.vertex<0||this.busy} @click=${()=>this.removeVertex()}>Supprimer le point</button>
+        <button ?disabled=${!room?.polygon||this.side<0||this.busy} @click=${()=>this.curveSide()}>${bent(room?.arcs?.[this.side])?'Redresser le côté':'Courber le côté'}</button>
         <button ?disabled=${this.selected<0||this.busy} @click=${()=>this.drop(this.selected)}>${mpIcon('close',16)} Supprimer la pièce</button>
         <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>Annuler</button>
       </div>
@@ -493,9 +878,10 @@ export class MPPlanZones extends LitElement {
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
           ${this.detection.map((r,i)=>{
             const plan=r.id?rooms.get(r.id):undefined;
-            return plan?svg`<polygon data-zone=${i} class=${i===this.selected?'selected':''} points=${plan.polygon.map(normalised).join(' ')} style=${`fill:${colour(r,i)};stroke:${colour(r,i)}`}></polygon>`:nothing;
+            return plan?svg`<polygon data-zone=${i} class=${i===this.selected?'selected':''} points=${roomOutline(plan).map(normalised).join(' ')} style=${`fill:${colour(r,i)};stroke:${colour(r,i)}`}></polygon>`:nothing;
           })}
-          ${shape?svg`<polygon class="box" points=${pairs(shape)}></polygon>`:box?rect(box,'box'):nothing}
+          ${drawn?svg`<polygon class="box" points=${pairs(drawn)}></polygon>`:box?rect(box,'box'):nothing}
+          ${shape&&!this.drag?shape.map((_,i)=>svg`<polyline class=${`side${i===this.side?' active':''}`} data-side=${i} points=${pairs(sidePath(shape,i))}></polyline>`):nothing}
           ${this.draft?rect(this.draft.box,'draft'):nothing}
           ${trace&&trace.points.length>=3?svg`<polygon class="draft" points=${pairs(trace.points)}></polygon>`:nothing}
           ${path.length>=2?svg`<polyline class="trace" points=${pairs(path)}></polyline>`:nothing}
@@ -503,22 +889,26 @@ export class MPPlanZones extends LitElement {
         <div class="layer names">${this.detection.map((r,i)=>r.id&&rooms.has(r.id)?this.label(i,r,spot(r,i)):nothing)}</div>
         <div class="layer">
           ${handles.map(([name,x,y])=>html`<span class="handle" data-handle=${name} style=${at(x,y)}></span>`)}
-          ${shape&&!this.drag&&shape.length<MAX_POINTS?shape.map((p,i)=>{
-            // A + only on a side long enough to keep clear of its corners, drawn under them.
+          ${shape&&!this.drag?shape.map((p,i)=>{
+            // In the middle of a side long enough to keep clear of its corners: a + to add a corner, or, on the side last
+            // touched, the round handle that bends it.
             const q=shape[(i+1)%shape.length]!,length=Math.hypot((q[0]!-p[0]!)*this.frame.width,(q[1]!-p[1]!)*this.frame.height)/1000;
-            return length<44?nothing:html`<span class="handle mid" data-mid=${i} title="Ajouter un point" style=${at((p[0]!+q[0]!)/2,(p[1]!+q[1]!)/2)}></span>`;
+            const [x,y]=middleOf(shape,i) as [number,number];
+            if(i===this.side)return html`<span class="bend" data-bend=${i} title="Courber ce côté" style=${at(x,y)}></span>`;
+            return length<44||shape.length>=MAX_POINTS?nothing:html`<span class="handle mid" data-mid=${i} title="Ajouter un point" style=${at(x,y)}></span>`;
           }):nothing}
           ${shape?shape.map((p,i)=>html`<span class=${`handle vertex${i===this.vertex?' active':''}`} data-vertex=${i} style=${at(p[0]!,p[1]!)}></span>`):nothing}
+          ${turner&&!this.mode&&(!this.drag||this.drag.handle==='rotate')?html`<span class="rotate" data-rotate="1" title="Tourner la pièce" style=${at(turner.x,turner.y)}></span>`:nothing}
           ${trace?trace.points.map((p,i)=>html`<span class=${`handle point${i===0?' first':''}`} style=${at(p[0]!,p[1]!)}></span>`):nothing}
         </div>
       </figure>
       </div>
       <ul aria-label="Pièces du brouillon">${this.detection.map((r,i)=>{
         const plan=r.id?rooms.get(r.id):undefined;
-        return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;}}}>
+        return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;this.side=-1;}}}>
           <span class="swatch" style=${`background:${colour(r,i)}`}>${i+1}</span>
           <input data-index=${i} maxlength="80" .value=${r.name} aria-label=${`Nom de la pièce ${i+1}`} ?disabled=${this.busy} @change=${(e:Event)=>this.rename(i,(e.target as HTMLInputElement).value)}>
-          <small>${plan?`${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(polygonArea(plan.polygon))} m²`:'écartée'}</small>
+          <small>${plan?`${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(roomArea(plan))} m²`:'écartée'}</small>
           <button aria-label=${`Supprimer ${r.name}`} title="Supprimer" ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.drop(i);}}>${mpIcon('close',14)}</button>
         </li>`;
       })}</ul>`;

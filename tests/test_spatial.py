@@ -124,6 +124,69 @@ class GeometryTest(unittest.TestCase):
         k = alone["source"]["scale"][0]
         self.assertEqual(sorted(map(tuple, ring)), sorted((round(x * k, 3), round(y * k, 3)) for y, x in living))
 
+    def test_a_curved_wall_drawn_point_by_point_becomes_an_arc(self):
+        # A half-disc room: its straight side, then its curve traced every 15° as Gemini traces one.
+        radius, curve = 200, [[300 + 200 * math.cos(-math.radians(15 * k)), 400 + 200 * math.sin(-math.radians(15 * k))] for k in range(1, 12)]
+        ring, arcs = gemini._fit_arcs([[100, 400], [500, 400]] + curve, 4)
+        # Three corners left, the curve carried by two quarter circles.
+        self.assertEqual([[round(v) for v in p] for p in ring], [[100, 400], [500, 400], [300, 200]])
+        self.assertEqual(len(arcs), 3)
+        self.assertAlmostEqual(arcs[0], 0)
+        for bulge in arcs[1:]:
+            self.assertAlmostEqual(abs(bulge), math.tan(math.radians(22.5)), places=3)
+        self.assertAlmostEqual(gemini.ring_area(ring, arcs), math.pi * radius ** 2 / 2, delta=2)
+        self.assertTrue(gemini.valid_ring(ring, arcs))
+        # A bay window's facets, which turn by far more, stay corners.
+        bay = [[0, 0], [400, 0], [400, 200], [300, 300], [100, 300], [0, 200]]
+        self.assertEqual(gemini._fit_arcs(bay, 4), (bay, None))
+
+    def test_a_wing_drawn_at_an_angle_keeps_its_corners_and_right_angles(self):
+        angle = math.radians(6)
+
+        def turned(x, y):
+            return [round(500 + (x - 500) * math.cos(angle) - (y - 500) * math.sin(angle), 2),
+                    round(500 + (x - 500) * math.sin(angle) + (y - 500) * math.cos(angle), 2)]
+
+        wing = [turned(100, 100), turned(500, 100), turned(500, 400), turned(100, 400)]
+        rooms = [{"name": "Buanderie", "box_2d": [0, 0, 0, 0], "polygon": [[y, x] for x, y in wing]},
+                 {"name": "Séjour", "box_2d": [100, 520, 400, 900]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000))
+        laundry = rooms_of(result)["Buanderie"]
+        self.assertEqual(len(laundry), 4)
+        directions = [math.atan2(b[1] - a[1], b[0] - a[0]) for a, b in zip(laundry, laundry[1:] + laundry[:1])]
+        for direction in directions:
+            self.assertAlmostEqual(math.degrees(direction) % 90, 6, delta=.1)  # the wing is not pulled onto the axes
+        k = result["source"]["scale"][0]
+        self.assertAlmostEqual(area(laundry), 400 * 300 * k * k, delta=.05)
+        self.assertEqual(result["detection"][0]["polygon"], [[y, x] for x, y in wing])
+
+    def test_curves_from_the_studio_come_back_unchanged_with_their_surface(self):
+        # A corridor with two rounded ends, sent back by the Studio: [y, x] corners, one bend per side in the image's geometry.
+        quarter = round(math.tan(math.radians(22.5)), 4)
+        rooms = [{"name": "Couloir", "box_2d": [100, 100, 400, 500], "polygon": [[100, 100], [100, 500], [400, 500], [400, 100]],
+                  "arcs": [0, -quarter, 0, -quarter]}]
+        result = server.normalize_result({"rooms": rooms, "scaleKnown": False, "warnings": []}, (1000, 1000), [.01, .01])
+        room = result["plan"]["floors"][0]["rooms"][0]
+        # The plan starts at the leftmost point drawn, the rounded end included: it bulges 0.621 m past the corners.
+        self.assertEqual(room["polygon"], [[0.621, 0], [4.621, 0], [4.621, 3], [0.621, 3]])
+        self.assertEqual(room["arcs"], [0, -quarter, 0, -quarter])
+        self.assertAlmostEqual(min(p[0] for p in gemini.outline(room["polygon"], room["arcs"])), 0, delta=.002)
+        # Twice the bulge of a quarter circle over a 3 m chord, added to the 12 m² rectangle.
+        segment = (1.5 ** 2 + (quarter * 1.5) ** 2) / (2 * quarter * 1.5)
+        self.assertAlmostEqual(gemini.ring_area(room["polygon"], room["arcs"]), 12 + 2 * segment ** 2 / 2 * (math.pi / 2 - 1), delta=.01)
+        self.assertEqual(result["detection"][0]["arcs"], [0, -quarter, 0, -quarter])
+        self.assertEqual(gemini.valid_detection(result["detection"]), result["detection"])
+
+    def test_bends_are_checked_like_the_rest_of_the_geometry(self):
+        square = [[0, 0], [4, 0], [4, 4], [0, 4]]
+        self.assertTrue(gemini.valid_ring(square, [0, .5, 0, 0]))
+        for arcs in ([0, .5, 0], [0, 2, 0, 0], [0, "x", 0, 0], [0, float("nan"), 0, 0], [1, 0, 1, 0]):
+            self.assertFalse(gemini.valid_ring(square, arcs))  # wrong count, beyond a half circle, unreadable, or crossing itself
+        detection = [{"name": "Couloir", "box_2d": [0, 0, 400, 400], "polygon": square, "arcs": [0, .5, 0, 0]}]
+        self.assertEqual(gemini.valid_detection(detection), detection)
+        for arcs in ([0, .5, 0], [0, 3, 0, 0], ["x", 0, 0, 0]):
+            self.assertIsNone(gemini.valid_detection([{**detection[0], "arcs": arcs}]))
+
     def test_non_rectangular_rooms_and_bad_answers_are_repaired_or_skipped(self):
         rooms = [
             {"name": "  Salon\n", "box_2d": [0, 0, 300, 400]},

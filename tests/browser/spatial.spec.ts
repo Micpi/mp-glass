@@ -33,11 +33,12 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
       if(message.type==='mp_glass/spatial/cancel'&&message.job_id==='job-test')return {cancelled:true} as T;
       if(message.type==='mp_glass/spatial/info')return (options.info??{backend:'gemini',configured:true,model:'gemini-3.8-flash',quality:'precise'}) as T;
       if(message.type==='mp_glass/spatial/normalize'){
-        // Stand-in for Home Assistant's geometry (tested in Python): each room is its box, 100 px per metre.
-        const rooms=message.rooms as {name:string;box_2d:number[];polygon?:number[][]}[],width=message.width as number,height=message.height as number;
+        // Stand-in for Home Assistant's geometry (tested in Python): each room is its box, 100 px per metre, bends kept as they are.
+        const rooms=message.rooms as {name:string;box_2d:number[];polygon?:number[][];arcs?:number[]}[],width=message.width as number,height=message.height as number;
         const floor={id:'imported',name:'Niveau importé',elevation:0,height:2.6,rooms:rooms.map((room,i)=>{
           const [y0,x0,y1,x1]=room.box_2d.map((v,k)=>v*(k%2?width:height)/100000) as [number,number,number,number];
-          return {id:`room-${i+1}`,name:room.name,polygon:room.polygon?room.polygon.map(([y,x])=>[x!*width/100000,y!*height/100000]):[[x0,y0],[x1,y0],[x1,y1],[x0,y1]]};
+          return {id:`room-${i+1}`,name:room.name,polygon:room.polygon?room.polygon.map(([y,x])=>[x!*width/100000,y!*height/100000]):[[x0,y0],[x1,y0],[x1,y1],[x0,y1]],
+            ...(room.arcs?.some(b=>Math.abs(b)>.001)?{arcs:room.arcs}:{})};
         })};
         return {plan:{version:1,enabled:true,floors:[floor]},warnings:[],source:{width,height,scale:[.01,.01],origin:[0,0]},detection:rooms.map((room,i)=>({...room,id:`room-${i+1}`}))} as T;
       }
@@ -68,7 +69,7 @@ const choosePlanImage=(page:Page)=>page.evaluate(async()=>{
   const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
 });
 /** Rooms sent to Home Assistant by the last edit of the draft. */
-const editedRooms=async(page:Page)=>(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string;rooms?:{name:string;box_2d:number[];polygon?:number[][]}[]}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize'))).at(-1)!.rooms!;
+const editedRooms=async(page:Page)=>(await page.evaluate(()=>(window as unknown as {spatialTest:{messages:{type:string;rooms?:{name:string;box_2d:number[];polygon?:number[][];arcs?:number[]}[]}[]}}).spatialTest.messages.filter(m=>m.type==='mp_glass/spatial/normalize'))).at(-1)!.rooms!;
 const consentAndGenerate=async(page:Page)=>{await page.getByRole('checkbox',{name:'Envoyer ce plan à Google pour l’analyser'}).check();await page.getByRole('button',{name:'Générer le brouillon 3D'}).click();};
 const demoCalls=(page:Page)=>page.evaluate(()=>(window as unknown as {demo:{calls:unknown[]}}).demo.calls);
 /** Points of the canvas: its centre is the house (first one not covered by a label), a bottom corner is beside it. */
@@ -636,8 +637,8 @@ test('a room follows its real shape: drawn corner by corner, then corners moved,
   await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
   const lastRoom=async()=>(await editedRooms(page)).at(-1)!;
   const outline=async()=>(await lastRoom()).polygon!.map(([y,x])=>[x!,y!]);  // [x, y] in 0-1000
-  /** Screen position of a point of the plan, in 0-1000. */
-  const screen=async(x:number,y:number)=>{const f=(await figure.boundingBox())!;return {x:f.x+f.width*x/1000,y:f.y+f.height*y/1000};};
+  /** Screen position of a point of the plan, in 0-1000; the plan is brought into view first, so every corner is reachable. */
+  const screen=async(x:number,y:number)=>{await figure.scrollIntoViewIfNeeded();const f=(await figure.boundingBox())!;return {x:f.x+f.width*x/1000,y:f.y+f.height*y/1000};};
   const click=async(x:number,y:number)=>{await idle();const s=await screen(x,y);await page.mouse.click(s.x,s.y);};
   // Each edit is rebuilt by Home Assistant; the plan ignores the pointer meanwhile.
   const idle=()=>expect(figure).not.toHaveClass(/busy/);
@@ -704,6 +705,92 @@ test('a room follows its real shape: drawn corner by corner, then corners moved,
   await expect(figure.locator('.vertex')).toHaveCount(4);
   const living=(await editedRooms(page))[0]!;
   expect(living.box_2d).toEqual([Math.min(...living.polygon!.map(q=>q[0]!)),Math.min(...living.polygon!.map(q=>q[1]!)),Math.max(...living.polygon!.map(q=>q[0]!)),Math.max(...living.polygon!.map(q=>q[1]!))]);
+});
+
+test('a room turns, its sides slide parallel and its walls curve',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog'),zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+  const idle=()=>expect(figure).not.toHaveClass(/busy/);
+  const room=async()=>(await editedRooms(page))[0]!;
+  /** Corners in the plan's pixels (1300 x 800 over 0-1000), where a right angle is a right angle. */
+  const pixels=async()=>(await room()).polygon!.map(([y,x])=>[x!*1.3,y!*.8] as [number,number]);
+  const screen=async(x:number,y:number)=>{await figure.scrollIntoViewIfNeeded();const f=(await figure.boundingBox())!;return {x:f.x+f.width*x/1000,y:f.y+f.height*y/1000};};
+  const click=async(x:number,y:number)=>{await idle();const s=await screen(x,y);await page.mouse.click(s.x,s.y);};
+  const drag=async(from:{x:number;y:number},dx:number,dy:number)=>{
+    await page.mouse.move(from.x,from.y);await page.mouse.down();
+    await page.mouse.move(from.x+dx/2,from.y+dy/2,{steps:4});await page.mouse.move(from.x+dx,from.y+dy,{steps:4});await page.mouse.up();
+  };
+  const pull=async(selector:string,dx:number,dy:number)=>{
+    await idle();
+    const b=(await figure.locator(selector).boundingBox())!;
+    await drag({x:b.x+b.width/2,y:b.y+b.height/2},dx,dy);
+  };
+  const square=async()=>{
+    const corners=await pixels();
+    const sides=corners.map((a,i)=>{const b=corners[(i+1)%corners.length]!;return [b[0]-a[0],b[1]-a[1]] as [number,number];});
+    for(const [i,u] of sides.entries()){
+      const v=sides[(i+1)%sides.length]!;
+      expect(Math.abs(u[0]*v[0]+u[1]*v[1])/(Math.hypot(...u)*Math.hypot(...v))).toBeLessThan(.02);
+    }
+    return {sides,tilt:Math.atan2(sides[0]![1],sides[0]![0])*180/Math.PI};
+  };
+
+  // Turning the living room makes it an outline at an angle, its corners still square.
+  await click(150,250);
+  await expect(figure.locator('.rotate')).toHaveCount(1);
+  await pull('.rotate',0,-70);
+  await expect.poll(async()=>(await room()).polygon?.length).toBe(4);
+  const turned=await square();
+  expect(Math.abs(turned.tilt)).toBeGreaterThan(3);
+  await page.screenshot({path:'artifacts/spatial-zones-turned.png'});
+
+  // Its second side, dragged, stays parallel: the room keeps its angle and its corners square.
+  // A third of the way along the side, clear of the + that sits in its middle.
+  const alongSide=async(index:number,at=1/3)=>{const shape=(await room()).polygon!;const p=shape[index]!,q=shape[(index+1)%shape.length]!;
+    return [p[1]!+(q[1]!-p[1]!)*at,p[0]!+(q[0]!-p[0]!)*at] as [number,number];};
+  const [mx,my]=await alongSide(1);
+  await click(mx,my);
+  await expect(figure.locator('.side.active')).toHaveCount(1);
+  await expect(figure.locator('.bend')).toHaveCount(1);
+  await drag(await screen(...await alongSide(1)),26,0);  // away from the bend handle in its middle
+  await expect.poll(async()=>(await room()).polygon![1]![1]).not.toBe(turned.sides[0]![0]);
+  const slid=await square();
+  expect(slid.tilt).toBeCloseTo(turned.tilt,1);
+  expect(Math.hypot(...slid.sides[1]!)).toBeCloseTo(Math.hypot(...turned.sides[1]!),0);  // the side moved, not stretched
+
+  // « Courber le côté » bows that wall out as a quarter circle, and the room gains the surface of the arc.
+  const surface=async()=>Number((await zones.locator('li').first().locator('small').textContent())!.replace(/[^\d,]/g,'').replace(',','.'));
+  const straight=await surface();
+  await idle();await zones.getByRole('button',{name:'Courber le côté'}).click();
+  await expect.poll(async()=>(await room()).arcs?.length).toBe(4);
+  const bends=(await room()).arcs!;
+  expect(Math.abs(bends[1]!)).toBeCloseTo(.4142,3);
+  expect(bends.filter((b:number)=>Math.abs(b)>.001)).toHaveLength(1);
+  await expect.poll(surface).toBeGreaterThan(straight);
+  // The curve is drawn, not its chord: the room's outline gets many more points.
+  await expect(figure.locator('polygon[data-zone="0"]')).toHaveAttribute('points',/(\S+ ){10}/);
+  await page.screenshot({path:'artifacts/spatial-zones-curved.png'});
+
+  // The bend follows the finger, and « Redresser le côté » puts the wall back straight; Annuler brings the curve back.
+  const bend=async()=>(await room()).arcs?.[1]??0;
+  await pull('.bend',-25,0);
+  await expect.poll(async()=>Math.round(await bend()*100)).not.toBe(Math.round(bends[1]!*100));
+  expect(Math.abs(await bend())).toBeGreaterThan(.05);
+  await idle();await zones.getByRole('button',{name:'Redresser le côté'}).click();
+  await expect.poll(bend).toBe(0);
+  await expect.poll(async()=>(await room()).arcs).toBeUndefined();
+  await idle();await zones.getByRole('button',{name:'Annuler'}).click();
+  await expect.poll(async()=>Math.abs(await bend())).toBeGreaterThan(.05);
+
+  // The curved, turned room is rebuilt in 3D without a hitch.
+  await dialog.getByRole('tab',{name:'En 3D'}).click();
+  await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
+  await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  expect(saved.floors[0]!.rooms[0]!.arcs?.filter(b=>Math.abs(b)>.001)).toHaveLength(1);
+  expect(errors).toEqual([]);
 });
 
 test('walls 2 px thick are found on a small plan, not the thin lines',async({page})=>{

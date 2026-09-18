@@ -863,6 +863,67 @@ test('a room turns, its sides slide parallel and its walls curve',async({page})=
   expect(errors).toEqual([]);
 });
 
+test('a rectangle curves a side and rounds a corner from the toolbar, in a window as wide as the screen',async({page})=>{
+  await page.setViewportSize({width:1440,height:1000});
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog'),zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+  // The window takes the width of the screen, and the plan most of its height.
+  expect((await dialog.boundingBox())!.width).toBeGreaterThan(1380);
+  expect((await figure.boundingBox())!.height).toBeGreaterThan(560);
+  const idle=()=>expect(figure).not.toHaveClass(/busy/);
+  const room=async()=>(await editedRooms(page))[0]!;
+  const screen=async(x:number,y:number)=>{await figure.scrollIntoViewIfNeeded();const f=(await figure.boundingBox())!;return {x:f.x+f.width*x/1000,y:f.y+f.height*y/1000};};
+  const surface=async()=>Number((await zones.locator('li').first().locator('small').textContent())!.replace(/[^\d,]/g,'').replace(',','.'));
+  const curve=zones.getByRole('button',{name:'Courber le côté'}),round=zones.getByRole('button',{name:'Arrondir l’angle'});
+
+  // Nothing selected: nothing to curve. The living room, a plain rectangle, can be curved at once.
+  await expect(curve).toBeDisabled();
+  await idle();const salon=await screen(150,250);await page.mouse.click(salon.x,salon.y);
+  await expect(curve).toBeEnabled();await expect(round).toBeEnabled();
+
+  // « Courber le côté » gives it its outline and waits for a side; Échap gives up without closing the window.
+  await curve.click();
+  await expect.poll(async()=>(await room()).polygon?.length).toBe(4);
+  // Its size in metres (the image is drawn at 100 px per metre).
+  const outline=(await room()).polygon!,xs=outline.map(([,x])=>x!*.013),ys=outline.map(([y])=>y!*.008);
+  const width=Math.max(...xs)-Math.min(...xs),depth=Math.max(...ys)-Math.min(...ys),straight=await surface();
+  await expect(curve).toHaveAttribute('aria-pressed','true');
+  await expect(figure).toHaveClass(/picking-curve/);
+  await figure.focus();await page.keyboard.press('Escape');
+  await expect(curve).toHaveAttribute('aria-pressed','false');
+  await expect(dialog).toBeVisible();
+
+  // Its east side, touched, bows out as a quarter circle: the room gains the segment of that circle beyond the side.
+  await curve.click();
+  const shape=(await room()).polygon!,[p,q]=[shape[1]!,shape[2]!];
+  await idle();const side=await screen(p[1]!+(q[1]!-p[1]!)/3,p[0]!+(q[0]!-p[0]!)/3);await page.mouse.click(side.x,side.y);
+  await expect.poll(async()=>(await room()).arcs?.filter(b=>Math.abs(b)>.001).length).toBe(1);
+  expect(Math.abs((await room()).arcs![1]!)).toBeCloseTo(.4142,3);
+  // Surfaces are shown to the tenth of a m².
+  const near=(expected:number)=>expect.poll(async()=>Math.abs(await surface()-expected)).toBeLessThanOrEqual(.1);
+  await near(straight+depth**2/2*(Math.PI/4-.5));
+  await expect(zones.getByRole('button',{name:'Redresser le côté'})).toBeEnabled();
+
+  // « Arrondir l’angle », then its south-west corner: an arc joins its two walls a third of the shorter one away.
+  // The room loses the corner beyond the arc, (1 − π/4) d², not the triangle under its chord.
+  const before=await surface();
+  await idle();await round.click();
+  await expect(figure).toHaveClass(/picking-round/);
+  await idle();const corner=(await figure.locator('.vertex[data-vertex="3"]').boundingBox())!;
+  await page.mouse.click(corner.x+corner.width/2,corner.y+corner.height/2);
+  await expect.poll(async()=>(await room()).polygon?.length).toBe(5);
+  const rounded=await room();
+  expect(Math.abs(rounded.arcs![3]!)).toBeCloseTo(.4142,3);
+  expect(rounded.arcs!.filter(b=>Math.abs(b)>.001)).toHaveLength(2);
+  await near(before-(1-Math.PI/4)*(Math.min(width,depth)/3)**2);
+  // The arc is the side now touched: its round handle sets the radius.
+  await expect(figure.locator('.bend')).toHaveCount(1);
+  await page.screenshot({path:'artifacts/spatial-zones-rounded.png'});
+  expect(errors).toEqual([]);
+});
+
 test('walls 2 px thick are found on a small plan, not the thin lines',async({page})=>{
   await page.goto('/?spatial');
   const walls=await page.evaluate(async()=>{

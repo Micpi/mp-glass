@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.7.21 — plan plus grand, pièces arrondies en deux gestes
+
+Demande utilisateur : « je voudrais cette fenêtre plus grande pour avoir le plan en plus grand », et « le bouton [Courber le côté] est présent mais inactif ». Le bouton ne s’activait que sur une pièce déjà passée en **Forme libre** et dont on avait touché un côté. Or la plupart des pièces sont des rectangles : il restait donc grisé.
+
+- **Fenêtre plus grande** : quand le brouillon se corrige sur son plan, la fenêtre de résultat prend toute la largeur de l’écran (1 800 px au plus) au lieu de 920 px. Le plan occupe presque toute la hauteur au lieu de la moitié. L’onglet **En 3D** profite de la même place. La fenêtre de progression et celle d’erreur ne changent pas.
+- **Courber le côté** : actif dès qu’une pièce est sélectionnée, rectangle compris. Sans côté sélectionné, il attend le côté à courber : les côtés s’éclairent, et le côté touché se bombe vers l’extérieur en quart de cercle. Un rectangle reçoit d’abord son contour. Échap abandonne sans fermer la fenêtre. Un côté déjà sélectionné est courbé aussitôt, comme avant.
+- **Arrondir l’angle** : nouveau bouton, sur le même principe. L’angle touché est remplacé par un arc tangent à ses deux murs, à partir d’un tiers du plus court des deux. Le rond au milieu de l’arc règle ensuite le rayon. La surface perd seulement le coin au-delà de l’arc.
+- Les aides sous la barre d’outils indiquent ces deux boutons dès qu’une pièce est sélectionnée.
+
 ## 0.7.20 — en-tête lisible sur téléphone en paysage
 
 Sur un écran d’environ 844 px de large (téléphone tenu en paysage), le nom de la maison passait sous les boutons de navigation : **Accueil** en cachait la fin. Le défaut existait déjà en 0.7.3.

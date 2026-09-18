@@ -299,7 +299,7 @@ const pairs=(points:number[][])=>points.map(p=>`${p[0]},${p[1]}`).join(' ');
  */
 export class MPPlanZones extends LitElement {
   static properties={src:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},
-    selected:{state:true},vertex:{state:true},side:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
+    selected:{state:true},vertex:{state:true},side:{state:true},pending:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
     button{font:inherit;color:inherit;cursor:pointer;min-height:36px;padding:0 12px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;display:inline-flex;align-items:center;gap:6px}
@@ -332,6 +332,9 @@ export class MPPlanZones extends LitElement {
     /* Sides of the selected outline: wide enough for a finger to catch, highlighted once touched. */
     .side{fill:none;stroke:#ffffff01;stroke-width:16;vector-effect:non-scaling-stroke;cursor:move;touch-action:none}
     .side.active{stroke:#8acbff66}
+    /* Waiting for the side to curve or the corner to round: those that can be touched stand out. */
+    .picking-curve .side{stroke:#8acbff38;cursor:pointer}.picking-curve .side:hover{stroke:#8acbffaa}
+    .picking-round .vertex{background:#8acbff;border-color:#fff;box-shadow:0 0 0 4px #8acbff55;cursor:pointer}
     /* The middle of the side last touched bends it; the mark above the room turns it. Neither is a resize handle. */
     .bend,.rotate{position:absolute;pointer-events:auto;touch-action:none;box-shadow:0 2px 6px #0008;cursor:grab}
     .bend::before,.rotate::before{content:'';position:absolute;inset:-9px}
@@ -350,6 +353,8 @@ export class MPPlanZones extends LitElement {
   src='';source?:Source;plan?:SpatialPlan;detection:DetectionRoom[]=[];walls?:Walls;busy=false;canUndo=false;
   /** Selected room and, on its outline, the corner and the side last touched (-1: none). */
   private selected=-1;private vertex=-1;private side=-1;private naming=-1;
+  /** « Courber le côté » or « Arrondir l’angle » chosen before its side or its corner: the next one touched gets it. */
+  private pending:''|'curve'|'round'='';
   /** Drawing a new room: a rectangle dragged diagonally, or an outline corner by corner ([x, y] points; `cursor`: the next one). */
   private mode:''|'rect'|'trace'='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
   private drag?:Drag;private notice='';private frame={width:0,height:0};
@@ -372,6 +377,7 @@ export class MPPlanZones extends LitElement {
   protected willUpdate(changed:PropertyValues){
     if(!changed.has('detection'))return;
     if(this.selected>=this.detection.length)this.selected=-1;
+    if(this.selected<0)this.pending='';
     const count=this.detection[this.selected]?.polygon?.length??0;
     if(this.vertex>=count)this.vertex=-1;
     if(this.side>=count)this.side=-1;
@@ -511,6 +517,38 @@ export class MPPlanZones extends LitElement {
     arcs[this.side]=bent(arcs[this.side])?0:.4142*this.outward(shape);
     this.reshape(this.selected,shape,arcs);
   }
+  /**
+   * « Arrondir l’angle » : the corner last touched gives way to an arc tangent to its two walls, starting a third of the
+   * shorter one away from it. The new curved side is then the one touched: its round handle sets the radius.
+   */
+  private roundCorner(){
+    const room=this.detection[this.selected];
+    if(!room?.polygon||this.vertex<0||this.busy)return;
+    const shape=toXY(room.polygon),count=shape.length,v=this.vertex,before=(v+count-1)%count,arcs=shape.map((_,i)=>bendOf(room.arcs,i));
+    if(bent(arcs[before])||bent(arcs[v])){this.notice='Cet angle touche un côté courbe : redressez-le d’abord pour arrondir l’angle.';return;}
+    if(count>=MAX_POINTS){this.notice=`Un contour compte au plus ${MAX_POINTS} points : supprimez-en un pour arrondir cet angle.`;return;}
+    const {sx,sy}=this.unit,points=this.pixels(shape),corner=points[v]!,previous=points[before]!,next=points[(v+1)%count]!;
+    const reach=Math.min(Math.hypot(previous[0]-corner[0],previous[1]-corner[1]),Math.hypot(next[0]-corner[0],next[1]-corner[1]))/3;
+    const toward=(p:Point)=>{const u=direction(corner,p);return fromPixel([corner[0]+u[0]*reach,corner[1]+u[1]*reach],sx,sy);};
+    const rounded=[...shape];rounded.splice(v,1,toward(previous),toward(next));
+    const bends=[...arcs];bends.splice(v,0,0);
+    const tangent=this.tangentBends(rounded,v,bends)[0];
+    if(tangent===undefined){this.notice='Cet angle est plat : il n’y a rien à arrondir.';return;}
+    bends[v]=tangent;
+    this.vertex=-1;this.side=v;this.reshape(this.selected,rounded,bends);
+  }
+  /**
+   * The toolbar's « Courber le côté » and « Arrondir l’angle »: applied at once to the side or the corner last touched,
+   * otherwise waiting for the next one touched. A rectangle takes its outline first, so that its sides and corners can be touched.
+   */
+  private useTool(tool:'curve'|'round'){
+    const room=this.detection[this.selected];
+    if(!room||this.mode||this.busy)return;
+    if(room.polygon&&(tool==='curve'?this.side:this.vertex)>=0){this.pending='';if(tool==='curve')this.curveSide();else this.roundCorner();return;}
+    if(this.pending===tool){this.pending='';return;}
+    this.pending=tool;this.vertex=-1;this.side=-1;this.notice='';
+    if(!room.polygon){this.freeShape();if(this.notice)this.pending='';}
+  }
   /** A side moved sideways without turning: each of its corners follows the side next to it, which keeps its own direction. */
   private slideSide(drag:Drag,p:number[]){
     const {sx,sy}=this.unit,from=drag.from!,index=drag.side!,count=from.length;
@@ -597,7 +635,7 @@ export class MPPlanZones extends LitElement {
     }
     return best;
   }
-  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.notice='';}
+  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';this.notice='';}
   /** Next corner of the outline being drawn (true when placed); back on the first corner, the outline is closed. */
   private tracePoint(p:number[]){
     const points=this.trace?.points??[],first=points[0],last=points.at(-1);
@@ -641,6 +679,14 @@ export class MPPlanZones extends LitElement {
     const room=this.detection[this.selected];
     if(!element)return false;
     const {vertex,mid,side,bend,rotate,handle,zone}=element.dataset;
+    // The side or the corner that « Courber le côté » or « Arrondir l’angle » was waiting for.
+    const picked=this.pending==='curve'?side??bend??mid:this.pending==='round'?vertex:undefined;
+    if(room?.polygon&&picked!==undefined){
+      const tool=this.pending;this.pending='';
+      if(tool==='curve'){this.vertex=-1;this.side=Number(picked);this.curveSide();}
+      else{this.side=-1;this.vertex=Number(picked);this.roundCorner();}
+      return true;
+    }
     const start=(handle:Handle,shape:number[][]|undefined,arcs:number[]|undefined,extra:Partial<Drag>={})=>{
       this.drag={index:this.selected,handle,start:p,origin:[...room!.box_2d],box:[...room!.box_2d],moved:false,...(shape?{shape,from:shape}:{}),...(arcs?{arcs}:{}),...extra};
       return true;
@@ -672,6 +718,7 @@ export class MPPlanZones extends LitElement {
     if(handle&&room)return start(handle as Handle,undefined,undefined);
     if(zone===undefined)return false;
     const index=Number(zone),box=[...this.detection[index]!.box_2d];
+    if(index!==this.selected)this.pending='';
     this.selected=index;this.vertex=-1;this.side=-1;
     this.drag={index,handle:'move',start:p,origin:box,box,moved:false};
     return true;
@@ -684,7 +731,7 @@ export class MPPlanZones extends LitElement {
     this.notice='';
     if(this.mode==='trace')this.tracing=this.tracePoint(p);
     else if(this.mode==='rect')this.draft={start:p,box:[p[1],p[0],p[1],p[0]]};
-    else if(!this.grab(e.target as Element,p)){this.selected=-1;this.vertex=-1;return;}
+    else if(!this.grab(e.target as Element,p)){this.selected=-1;this.vertex=-1;this.pending='';return;}
     figure.setPointerCapture(e.pointerId);
     // No text selection nor page drag; keep the keyboard on the plan for Delete and Escape.
     e.preventDefault();figure.focus({preventScroll:true});
@@ -778,6 +825,7 @@ export class MPPlanZones extends LitElement {
       if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();const points=this.trace.points.slice(0,-1);this.trace=points.length?{points}:undefined;return;}
     }
     if((e.key==='Delete'||e.key==='Backspace')&&this.selected>=0){e.preventDefault();if(this.vertex>=0)this.removeVertex();else this.drop(this.selected);}
+    else if(e.key==='Escape'&&this.pending){e.preventDefault();this.pending='';}
     else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;}
   };
   /** On a phone, a finger on a room, a handle or in drawing mode edits the plan instead of scrolling the window. */
@@ -803,9 +851,12 @@ export class MPPlanZones extends LitElement {
       :'Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Les côtés restent parallèles et d’équerre au premier, même en biais.';
     const turning=this.drag?.handle==='rotate'&&this.drag.angle!==undefined;
     if(turning)return `Rotation : ${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(this.drag!.angle!*180/Math.PI)}° — relâchez pour valider.`;
+    if(room&&this.pending==='curve')return 'Touchez le côté à courber : il se bombe vers l’extérieur en quart de cercle, puis son rond du milieu règle la courbure. Échap pour annuler.';
+    if(room&&this.pending==='round')return 'Touchez l’angle à arrondir : un arc le remplace, raccordé aux deux murs, puis son rond du milieu règle le rayon. Échap pour annuler.';
     if(room?.polygon&&this.side>=0)return `Glissez le côté pour le déplacer sans le tourner, son rond du milieu pour le courber${bent(room.arcs?.[this.side])?' ou le redresser':''} ; ⟳ tourne la pièce.`;
-    if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point, un côté touché se courbe.';
-    if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Forme libre » pour un contour qui n’est pas rectangulaire, ou pour courber un mur.';
+    if(room?.polygon&&this.vertex>=0)return 'Glissez le point, ou « Arrondir l’angle » pour le remplacer par un arc ; deux touches rapides le suppriment.';
+    if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie.';
+    if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie, « Forme libre » pour un autre contour.';
     return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une.';
   }
   render(){
@@ -860,7 +911,8 @@ export class MPPlanZones extends LitElement {
         ${this.mode==='trace'?html`<button ?disabled=${(trace?.points.length??0)<3} @click=${()=>this.finishTrace()}>${mpIcon('check',16)} Terminer le contour</button>`
           :html`<button ?disabled=${!room||!!this.mode||this.busy} @click=${()=>room?.polygon?this.rectangle():this.freeShape()}>${room?.polygon?'Rectangle':'Forme libre'}</button>`}
         <button ?disabled=${!room?.polygon||this.vertex<0||this.busy} @click=${()=>this.removeVertex()}>Supprimer le point</button>
-        <button ?disabled=${!room?.polygon||this.side<0||this.busy} @click=${()=>this.curveSide()}>${bent(room?.arcs?.[this.side])?'Redresser le côté':'Courber le côté'}</button>
+        <button aria-pressed=${this.pending==='curve'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('curve')}>${room?.polygon&&bent(room.arcs?.[this.side])?'Redresser le côté':'Courber le côté'}</button>
+        <button aria-pressed=${this.pending==='round'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('round')}>Arrondir l’angle</button>
         <button ?disabled=${this.selected<0||this.busy} @click=${()=>this.drop(this.selected)}>${mpIcon('close',16)} Supprimer la pièce</button>
         <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>Annuler</button>
       </div>
@@ -871,8 +923,8 @@ export class MPPlanZones extends LitElement {
         <button aria-pressed=${this.panning} @click=${()=>{this.panning=!this.panning;this.mode='';this.trace=undefined;}}>Déplacer le plan</button>
         <button aria-pressed=${this.magnet} @click=${()=>{this.magnet=!this.magnet;}}>Aimantation</button>
       </div>
-      <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(52vh * ${source.width/source.height}))`} @wheel=${this.wheel}>
-      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''}`} tabindex="0" aria-label="Pièces détectées sur le plan" style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
+      <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(max(52vh,100dvh - 330px) * ${source.width/source.height}))`} @wheel=${this.wheel}>
+      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label="Pièces détectées sur le plan" style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
         @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
         <img src=${this.src} alt="Plan analysé par Gemini" draggable="false">
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
@@ -895,7 +947,7 @@ export class MPPlanZones extends LitElement {
             const q=shape[(i+1)%shape.length]!,length=Math.hypot((q[0]!-p[0]!)*this.frame.width,(q[1]!-p[1]!)*this.frame.height)/1000;
             const [x,y]=middleOf(shape,i) as [number,number];
             if(i===this.side)return html`<span class="bend" data-bend=${i} title="Courber ce côté" style=${at(x,y)}></span>`;
-            return length<44||shape.length>=MAX_POINTS?nothing:html`<span class="handle mid" data-mid=${i} title="Ajouter un point" style=${at(x,y)}></span>`;
+            return length<44||shape.length>=MAX_POINTS||this.pending?nothing:html`<span class="handle mid" data-mid=${i} title="Ajouter un point" style=${at(x,y)}></span>`;
           }):nothing}
           ${shape?shape.map((p,i)=>html`<span class=${`handle vertex${i===this.vertex?' active':''}`} data-vertex=${i} style=${at(p[0]!,p[1]!)}></span>`):nothing}
           ${turner&&!this.mode&&(!this.drag||this.drag.handle==='rotate')?html`<span class="rotate" data-rotate="1" title="Tourner la pièce" style=${at(turner.x,turner.y)}></span>`:nothing}
@@ -905,7 +957,7 @@ export class MPPlanZones extends LitElement {
       </div>
       <ul aria-label="Pièces du brouillon">${this.detection.map((r,i)=>{
         const plan=r.id?rooms.get(r.id):undefined;
-        return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;this.side=-1;}}}>
+        return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;this.side=-1;this.pending='';}}}>
           <span class="swatch" style=${`background:${colour(r,i)}`}>${i+1}</span>
           <input data-index=${i} maxlength="80" .value=${r.name} aria-label=${`Nom de la pièce ${i+1}`} ?disabled=${this.busy} @change=${(e:Event)=>this.rename(i,(e.target as HTMLInputElement).value)}>
           <small>${plan?`${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(roomArea(plan))} m²`:'écartée'}</small>

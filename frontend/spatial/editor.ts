@@ -114,6 +114,7 @@ export class MPSpatialEditor extends LitElement {
     .equipment{list-style:none;display:grid;grid-template-columns:minmax(0,1fr);gap:5px;margin:8px 0;padding:0}.equipment li{display:flex;align-items:center;gap:10px;min-height:48px;padding:5px 6px 5px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.equipment .mp-icon{color:#9ad4ff}.equipment li>span:not(.mp-icon){flex:1;min-width:0}.equipment small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.equipment select{flex:0 1 auto;width:11em;min-width:0;min-height:38px;padding:6px 8px}.equipment button{flex:none;min-height:38px;padding:0 12px}
     .entity-list{display:grid;gap:5px;max-height:250px;overflow:auto;margin:8px 0;padding:3px}.entity-list label{display:flex;flex-direction:row;align-items:center;gap:10px;min-height:48px;padding:6px 10px;border:1px solid #b2d7f21f;border-radius:10px;background:#ffffff05}.entity-list input{flex:none;min-height:20px;width:18px;height:18px;accent-color:#69b7ff}.entity-list span{min-width:0;overflow:hidden;text-overflow:ellipsis}.entity-list small{display:block;color:#9fb6ca;overflow:hidden;text-overflow:ellipsis}.entity-list label:has(:checked){background:#69b7ff15;border-color:#69b7ff55}
     dialog.job{width:min(920px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
+    dialog.job.wide{width:min(1800px,calc(100vw - 24px));padding:18px 20px}dialog.job.wide mp-spatial-viewer{--mp-stage-height:max(42vh,min(100dvh - 330px,760px))}
     dialog.job::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}
     button.danger{border-color:#ffbda94d;color:#ffbda9}button.danger:disabled{color:#eef6ff}
     dialog.ask{width:min(400px,calc(100vw - 24px));padding:20px;border:1px solid #9fd2ff40;border-radius:20px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
@@ -463,7 +464,8 @@ export class MPSpatialEditor extends LitElement {
         <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>Fermer</button>${other?html`<button class=${daily?'primary':''} @click=${()=>{this.choose(other.quality);void this.analyze();}}>Réessayer avec ${other.label}</button>`:nothing}${this.file&&this.confirmed?html`<button class=${daily?'':'primary'} ?disabled=${wait>0} @click=${()=>this.analyze()}>${wait>0?`Réessayer dans ${wait} s`:'Réessayer'}</button>`:nothing}</div>`;
     }
     // Escape does not interrupt a running analysis: only "Annuler l’analyse" does.
-    return html`<dialog class="job" aria-labelledby="job-title" @cancel=${(e:Event)=>{if(this.busy)e.preventDefault();}} @close=${()=>{this.dialogOpen=false;}}>${body}</dialog>`;
+    // A draft to correct on its plan takes the whole screen: the larger the plan, the easier its rooms are to adjust.
+    return html`<dialog class=${`job${this.phase==='done'&&this.candidate&&this.editable?' wide':''}`} aria-labelledby="job-title" @cancel=${(e:Event)=>{if(this.busy)e.preventDefault();}} @close=${()=>{this.dialogOpen=false;}}>${body}</dialog>`;
   }
   /** Model for the next analysis, in direct mode: the default one (integration options) is marked. */
   private renderModelChoice(){

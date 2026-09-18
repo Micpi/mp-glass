@@ -605,6 +605,84 @@ test('the result window closed on a kept draft reopens from the card',async({pag
   expect(await page.evaluate(()=>(window as unknown as {spatialTest:{uploads:unknown[]}}).spatialTest.uploads)).toHaveLength(1);
 });
 
+test('a saved level is edited on its plan: sides drawn to their neighbours, rooms moved with their windows and drawn, then applied',async({page})=>{
+  await page.setViewportSize({width:1400,height:950});
+  await mountEditor(page);
+  // The living room linked to its area with a French window, a bedroom 1 m short of the hall, a window in the bathroom.
+  await page.evaluate(()=>{
+    const editor=document.querySelector('mp-spatial-editor') as HTMLElement&{plan:import('../../shared/spatial').SpatialPlan};
+    const plan=structuredClone(editor.plan),[living,,,bedroom,,,bath]=plan.floors[0]!.rooms;
+    living!.areaId='salon';living!.openings=[{id:'baie',kind:'french_window',name:'Baie',side:0,at:.5,width:2.4,entityIds:['cover.salon']}];
+    bedroom!.polygon=[[0,4],[3,4],[3,8],[0,8]];
+    bath!.openings=[{id:'fenetre',kind:'window',side:1,at:.5,width:1,entityIds:['cover.sdb']}];
+    editor.plan=plan;
+  });
+  const before=await page.evaluate(()=>(document.querySelector('mp-spatial-editor') as HTMLElement&{plan:import('../../shared/spatial').SpatialPlan}).plan);
+  await page.getByRole('button',{name:'Modifier le plan',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Modifier « Rez-de-chaussée »'}),zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  await expect(dialog).toBeVisible();
+  // The level over a grid of metres, its French window and its bathroom window as marks; nothing to apply yet.
+  await expect(figure.locator('polygon[data-zone]')).toHaveCount(7);
+  await expect(figure.locator('img')).toHaveCount(0);
+  await expect(figure.locator('svg.grid line').first()).toBeAttached();
+  await expect(figure.locator('.mark')).toHaveCount(2);
+  await expect(dialog.getByRole('button',{name:'Appliquer au niveau'})).toBeDisabled();
+  // 13 x 8 m with 2.6 m around it: a point of the plan on the screen.
+  const at=async(x:number,y:number)=>{const f=(await figure.boundingBox())!;return {x:f.x+f.width*(x+2.6)/18.2,y:f.y+f.height*(y+2.6)/13.2};};
+  const drag=async(from:{x:number;y:number},to:{x:number;y:number})=>{await page.mouse.move(from.x,from.y);await page.mouse.down();await page.mouse.move((from.x+to.x)/2,(from.y+to.y)/2,{steps:4});await page.mouse.move(to.x,to.y,{steps:4});await page.mouse.up();};
+
+  // The bedroom's east side pulled to 10 cm of the hall: it lands on the hall's wall.
+  const bedroom=await at(1.5,6);await page.mouse.click(bedroom.x,bedroom.y);
+  const east=(await figure.locator('.handle[data-handle=e]').boundingBox())!;
+  await drag({x:east.x+east.width/2,y:east.y+east.height/2},await at(3.9,6));
+  // The bathroom moved 1 m down; its window follows.
+  const mark=(await figure.locator('.mark').nth(1).boundingBox())!;
+  await drag(await at(11.5,6),await at(11.5,7));
+  const moved=(await figure.locator('.mark').nth(1).boundingBox())!;
+  expect(moved.y-mark.y).toBeCloseTo((await figure.boundingBox())!.height/13.2,-1);
+  await expect(dialog.getByText('Plan 3D · modifications non appliquées')).toBeVisible();
+  // A storeroom drawn below the bedroom, then named.
+  await zones.getByRole('button',{name:'Ajouter une pièce'}).click();
+  await drag(await at(.3,8.6),await at(2.8,10.2));
+  const name=zones.getByRole('textbox',{name:'Nom de la pièce 8'});
+  await expect(name).toBeFocused();await name.fill('Cellier');await name.press('Enter');
+  await page.screenshot({path:'artifacts/spatial-level-edit.png'});
+
+  // Closed on the way, the changes wait in their card.
+  await dialog.getByRole('button',{name:'Fermer'}).click();
+  const card=page.locator('mp-spatial-editor .box').filter({hasText:'modifications non appliquées'});
+  await expect(card).toBeVisible();
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:unknown[]}}).spatialTest.changed.length)).toBe(0);
+  await card.getByRole('button',{name:'Reprendre'}).click();
+  await expect(figure.locator('polygon[data-zone]')).toHaveCount(8);
+  await dialog.getByRole('button',{name:'Appliquer au niveau'}).click();
+  await expect(page.getByRole('status')).toContainText('Plan du niveau « Rez-de-chaussée » modifié');
+
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  const [living,,,edited,,,bath,cellar]=saved.floors[0]!.rooms,original=before.floors[0]!.rooms;
+  // Untouched rooms stay exactly as they were, links and openings included.
+  expect(living).toEqual(original[0]);
+  expect(saved.floors[0]!.rooms.slice(1,3)).toEqual(original.slice(1,3));
+  expect(edited!.polygon).toEqual([[0,4],[4,4],[4,8],[0,8]]);
+  expect(bath!.polygon.map(p=>p[1])).toEqual([expect.closeTo(5,1),expect.closeTo(5,1),expect.closeTo(9,1),expect.closeTo(9,1)]);
+  expect(bath!.openings).toEqual(original[6]!.openings);
+  expect(cellar).toMatchObject({name:'Cellier',id:expect.stringMatching(/^room-/)});
+  expect(cellar!.areaId).toBeUndefined();
+});
+
+test('the shape of a room is edited on the plan from its own settings',async({page})=>{
+  await mountEditor(page);
+  await page.getByLabel('Pièce à modifier').selectOption({label:'Cuisine'});
+  await page.getByRole('button',{name:'Modifier sa forme sur le plan'}).click();
+  const zones=page.getByRole('dialog',{name:'Modifier « Rez-de-chaussée »'}).locator('mp-plan-zones');
+  await expect(zones.locator('li.selected input')).toHaveValue('Cuisine');
+  await expect(zones.locator('.handle[data-handle]')).toHaveCount(8);
+  // Closed untouched, it leaves nothing behind.
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  await expect(page.locator('mp-spatial-editor .box').filter({hasText:'modifications non appliquées'})).toHaveCount(0);
+});
+
 test('without the analysed image the card reopens the draft in 3D',async({page})=>{
   await mountEditor(page);
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});

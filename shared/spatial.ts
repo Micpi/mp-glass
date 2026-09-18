@@ -185,12 +185,12 @@ export function nearestSide(room: Shape, p: Point): { side: number; t: number; d
 }
 /**
  * Openings of `room` once its outline changed from `before`. With as many sides as before, each keeps its side and its place
- * along it; otherwise (a corner added or removed) each goes to the side now nearest to where it stood on `before`, and one
- * left more than `reach` metres from every wall is dropped.
+ * along it; otherwise (a corner added or removed, or the corners `renumbered`) each goes to the side now nearest to where it
+ * stood on `before`, and one left more than `reach` metres from every wall is dropped.
  */
-export function reattachOpenings(before: Shape, room: SpatialRoom, reach = .6): SpatialOpening[] {
+export function reattachOpenings(before: Shape, room: SpatialRoom, reach = .6, renumbered = false): SpatialOpening[] {
   const openings = room.openings ?? [];
-  if (before.polygon.length === room.polygon.length) return openings;
+  if (!renumbered && before.polygon.length === room.polygon.length) return openings;
   return openings.flatMap(opening => {
     const placed = openingPlacement(before, opening);
     if (!placed) return [];

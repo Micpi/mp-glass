@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.2 — modifier le plan d’un niveau enregistré
+
+Retour utilisateur : « je ne trouve pas de bouton modifier sur cette page pour modifier mon plan d’étage ». L’éditeur sur plan (déplacer, redimensionner, tracer, courber…) n’existait que dans la fenêtre du brouillon Gemini ; un plan enregistré, ou le plan par défaut, ne se corrigeait qu’en saisissant les sommets en mètres, repliés au bas de la pièce.
+
+- **Modifier le plan** : à côté de **Niveau à modifier**, le bouton ouvre le niveau dans le même éditeur que le brouillon, en grand, sur une grille d’un mètre (trait plus marqué tous les 5 m) avec de la place autour de la maison pour dessiner. Tous les outils y sont : déplacer et redimensionner, **Forme libre**, déplacer un côté parallèlement, tourner, **Courber le côté**, **Arrondir l’angle**, **Ajouter une pièce**, **Tracer un contour**, supprimer, renommer, **Annuler**, zoom et **Aimantation**. Les côtés s’aimantent aux murs des autres pièces : une chambre élargie vient se coller exactement contre le mur de sa voisine. Un onglet **En 3D** montre le niveau tel qu’il sera.
+- **Rien ne se perd** : chaque pièce garde son identifiant, sa pièce Home Assistant et ses équipements ; une pièce laissée telle quelle garde exactement sa forme. Portes et fenêtres restent sur leurs murs quand la pièce bouge ou change de taille, téléviseurs et enceintes suivent leur pièce. Ils apparaissent comme des marques : les glisser les déplace sans perdre leur nom, leur taille ni leurs volets, capteurs ou lecteur ; **Placer** en ajoute.
+- **Appliquer au niveau** remplace les pièces du niveau, puis **Enregistrer** dans le Studio. Fermée avant, la fenêtre garde les modifications dans une carte (**Reprendre**, **Appliquer au niveau**, **Abandonner**).
+- **Modifier sa forme sur le plan**, dans la pièce à modifier sous le plan 3D, ouvre l’éditeur sur cette pièce, déjà sélectionnée.
+
 ## 0.8.1 — portes, fenêtres et appareils placés sur le brouillon
 
 Retour utilisateur sur 0.8.0 : « il est plus facile pour moi de placer les fenêtres, portes, etc. depuis le brouillon avec le plan visible ». Jusqu’ici, ils ne se plaçaient qu’après **Utiliser pour ce niveau**, pièce par pièce sous le plan 3D, loin du plan d’architecte qui les montre.

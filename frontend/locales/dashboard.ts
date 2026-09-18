@@ -20,6 +20,8 @@ export const DASHBOARD = {
   'Navigation': ['Navigation', 'Навигация'],
   'Personnaliser MP Glass': ['Customize MP Glass', 'Настроить MP Glass'],
   'Personnaliser': ['Customize', 'Настроить'],
+  'Langue : {language}': ['Language: {language}', 'Язык: {language}'],
+  'Langue de l’interface': ['Interface language', 'Язык интерфейса'],
   'Plan schématique créé à partir de vos pièces Home Assistant.': ['Schematic plan made from your Home Assistant areas.', 'Схематичный план, построенный по вашим пространствам Home Assistant.'],
   'Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.': ['Sample plan: create your areas in Home Assistant, or import your floor plan.', 'Пример плана: создайте пространства в Home Assistant или импортируйте свой план.'],
   'Importer ou dessiner mon plan': ['Import or draw my plan', 'Импортировать или нарисовать план'],

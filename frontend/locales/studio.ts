@@ -2,8 +2,6 @@ import type { Messages } from './types';
 
 /** MP Glass Studio: its sections, its live preview and its notices. */
 export const STUDIO = {
-  'Langue de l’interface': ['Interface language', 'Язык интерфейса'],
-  'Automatique · {language}': ['Automatic · {language}', 'Автоматически · {language}'],
   'Personnalisation complète du dashboard': ['Full customization of the dashboard', 'Полная настройка панели'],
   'Créer le dashboard': ['Create the dashboard', 'Создать панель'],
   'Voir le dashboard': ['Open the dashboard', 'Открыть панель'],

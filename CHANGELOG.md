@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.1 — la langue se choisit sur le dashboard
+
+Retour utilisateur sur 0.9.0 : « le choix de la langue doit être sur le dashboard, pas dans le Studio, pour que chaque utilisateur puisse choisir sa langue, et ça ne doit pas être un gros bouton, un bouton avec le drapeau de la langue suffira ».
+
+- **Un petit drapeau** dans l’en-tête du dashboard montre la langue de l’interface : à côté de l’horloge sur grand écran, au bout de la navigation sur tablette et téléphone. Un clic ouvre les trois drapeaux, **Français**, **English**, **Русский** ; Échap ou un clic ailleurs le referme.
+- **Chaque utilisateur choisit la sienne**, administrateur ou non : Home Assistant la garde pour lui, sur tous ses appareils. Tant qu’il n’a rien choisi, MP Glass suit la langue de son profil Home Assistant. Le Studio, réservé aux administrateurs, n’a plus de menu de langue : il parle celle choisie sur le dashboard.
+- Les drapeaux sont dessinés par MP Glass : Windows affiche des lettres à la place des emoji de drapeau.
+- Captures de référence de l’accueil mises à jour avec le drapeau.
+
 ## 0.9.0 — français, anglais et russe
 
 Demande utilisateur : « est-ce qu’on peut ajouter un sélecteur de langue à cette interface, j’aimerais pouvoir choisir entre français, anglais et russe ».

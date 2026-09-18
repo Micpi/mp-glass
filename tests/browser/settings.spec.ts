@@ -131,14 +131,14 @@ test('an update installed while the page is open asks for a reload',async({page}
   await expect(page.getByRole('alert')).toContainText('MP Glass 0.0.1 est installé, mais cette page affiche encore la version');
   await expect(page.getByRole('button',{name:'Recharger la page'})).toBeVisible();
 });
-test('the Studio speaks French, English or Russian, and so does the dashboard, for this user on all their devices',async({page})=>{
+test('each user picks their language with the flag of the dashboard, and the Studio follows it',async({page})=>{
   await page.goto('/');
   await page.evaluate(async()=>{
     const projectModule='/shared/project.ts';
     const {defaultProject}=await import(projectModule);
     const record={revision:0,project:defaultProject('Maison test')};
     const requests:Record<string,unknown>[]=[];
-    const hass={connection:{},states:{},language:'fr',user:{id:'test',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
+    const hass={connection:{},states:{},language:'fr',user:{id:'test',is_admin:false},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
       requests.push(message);
       if(message.type==='mp_glass/project/get')return structuredClone(record);
       if(String(message.type).startsWith('config/'))return [];
@@ -146,31 +146,48 @@ test('the Studio speaks French, English or Russian, and so does the dashboard, f
       if(message.type==='frontend/set_user_data')return null;
       throw Error('unexpected command');
     }};
-    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
-    panel.hass=hass;document.body.replaceChildren(panel);
-    Object.assign(window,{languageTest:{requests}});
+    const view=document.createElement('mp-glass-view-v4') as HTMLElement&{hass:typeof hass};
+    view.hass=hass;document.body.replaceChildren(view);
+    Object.assign(window,{languageTest:{hass,requests}});
   });
-  const menu=page.getByRole('combobox',{name:'Langue de l’interface'});
-  await expect(menu).toHaveValue('auto');
-  await expect(menu.locator('option').first()).toHaveText('Automatique · Français');
-  await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeVisible();
-  await menu.selectOption('en');
-  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeVisible();
-  await expect(page.getByRole('button',{name:'Identity'})).toBeVisible();
-  await expect(page.getByRole('combobox',{name:'Interface language'})).toHaveValue('en');
-  await page.getByRole('combobox',{name:'Interface language'}).selectOption('ru');
-  await expect(page.getByRole('button',{name:'Сохранить',exact:true})).toBeVisible();
-  await expect(page.getByLabel('Предпросмотр')).toContainText('Главная');
-  // Kept by Home Assistant for the user, and in this browser until it answers.
+  // Beside the clock on a wide screen: a flag, not a menu of words.
+  const flag=page.getByRole('button',{name:'Langue : Français'});
+  await expect(flag).toBeVisible();
+  expect(await flag.textContent()).toBe('');
+  await flag.click();
+  await expect(page.getByRole('menuitemradio',{name:'Français'})).toHaveAttribute('aria-checked','true');
+  await page.keyboard.press('Escape');
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(flag).toBeFocused();
+  await flag.click();
+  await page.getByRole('menuitemradio',{name:'English'}).click();
+  await expect(page.getByRole('menu')).toHaveCount(0);
+  await expect(page.getByRole('link',{name:'Home',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Language: English'})).toBeVisible();
+  // On a phone the clock is hidden: the flag ends the navigation, and its menu stays on the screen.
+  await page.setViewportSize({width:390,height:844});
+  await page.getByRole('button',{name:'Language: English'}).click();
+  const menu=page.getByRole('menu');
+  const box=await menu.boundingBox();
+  expect(box!.x).toBeGreaterThanOrEqual(0);expect(box!.x+box!.width).toBeLessThanOrEqual(390);
+  await page.getByRole('menuitemradio',{name:'Русский'}).click();
+  await expect(page.getByRole('link',{name:'Главная'})).toBeVisible();
+  // Kept by Home Assistant for this user, whoever they are, and in this browser until it answers.
   expect(await page.evaluate(()=>(window as unknown as {languageTest:{requests:Record<string,unknown>[]}}).languageTest.requests.filter(r=>String(r.type).startsWith('frontend/')))).toEqual([
     {type:'frontend/get_user_data',key:'mp_glass_language'},
     {type:'frontend/set_user_data',key:'mp_glass_language',value:'en'},
     {type:'frontend/set_user_data',key:'mp_glass_language',value:'ru'},
   ]);
   expect(await page.evaluate(()=>localStorage.getItem('mp-glass.language'))).toBe('ru');
-  await page.evaluate(()=>{document.body.replaceChildren(document.createElement('mp-glass-view-v4'));});
-  await expect(page.getByRole('link',{name:'Главная'})).toBeVisible();
-  await expect(page.getByRole('link',{name:'Комнаты'})).toBeVisible();
+  // The Studio speaks the language chosen on the dashboard, and has no menu of its own.
+  await page.setViewportSize({width:1280,height:720});
+  await page.evaluate(()=>{
+    const {hass}=(window as unknown as {languageTest:{hass:{user:{is_admin:boolean}}}}).languageTest;hass.user.is_admin=true;
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
+    panel.hass=hass;document.body.replaceChildren(panel);
+  });
+  await expect(page.getByRole('button',{name:'Сохранить',exact:true})).toBeVisible();
+  await expect(page.getByRole('combobox',{name:/Язык|Langue|Language/})).toHaveCount(0);
   await page.evaluate(()=>{localStorage.removeItem('mp-glass.language');});
 });
 test('card editor emits config-changed and filters unrelated domains',async({page})=>{

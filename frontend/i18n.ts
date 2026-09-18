@@ -47,9 +47,6 @@ export function interfaceLanguage(tag?: string): Language {
 }
 function resolve(): Language { return choice === 'auto' ? interfaceLanguage(haTag) : choice; }
 export const language = () => current;
-export const languageChoice = () => choice;
-/** What `auto` gives now, to show beside it in the menu. */
-export const automaticLanguage = () => interfaceLanguage(haTag);
 /** Locale of numbers and dates: that of Home Assistant when it speaks the same language (en-GB keeps its dates), else the language. */
 export function locale(): string { return haTag?.toLowerCase().startsWith(current) ? haTag : current; }
 
@@ -82,7 +79,7 @@ export function followHass(hass?: HassLike) {
   }
 }
 
-/** The language chosen in the Studio: at once in this browser, then on the user's other devices through Home Assistant. */
+/** The language chosen on the dashboard: at once in this browser, then on the user's other devices through Home Assistant. */
 export function chooseLanguage(value: LanguageChoice, hass?: HassLike) {
   keep(value);
   void hass?.callWS?.({ type: 'frontend/set_user_data', key: USER_DATA_KEY, value }).catch(() => { /* Kept in this browser only. */ });

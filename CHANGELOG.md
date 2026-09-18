@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.4 — ambiances Ouvrants et Audio-vidéo sur le plan
+
+Demande utilisateur : « en plus de Lumières et Climat il faudrait des boutons pour ouvrants et audio vidéo ».
+
+- **Ouvrants** : une pièce dont une porte ou une fenêtre est ouverte (capteur d’ouverture, porte de garage, portail) passe au vert ; sinon, son halo bleu ciel est d’autant plus vif que ses volets, stores et rideaux laissent entrer le jour. Son étiquette dit **Ouverte** et la position de chaque volet. Sur toute la maison, chaque niveau dit ses ouvertures et ses volets ouverts (« 3 / 4 »), ou **Tout est fermé**.
+- **Audio-vidéo** : une pièce dont le téléviseur ou l’enceinte joue a un halo violet, plus discret s’il est seulement allumé ou en pause. Son étiquette dit ce qui est lu, sinon **En pause** ou **Allumé** ; chaque niveau dit combien de lecteurs sont en lecture.
+- **Une ambiance à la fois** : chaque étiquette ne lit plus que l’ambiance choisie. La position des volets et ce qui est lu, jusque-là toujours affichés, passent dans Ouvrants et Audio-vidéo ; Lumières ne garde que le point doré et Climat que la température. Une légende explique les couleurs de chaque ambiance.
+- Chaque ambiance n’apparaît que si une pièce des niveaux affichés a de quoi la montrer ; Lumières reste toujours proposée. Sur téléphone, seule l’ambiance affichée garde son nom, les autres leur icône, pour que les quatre boutons tiennent sur le plan.
+
 ## 0.8.3 — le plan d’architecte reste sous le niveau
 
 Retour utilisateur sur 0.8.2 : « je perds mon fond de plan ! ». **Modifier le plan** montrait les pièces sur une simple grille : l’image analysée par Gemini n’était gardée nulle part une fois le brouillon utilisé.

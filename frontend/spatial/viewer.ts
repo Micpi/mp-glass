@@ -6,7 +6,7 @@ import { alignRooms, nearestSide, openingPlacement, roomArea, roomOutline, roomS
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
 import type { CameraView, LevelProjection, MediaState, OpeningState, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
-import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, roomAmbient, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
+import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
 type Kind = 'light'|'cover'|'climate'|'media'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
@@ -14,8 +14,17 @@ interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:
 const OPENING_NAMES:Record<OpeningKind,string>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
 const OPENING_ICONS:Record<OpeningKind,MPIconName>={door:'door',window:'window',french_window:'french'};
 const COVER_ICONS:Record<CoverStyle,MPIconName>={outside:'shutter',inside:'shutter',curtain:'curtain'};
-/** A contact sensor telling whether a door or a window is open. */
-const contact=(state?:HAState)=>['door','window','opening','garage_door'].includes(String(state?.attributes.device_class??''));
+/** The ambiances of the plan, each offered once a room of the floors shown has something to show in it; the lights always. */
+const MODES:{mode:PlanMode;label:string;icon:MPIconName;offered?:(room:SpatialRoom,states:Record<string,HAState>)=>boolean}[]=[
+  {mode:'lights',label:'Lumières',icon:'bulb'},{mode:'climate',label:'Climat',icon:'thermo',offered:hasThermometer},
+  {mode:'openings',label:'Ouvrants',icon:'window',offered:hasOpenings},{mode:'media',label:'Audio-vidéo',icon:'tv',offered:hasPlayers},
+];
+/** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights. */
+const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
+  climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
+  openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
+  media:[[PLAN_COLORS.media,'En lecture'],[`${PLAN_COLORS.media}66`,'Allumé']],
+};
 
 const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 const ROOM_ICONS:[RegExp,MPIconName][]=[
@@ -123,13 +132,16 @@ export class MPSpatialViewer extends LitElement {
     .shutter.unknown{opacity:.45}.shutter.unknown::before{background:none}.shutter.unknown::after{content:'?';position:absolute;inset:0;text-align:center;font:9px/11px system-ui}
     .modes{position:absolute;left:12px;bottom:12px;z-index:2;display:flex;gap:3px;padding:3px;border-radius:13px}
     .modes button{display:flex;align-items:center;gap:6px;border:0;border-radius:10px;background:transparent;padding:7px 10px;min-height:34px;color:#bed4e4;font-size:12px}
-    .modes button[aria-pressed=true]{background:#74b9eb30;color:#fff}.legend{position:absolute;bottom:62px;left:12px;right:62px;color:#cde0eb;font-size:10px;pointer-events:none}
+    .modes button[aria-pressed=true]{background:#74b9eb30;color:#fff}
+    /* Three ambiances or more on a phone: the one shown keeps its name, the others their icon. */
+    @container (max-width:479px){.modes.many button:not([aria-pressed=true]){padding:7px 9px}.modes.many button:not([aria-pressed=true]) .label{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}}
+    .legend{position:absolute;bottom:62px;left:12px;right:62px;color:#cde0eb;font-size:10px;pointer-events:none}
     .legend b{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px}.legend span{margin-right:8px;white-space:nowrap}
     .cover-controls{grid-column:1/-1;display:flex;gap:6px;align-items:center;padding:4px 8px 8px}.cover-controls button{border:1px solid var(--line);border-radius:9px;background:#14354d;min-width:38px;min-height:36px}
     .cover-controls label{flex:1;min-width:0;display:flex;align-items:center;gap:8px}.cover-controls output{font-size:11px;white-space:nowrap}
     .labels i{width:7px;height:7px;flex:0 0 auto;border-radius:50%;background:var(--warm);box-shadow:0 0 10px #ffc53d}
     /* A door or a window open, and what plays in the room. */
-    .reading.ajar{color:#8ff0c8}.reading.media{max-width:124px;color:#bfe6ff}.reading.media span{overflow:hidden;text-overflow:ellipsis}
+    .reading.ajar{color:#8ff0c8}.reading.media,.reading.player{max-width:124px;color:#dccfff}.reading.player{color:#b9c8d8}.reading.media span,.reading.player span{overflow:hidden;text-overflow:ellipsis}
     /* Studio: the next tap on the plan places a door, a window, a television or a speaker. */
     .picking{position:absolute;left:50%;bottom:12px;z-index:3;display:flex;align-items:center;gap:10px;max-width:calc(100% - 24px);padding:5px 5px 5px 14px;transform:translateX(-50%);border-radius:999px;font-size:12px;color:#eef7ff;border-color:color-mix(in srgb,var(--accent) 60%,transparent);box-shadow:0 0 0 3px color-mix(in srgb,var(--accent) 18%,transparent),0 10px 28px rgba(0,8,18,.35)}
     .picking span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.picking button{flex:none;min-height:32px;padding:0 13px;border-radius:999px;border:1px solid var(--line);background:rgba(11,37,61,.85)}
@@ -267,9 +279,9 @@ export class MPSpatialViewer extends LitElement {
   private drawnContent = '';
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
-  /** Whether a room of the floors shown measures its temperature: without one, the plan has no climate mode to offer. */
-  private thermometers(floors:SpatialFloor[]){const states=this.hass?.states??{};return floors.some(f=>f.rooms.some(r=>hasThermometer(r,states)));}
-  private planMode(floors:SpatialFloor[]):PlanMode{return this.mode==='climate'&&this.thermometers(floors)?'climate':'lights';}
+  /** The ambiances the floors shown can offer: no climate without a room that measures its temperature, and so on. */
+  private modes(floors:SpatialFloor[]){const states=this.hass?.states??{};return MODES.filter(m=>!m.offered||floors.some(f=>f.rooms.some(r=>m.offered!(r,states))));}
+  private planMode(floors:SpatialFloor[]):PlanMode{return this.modes(floors).some(m=>m.mode===this.mode)?this.mode:'lights';}
   private scene?: SpatialScene;
   private loading = false;
   private resize = new ResizeObserver(()=>this.edges());
@@ -608,9 +620,7 @@ export class MPSpatialViewer extends LitElement {
   }
   private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
   /** Everything a room lets the plan command: its equipment, what is linked to its doors and windows, its televisions and speakers. */
-  private roomEntities(room: SpatialRoom) {
-    return new Set([...(room.entityIds??[]),...(room.openings??[]).flatMap(o=>o.entityIds??[]),...(room.media??[]).flatMap(m=>m.entityId?[m.entityId]:[])]);
-  }
+  private roomEntities(room: SpatialRoom) { return new Set(roomEntityIds(room)); }
   private async cover(room:SpatialRoom,id:string,action:CoverAction,position?:number){
     if(!this.hass||this.busy||!id.startsWith('cover.')||!this.roomEntities(room).has(id)||!canCover(this.hass.states[id],action))return;
     const positioned=action==='set_cover_position'||action==='set_cover_tilt_position';
@@ -645,26 +655,36 @@ export class MPSpatialViewer extends LitElement {
     finally{this.busy=false;}
   }
   /**
-   * Under a room's name: in climate mode its temperature, only when it has a thermometer (— while it is offline); its shutters,
-   * those of its doors and windows included; a door or a window open; what plays on its television or speakers.
+   * Under a room's name, what its ambiance reads. Climat: its temperature, only when it has a thermometer (— while it is offline).
+   * Ouvrants: a door or a window open, and its shutters, those of its doors and windows included. Audio-vidéo: what its television
+   * or its speakers play, else whether one is on. Lumières reads nothing: a warm dot beside the name says a light is on.
    */
-  private planReadings(room:SpatialRoom,climate:boolean){
-    const states=this.hass?.states??{},entities=[...this.roomEntities(room)];
-    const temperature=climate?this.temperature(room):undefined,covers=entities.filter(id=>id.startsWith('cover.'));
-    const thermometer=climate&&(!!temperature||hasThermometer(room,states));
-    const open=entities.filter(id=>id.startsWith('binary_sensor.')&&contact(states[id])&&states[id]?.state==='on');
-    const player=entities.find(id=>id.startsWith('media_player.')&&mediaPlaying(states[id])),playing=player?states[player]:undefined;
-    if(!covers.length&&!thermometer&&!open.length&&!playing)return nothing;
-    return html`<span class="readings">
-      ${open.length?html`<span class="reading ajar" title=${open.map(id=>String(states[id]?.attributes.friendly_name??id)).join(', ')}>${mpIcon('window',12)}<span>${open.length>1?`${open.length} ouvertes`:'Ouverte'}</span></span>`:nothing}
-      ${playing?html`<span class="reading media" title=${`${String(playing.attributes.friendly_name??player)} · ${nowPlaying(playing)??'Lecture'}`}>${mpIcon(mediaIsTv(playing)?'tv':'speaker',12)}<span>${nowPlaying(playing)??'Lecture'}</span></span>`:nothing}
-      ${thermometer?html`<span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Température indisponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span>`:nothing}
-      ${covers.map(id=>{const state=this.hass?.states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?'Indisponible':position===undefined?'Position inconnue':`${this.format(position,0)} % ouvert`}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':`${this.format(position,0)} %`}</span></span>`;})}
-    </span>`;
+  private planReadings(room:SpatialRoom,mode:PlanMode){
+    const states=this.hass?.states??{};
+    if(mode==='climate'){
+      const temperature=this.temperature(room);
+      if(!temperature&&!hasThermometer(room,states))return nothing;
+      return html`<span class="readings"><span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Température indisponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span></span>`;
+    }
+    if(mode==='openings'){
+      const open=roomOpen(room,states),covers=[...this.roomEntities(room)].filter(id=>id.startsWith('cover.'));
+      if(!open.length&&!covers.length)return nothing;
+      return html`<span class="readings">
+        ${open.length?html`<span class="reading ajar" title=${open.map(id=>String(states[id]?.attributes.friendly_name??id)).join(', ')}>${mpIcon('window',12)}<span>${open.length>1?`${open.length} ouvertes`:'Ouverte'}</span></span>`:nothing}
+        ${covers.map(id=>{const state=states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?'Indisponible':position===undefined?'Position inconnue':`${this.format(position,0)} % ouvert`}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':`${this.format(position,0)} %`}</span></span>`;})}
+      </span>`;
+    }
+    if(mode==='media'){
+      const players=roomPlayers(room,states),player=players.find(id=>mediaPlaying(states[id]))??players.find(id=>mediaOn(states[id]));
+      if(!player)return nothing;
+      const state=states[player]!,playing=mediaPlaying(state),what=nowPlaying(state),text=playing?what??'Lecture':MEDIA_STATES[state.state]??state.state;
+      return html`<span class="readings"><span class=${`reading ${playing?'media':'player'}`} title=${`${String(state.attributes.friendly_name??player)} · ${playing?text:what?`${text} · ${what}`:text}`}>${mpIcon(mediaIsTv(state)?'tv':'speaker',12)}<span>${text}</span></span></span>`;
+    }
+    return nothing;
   }
   /** A room on the plan: its name, a warm dot while a light is on, and its readings. */
-  private planLabel(room:SpatialRoom,lit:boolean,climate:boolean){
-    const readings=this.preview?nothing:this.planReadings(room,climate);
+  private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
+    const readings=this.preview?nothing:this.planReadings(room,mode);
     return html`<button class=${readings===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}</button>`;
   }
   /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */
@@ -679,27 +699,43 @@ export class MPSpatialViewer extends LitElement {
     const {low,high}=range,value=(t:typeof low)=>html`<span style=${`color:${temperatureColor(t.celsius)}`}>${this.format(t.value)}</span>`;
     return html`<span class="temps" title="Température des pièces du niveau">${mpIcon('thermo',12)}<span>${value(low)}${this.format(low.value)===this.format(high.value)&&low.unit===high.unit?nothing:html`–${value(high)}`} ${high.unit}</span></span>`;
   }
-  /** A floor of the whole house on the plan: its name, a warm dot while a light is on, and how many are on, or its temperatures. */
-  private levelLabel(floor: SpatialFloor, climate: boolean) {
+  /** Doors and windows of a floor standing open, and how many of its shutters let daylight in; everything closed said once. */
+  private levelOpenings(floor: SpatialFloor) {
+    const states=this.hass?.states??{},rooms=floor.rooms;
+    const open=[...new Set(rooms.flatMap(r=>roomOpen(r,states)))].length,covers=this.groupCovers(rooms),up=covers.filter(id=>coverOpen(states[id])).length;
+    if(!rooms.some(r=>hasOpenings(r,states))) return nothing;
+    if(!open&&!up) return html`<span class="reading">Tout est fermé</span>`;
+    return html`${open?html`<span class="reading ajar">${mpIcon('window',12)}<span>${open} ${open>1?'ouvertes':'ouverte'}</span></span>`:nothing}${up?html`<span class="reading" title="Volets ouverts">${mpIcon('shutter',12)}<span>${up} / ${covers.length}</span></span>`:nothing}`;
+  }
+  /** Televisions and speakers of a floor playing, else those on. */
+  private levelMedia(floor: SpatialFloor) {
+    const states=this.hass?.states??{},players=[...new Set(floor.rooms.flatMap(r=>roomPlayers(r,states)))].map(id=>states[id]);
+    if(!players.length) return nothing;
+    const playing=players.filter(mediaPlaying).length,on=players.filter(mediaOn).length;
+    return html`<span class=${`reading ${playing?'media':''}`}>${playing?html`${mpIcon('play',12)}<span>${playing} en lecture</span>`:on?`${on} ${on>1?'allumés':'allumé'}`:'Tout est éteint'}</span>`;
+  }
+  /** A floor of the whole house on the plan: its name, a warm dot while a light is on, and what its ambiance reads. */
+  private levelLabel(floor: SpatialFloor, mode: PlanMode) {
     const {all,on}=this.lightsOf(floor.rooms);
-    const readings=climate?this.temperatures(floor):all.length?html`<span class="reading">${on.length?`${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:'Tout est éteint'}</span>`:nothing;
+    const readings=mode==='climate'?this.temperatures(floor):mode==='openings'?this.levelOpenings(floor):mode==='media'?this.levelMedia(floor)
+      :all.length?html`<span class="reading">${on.length?`${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:'Tout est éteint'}</span>`:nothing;
     return html`<button class="${readings===nothing?'':'rich'} ${this.pointed===floor.id||this.opening===floor.id?'pointed':''}" style="visibility:hidden" data-floor=${floor.id} title="Ouvrir ce niveau"
       @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
-      <span class="name">${on.length&&!climate?html`<i></i>`:nothing}<span>${floor.name}</span></span>${readings===nothing?nothing:html`<span class="readings">${readings}</span>`}</button>`;
+      <span class="name">${on.length&&mode==='lights'?html`<i></i>`:nothing}<span>${floor.name}</span></span>${readings===nothing?nothing:html`<span class="readings">${readings}</span>`}</button>`;
   }
   render() {
     const floor=this.currentFloor,room=this.room,plan=this.plan;
     if(!floor||!plan) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
-    const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),climate=this.planMode(floors)==='climate';
+    const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),modes=this.modes(floors),mode=this.planMode(floors),legend=LEGENDS[mode];
     // From above, the floors of the whole house would hide one another.
     const top=stacked?nothing:html`<button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>`;
     return html`<div class="layout">
       <div class="stage-col">
       <div class="stage">
         <div class="canvas"></div>
-        <div class="labels">${stacked?plan.floors.map(f=>this.levelLabel(f,climate)):floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&!climate,climate))}</div>
-        ${this.preview||!this.thermometers(floors)?nothing:html`<div class="modes glass" role="group" aria-label="Ambiance du plan"><button aria-pressed=${!climate} @click=${()=>{this.mode='lights';this.engaged=true;}}>${mpIcon('bulb',14)} Lumières</button><button aria-pressed=${climate} @click=${()=>{this.mode='climate';this.engaged=true;}}>${mpIcon('thermo',14)} Climat</button></div>
-          ${climate?html`<div class="legend"><span><b style="background:#69b7ff"></b>&lt; 18 °C</span><span><b style="background:#71d7c0"></b>18–21</span><span><b style="background:#ffc574"></b>21–24</span><span><b style="background:#ff816b"></b>≥ 24 °C</span></div>`:nothing}`}
+        <div class="labels">${stacked?plan.floors.map(f=>this.levelLabel(f,mode)):floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&mode==='lights',mode))}</div>
+        ${this.preview||modes.length<2?nothing:html`<div class=${`modes glass ${modes.length>2?'many':''}`} role="group" aria-label="Ambiance du plan">${modes.map(m=>html`<button aria-pressed=${m.mode===mode} title=${m.label} @click=${()=>{this.mode=m.mode;this.engaged=true;}}>${mpIcon(m.icon,14)}<span class="label">${m.label}</span></button>`)}</div>
+          ${legend?html`<div class="legend">${legend.map(([color,text])=>html`<span><b style=${`background:${color}`}></b>${text}</span>`)}</div>`:nothing}`}
         ${plan.floors.length>1
           ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.preview?nothing:html`<button aria-pressed=${stacked} aria-label="Tous les niveaux" title="Tous les niveaux" @click=${this.showHouse}>${mpIcon('layers',14)}Tous</button>`}${plan.floors.map(f=>html`<button aria-pressed=${!stacked&&f.id===floor.id} @click=${()=>this.openFloor(f.id)}>${f.name}</button>`)}</div>`
           : html`<div class="floor-tag glass">${mpIcon('rooms',13)}<span>${floor.name}</span></div>`}

@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,roomAmbient,roomTemperature,temperatureRange } from '../shared/spatial-state';
+import { canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasOpenings,hasPlayers,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,PLAN_COLORS,roomAmbient,roomEntityIds,roomOpen,roomTemperature,temperatureRange } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -83,5 +83,49 @@ describe('shutters, blinds, curtains and players',()=>{
     expect(['off','standby','unavailable','unknown'].some(s=>mediaOn(state('media_player.a',s)))).toBe(false);
     expect(canMedia(tv,'pause')).toBe(true);expect(canMedia(tv,'next_track')).toBe(false);expect(canMedia(state('media_player.a','unavailable',{supported_features:1}),'pause')).toBe(false);
     expect(mediaVolume(state('media_player.a','on',{volume_level:2}))).toBeUndefined();
+  });
+});
+
+describe('openings and players on the plan',()=>{
+  const bay={id:'bay',kind:'window' as const,side:0,at:.5,width:1.2,entityIds:['binary_sensor.bay','cover.bay']};
+  const withOpening=(entityIds:string[],media:string[]=[]):SpatialRoom=>({...room(entityIds),openings:[bay],media:media.map((entityId,i)=>({id:`m${i}`,kind:'tv' as const,at:[1,1] as [number,number],entityId}))});
+  it('gather what a room holds once, from its equipment, its doors and windows and its players',()=>{
+    expect(roomEntityIds(withOpening(['light.a','cover.bay'],['media_player.tv']))).toEqual(['light.a','cover.bay','binary_sensor.bay','media_player.tv']);
+  });
+  it('offer an openings mode to a room with a contact sensor or a cover, and a media mode to a room with a player',()=>{
+    const states={'binary_sensor.bay':state('binary_sensor.bay','off'),'binary_sensor.motion':state('binary_sensor.motion','on',{device_class:'motion'}),
+      'binary_sensor.door':state('binary_sensor.door','off',{device_class:'door'}),'cover.a':state('cover.a','closed'),'media_player.tv':state('media_player.tv','off')};
+    // A sensor linked to a window counts whatever its class; a motion sensor never does.
+    expect(hasOpenings(withOpening([]),states)).toBe(true);
+    expect(hasOpenings(room(['binary_sensor.motion','light.a']),states)).toBe(false);
+    expect(hasOpenings(room(['binary_sensor.door']),states)).toBe(true);
+    expect(hasOpenings(room(['cover.a']),states)).toBe(true);
+    expect(hasOpenings(room(['cover.missing']),states)).toBe(false);
+    expect(hasPlayers(withOpening([],['media_player.tv']),states)).toBe(true);
+    expect(hasPlayers(room(['media_player.missing']),states)).toBe(false);
+  });
+  it('light a room in green while a door or a window is open, else by the daylight its shutters let in',()=>{
+    const states={'binary_sensor.bay':state('binary_sensor.bay','off'),'cover.bay':state('cover.bay','closed'),'cover.b':state('cover.b','open',{current_position:100}),
+      'cover.garage':state('cover.garage','closed',{device_class:'garage'})};
+    const r=withOpening(['cover.b','cover.garage']);
+    const half=roomAmbient(r,states,'openings');
+    expect(half.color).toBe(PLAN_COLORS.daylight);expect(half.strength).toBeGreaterThan(0);
+    states['cover.b']=state('cover.b','closed');
+    expect(roomAmbient(r,states,'openings').strength).toBe(0);
+    // A garage door up is an opening, not daylight.
+    states['cover.garage']=state('cover.garage','open',{device_class:'garage',current_position:100});
+    expect(roomOpen(r,states)).toEqual(['cover.garage']);
+    expect(roomAmbient(r,states,'openings')).toEqual({color:PLAN_COLORS.open,strength:.6});
+    states['binary_sensor.bay']=state('binary_sensor.bay','on');
+    expect(roomOpen(r,states)).toEqual(['binary_sensor.bay','cover.garage']);
+    states['cover.b']=state('cover.b','open',{current_position:100});
+    expect(roomAmbient(r,states,'openings').color).toBe(PLAN_COLORS.open);
+  });
+  it('light a room brighter while a player plays than while it is only on',()=>{
+    const states:Record<string,HAState>={'media_player.tv':state('media_player.tv','off')},r=withOpening([],['media_player.tv']);
+    expect(roomAmbient(r,states,'media').strength).toBe(0);
+    states['media_player.tv']=state('media_player.tv','paused');const on=roomAmbient(r,states,'media').strength;
+    states['media_player.tv']=state('media_player.tv','playing');
+    expect(on).toBeGreaterThan(0);expect(roomAmbient(r,states,'media')).toEqual({color:PLAN_COLORS.media,strength:.6});
   });
 });

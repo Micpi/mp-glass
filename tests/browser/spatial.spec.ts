@@ -276,6 +276,11 @@ test('a house of several floors opens on all of them with their state, and each 
   await expect(label('upstairs')).toHaveText(/Étage\s*19,2–22,6 °C/);
   await expect(label('basement')).toHaveText('Sous-sol');
   await viewer.locator('.layout').screenshot({path:'artifacts/spatial-house.png'});
+  // The shutters of the ground floor letting daylight in, and what plays there; the other floors have neither.
+  await viewer.getByRole('button',{name:'Ouvrants',exact:true}).click();
+  await expect(label('ground')).toHaveText(/Rez-de-chaussée\s*3 \/ 4/);await expect(label('upstairs')).toHaveText('Étage');
+  await viewer.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
+  await expect(label('ground')).toHaveText(/Rez-de-chaussée\s*1 en lecture/);await expect(label('basement')).toHaveText('Sous-sol');
   await viewer.getByRole('button',{name:'Lumières',exact:true}).click();
   // A floor label opens that floor, as its tab would.
   await label('upstairs').click();
@@ -1260,6 +1265,11 @@ test('climate and shutter position update on the plan and cover commands target 
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(viewer.locator('[data-room="living"]')).toContainText('21,5 °C');
   await expect(viewer.locator('[data-room="bedroom"]')).toContainText('19,5 °C');
+  // Shutter positions are read in the openings ambiance.
+  await expect(viewer.locator('[data-room="living"]')).not.toContainText('65 %');
+  await viewer.getByRole('button',{name:'Ouvrants',exact:true}).click();
+  await expect(viewer.locator('[data-room="living"]')).toContainText('65 %');
+  await expect(viewer.locator('[data-room="living"]')).not.toContainText('21,5 °C');
   await viewer.locator('[data-room="living"]').click();
   const card=viewer.getByRole('region',{name:'Salon'});
   await card.getByRole('button',{name:'Fermer le volet Volet baie'}).click();
@@ -1286,17 +1296,19 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   // Lights: a warm dot on the lit kitchen only, names alone where there is nothing to read.
   await expect(label('kitchen').locator('i')).toHaveCount(1);await expect(label('dining').locator('i')).toHaveCount(0);
   await expect(label('dining')).toHaveText('Séjour');await expect(label('dining').locator('.readings')).toHaveCount(0);
+  // The lights read nothing else: shutters and players have their own ambiances.
+  await expect(label('living').locator('.readings')).toHaveCount(0);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(label('bedroom').locator('.reading.temp')).toHaveText('19,5 °C');
-  // The kitchen blind and the bedroom shutter keep their position; the other rooms have nothing to read.
-  await expect(label('kitchen').locator('.reading.temp')).toHaveCount(0);await expect(label('kitchen')).toContainText('100 %');
-  for(const room of ['dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
+  await expect(label('bedroom').locator('.reading')).toHaveCount(1);
+  // Only the rooms that measure their temperature read something.
+  await expect(label('kitchen').locator('.reading.temp')).toHaveCount(0);
+  for(const room of ['kitchen','dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(0);
-  // An offline thermometer still says so; its room keeps its shutter.
+  // An offline thermometer still says so.
   await setStates({'sensor.salon_temperature':{state:'unavailable'}});
   await expect(label('living').locator('.reading.temp')).toHaveText('—');
   await expect(label('living').locator('.reading.temp')).toHaveAttribute('title','Température indisponible');
-  await expect(label('living')).toContainText('65 %');
   await viewer.screenshot({path:'artifacts/spatial-labels-climate.png'});
   // No thermometer left on the floor: no climate mode to offer, the plan shows the lights.
   await setStates({'sensor.salon_temperature':null,'climate.chambre':null});
@@ -1304,6 +1316,34 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await expect(viewer.locator('.legend')).toHaveCount(0);
   await expect(label('bedroom').locator('.reading.temp')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(1);
+});
+
+test('the plan offers lights, climate, openings and audio-video ambiances, as far as its rooms have something to show',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer'),modes=viewer.getByRole('group',{name:'Ambiance du plan'});
+  await expect(viewer.locator('canvas')).toBeVisible();
+  await expect(modes.getByRole('button')).toHaveText(['Lumières','Climat','Ouvrants','Audio-vidéo']);
+  // On a phone the ambiance shown keeps its name, the others their icon, all of them on the plan.
+  await modes.getByRole('button',{name:'Ouvrants',exact:true}).click();
+  const width=async(name:string)=>(await modes.getByRole('button',{name,exact:true}).boundingBox())!.width;
+  expect(await width('Climat')).toBeLessThan(40);expect(await width('Ouvrants')).toBeGreaterThan(70);
+  const [bar,stage]=await Promise.all([modes.boundingBox(),viewer.locator('.stage').boundingBox()]);
+  expect(bar!.x+bar!.width).toBeLessThanOrEqual(stage!.x+stage!.width);
+  // The bedroom window opens: its room turns green on the plan and says so.
+  await page.evaluate(()=>(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo.hass.callService('binary_sensor','turn_on',{entity_id:'binary_sensor.chambre_fenetre'}));
+  await expect(viewer.locator('[data-room="bedroom"] .reading.ajar')).toHaveText('Ouverte');
+  await viewer.locator('.stage').screenshot({path:'artifacts/spatial-modes-openings-phone.png'});
+  await modes.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
+  await viewer.locator('.stage').screenshot({path:'artifacts/spatial-modes-media-phone.png'});
+  // Without a player left, no audio-video ambiance: the plan goes back to the lights.
+  await page.evaluate(()=>{
+    const view=document.querySelector('mp-glass-view-v4') as HTMLElement&{hass:import('../../frontend/ha/client').Hass},states={...view.hass.states};
+    delete states['media_player.salon_tv'];delete states['media_player.cuisine'];view.hass={...view.hass,states};
+  });
+  await expect(modes.getByRole('button')).toHaveText(['Lumières','Climat','Ouvrants']);
+  await expect(modes.getByRole('button',{name:'Lumières',exact:true})).toHaveAttribute('aria-pressed','true');
+  await expect(viewer.locator('.legend')).toHaveCount(0);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
 });
 
 test('wall fitting follows concave outlines and does not count duplicate wall fragments twice',async({page})=>{
@@ -1427,6 +1467,8 @@ test('doors and windows tell whether they are open, and their shutters, blinds a
   // Shutter at 65 %, curtain at 35 %, blind up: three let daylight in; the bedroom shutter is down.
   const overview=viewer.getByRole('region',{name:'Vue d’ensemble du niveau'});
   await expect(overview.locator('.stat',{hasText:'Volets'})).toContainText('3 / 4');
+  await viewer.getByRole('button',{name:'Ouvrants',exact:true}).click();
+  await expect(viewer.locator('.legend')).toHaveText(/Porte ou fenêtre ouverte\s*Volets ouverts/);
   await expect(viewer.locator('[data-room="living"]')).toContainText('65 %');await expect(viewer.locator('[data-room="living"]')).toContainText('35 %');
   await viewer.locator('[data-room="living"]').click();
   const living=viewer.getByRole('region',{name:'Salon'}),bay=living.getByRole('list',{name:'Portes et fenêtres'});
@@ -1466,14 +1508,19 @@ test('doors and windows tell whether they are open, and their shutters, blinds a
 test('a television and a speaker are switched, played, paused, turned down and moved to another source from their room',async({page})=>{
   await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
   const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();
-  // What plays shows under the name of its room.
+  // In the audio-video ambiance, what plays shows under the name of its room.
+  await expect(viewer.locator('[data-room="living"] .reading.media')).toHaveCount(0);
+  await viewer.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
+  await expect(viewer.locator('.legend')).toHaveText(/En lecture\s*Allumé/);
   await expect(viewer.locator('[data-room="living"] .reading.media')).toHaveText('Le Grand Bleu');
+  await expect(viewer.locator('[data-room="kitchen"] .reading.player')).toHaveText('En pause');
   await viewer.locator('[data-room="living"]').click();
   const living=viewer.getByRole('region',{name:'Salon'});
   await expect(living.getByText('Lecture · Le Grand Bleu')).toBeVisible();
   await living.getByRole('button',{name:'Pause Téléviseur'}).click();
   await expect(living.getByRole('button',{name:'Lecture Téléviseur'})).toBeVisible();
   await expect(viewer.locator('[data-room="living"] .reading.media')).toHaveCount(0);
+  await expect(viewer.locator('[data-room="living"] .reading.player')).toHaveText('En pause');
   await living.getByRole('slider',{name:'Volume Téléviseur'}).fill('50');
   await expect(living.locator('.volume output')).toHaveText('50 %');
   await living.getByRole('button',{name:'Couper le son Téléviseur'}).click();

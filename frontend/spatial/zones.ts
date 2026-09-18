@@ -1,6 +1,7 @@
 import { LitElement, css, html, nothing, svg, type PropertyValues } from 'lit';
-import { arcPoints, bent, outline, roomArea, roomOutline, sidePoint, splitSide, validRoom, type Point, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
-import { mpIcon } from '../icons';
+import { arcPoints, bent, insideRoom, OPENING_SIZES, outline, roomArea, roomOutline, sidePoint, splitSide, validRoom, type OpeningKind, type Point, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { attachFixtures, isOpening, type DraftFixture, type FixtureKind } from '../../shared/fixtures';
+import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
 
 /**
@@ -36,6 +37,17 @@ interface Guides { lines:Line[]; sx:number; sy:number; tolerance:number }
  */
 interface Drag { index:number; handle:Handle; start:[number,number]; origin:number[]; box:number[]; moved:boolean; shape?:number[][]; from?:number[][]; arcs?:number[]; vertex?:number; side?:number; inserted?:boolean; guides?:Guides; angle?:number }
 
+/** Doors, windows, televisions and speakers placed on the draft: their names, marks and colours, apart from the rooms'. */
+const FIXTURES:Record<FixtureKind,{name:string;article:string;icon:MPIconName;color:string}>={
+  door:{name:'Porte',article:'la porte',icon:'door',color:'#ffb35c'},window:{name:'Fenêtre',article:'la fenêtre',icon:'window',color:'#3fc6ff'},
+  french_window:{name:'Porte-fenêtre',article:'la porte-fenêtre',icon:'french',color:'#a58cff'},tv:{name:'Téléviseur',article:'le téléviseur',icon:'tv',color:'#ff6fae'},
+  speaker:{name:'Enceinte',article:'l’enceinte',icon:'speaker',color:'#5fe0a0'},
+};
+const FIXTURE_KINDS=Object.keys(FIXTURES) as FixtureKind[];
+/** Eight random hex digits (not `crypto.randomUUID`, missing over plain HTTP). */
+const shortId=()=>Array.from(crypto.getRandomValues(new Uint8Array(4)),byte=>byte.toString(16).padStart(2,'0')).join('');
+/** Nearest point to `p` on the segment from `a` to `b`. */
+const closest=(a:Point,b:Point,p:Point):Point=>{const dx=b[0]-a[0],dy=b[1]-a[1],squared=dx*dx+dy*dy,t=squared?Math.max(0,Math.min(1,((p[0]-a[0])*dx+(p[1]-a[1])*dy)/squared)):0;return [a[0]+dx*t,a[1]+dy*t];};
 /** Distinct colour per room (golden angle), shared by the zones and the list. */
 export const roomColor=(index:number)=>`hsl(${Math.round(index*137.5)%360} 78% 62%)`;
 const round=(value:number)=>Math.round(value*100)/100;
@@ -298,7 +310,7 @@ const pairs=(points:number[][])=>points.map(p=>`${p[0]},${p[1]}`).join(' ');
  * rooms and `zones-undo`; the Studio rebuilds the plan.
  */
 export class MPPlanZones extends LitElement {
-  static properties={src:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},
+  static properties={src:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},fixtures:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},fixture:{state:true},placing:{state:true},moving:{state:true},
     selected:{state:true},vertex:{state:true},side:{state:true},pending:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
@@ -349,14 +361,30 @@ export class MPPlanZones extends LitElement {
     .swatch{display:grid;place-items:center;min-width:22px;height:22px;border-radius:7px;color:#061421;font-size:11px;font-weight:700}
     input{flex:1;min-width:0;min-height:32px;padding:4px 8px;font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:8px;background:#0b253d}small{color:#9fb6ca;white-space:nowrap}
     li button{min-height:30px;width:30px;padding:0;justify-content:center;border-color:transparent;background:transparent}li button:hover{background:#ff8a6a22}
+    /* Doors, windows, televisions and speakers: a thick stroke along the wall, a round mark to move them, apart from the rooms. */
+    .place{margin-top:2px}.place>span{color:#9fb6ca;font-size:12px}
+    .place button[aria-pressed=true]{background:color-mix(in srgb,var(--tone) 32%,#0b253d);border-color:var(--tone)}.place button .mp-icon{color:var(--tone)}
+    line.under{stroke:#fff;stroke-width:9;stroke-linecap:round;vector-effect:non-scaling-stroke;pointer-events:none}
+    line.opening{stroke:var(--tone);stroke-width:5;stroke-linecap:round;vector-effect:non-scaling-stroke;pointer-events:none}
+    line.opening.lost{stroke-dasharray:6 5}line.opening.preview{stroke-opacity:.8}
+    .mark{position:absolute;display:grid;place-items:center;width:24px;height:24px;margin:-12px 0 0 -12px;border-radius:50%;background:var(--tone);color:#061421;border:2px solid #fff;box-shadow:0 2px 8px #0009;pointer-events:auto;touch-action:none;cursor:move}
+    .mark::before{content:'';position:absolute;inset:-8px}.mark.selected{box-shadow:0 0 0 4px #fff8,0 2px 8px #0009}.mark.lost{border-color:#ff8a6a;border-style:dashed}
+    @media (pointer:coarse){.mark{width:28px;height:28px;margin:-14px 0 0 -14px}}
+    ul.fixtures .swatch{color:#061421}ul.fixtures li span.what{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}ul.fixtures small.lost{color:#ffb4a0}
   `;
   src='';source?:Source;plan?:SpatialPlan;detection:DetectionRoom[]=[];walls?:Walls;busy=false;canUndo=false;
+  /** Doors, windows, televisions and speakers placed on the draft; `fixture`: the one selected. */
+  fixtures:DraftFixture[]=[];private fixture='';
+  /** An opening being drawn along `wall` (plan pixels) from `a` to `b`, or a television or a speaker being put down. */
+  private placing?:{kind:FixtureKind;a:number[];b:number[];wall?:[Point,Point]};
+  /** A placed one being dragged by its mark. */
+  private moving?:{id:string;start:number[];delta:number[]};
   /** Selected room and, on its outline, the corner and the side last touched (-1: none). */
   private selected=-1;private vertex=-1;private side=-1;private naming=-1;
   /** « Courber le côté » or « Arrondir l’angle » chosen before its side or its corner: the next one touched gets it. */
   private pending:''|'curve'|'round'='';
   /** Drawing a new room: a rectangle dragged diagonally, or an outline corner by corner ([x, y] points; `cursor`: the next one). */
-  private mode:''|'rect'|'trace'='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
+  private mode:''|'rect'|'trace'|FixtureKind='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
   private drag?:Drag;private notice='';private frame={width:0,height:0};
   private zoomLevel=1;private panning=false;private magnet=true;
   private pan?:{x:number;y:number;left:number;top:number};
@@ -375,6 +403,7 @@ export class MPPlanZones extends LitElement {
   protected firstUpdated(){const figure=this.renderRoot.querySelector('figure');if(figure)this.observer.observe(figure);}
   disconnectedCallback(){super.disconnectedCallback();this.observer.disconnect();}
   protected willUpdate(changed:PropertyValues){
+    if(changed.has('fixtures')&&!this.fixtures.some(f=>f.id===this.fixture))this.fixture='';
     if(!changed.has('detection'))return;
     if(this.selected>=this.detection.length)this.selected=-1;
     if(this.selected<0)this.pending='';
@@ -635,7 +664,79 @@ export class MPPlanZones extends LitElement {
     }
     return best;
   }
-  private startMode(mode:'rect'|'trace'){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';this.notice='';}
+  private startMode(mode:'rect'|'trace'|FixtureKind){this.panning=false;this.mode=this.mode===mode?'':mode;this.draft=undefined;this.trace=undefined;this.placing=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';this.fixture='';this.notice='';}
+  private get fixtureMode(){return this.mode!==''&&this.mode!=='rect'&&this.mode!=='trace'?this.mode:undefined;}
+  private emitFixtures(fixtures:DraftFixture[]){this.notice='';this.dispatchEvent(new CustomEvent('fixtures-change',{detail:fixtures}));}
+  /** The sides of the rooms as drawn on the image, in the plan's pixels: where a door or a window can go. */
+  private wallPieces(){
+    const pieces:[Point,Point][]=[];
+    for(const room of this.detection){const ring=this.planOutline(room);if(!ring)continue;const points=this.pixels(ring);points.forEach((p,i)=>pieces.push([p,points[(i+1)%points.length]!]));}
+    return pieces;
+  }
+  /** The wall nearest to `p` (plan pixels), when it is within about 40 screen pixels. */
+  private nearestWall(p:Point):[Point,Point]|undefined{
+    let best:{wall:[Point,Point];distance:number}|undefined;
+    for(const wall of this.wallPieces()){const q=closest(wall[0],wall[1],p),distance=Math.hypot(q[0]-p[0],q[1]-p[1]);if(!best||distance<best.distance)best={wall,distance};}
+    const reach=40/Math.max(1,this.frame.width)*(this.source?.width??1000);
+    return best&&best.distance<=reach?best.wall:undefined;
+  }
+  /**
+   * An opening drawn from `a` to `b` (0-1000), laid on the line of `wall`; barely drawn, as wide as usual for its kind
+   * around `a`. Its two ends, in 0-1000.
+   */
+  private onWall(wall:[Point,Point],a:number[],b:number[],kind:OpeningKind):[number[],number[]]{
+    const {sx,sy}=this.unit,u=direction(wall[0],wall[1]),along=(q:number[])=>{const p=toPixel(q,sx,sy);return (p[0]-wall[0][0])*u[0]+(p[1]-wall[0][1])*u[1];};
+    let [t0,t1]=[along(a),along(b)];
+    if(Math.abs(t1-t0)/(this.source?.width??1000)*this.frame.width<8){const half=OPENING_SIZES[kind].width/(this.source?.scale[0]??.01)/2;[t0,t1]=[t0-half,t0+half];}
+    const at=(t:number)=>fromPixel([wall[0][0]+u[0]*t,wall[0][1]+u[1]*t],sx,sy).map(round);
+    return [at(Math.min(t0,t1)),at(Math.max(t0,t1))];
+  }
+  /** Whether `p` (0-1000) is in a room of the draft. */
+  private inRoom(p:number[]){const {sx,sy}=this.unit;return this.detection.some(room=>{const ring=this.planOutline(room);return !!ring&&insideRoom({polygon:this.pixels(ring)},toPixel(p,sx,sy));});}
+  /** A placed one as shown: dragged by its mark, its ends moved together. */
+  private shown(fixture:DraftFixture){
+    const d=this.moving?.id===fixture.id?this.moving.delta:[0,0],move=(p:number[])=>[p[0]!+d[0]!,p[1]!+d[1]!];
+    return {a:move(fixture.a),b:fixture.b&&move(fixture.b)};
+  }
+  /** Down in a placing mode: an opening starts on the wall touched; a television or a speaker waits for the pointer to lift. */
+  private startPlacing(kind:FixtureKind,p:[number,number]){
+    if(!isOpening(kind)){this.placing={kind,a:p,b:p};return true;}
+    const {sx,sy}=this.unit,wall=this.nearestWall(toPixel(p,sx,sy));
+    if(!wall){this.notice=`Touchez un mur d’une pièce du brouillon : ${FIXTURES[kind].article} s’y pose.`;return false;}
+    this.placing={kind,a:p,b:p,wall};
+    return true;
+  }
+  /** Up in a placing mode: the opening along its wall, or the television or speaker in its room. The mode stays on for the next one. */
+  private finishPlacing(){
+    const placing=this.placing;this.placing=undefined;
+    if(!placing)return;
+    const id=`${isOpening(placing.kind)?'opening':'media'}-${shortId()}`;
+    let fixture:DraftFixture;
+    if(isOpening(placing.kind)&&placing.wall){const [a,b]=this.onWall(placing.wall,placing.a,placing.b,placing.kind);fixture={id,kind:placing.kind,a,b};}
+    else{
+      if(!this.inRoom(placing.a)){this.notice=`Touchez l’intérieur d’une pièce du brouillon, là où se trouve ${FIXTURES[placing.kind].article}.`;return;}
+      fixture={id,kind:placing.kind,a:placing.a.map(round)};
+    }
+    this.fixture=id;
+    this.emitFixtures([...this.fixtures,fixture]);
+  }
+  /** A mark dropped: moved as dragged, an opening laid again on the wall nearest to its middle. */
+  private finishMoving(){
+    const moving=this.moving,fixture=this.fixtures.find(f=>f.id===moving?.id),shown=fixture&&this.shown(fixture);
+    this.moving=undefined;
+    if(!moving||!fixture||!shown||Math.hypot(moving.delta[0]!/this.screenTolerance[0],moving.delta[1]!/this.screenTolerance[1])<.4)return;
+    let a=shown.a.map(round),b=shown.b?.map(round);
+    if(isOpening(fixture.kind)&&b){
+      const {sx,sy}=this.unit,middle=toPixel([(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2],sx,sy),wall=this.nearestWall(middle);
+      if(wall){
+        // Laid along the wall now nearest, its length kept, its middle brought onto the wall.
+        const half=Math.hypot((b[0]!-a[0]!)*sx,(b[1]!-a[1]!)*sy)/2,u=direction(wall[0],wall[1]),c=closest(wall[0],wall[1],middle);
+        [a,b]=[fromPixel([c[0]-u[0]*half,c[1]-u[1]*half],sx,sy).map(round),fromPixel([c[0]+u[0]*half,c[1]+u[1]*half],sx,sy).map(round)];
+      }
+    }
+    this.emitFixtures(this.fixtures.map(f=>f.id===fixture.id?{...f,a,...(b?{b}:{})}:f));
+  }
+  private dropFixture(id:string){if(!id||this.busy)return;this.fixture='';this.emitFixtures(this.fixtures.filter(f=>f.id!==id));}
   /** Next corner of the outline being drawn (true when placed); back on the first corner, the outline is closed. */
   private tracePoint(p:number[]){
     const points=this.trace?.points??[],first=points[0],last=points.at(-1);
@@ -675,6 +776,9 @@ export class MPPlanZones extends LitElement {
    * the selected rectangle, or a room.
    */
   private grab(target:Element,p:[number,number]){
+    // The mark of a door, a window, a television or a speaker: selected, and dragged to move it.
+    const mark=target.closest<HTMLElement>('[data-fixture]');
+    if(mark){this.fixture=mark.dataset.fixture!;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';this.moving={id:this.fixture,start:p,delta:[0,0]};return true;}
     const element=target.closest<HTMLElement>('[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate],[data-handle],[data-zone]');
     const room=this.detection[this.selected];
     if(!element)return false;
@@ -719,6 +823,7 @@ export class MPPlanZones extends LitElement {
     if(zone===undefined)return false;
     const index=Number(zone),box=[...this.detection[index]!.box_2d];
     if(index!==this.selected)this.pending='';
+    this.fixture='';
     this.selected=index;this.vertex=-1;this.side=-1;
     this.drag={index,handle:'move',start:p,origin:box,box,moved:false};
     return true;
@@ -731,7 +836,8 @@ export class MPPlanZones extends LitElement {
     this.notice='';
     if(this.mode==='trace')this.tracing=this.tracePoint(p);
     else if(this.mode==='rect')this.draft={start:p,box:[p[1],p[0],p[1],p[0]]};
-    else if(!this.grab(e.target as Element,p)){this.selected=-1;this.vertex=-1;this.pending='';return;}
+    else if(this.fixtureMode){if(!this.startPlacing(this.fixtureMode,p))return;}
+    else if(!this.grab(e.target as Element,p)){this.selected=-1;this.vertex=-1;this.pending='';this.fixture='';return;}
     figure.setPointerCapture(e.pointerId);
     // No text selection nor page drag; keep the keyboard on the plan for Delete and Escape.
     e.preventDefault();figure.focus({preventScroll:true});
@@ -739,6 +845,9 @@ export class MPPlanZones extends LitElement {
   private move=(e:PointerEvent)=>{
     if(this.pinch)return;
     if(this.pan){const v=this.renderRoot.querySelector<HTMLElement>('.viewport')!;v.scrollLeft=this.pan.left+this.pan.x-e.clientX;v.scrollTop=this.pan.top+this.pan.y-e.clientY;return;}
+    // An opening drawn along its wall, a television or a speaker following the pointer, a mark being dragged.
+    if(this.placing){const p=this.point(e);this.placing={...this.placing,b:p,...(isOpening(this.placing.kind)?{}:{a:p})};return;}
+    if(this.moving){const p=this.point(e);this.moving={...this.moving,delta:[p[0]-this.moving.start[0]!,p[1]-this.moving.start[1]!]};return;}
     const [tx,ty]=this.tolerance;
     if(this.mode==='trace'){
       const points=this.trace?.points;
@@ -788,6 +897,8 @@ export class MPPlanZones extends LitElement {
   private up=()=>{
     if(this.pan){this.pan=undefined;return;}
     if(this.pinch)return;
+    if(this.placing){this.finishPlacing();return;}
+    if(this.moving){this.finishMoving();return;}
     if(this.mode==='trace'){this.tracing=false;return;}
     if(this.draft){
       const box=this.draft.box;this.draft=undefined;this.mode='';
@@ -824,9 +935,12 @@ export class MPPlanZones extends LitElement {
       if(e.key==='Enter'){e.preventDefault();this.finishTrace();return;}
       if(e.key==='Backspace'||e.key==='Delete'){e.preventDefault();const points=this.trace.points.slice(0,-1);this.trace=points.length?{points}:undefined;return;}
     }
-    if((e.key==='Delete'||e.key==='Backspace')&&this.selected>=0){e.preventDefault();if(this.vertex>=0)this.removeVertex();else this.drop(this.selected);}
+    if((e.key==='Delete'||e.key==='Backspace')&&this.fixture){e.preventDefault();this.dropFixture(this.fixture);}
+    else if((e.key==='Delete'||e.key==='Backspace')&&this.selected>=0){e.preventDefault();if(this.vertex>=0)this.removeVertex();else this.drop(this.selected);}
     else if(e.key==='Escape'&&this.pending){e.preventDefault();this.pending='';}
-    else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.selected=-1;this.vertex=-1;this.side=-1;}
+    // Placing doors, windows and players, or one of them selected: Escape ends that, the window stays open.
+    else if(e.key==='Escape'&&(this.fixtureMode||this.fixture)){e.preventDefault();this.mode='';this.placing=undefined;this.fixture='';}
+    else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.placing=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.fixture='';}
   };
   /** On a phone, a finger on a room, a handle or in drawing mode edits the plan instead of scrolling the window. */
   private touch={handleEvent:(e:TouchEvent)=>{
@@ -835,7 +949,7 @@ export class MPPlanZones extends LitElement {
       if(!this.pinch){this.pinch={distance:Math.max(1,distance),zoom:this.zoomLevel};this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}
       else this.zoomTo(this.pinch.zoom*distance/this.pinch.distance,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
     }else if(this.pinch){if(!e.touches.length)this.pinch=undefined;else e.preventDefault();}
-    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate]'))e.preventDefault();
+    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate],[data-fixture]'))e.preventDefault();
   },passive:false};
   private label(index:number,room:DetectionRoom,points:number[][]){
     const spot=labelSpot(points),name=room.name;
@@ -845,7 +959,10 @@ export class MPPlanZones extends LitElement {
     return size<9?html`<span class="label number" style=${`${style};color:${colour(room,index)}`} title=${name}>${index+1}</span>`:html`<span class="label" style=${`${style};font-size:${size}px`}>${name}</span>`;
   }
   private get hint(){
-    const room=this.detection[this.selected],count=this.trace?.points.length??0;
+    const room=this.detection[this.selected],count=this.trace?.points.length??0,kind=this.fixtureMode;
+    if(kind&&isOpening(kind))return `Glissez le long d’un mur, d’un bord à l’autre de ${FIXTURES[kind].article}, ou touchez le mur pour la poser à sa largeur usuelle (${new Intl.NumberFormat('fr',{minimumFractionDigits:2}).format(OPENING_SIZES[kind].width)} m). Échap pour terminer.`;
+    if(kind)return `Touchez l’endroit de la pièce où se trouve ${FIXTURES[kind].article}. Échap pour terminer.`;
+    if(this.fixture)return 'Glissez sa marque pour le déplacer ; Suppr ou « Retirer » l’enlève. Volets, capteurs et lecteurs se relient ensuite, dans le Studio, sous le plan 3D.';
     if(this.mode==='rect')return 'Glissez en diagonale sur le plan pour tracer un rectangle.';
     if(this.mode==='trace')return count<3?'Touchez les angles de la pièce l’un après l’autre ; les murs et les autres pièces attirent les points.'
       :'Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Les côtés restent parallèles et d’équerre au premier, même en biais.';
@@ -857,7 +974,7 @@ export class MPPlanZones extends LitElement {
     if(room?.polygon&&this.vertex>=0)return 'Glissez le point, ou « Arrondir l’angle » pour le remplacer par un arc ; deux touches rapides le suppriment.';
     if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie.';
     if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie, « Forme libre » pour un autre contour.';
-    return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une.';
+    return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan.';
   }
   render(){
     const source=this.source;
@@ -865,6 +982,10 @@ export class MPPlanZones extends LitElement {
     const rooms=new Map((this.plan?.floors[0]?.rooms??[]).map(r=>[r.id,r])),[kx,ky]=source.scale as [number,number],[ox,oy]=source.origin as [number,number];
     const normalised=([x,y]:number[])=>`${((x!/kx+ox)/source.width*1000).toFixed(1)},${((y!/ky+oy)/source.height*1000).toFixed(1)}`;
     const room=this.detection[this.selected],dragging=this.drag?.index===this.selected?this.drag:undefined;
+    // Where each door, window, television or speaker goes on the plan, as the level will get it.
+    const placed=this.plan?attachFixtures(this.plan,this.fixtures,source).placed:new Map<string,{room:string;width?:number}>();
+    const roomNames=new Map((this.plan?.floors[0]?.rooms??[]).map(r=>[r.id,r.name])),metres=new Intl.NumberFormat('fr',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const preview=this.placing?.wall&&isOpening(this.placing.kind)?this.onWall(this.placing.wall,this.placing.a,this.placing.b,this.placing.kind):undefined;
     // The selected room as it is being edited: its outline (with its bends), or its rectangle. Turning a rectangle gives it one.
     const shape=dragging?.handle==='rotate'?dragging.shape:room?.polygon?dragging?.shape??(dragging?shifted(toXY(room.polygon),dragging):toXY(room.polygon)):undefined;
     const bends=shape?dragging?.arcs??(room?.polygon?room.arcs:undefined):undefined;
@@ -916,6 +1037,10 @@ export class MPPlanZones extends LitElement {
         <button ?disabled=${this.selected<0||this.busy} @click=${()=>this.drop(this.selected)}>${mpIcon('close',16)} Supprimer la pièce</button>
         <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>Annuler</button>
       </div>
+      <div class="tools place" role="toolbar" aria-label="Placer sur le plan"><span>Placer :</span>
+        ${FIXTURE_KINDS.map(kind=>html`<button style=${`--tone:${FIXTURES[kind].color}`} aria-pressed=${this.mode===kind} ?disabled=${this.busy} @click=${()=>this.startMode(kind)}>${mpIcon(FIXTURES[kind].icon,16)}${FIXTURES[kind].name}</button>`)}
+        <button ?disabled=${!this.fixture||this.busy} @click=${()=>this.dropFixture(this.fixture)}>${mpIcon('close',16)} Retirer</button>
+      </div>
       <p class="hint" aria-live="polite">${this.busy?'Mise à jour du plan…':this.notice||this.hint}</p>
       <div class="tools zoom-tools" role="toolbar" aria-label="Précision du plan">
         <button aria-label="Zoom arrière du plan" ?disabled=${this.zoomLevel<=1} @click=${()=>this.zoomTo(this.zoomLevel/1.5)}>−</button><output aria-label="Zoom du plan">${Math.round(this.zoomLevel*100)} %</output><button aria-label="Zoom avant du plan" ?disabled=${this.zoomLevel>=8} @click=${()=>this.zoomTo(this.zoomLevel*1.5)}>+</button>
@@ -925,7 +1050,7 @@ export class MPPlanZones extends LitElement {
       </div>
       <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(max(52vh,100dvh - 330px) * ${source.width/source.height}))`} @wheel=${this.wheel}>
       <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label="Pièces détectées sur le plan" style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
-        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
+        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;this.placing=undefined;this.moving=undefined;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
         <img src=${this.src} alt="Plan analysé par Gemini" draggable="false">
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
           ${this.detection.map((r,i)=>{
@@ -937,6 +1062,12 @@ export class MPPlanZones extends LitElement {
           ${this.draft?rect(this.draft.box,'draft'):nothing}
           ${trace&&trace.points.length>=3?svg`<polygon class="draft" points=${pairs(trace.points)}></polygon>`:nothing}
           ${path.length>=2?svg`<polyline class="trace" points=${pairs(path)}></polyline>`:nothing}
+          ${this.fixtures.map(f=>{
+            if(!isOpening(f.kind)||!f.b)return nothing;
+            const {a,b}=this.shown(f),ends=[a[0],a[1],b![0],b![1]];
+            return svg`<line class="under" x1=${ends[0]} y1=${ends[1]} x2=${ends[2]} y2=${ends[3]}></line><line class=${`opening${placed.has(f.id)?'':' lost'}`} style=${`--tone:${FIXTURES[f.kind].color}`} x1=${ends[0]} y1=${ends[1]} x2=${ends[2]} y2=${ends[3]}></line>`;
+          })}
+          ${preview?svg`<line class="under" x1=${preview[0][0]} y1=${preview[0][1]} x2=${preview[1][0]} y2=${preview[1][1]}></line><line class="opening preview" style=${`--tone:${FIXTURES[this.placing!.kind].color}`} x1=${preview[0][0]} y1=${preview[0][1]} x2=${preview[1][0]} y2=${preview[1][1]}></line>`:nothing}
         </svg>
         <div class="layer names">${this.detection.map((r,i)=>r.id&&rooms.has(r.id)?this.label(i,r,spot(r,i)):nothing)}</div>
         <div class="layer">
@@ -952,6 +1083,11 @@ export class MPPlanZones extends LitElement {
           ${shape?shape.map((p,i)=>html`<span class=${`handle vertex${i===this.vertex?' active':''}`} data-vertex=${i} style=${at(p[0]!,p[1]!)}></span>`):nothing}
           ${turner&&!this.mode&&(!this.drag||this.drag.handle==='rotate')?html`<span class="rotate" data-rotate="1" title="Tourner la pièce" style=${at(turner.x,turner.y)}></span>`:nothing}
           ${trace?trace.points.map((p,i)=>html`<span class=${`handle point${i===0?' first':''}`} style=${at(p[0]!,p[1]!)}></span>`):nothing}
+          ${this.fixtures.map(f=>{
+            const {a,b}=this.shown(f),[x,y]=b?[(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2]:a,info=FIXTURES[f.kind],where=placed.get(f.id);
+            return html`<span class=${`mark${f.id===this.fixture?' selected':''}${where?'':' lost'}`} data-fixture=${f.id} title=${`${info.name} · ${where?roomNames.get(where.room)??'':'hors des pièces : à replacer'}`} style=${`${at(x!,y!)};--tone:${info.color}`}>${mpIcon(info.icon,13)}</span>`;
+          })}
+          ${this.placing&&!isOpening(this.placing.kind)?html`<span class="mark" style=${`${at(this.placing.a[0]!,this.placing.a[1]!)};--tone:${FIXTURES[this.placing.kind].color}`}>${mpIcon(FIXTURES[this.placing.kind].icon,13)}</span>`:nothing}
         </div>
       </figure>
       </div>
@@ -963,7 +1099,16 @@ export class MPPlanZones extends LitElement {
           <small>${plan?`${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(roomArea(plan))} m²`:'écartée'}</small>
           <button aria-label=${`Supprimer ${r.name}`} title="Supprimer" ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.drop(i);}}>${mpIcon('close',14)}</button>
         </li>`;
-      })}</ul>`;
+      })}</ul>
+      ${this.fixtures.length?html`<ul class="fixtures" aria-label="Portes, fenêtres et appareils du brouillon">${this.fixtures.map((f,i)=>{
+        const info=FIXTURES[f.kind],where=placed.get(f.id);
+        return html`<li class=${f.id===this.fixture?'selected':''} @click=${()=>{if(!this.mode){this.fixture=f.id;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';}}}>
+          <span class="swatch" style=${`background:${info.color}`}>${mpIcon(info.icon,13)}</span>
+          <span class="what">${info.name} · ${where?roomNames.get(where.room)??'':'hors des pièces'}</span>
+          <small class=${where?'':'lost'}>${where?.width?`${metres.format(where.width)} m`:where?'':'à replacer'}</small>
+          <button aria-label=${`Retirer ${info.name} ${i+1}`} title="Retirer" ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.dropFixture(f.id);}}>${mpIcon('close',14)}</button>
+        </li>`;
+      })}</ul>`:nothing}`;
   }
 }
 defineElement('mp-plan-zones',MPPlanZones);

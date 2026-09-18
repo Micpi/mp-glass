@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.1 — portes, fenêtres et appareils placés sur le brouillon
+
+Retour utilisateur sur 0.8.0 : « il est plus facile pour moi de placer les fenêtres, portes, etc. depuis le brouillon avec le plan visible ». Jusqu’ici, ils ne se plaçaient qu’après **Utiliser pour ce niveau**, pièce par pièce sous le plan 3D, loin du plan d’architecte qui les montre.
+
+- **Placer** : dans la fenêtre du brouillon, onglet **Sur le plan d’origine**, une nouvelle rangée propose **Porte**, **Fenêtre**, **Porte-fenêtre**, **Téléviseur** et **Enceinte**. Une porte ou une fenêtre se trace le long d’un mur, d’un bord à l’autre de l’ouverture dessinée : elle se pose sur le côté de la pièce le plus proche, à la largeur tracée. Touché sans glisser, le mur la reçoit à sa largeur usuelle. Un téléviseur ou une enceinte se pose d’un toucher dans sa pièce. Le mode reste actif pour la suivante ; Échap le termine sans fermer la fenêtre.
+- **Corriger** : chaque élément garde une marque de sa couleur, à glisser pour le déplacer (une ouverture se recale sur le mur le plus proche). Suppr ou **Retirer** l’enlève, **Annuler** revient sur les placements comme sur les pièces. La liste sous le plan donne la pièce de chacun et la largeur des ouvertures ; un élément hors des pièces est signalé **à replacer**. L’onglet **En 3D** les montre déjà.
+- **Utiliser pour ce niveau** les reprend dans leurs pièces et relie d’office ce qui est sans ambiguïté : la seule fenêtre d’une pièce à son seul volet et à son seul capteur de fenêtre, sa seule porte à son seul capteur de porte, son seul téléviseur et sa seule enceinte à leur lecteur. Le message dit combien ont été repris et reliés ; les autres se relient toujours dans la pièce, sous le plan 3D.
+- Placer depuis la pièce, sous le plan 3D du Studio, reste possible pour un plan déjà enregistré.
+
 ## 0.8.0 — portes, fenêtres, volets et audio-vidéo sur le plan
 
 Demande utilisateur : pouvoir ajouter les ouvrants (portes, fenêtres, portes-fenêtres) pour gérer volets roulants, stores et rideaux, ainsi que les téléviseurs et haut-parleurs pour l’audio-vidéo, le tout harmonisé avec le reste de MP Glass.

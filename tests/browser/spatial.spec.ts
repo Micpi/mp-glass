@@ -864,6 +864,67 @@ test('a room turns, its sides slide parallel and its walls curve',async({page})=
   expect(errors).toEqual([]);
 });
 
+test('doors, windows, televisions and speakers are placed on the analysed plan, then come with its rooms and their equipment',async({page})=>{
+  await page.setViewportSize({width:1280,height:1000});
+  await mountEditor(page,true,false,{source:true});
+  // The kitchen of Home Assistant has a blind and a speaker: once the draft is used, they go to what was placed in it.
+  await page.evaluate(()=>{
+    const device=(entityId:string,name:string,planKind:string)=>({entityKey:`key-${entityId}`,entityId,name,planKind,areaId:'cuisine',hidden:false,disabled:false});
+    const editor=document.querySelector('mp-spatial-editor') as HTMLElement&{areas:unknown[];devices:unknown[]};
+    editor.areas=[{area_id:'cuisine',name:'Cuisine'}];
+    editor.devices=[device('cover.cuisine_store','Cuisine · Store','cover'),device('media_player.cuisine','Cuisine · Enceinte','media')];
+  });
+  await choosePlanImage(page);await consentAndGenerate(page);
+  const dialog=page.getByRole('dialog'),zones=dialog.locator('mp-plan-zones'),figure=zones.locator('figure');
+  await expect(dialog.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+  // The plan is 13 x 8 m on the image.
+  const frame=(await figure.boundingBox())!,at=(x:number,y:number)=>({x:frame.x+frame.width*x/13,y:frame.y+frame.height*y/8});
+  const place=zones.getByRole('toolbar',{name:'Placer sur le plan'}),placed=zones.getByRole('list',{name:'Portes, fenêtres et appareils du brouillon'}).getByRole('listitem');
+  // A window drawn along the top wall of the kitchen, from 10 m to 11.5 m; pressed far from any wall, nothing is placed.
+  await place.getByRole('button',{name:'Fenêtre',exact:true}).click();
+  await expect(zones.locator('.hint')).toContainText('Glissez le long d’un mur');
+  let p=at(2.5,2);await page.mouse.click(p.x,p.y);
+  await expect(zones.locator('.hint')).toContainText('Touchez un mur d’une pièce du brouillon');
+  p=at(10,.05);await page.mouse.move(p.x,p.y);await page.mouse.down();
+  for(const x of [10.5,11,11.5]){p=at(x,.05);await page.mouse.move(p.x,p.y,{steps:3});}
+  await page.mouse.up();
+  await expect(placed).toHaveCount(1);await expect(placed.first()).toContainText('Fenêtre · Cuisine');await expect(placed.first()).toContainText(/1,[45]\d m/);
+  // A door only touched on the wall between the dining room and the kitchen: as wide as usual. The mode stays on for the next one.
+  await place.getByRole('button',{name:'Porte',exact:true}).click();
+  p=at(9.03,2);await page.mouse.click(p.x,p.y);
+  await expect(placed.nth(1)).toContainText(/Porte · (Séjour|Cuisine)/);await expect(placed.nth(1)).toContainText('0,90 m');
+  // A speaker in the kitchen, a television in the living room.
+  await place.getByRole('button',{name:'Enceinte',exact:true}).click();
+  p=at(11,2.5);await page.mouse.click(p.x,p.y);
+  await place.getByRole('button',{name:'Téléviseur',exact:true}).click();
+  p=at(2.5,2.5);await page.mouse.click(p.x,p.y);
+  await expect(placed).toHaveCount(4);await expect(placed.nth(3)).toContainText('Téléviseur · Pièce importée');
+  await page.keyboard.press('Escape');
+  await expect(place.getByRole('button',{name:'Téléviseur',exact:true})).toHaveAttribute('aria-pressed','false');
+  await dialog.screenshot({path:'artifacts/spatial-draft-fixtures.png'});
+  // Undone, the television goes; the door's mark dragged onto the wall between the hall and the office goes there.
+  await zones.getByRole('button',{name:'Annuler',exact:true}).click();
+  await expect(placed).toHaveCount(3);
+  const mark=(await zones.locator('.mark').nth(1).boundingBox())!;
+  await page.mouse.move(mark.x+mark.width/2,mark.y+mark.height/2);await page.mouse.down();
+  p=at(7.03,6);await page.mouse.move(p.x,p.y,{steps:8});await page.mouse.up();
+  await expect(placed.nth(1)).toContainText(/Porte · (Entrée|Bureau)/);
+  // In 3D, then used for the level: each in its room; the kitchen's only window gets its only blind, its speaker its only player.
+  await dialog.getByRole('tab',{name:'En 3D'}).click();
+  await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
+  await dialog.screenshot({path:'artifacts/spatial-draft-fixtures-3d.png'});
+  await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  const rooms=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms);
+  const kitchen=rooms.find(r=>r.name==='Cuisine')!;
+  expect(kitchen.areaId).toBe('cuisine');
+  expect(kitchen.openings).toEqual([expect.objectContaining({kind:'window',side:0,entityIds:['cover.cuisine_store']})]);
+  expect(kitchen.openings![0]!.width).toBeGreaterThan(1.35);expect(kitchen.openings![0]!.width).toBeLessThan(1.65);
+  expect(kitchen.media).toEqual([expect.objectContaining({kind:'speaker',entityId:'media_player.cuisine'})]);
+  expect(rooms.filter(r=>['Entrée','Bureau'].includes(r.name)).flatMap(r=>r.openings??[])).toEqual([expect.objectContaining({kind:'door',width:.9})]);
+  expect(rooms.flatMap(r=>r.media??[])).toHaveLength(1);
+  await expect(page.getByRole('status').filter({hasText:'Portes, fenêtres et appareils du brouillon : 3 repris, dont 2 reliés d’office'})).toBeVisible();
+});
+
 test('a rectangle curves a side and rounds a corner from the toolbar, in a window as wide as the screen',async({page})=>{
   await page.setViewportSize({width:1440,height:1000});
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));

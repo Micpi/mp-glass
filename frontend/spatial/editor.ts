@@ -4,7 +4,8 @@ import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
 import { bent, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type MediaKind, type OpeningKind, type Point, type SpatialMedia, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
-import { roomTemperature } from '../../shared/spatial-state';
+import { groupCover, roomTemperature } from '../../shared/spatial-state';
+import { attachFixtures, type DraftFixture } from '../../shared/fixtures';
 import type { Hass } from '../ha/client';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
@@ -119,7 +120,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
@@ -179,7 +180,17 @@ export class MPSpatialEditor extends LitElement {
   /** Image sent to Gemini and the mapping of the draft onto it, for the rooms drawn over the plan. */
   private source?:Source;private sourceUrl='';private sourceBlob?:Blob;private view:'overlay'|'3d'='overlay';
   /** Rooms as detected (0-1000 over the image), edited in the result window; undo keeps the previous states. */
-  private detection?:DetectionRoom[];private history:DetectionRoom[][]=[];private walls?:Walls;private recomputing=false;
+  private detection?:DetectionRoom[];private walls?:Walls;private recomputing=false;
+  /** Doors, windows, televisions and speakers placed on the draft's image; undo goes back through them and the rooms alike. */
+  private fixtures:DraftFixture[]=[];private history:(DetectionRoom[]|{fixtures:DraftFixture[]})[]=[];
+  private attached?:{candidate:SpatialPlan;fixtures:DraftFixture[];source:Source;plan:SpatialPlan};
+  /** The draft as the level will get it, with the doors, windows, televisions and speakers placed on its image. */
+  private get drafted(){
+    const {candidate,fixtures,source}=this;
+    if(!candidate||!source||!fixtures.length)return candidate;
+    if(this.attached?.candidate!==candidate||this.attached.fixtures!==fixtures||this.attached.source!==source)this.attached={candidate,fixtures,source,plan:attachFixtures(candidate,fixtures,source).plan};
+    return this.attached.plan;
+  }
   connectedCallback(){super.connectedCallback();this.disposed=false;}
   disconnectedCallback(){
     super.disconnectedCallback();this.disposed=true;this.generation++;clearTimeout(this.timer);clearInterval(this.ticker);
@@ -317,7 +328,7 @@ export class MPSpatialEditor extends LitElement {
       this.candidate=parseSpatial(job.plan);this.warnings=job.warnings??[];
       const source=job.source,numbers=source?[source.width,source.height,...source.scale,...source.origin]:[];
       this.source=numbers.length===6&&numbers.every(Number.isFinite)?source:undefined;
-      this.detection=this.source&&Array.isArray(job.detection)?job.detection.map((room,hue)=>({...room,hue})):undefined;this.history=[];this.walls=undefined;
+      this.detection=this.source&&Array.isArray(job.detection)?job.detection.map((room,hue)=>({...room,hue})):undefined;this.history=[];this.fixtures=[];this.walls=undefined;
       this.view=this.detection&&this.sourceUrl?'overlay':'3d';
       if(this.detection&&this.sourceBlob)void this.fitToWalls(generation);
       this.message=`Brouillon reçu : ${this.candidate.floors[0]!.rooms.length} pièce(s). Vérifiez l’échelle et les pièces avant de l’utiliser. ${this.warnings.join(' ')}`;
@@ -332,7 +343,9 @@ export class MPSpatialEditor extends LitElement {
   };
   private applyCandidate(){
     if(!this.candidate||this.recomputing)return;
-    const incoming=structuredClone(this.candidate.floors[0]!);
+    // The doors, windows, televisions and speakers placed on the image go to their rooms first.
+    const attached=this.source&&this.fixtures.length?attachFixtures(this.candidate,this.fixtures,this.source):undefined;
+    const incoming=structuredClone((attached?.plan??this.candidate).floors[0]!);
     if(!incoming.rooms.length)return;
     for(const r of incoming.rooms)r.id=`room-${shortId()}`;
     let lost=0;
@@ -342,20 +355,48 @@ export class MPSpatialEditor extends LitElement {
     // The other imported rooms are linked by their name ("SDB" to "Salle de bain") when that is unambiguous: they then follow their area.
     const matches=matchAreas(plan,this.areas,this.floors);let linked=0;
     for(const r of incoming.rooms){const areaId=matches.get(r.id);if(areaId){r.areaId=areaId;linked++;}}
+    const links=this.linkFixtures(plan,incoming.rooms);
     const before=this.draft;this.commit(plan);
     if(linked&&this.draft!==before)this.message=`Niveau importé · ${count(linked,'pièce','reliée')} à Home Assistant par ${linked>1?'leur':'son'} nom : vérifiez, puis cliquez sur Enregistrer dans le Studio.`;
     if(lost&&this.draft!==before)this.message=`${this.message} ${lost>1?`${lost} portes ou fenêtres ne tombent plus sur un mur de leur pièce : replacez-les.`:'Une porte ou une fenêtre ne tombe plus sur un mur de sa pièce : replacez-la.'}`;
-    this.candidate=undefined;this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
+    if(attached&&this.draft!==before){
+      const kept=attached.placed.size,left=this.fixtures.length-kept;
+      this.message=`${this.message} Portes, fenêtres et appareils du brouillon : ${kept} repris${links?`, dont ${links} relié${links>1?'s':''} d’office (seul volet, capteur ou lecteur de sa pièce)`:''}${left?`, ${left} hors des pièces non repris`:''}. Vérifiez-les et reliez les autres dans chaque pièce, sous le plan 3D.`;
+    }
+    this.candidate=undefined;this.fixtures=[];this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
+  }
+  /**
+   * After an import, what is unambiguous is linked in each room: its only window or French window to its only shutter and to its
+   * only window sensor, its only door to its only door sensor, its only television to its only TV and its only speaker to its
+   * only other player. Nothing linked elsewhere on the plan is taken twice. Returns how many links were made.
+   */
+  private linkFixtures(plan:SpatialPlan,rooms:SpatialRoom[]){
+    const states=this.hass?.states??{},shown=resolvePlan(plan,this.devices).floors.flatMap(f=>f.rooms);
+    const taken=new Set(plan.floors.flatMap(f=>f.rooms.flatMap(r=>[...(r.openings??[]).flatMap(o=>o.entityIds??[]),...(r.media??[]).flatMap(m=>m.entityId?[m.entityId]:[])])));
+    const deviceClass=(id:string)=>String(states[id]?.attributes.device_class??'');
+    let links=0;
+    for(const room of rooms){
+      const own=(shown.find(r=>r.id===room.id)?.entityIds??[]).filter(id=>!!states[id]&&!taken.has(id));
+      const pair=(items:((id:string)=>void)[],ids:string[])=>{if(items.length===1&&ids.length===1){items[0]!(ids[0]!);taken.add(ids[0]!);links++;}};
+      const opening=(o:SpatialOpening)=>(id:string)=>{o.entityIds=[...(o.entityIds??[]),id];};
+      const glazed=(room.openings??[]).filter(o=>o.kind!=='door'&&!o.entityIds?.length).map(opening),doors=(room.openings??[]).filter(o=>o.kind==='door'&&!o.entityIds?.length).map(opening);
+      pair(glazed,own.filter(id=>id.startsWith('cover.')&&groupCover(states[id])));
+      pair(glazed,own.filter(id=>id.startsWith('binary_sensor.')&&['window','opening'].includes(deviceClass(id))));
+      pair(doors,own.filter(id=>id.startsWith('binary_sensor.')&&['door','garage_door'].includes(deviceClass(id))));
+      for(const kind of ['tv','speaker'] as const)pair((room.media??[]).filter(m=>m.kind===kind&&!m.entityId).map(m=>(id:string)=>{m.entityId=id;}),own.filter(id=>id.startsWith('media_player.')&&(deviceClass(id)==='tv')===(kind==='tv')));
+    }
+    return links;
   }
   /**
    * What a room of the saved level keeps when its geometry is imported again: doors and windows on the same walls when it has as
    * many sides (the analysis numbers them the same way), televisions and speakers at the same place relative to its extent.
-   * Returns how many doors and windows were left behind.
+   * Those placed on the draft for the room replace them. Returns how many doors and windows were left behind.
    */
   private carryFixtures(old:SpatialRoom,room:SpatialRoom){
     const extent=(r:SpatialRoom)=>{const ring=roomOutline(r),xs=ring.map(p=>p[0]),ys=ring.map(p=>p[1]);return {x:Math.min(...xs),y:Math.min(...ys),w:Math.max(...xs)-Math.min(...xs)||1,h:Math.max(...ys)-Math.min(...ys)||1};};
     const [from,to]=[extent(old),extent(room)];
-    if(old.media?.length)room.media=old.media.map(m=>({...m,at:[round(to.x+(m.at[0]-from.x)/from.w*to.w),round(to.y+(m.at[1]-from.y)/from.h*to.h)] as Point}));
+    if(old.media?.length&&!room.media?.length)room.media=old.media.map(m=>({...m,at:[round(to.x+(m.at[0]-from.x)/from.w*to.w),round(to.y+(m.at[1]-from.y)/from.h*to.h)] as Point}));
+    if(room.openings?.length)return 0;
     const kept=old.polygon.length===room.polygon.length?old.openings??[]:[];
     if(kept.length)room.openings=kept;
     return (old.openings?.length??0)-kept.length;
@@ -395,7 +436,7 @@ export class MPSpatialEditor extends LitElement {
     this.placing=undefined;
     this.floorIndex=index;this.selected='';this.entitySearch='';
   };
-  private discard=()=>{this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
+  private discard=()=>{this.fixtures=[];this.candidate=undefined;this.phase=undefined;this.dialogOpen=false;this.setSource();this.message='Brouillon ignoré. Le plan enregistré est conservé.';};
   /** The saved plan goes away: the schematic plan of the Home Assistant areas takes over until the Studio is saved. */
   private removePlan=()=>{
     this.asking='';
@@ -473,7 +514,8 @@ export class MPSpatialEditor extends LitElement {
     finally{this.recomputing=false;}
   }
   private zonesChanged=(e:CustomEvent<DetectionRoom[]>)=>{void this.recompute(e.detail);};
-  private zonesUndo=()=>{const previous=this.history.at(-1);if(!previous)return;this.history=this.history.slice(0,-1);void this.recompute(previous,null);};
+  private zonesUndo=()=>{const previous=this.history.at(-1);if(!previous)return;this.history=this.history.slice(0,-1);if(Array.isArray(previous))void this.recompute(previous,null);else this.fixtures=previous.fixtures;};
+  private fixturesChanged=(e:CustomEvent<DraftFixture[]>)=>{this.history=[...this.history,{fixtures:this.fixtures}].slice(-30);this.fixtures=e.detail;};
   private addRoom(){
     if(!this.draft){this.commit({version:1,enabled:true,floors:[{id:'ground',name:'Rez-de-chaussée',elevation:0,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]}]});return;}
     this.mutate(p=>{const f=p.floors[this.floorIndex]!;const x=Math.max(...f.rooms.flatMap(r=>r.polygon.map(v=>v[0])))+.3;const id=`room-${shortId()}`;f.rooms.push({id,name:'Nouvelle pièce',polygon:[[x,0],[x+4,0],[x+4,4],[x,4]]});this.selected=id;});
@@ -498,9 +540,9 @@ export class MPSpatialEditor extends LitElement {
       const metres=(value:number)=>new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(value),plural=rooms.length>1?'s':'';
       body=html`<header class="job-head"><span class="job-orb ok">${mpIcon('check',26)}</span><div><small>Brouillon IA · non enregistré</small><h3 id="job-title">${rooms.length} pièce${plural} reconnue${plural}</h3><p>${metres(area)} m² · ${metres(Math.max(...xs)-Math.min(...xs))} × ${metres(Math.max(...ys)-Math.min(...ys))} m · analysé en ${time}</p></div></header>
         ${this.detection&&this.source&&this.sourceUrl?html`<div class="tabs" role="tablist" aria-label="Affichage du brouillon"><button role="tab" aria-selected=${this.view==='overlay'} @click=${()=>{this.view='overlay';}}>Sur le plan d’origine</button><button role="tab" aria-selected=${this.view==='3d'} @click=${()=>{this.view='3d';}}>En 3D</button></div>`:nothing}
-        ${this.view==='overlay'&&this.detection&&this.source&&this.sourceUrl?html`<mp-plan-zones .src=${this.sourceUrl} .source=${this.source} .plan=${this.candidate} .detection=${this.detection} .walls=${this.walls} ?busy=${this.recomputing} ?canUndo=${this.history.length>0} @zones-change=${this.zonesChanged} @zones-undo=${this.zonesUndo}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer>`}
+        ${this.view==='overlay'&&this.detection&&this.source&&this.sourceUrl?html`<mp-plan-zones .src=${this.sourceUrl} .source=${this.source} .plan=${this.candidate} .detection=${this.detection} .walls=${this.walls} .fixtures=${this.fixtures} ?busy=${this.recomputing} ?canUndo=${this.history.length>0} @zones-change=${this.zonesChanged} @zones-undo=${this.zonesUndo} @fixtures-change=${this.fixturesChanged}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer>`}
         ${this.warnings.length?html`<ul class="warnings">${this.warnings.map(w=>html`<li>${w}</li>`)}</ul>`:nothing}
-        <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises.</p>
+        <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan ; leurs volets, capteurs et lecteurs se relient ensuite, pièce par pièce, dans le Studio.</p>
         <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||this.recomputing||!rooms.length} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
     }else{
       const quota=this.errorCode==='quota',daily=quota&&(this.quotaInfo?.period==='day'||this.quotaInfo?.limit===0);
@@ -696,7 +738,7 @@ export class MPSpatialEditor extends LitElement {
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>Détail technique : ${this.detail}</small>`:nothing}</p>`:nothing}
     ${this.renderJob(floor?.name)}
     ${this.askDialog()}
-    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.candidate}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?'Modifier le brouillon':'Revoir le brouillon'}</button><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${this.discard}>Ignorer</button><p>${this.editable?'Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse. ':''}Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
+    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?'Modifier le brouillon':'Revoir le brouillon'}</button><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${this.discard}>Ignorer</button><p>${this.editable?'Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse. ':''}Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
     ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>Afficher le plan sur l’accueil</label><div class="row"><label>Niveau à modifier<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:`Niveau ${p.floors.length}`,elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>Ajouter un niveau</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>Supprimer ce niveau</button></div><div class="row"><label>Nom du niveau<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>Hauteur des murs (m)<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{for(const r of p.floors[this.floorIndex]!.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}});}}>Appliquer l’échelle</button></div>
       ${this.renderLinks(suggestions)}</fieldset>

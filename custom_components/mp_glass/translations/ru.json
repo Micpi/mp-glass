@@ -1,0 +1,56 @@
+{
+  "title": "MP Glass",
+  "config": {
+    "step": {
+      "user": {
+        "title": "Добро пожаловать в MP Glass",
+        "description": "Назовите свой дом, затем откройте MP Glass в боковом меню, чтобы найти устройства вашей установки.",
+        "data": {
+          "name": "Название дома"
+        }
+      }
+    },
+    "abort": {
+      "already_configured": "MP Glass уже настроен."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Параметры MP Glass",
+        "data": {
+          "show_settings": "Показывать панель настроек интегратора",
+          "spatial_backend": "Анализ планов",
+          "gemini_api_key": "Ключ API Gemini",
+          "gemini_quality": "Модель анализа планов по умолчанию"
+        },
+        "description": "Чтобы создать 3D-план, выберите прямой Gemini и вставьте ключ API. Устанавливать приложение не нужно. Обе модели входят в бесплатный тариф Google. Оставьте ключ пустым, если пользуетесь только панелью."
+      },
+      "spatial_addon": {
+        "title": "Подключение приложения (для опытных)",
+        "description": "Только для отдельного worker. Ключ Gemini настраивается в этом приложении.",
+        "data": {
+          "spatial_url": "Адрес приложения Spatial (например, http://local-mp-glass-spatial:8099)",
+          "spatial_token": "Ключ связи приложения (api_token)"
+        }
+      }
+    },
+    "error": {
+      "invalid_spatial_url": "Используйте адрес HTTP(S) без учётных данных и параметров запроса."
+    }
+  },
+  "selector": {
+    "spatial_backend": {
+      "options": {
+        "gemini": "Прямой Gemini — без приложения (рекомендуется)",
+        "addon": "Приложение Spatial — для опытных"
+      }
+    },
+    "gemini_quality": {
+      "options": {
+        "precise": "Gemini 3.8 Flash — самый точный (рекомендуется)",
+        "fast": "Gemini 3.5 Flash-Lite — самый быстрый"
+      }
+    }
+  }
+}

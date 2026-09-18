@@ -4,6 +4,8 @@ import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
 import { alignRooms, nearestSide, openingPlacement, roomArea, roomOutline, roomSize, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
+import { LanguageController, locale, tr, trText } from '../i18n';
+import type { MessageKey } from '../locales';
 import { defineElement } from '../registry';
 import type { CameraView, LevelProjection, MediaState, OpeningState, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
@@ -11,15 +13,15 @@ import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, 
 type Kind = 'light'|'cover'|'climate'|'media'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
 /** What a room holds besides its equipment list: doors and windows with their covers and sensors, televisions and speakers. */
-const OPENING_NAMES:Record<OpeningKind,string>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
+const OPENING_NAMES:Record<OpeningKind,MessageKey>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
 const OPENING_ICONS:Record<OpeningKind,MPIconName>={door:'door',window:'window',french_window:'french'};
 const COVER_ICONS:Record<CoverStyle,MPIconName>={outside:'shutter',inside:'shutter',curtain:'curtain'};
 /** The ambiances of the plan, each offered once a room of the floors shown has something to show in it; the lights always. */
-const MODES:{mode:PlanMode;label:string;icon:MPIconName;offered?:(room:SpatialRoom,states:Record<string,HAState>)=>boolean}[]=[
+const MODES:{mode:PlanMode;label:MessageKey;icon:MPIconName;offered?:(room:SpatialRoom,states:Record<string,HAState>)=>boolean}[]=[
   {mode:'lights',label:'Lumières',icon:'bulb'},{mode:'climate',label:'Climat',icon:'thermo',offered:hasThermometer},
   {mode:'openings',label:'Ouvrants',icon:'window',offered:hasOpenings},{mode:'media',label:'Audio-vidéo',icon:'tv',offered:hasPlayers},
 ];
-/** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights. */
+/** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights (shown through `trText`). */
 const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
   climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
   openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
@@ -35,8 +37,17 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
 ];
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
 const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',media:'speaker',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
-const MEDIA_STATES:Record<string,string>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
-const HVAC:Record<string,string>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
+const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
+const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
+const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
+/** A state Home Assistant gives, named in the interface language when MP Glass knows it. */
+const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
+/** Shutters of a floor, of the whole house or of a room: how the pair of commands names them. */
+const COVER_SCOPES={
+  floor:['Volets du niveau','Ouvrir tous les volets du niveau','Fermer tous les volets du niveau'],
+  house:['Volets de la maison','Ouvrir tous les volets de la maison','Fermer tous les volets de la maison'],
+  room:['Volets de la pièce','Ouvrir tous les volets de la pièce','Fermer tous les volets de la pièce'],
+} as const satisfies Record<string,readonly [MessageKey,MessageKey,MessageKey]>;
 const motion=():ScrollBehavior=>matchMedia('(prefers-reduced-motion: reduce)').matches?'auto':'smooth';
 /** Width of the fade at each end of the room list, where its arrows sit. */
 const EDGE=40;
@@ -292,7 +303,7 @@ export class MPSpatialViewer extends LitElement {
   private roomKey(floor: SpatialFloor, room: SpatialRoom) { return this.stacked ? `${floor.id}/${room.id}` : room.id; }
   private get currentFloor() { return this.plan?.floors.find(f=>f.id===this.floor) ?? this.plan?.floors[0]; }
   private get room() { return this.currentFloor?.rooms.find(r=>r.id===this.selected); }
-  private get locale() { return this.hass?.locale?.language ?? this.hass?.language ?? 'fr'; }
+  private language = new LanguageController(this);
   connectedCallback() { super.connectedCallback(); this.resize.observe(this); this.views=readViews(); addEventListener('keydown',this.escape); this.requestUpdate(); }
   disconnectedCallback() { super.disconnectedCallback(); this.resize.disconnect(); removeEventListener('keydown',this.escape); clearTimeout(this.hold); this.asking=false; this.scene?.dispose(); this.scene=undefined; }
   protected willUpdate(changed: PropertyValues) {
@@ -333,7 +344,7 @@ export class MPSpatialViewer extends LitElement {
         if (!this.isConnected || !host || !this.currentFloor) return;
         this.scene=new SpatialScene(host, (room,floor)=>this.touch(room,floor), (rooms,levels)=>this.place(rooms,levels), ()=>{this.engaged=true;}, floor=>{this.pointed=floor;});
         this.draw();
-      } catch { this.error='La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'; }
+      } catch { this.error=tr('La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'); }
       finally { this.loading=false; }
     } else if (this.scene && (changed.has('plan') || changed.has('floor') || changed.has('walls') || this.geometry()!==this.drawnGeometry || this.content()!==this.drawnContent)) {
       // An edit that leaves the outlines as they were (a name, a link, a window placed) keeps the camera where it is.
@@ -560,50 +571,51 @@ export class MPSpatialViewer extends LitElement {
   private askDialog() {
     const saved=!!this.savedView;
     return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking=false;}}>
-      <h3 id="ask-title">Enregistrer cette vue ?</h3>
-      <p>La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue ${this.stacked?'de tous les niveaux':'de ce niveau'} : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.</p>
-      <p>${saved?'Elle remplace la vue déjà enregistrée. ':''}Cette vue n’est gardée que dans ce navigateur.</p>
-      ${saved?html`<button class="forget" @click=${this.forgetView}>Oublier la vue enregistrée</button>`:nothing}
+      <h3 id="ask-title">${tr('Enregistrer cette vue ?')}</h3>
+      <p>${this.stacked?tr('La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue de tous les niveaux : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.'):tr('La maison telle qu’elle est cadrée en ce moment — angle, zoom, position — devient la vue de ce niveau : le plan s’ouvrira dessus et le bouton Recentrer la rappellera.')}</p>
+      <p>${saved?`${tr('Elle remplace la vue déjà enregistrée.')} `:''}${tr('Cette vue n’est gardée que dans ce navigateur.')}</p>
+      ${saved?html`<button class="forget" @click=${this.forgetView}>${tr('Oublier la vue enregistrée')}</button>`:nothing}
       <div class="ask-actions">
-        <button @click=${()=>{this.asking=false;}}>Annuler</button>
-        <button class="primary" autofocus @click=${this.saveView}>Enregistrer</button>
+        <button @click=${()=>{this.asking=false;}}>${tr('Annuler')}</button>
+        <button class="primary" autofocus @click=${this.saveView}>${tr('Enregistrer')}</button>
       </div>
     </dialog>`;
   }
-  private format(value: number, digits=1) { return new Intl.NumberFormat(this.locale,{maximumFractionDigits:digits}).format(value); }
+  private format(value: number, digits=1) { return new Intl.NumberFormat(locale(),{maximumFractionDigits:digits}).format(value); }
   private device(id: string, room: SpatialRoom): Device {
     const state=this.hass?.states[id],kind=kindOf(id,state),ready=available(state),on=ready&&state!.state==='on';
     const name=shorten(String(state?.attributes.friendly_name??id),room.name),unit=String(state?.attributes.unit_of_measurement??'');
     const base={id,kind,name,ready,switchable:false,on,dimmable:false};
-    if(!ready) return {...base,detail:'Indisponible'};
+    if(!ready) return {...base,detail:tr('Indisponible')};
     switch(kind){
-      case 'light': return {...base,switchable:['on','off'].includes(state!.state),detail:on?'Allumée':'Éteinte',percent:brightnessPercent(state!.attributes.brightness),dimmable:MPCapabilityEngine.detect(id,state).some(b=>b.capability==='DIM')};
+      case 'light': return {...base,switchable:['on','off'].includes(state!.state),detail:on?tr('Allumée'):tr('Éteinte'),percent:brightnessPercent(state!.attributes.brightness),dimmable:MPCapabilityEngine.detect(id,state).some(b=>b.capability==='DIM')};
       case 'cover': {
-        const percent=coverPosition(state),detail=({opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'} as Record<string,string>)[state!.state]??state!.state;
-        return {...base,on:false,percent,value:percent===undefined?undefined:`${this.format(percent,0)} %`,detail:percent===undefined?`${detail} · position inconnue`:`${detail} · ${this.format(percent,0)} % ouvert`};
+        const percent=coverPosition(state),detail=stateName(COVER_STATES,state!.state);
+        return {...base,on:false,percent,value:percent===undefined?undefined:tr('{n} %',{n:this.format(percent,0)}),detail:percent===undefined?tr('{state} · position inconnue',{state:detail}):tr('{state} · {n} % ouvert',{state:detail,n:this.format(percent,0)})};
       }
       case 'climate': {
         const current=numeric(state!.attributes.current_temperature),target=numeric(state!.attributes.temperature);
-        return {...base,on:state!.state!=='off',numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:`${HVAC[state!.state]??state!.state}${target===undefined?'':` · consigne ${this.format(target)} °`}`};
+        return {...base,on:state!.state!=='off',numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)})};
       }
       case 'media': {
-        const label=MEDIA_STATES[state!.state]??state!.state,playing=nowPlaying(state);
+        const label=stateName(MEDIA_STATES,state!.state),playing=nowPlaying(state);
         return {...base,on:mediaOn(state),switchable:canMedia(state,'turn_on')||canMedia(state,'turn_off'),percent:mediaVolume(state),detail:playing&&['playing','paused'].includes(state!.state)?`${label} · ${playing}`:label};
       }
-      case 'opening': return {...base,detail:on?'Ouvert':'Fermé'};
-      case 'motion': return {...base,detail:on?'Présence détectée':'Aucune présence'};
-      case 'binary': return {...base,detail:on?'Actif':'Inactif'};
+      case 'opening': return {...base,detail:on?tr('Ouvert'):tr('Fermé')};
+      case 'motion': return {...base,detail:on?tr('Présence détectée'):tr('Aucune présence')};
+      case 'binary': return {...base,detail:on?tr('Actif'):tr('Inactif')};
       default: {
-        const value=numeric(state!.state),label=kind==='temperature'?'Température':kind==='humidity'?'Humidité':'Capteur';
-        return {...base,on:false,numeric:value,value:value===undefined?state!.state:`${this.format(value)}${unit?` ${unit}`:''}`,detail:this.since(state!)??(plain(name).includes(plain(label))?'Capteur':label)};
+        const value=numeric(state!.state),label=kind==='temperature'?tr('Température'):kind==='humidity'?tr('Humidité'):tr('Capteur');
+        return {...base,on:false,numeric:value,value:value===undefined?state!.state:`${this.format(value)}${unit?` ${unit}`:''}`,detail:this.since(state!)??(plain(name).includes(plain(label))?tr('Capteur'):label)};
       }
     }
   }
   private since(state: HAState) {
     const at=Date.parse(state.last_changed??''),minutes=Math.round((Date.now()-at)/60_000);
     if(!Number.isFinite(minutes)||minutes<0) return undefined;
-    const relative=new Intl.RelativeTimeFormat(this.locale,{numeric:'auto'});
-    return `Mis à jour ${minutes<1?'à l’instant':minutes<60?relative.format(-minutes,'minute'):minutes<1440?relative.format(-Math.round(minutes/60),'hour'):relative.format(-Math.round(minutes/1440),'day')}`;
+    if(minutes<1) return tr('Mis à jour à l’instant');
+    const relative=new Intl.RelativeTimeFormat(locale(),{numeric:'auto'});
+    return tr('Mis à jour {when}',{when:minutes<60?relative.format(-minutes,'minute'):minutes<1440?relative.format(-Math.round(minutes/60),'hour'):relative.format(-Math.round(minutes/1440),'day')});
   }
   /** Only lights placed in the rooms given (one room, or every room of a floor) can be switched from the plan. */
   private async lights(rooms: SpatialRoom[], service: 'turn_on'|'turn_off', ids: string[], data: Record<string,unknown> = {}) {
@@ -611,7 +623,7 @@ export class MPSpatialViewer extends LitElement {
     if(!this.hass || this.busy || !allowed.length) return;
     this.busy=true; this.error='';
     try { await this.hass.callService('light',service,{...data,entity_id:allowed.length===1?allowed[0]:allowed}); }
-    catch { this.error='Commande refusée ou équipement indisponible.'; }
+    catch { this.error=tr('Commande refusée ou équipement indisponible.'); }
     finally { this.busy=false; }
   }
   private toggle(room: SpatialRoom, id: string) {
@@ -627,7 +639,7 @@ export class MPSpatialViewer extends LitElement {
     if(positioned&&(position===undefined||!Number.isFinite(position)||position<0||position>100))return;
     this.busy=true;this.error='';
     try{await this.hass.callService('cover',action,{entity_id:id,...(action==='set_cover_position'?{position}:action==='set_cover_tilt_position'?{tilt_position:position}:{})});}
-    catch{this.error='Commande du volet refusée ou équipement indisponible.';}
+    catch{this.error=tr('Commande du volet refusée ou équipement indisponible.');}
     finally{this.busy=false;}
   }
   /** Shutters, blinds and curtains of `rooms`, each once: those that move together, never a garage door or a gate. */
@@ -641,7 +653,7 @@ export class MPSpatialViewer extends LitElement {
     if(!this.hass||this.busy||!allowed.length) return;
     this.busy=true;this.error='';
     try{await this.hass.callService('cover',action,{entity_id:allowed.length===1?allowed[0]:allowed});}
-    catch{this.error='Commande des volets refusée ou équipement indisponible.';}
+    catch{this.error=tr('Commande des volets refusée ou équipement indisponible.');}
     finally{this.busy=false;}
   }
   /** Home Assistant feature each media command needs. */
@@ -651,7 +663,7 @@ export class MPSpatialViewer extends LitElement {
     if(!this.hass||this.busy||!feature||!id.startsWith('media_player.')||!this.roomEntities(room).has(id)||!canMedia(this.hass.states[id],feature))return;
     this.busy=true;this.error='';
     try{await this.hass.callService('media_player',service,{entity_id:id,...data});}
-    catch{this.error='Commande refusée ou lecteur indisponible.';}
+    catch{this.error=tr('Commande refusée ou lecteur indisponible.');}
     finally{this.busy=false;}
   }
   /**
@@ -664,20 +676,20 @@ export class MPSpatialViewer extends LitElement {
     if(mode==='climate'){
       const temperature=this.temperature(room);
       if(!temperature&&!hasThermometer(room,states))return nothing;
-      return html`<span class="readings"><span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?`Température · ${temperature.id}`:'Température indisponible'}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span></span>`;
+      return html`<span class="readings"><span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?tr('Température · {id}',{id:temperature.id}):tr('Température indisponible')}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span></span>`;
     }
     if(mode==='openings'){
       const open=roomOpen(room,states),covers=[...this.roomEntities(room)].filter(id=>id.startsWith('cover.'));
       if(!open.length&&!covers.length)return nothing;
       return html`<span class="readings">
-        ${open.length?html`<span class="reading ajar" title=${open.map(id=>String(states[id]?.attributes.friendly_name??id)).join(', ')}>${mpIcon('window',12)}<span>${open.length>1?`${open.length} ouvertes`:'Ouverte'}</span></span>`:nothing}
-        ${covers.map(id=>{const state=states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?'Indisponible':position===undefined?'Position inconnue':`${this.format(position,0)} % ouvert`}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':`${this.format(position,0)} %`}</span></span>`;})}
+        ${open.length?html`<span class="reading ajar" title=${open.map(id=>String(states[id]?.attributes.friendly_name??id)).join(', ')}>${mpIcon('window',12)}<span>${open.length>1?tr('{n} ouvertes',{n:open.length}):tr('Ouverte')}</span></span>`:nothing}
+        ${covers.map(id=>{const state=states[id],position=coverPosition(state),name=String(state?.attributes.friendly_name??id);return html`<span class="reading" title=${`${name} · ${!available(state)?tr('Indisponible'):position===undefined?tr('Position inconnue'):tr('{n} % ouvert',{n:this.format(position,0)})}`}><span class="shutter ${position===undefined?'unknown':''}" style=${`--closed:${100-(position??0)}%`} aria-hidden="true"></span><span>${position===undefined?'—':tr('{n} %',{n:this.format(position,0)})}</span></span>`;})}
       </span>`;
     }
     if(mode==='media'){
       const players=roomPlayers(room,states),player=players.find(id=>mediaPlaying(states[id]))??players.find(id=>mediaOn(states[id]));
       if(!player)return nothing;
-      const state=states[player]!,playing=mediaPlaying(state),what=nowPlaying(state),text=playing?what??'Lecture':MEDIA_STATES[state.state]??state.state;
+      const state=states[player]!,playing=mediaPlaying(state),what=nowPlaying(state),text=playing?what??tr('Lecture'):stateName(MEDIA_STATES,state.state);
       return html`<span class="readings"><span class=${`reading ${playing?'media':'player'}`} title=${`${String(state.attributes.friendly_name??player)} · ${playing?text:what?`${text} · ${what}`:text}`}>${mpIcon(mediaIsTv(state)?'tv':'speaker',12)}<span>${text}</span></span></span>`;
     }
     return nothing;
@@ -695,73 +707,73 @@ export class MPSpatialViewer extends LitElement {
   /** The coldest and warmest rooms of a floor, each value in its colour on the scale; one value when they agree. */
   private temperatures(floor: SpatialFloor) {
     const range=temperatureRange(floor.rooms,this.hass?.states??{},this.temperatureUnit);
-    if(!range) return floor.rooms.some(r=>hasThermometer(r,this.hass?.states??{}))?html`<span class="temps" title="Température indisponible">${mpIcon('thermo',12)}—</span>`:nothing;
+    if(!range) return floor.rooms.some(r=>hasThermometer(r,this.hass?.states??{}))?html`<span class="temps" title=${tr('Température indisponible')}>${mpIcon('thermo',12)}—</span>`:nothing;
     const {low,high}=range,value=(t:typeof low)=>html`<span style=${`color:${temperatureColor(t.celsius)}`}>${this.format(t.value)}</span>`;
-    return html`<span class="temps" title="Température des pièces du niveau">${mpIcon('thermo',12)}<span>${value(low)}${this.format(low.value)===this.format(high.value)&&low.unit===high.unit?nothing:html`–${value(high)}`} ${high.unit}</span></span>`;
+    return html`<span class="temps" title=${tr('Température des pièces du niveau')}>${mpIcon('thermo',12)}<span>${value(low)}${this.format(low.value)===this.format(high.value)&&low.unit===high.unit?nothing:html`–${value(high)}`} ${high.unit}</span></span>`;
   }
   /** Doors and windows of a floor standing open, and how many of its shutters let daylight in; everything closed said once. */
   private levelOpenings(floor: SpatialFloor) {
     const states=this.hass?.states??{},rooms=floor.rooms;
     const open=[...new Set(rooms.flatMap(r=>roomOpen(r,states)))].length,covers=this.groupCovers(rooms),up=covers.filter(id=>coverOpen(states[id])).length;
     if(!rooms.some(r=>hasOpenings(r,states))) return nothing;
-    if(!open&&!up) return html`<span class="reading">Tout est fermé</span>`;
-    return html`${open?html`<span class="reading ajar">${mpIcon('window',12)}<span>${open} ${open>1?'ouvertes':'ouverte'}</span></span>`:nothing}${up?html`<span class="reading" title="Volets ouverts">${mpIcon('shutter',12)}<span>${up} / ${covers.length}</span></span>`:nothing}`;
+    if(!open&&!up) return html`<span class="reading">${tr('Tout est fermé')}</span>`;
+    return html`${open?html`<span class="reading ajar">${mpIcon('window',12)}<span>${tr('{n} ouverte|{n} ouvertes',{n:open})}</span></span>`:nothing}${up?html`<span class="reading" title=${tr('Volets ouverts')}>${mpIcon('shutter',12)}<span>${up} / ${covers.length}</span></span>`:nothing}`;
   }
   /** Televisions and speakers of a floor playing, else those on. */
   private levelMedia(floor: SpatialFloor) {
     const states=this.hass?.states??{},players=[...new Set(floor.rooms.flatMap(r=>roomPlayers(r,states)))].map(id=>states[id]);
     if(!players.length) return nothing;
     const playing=players.filter(mediaPlaying).length,on=players.filter(mediaOn).length;
-    return html`<span class=${`reading ${playing?'media':''}`}>${playing?html`${mpIcon('play',12)}<span>${playing} en lecture</span>`:on?`${on} ${on>1?'allumés':'allumé'}`:'Tout est éteint'}</span>`;
+    return html`<span class=${`reading ${playing?'media':''}`}>${playing?html`${mpIcon('play',12)}<span>${tr('{n} en lecture',{n:playing})}</span>`:on?tr('{n} allumé|{n} allumés',{n:on}):tr('Tout est éteint')}</span>`;
   }
   /** A floor of the whole house on the plan: its name, a warm dot while a light is on, and what its ambiance reads. */
   private levelLabel(floor: SpatialFloor, mode: PlanMode) {
     const {all,on}=this.lightsOf(floor.rooms);
     const readings=mode==='climate'?this.temperatures(floor):mode==='openings'?this.levelOpenings(floor):mode==='media'?this.levelMedia(floor)
-      :all.length?html`<span class="reading">${on.length?`${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:'Tout est éteint'}</span>`:nothing;
-    return html`<button class="${readings===nothing?'':'rich'} ${this.pointed===floor.id||this.opening===floor.id?'pointed':''}" style="visibility:hidden" data-floor=${floor.id} title="Ouvrir ce niveau"
+      :all.length?html`<span class="reading">${on.length?tr('{n} lumière allumée|{n} lumières allumées',{n:on.length}):tr('Tout est éteint')}</span>`:nothing;
+    return html`<button class="${readings===nothing?'':'rich'} ${this.pointed===floor.id||this.opening===floor.id?'pointed':''}" style="visibility:hidden" data-floor=${floor.id} title=${tr('Ouvrir ce niveau')}
       @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
       <span class="name">${on.length&&mode==='lights'?html`<i></i>`:nothing}<span>${floor.name}</span></span>${readings===nothing?nothing:html`<span class="readings">${readings}</span>`}</button>`;
   }
   render() {
     const floor=this.currentFloor,room=this.room,plan=this.plan;
-    if(!floor||!plan) return html`<div class="empty">Ajoutez votre plan dans Studio → Plan 3D.</div>`;
+    if(!floor||!plan) return html`<div class="empty">${tr('Ajoutez votre plan dans Studio → Plan 3D.')}</div>`;
     const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),modes=this.modes(floors),mode=this.planMode(floors),legend=LEGENDS[mode];
     // From above, the floors of the whole house would hide one another.
-    const top=stacked?nothing:html`<button aria-label="Vue de dessus" title="Vue de dessus" aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>`;
+    const top=stacked?nothing:html`<button aria-label=${tr('Vue de dessus')} title=${tr('Vue de dessus')} aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>`;
     return html`<div class="layout">
       <div class="stage-col">
       <div class="stage">
         <div class="canvas"></div>
         <div class="labels">${stacked?plan.floors.map(f=>this.levelLabel(f,mode)):floor.rooms.map(r=>this.planLabel(r,lit.has(r.id)&&mode==='lights',mode))}</div>
-        ${this.preview||modes.length<2?nothing:html`<div class=${`modes glass ${modes.length>2?'many':''}`} role="group" aria-label="Ambiance du plan">${modes.map(m=>html`<button aria-pressed=${m.mode===mode} title=${m.label} @click=${()=>{this.mode=m.mode;this.engaged=true;}}>${mpIcon(m.icon,14)}<span class="label">${m.label}</span></button>`)}</div>
-          ${legend?html`<div class="legend">${legend.map(([color,text])=>html`<span><b style=${`background:${color}`}></b>${text}</span>`)}</div>`:nothing}`}
+        ${this.preview||modes.length<2?nothing:html`<div class=${`modes glass ${modes.length>2?'many':''}`} role="group" aria-label=${tr('Ambiance du plan')}>${modes.map(m=>html`<button aria-pressed=${m.mode===mode} title=${tr(m.label)} @click=${()=>{this.mode=m.mode;this.engaged=true;}}>${mpIcon(m.icon,14)}<span class="label">${tr(m.label)}</span></button>`)}</div>
+          ${legend?html`<div class="legend">${legend.map(([color,text])=>html`<span><b style=${`background:${color}`}></b>${trText(text)}</span>`)}</div>`:nothing}`}
         ${plan.floors.length>1
-          ? html`<div class="floors glass" role="group" aria-label="Niveau affiché">${this.preview?nothing:html`<button aria-pressed=${stacked} aria-label="Tous les niveaux" title="Tous les niveaux" @click=${this.showHouse}>${mpIcon('layers',14)}Tous</button>`}${plan.floors.map(f=>html`<button aria-pressed=${!stacked&&f.id===floor.id} @click=${()=>this.openFloor(f.id)}>${f.name}</button>`)}</div>`
+          ? html`<div class="floors glass" role="group" aria-label=${tr('Niveau affiché')}>${this.preview?nothing:html`<button aria-pressed=${stacked} aria-label=${tr('Tous les niveaux')} title=${tr('Tous les niveaux')} @click=${this.showHouse}>${mpIcon('layers',14)}${tr('Tous')}</button>`}${plan.floors.map(f=>html`<button aria-pressed=${!stacked&&f.id===floor.id} @click=${()=>this.openFloor(f.id)}>${f.name}</button>`)}</div>`
           : html`<div class="floor-tag glass">${mpIcon('rooms',13)}<span>${floor.name}</span></div>`}
-        <div class="rail glass" role="toolbar" aria-label="Commandes du plan" aria-orientation="vertical">
-          <button class="zoom" aria-label="Zoom avant" title="Zoom avant" @click=${()=>this.scene?.zoom(.8)}>${mpIcon('plus',18)}</button>
-          <button class="zoom" aria-label="Zoom arrière" title="Zoom arrière" @click=${()=>this.scene?.zoom(1.25)}>${mpIcon('minus',18)}</button>
+        <div class="rail glass" role="toolbar" aria-label=${tr('Commandes du plan')} aria-orientation="vertical">
+          <button class="zoom" aria-label=${tr('Zoom avant')} title=${tr('Zoom avant')} @click=${()=>this.scene?.zoom(.8)}>${mpIcon('plus',18)}</button>
+          <button class="zoom" aria-label=${tr('Zoom arrière')} title=${tr('Zoom arrière')} @click=${()=>this.scene?.zoom(1.25)}>${mpIcon('minus',18)}</button>
           <span class="sep zoom"></span>
-          <button class=${this.savedView?'saved':''} aria-label=${this.savedView?'Revenir à la vue enregistrée':'Recentrer'}
-            title=${this.savedView?'Revenir à la vue enregistrée · appui long pour la remplacer':'Recentrer · appui long pour enregistrer la vue'}
+          <button class=${this.savedView?'saved':''} aria-label=${this.savedView?tr('Revenir à la vue enregistrée'):tr('Recentrer')}
+            title=${this.savedView?tr('Revenir à la vue enregistrée · appui long pour la remplacer'):tr('Recentrer · appui long pour enregistrer la vue')}
             @click=${this.tapRecenter} @pointerdown=${this.startHold} @pointerup=${this.endHold} @pointerleave=${this.endHold} @pointercancel=${this.endHold}
             @contextmenu=${(e:Event)=>{e.preventDefault();this.ask();}}>${mpIcon('target',18)}</button>
           ${top}
-          <button aria-label="Murs" title="Afficher les murs" aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
+          <button aria-label=${tr('Murs')} title=${tr('Afficher les murs')} aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
         </div>
-        ${this.placing?html`<div class="picking glass" role="status"><span>${this.placing.prompt}</span><button @click=${this.cancelPick}>Annuler</button></div>`:nothing}
-        <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error||!!this.placing}><span class="touch">Touchez la maison pour la manipuler</span><span class="fine">Glissez la maison pour la tourner · molette pour zoomer</span></p>
+        ${this.placing?html`<div class="picking glass" role="status"><span>${this.placing.prompt}</span><button @click=${this.cancelPick}>${tr('Annuler')}</button></div>`:nothing}
+        <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error||!!this.placing}><span class="touch">${tr('Touchez la maison pour la manipuler')}</span><span class="fine">${tr('Glissez la maison pour la tourner · molette pour zoomer')}</span></p>
       </div>
       <div class="rooms">
-        <button class="more before" tabindex="-1" aria-hidden="true" title=${stacked?'Niveaux précédents':'Pièces précédentes'} @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>
+        <button class="more before" tabindex="-1" aria-hidden="true" title=${stacked?tr('Niveaux précédents'):tr('Pièces précédentes')} @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>
         ${stacked
-          ? html`<nav class="strip" aria-label="Niveaux de la maison" @scroll=${this.edges}>${plan.floors.map(f=>html`<button class=${`chip ${this.pointed===f.id?'pointed':''}`} @click=${()=>this.openFloor(f.id)} @pointerenter=${()=>{this.pointed=f.id;}} @pointerleave=${()=>{if(this.pointed===f.id)this.pointed='';}}>${mpIcon('layers',16)}<span>${f.name}</span>${this.lightsOf(f.rooms).on.length?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>`
-          : html`<nav class="strip" aria-label="Pièces du niveau" @scroll=${this.edges}>${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">(lumière allumée)</span>`:nothing}</button>`)}</nav>`}
-        <button class="more after" tabindex="-1" aria-hidden="true" title=${stacked?'Niveaux suivants':'Pièces suivantes'} @click=${()=>this.scrollRooms(1)}>${mpIcon('arrow',16)}</button>
+          ? html`<nav class="strip" aria-label=${tr('Niveaux de la maison')} @scroll=${this.edges}>${plan.floors.map(f=>html`<button class=${`chip ${this.pointed===f.id?'pointed':''}`} @click=${()=>this.openFloor(f.id)} @pointerenter=${()=>{this.pointed=f.id;}} @pointerleave=${()=>{if(this.pointed===f.id)this.pointed='';}}>${mpIcon('layers',16)}<span>${f.name}</span>${this.lightsOf(f.rooms).on.length?html`<i class="glow"></i><span class="sr">${tr('(lumière allumée)')}</span>`:nothing}</button>`)}</nav>`
+          : html`<nav class="strip" aria-label=${tr('Pièces du niveau')} @scroll=${this.edges}>${floor.rooms.map(r=>html`<button class="chip" aria-pressed=${this.selected===r.id} @click=${()=>this.select(r.id)}>${mpIcon(roomIcon(r.name),16)}<span>${r.name}</span>${lit.has(r.id)?html`<i class="glow"></i><span class="sr">${tr('(lumière allumée)')}</span>`:nothing}</button>`)}</nav>`}
+        <button class="more after" tabindex="-1" aria-hidden="true" title=${stacked?tr('Niveaux suivants'):tr('Pièces suivantes')} @click=${()=>this.scrollRooms(1)}>${mpIcon('arrow',16)}</button>
       </div>
       </div>
-      <p class="sr">Sur la maison : glisser pour tourner, pincer ou molette pour zoomer, deux doigts ou clic droit pour déplacer. À côté de la maison, la page défile normalement. Clavier : flèches pour déplacer, + et − pour zoomer.</p>
+      <p class="sr">${tr('Sur la maison : glisser pour tourner, pincer ou molette pour zoomer, deux doigts ou clic droit pour déplacer. À côté de la maison, la page défile normalement. Clavier : flèches pour déplacer, + et − pour zoomer.')}</p>
       <div class="side">
         ${this.error?html`<p role="alert" class="error">${this.error}</p>`:nothing}
         ${stacked?this.houseCard(plan.floors):room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
@@ -770,56 +782,56 @@ export class MPSpatialViewer extends LitElement {
     </div>`;
   }
   private lightsStat(total: number, on: number) {
-    return html`<div class="stat ${on?'warm':''}"><small>Lumières</small><strong>${on}<em> / ${total}</em></strong><span>${on>1?'allumées':'allumée'}</span></div>`;
+    return html`<div class="stat ${on?'warm':''}"><small>${tr('Lumières')}</small><strong>${on}<em> / ${total}</em></strong><span>${tr('allumée|allumées',{n:on})}</span></div>`;
   }
   /** Shutters, blinds and curtains of `rooms` letting daylight in, out of all of them. */
   private coversStat(rooms: SpatialRoom[]) {
     const ids=this.groupCovers(rooms);
     if(!ids.length) return nothing;
     const open=ids.filter(id=>coverOpen(this.hass?.states[id])).length;
-    return html`<div class="stat"><small>Volets</small><strong>${open}<em> / ${ids.length}</em></strong><span>${open>1?'ouverts':'ouvert'}</span></div>`;
+    return html`<div class="stat"><small>${tr('Volets')}</small><strong>${open}<em> / ${ids.length}</em></strong><span>${tr('ouvert|ouverts',{n:open})}</span></div>`;
   }
   /** Opens or closes every shutter, blind and curtain of `rooms` in one command; a single one is commanded on its own row. */
-  private coverPair(rooms: SpatialRoom[], scope: string, least=1) {
+  private coverPair(rooms: SpatialRoom[], scope: keyof typeof COVER_SCOPES, least=1) {
     const states=this.hass?.states??{},ids=this.groupCovers(rooms);
     if(ids.length<least) return nothing;
-    const shut=ids.every(id=>coverClosed(states[id])===1),open=ids.every(id=>coverClosed(states[id])===0);
-    return html`<div class="pair" role="group" aria-label=${`Volets ${scope}`}>
-      <button aria-label=${`Ouvrir tous les volets ${scope}`} ?disabled=${this.busy||open||!ids.some(id=>canCover(states[id],'open_cover'))} @click=${()=>this.covers(rooms,'open_cover',ids)}>${mpIcon('shutter',16)}<span>Tout ouvrir</span></button>
-      <button aria-label=${`Fermer tous les volets ${scope}`} ?disabled=${this.busy||shut||!ids.some(id=>canCover(states[id],'close_cover'))} @click=${()=>this.covers(rooms,'close_cover',ids)}>${mpIcon('shutter',16)}<span>Tout fermer</span></button>
+    const shut=ids.every(id=>coverClosed(states[id])===1),open=ids.every(id=>coverClosed(states[id])===0),[group,openAll,closeAll]=COVER_SCOPES[scope];
+    return html`<div class="pair" role="group" aria-label=${tr(group)}>
+      <button aria-label=${tr(openAll)} ?disabled=${this.busy||open||!ids.some(id=>canCover(states[id],'open_cover'))} @click=${()=>this.covers(rooms,'open_cover',ids)}>${mpIcon('shutter',16)}<span>${tr('Tout ouvrir')}</span></button>
+      <button aria-label=${tr(closeAll)} ?disabled=${this.busy||shut||!ids.some(id=>canCover(states[id],'close_cover'))} @click=${()=>this.covers(rooms,'close_cover',ids)}>${mpIcon('shutter',16)}<span>${tr('Tout fermer')}</span></button>
     </div>`;
   }
   private overviewCard(floor: SpatialFloor) {
     const area=floor.rooms.reduce((sum,r)=>sum+roomArea(r),0);
     const lights=floor.rooms.flatMap(r=>(r.entityIds??[]).filter(id=>id.startsWith('light.')));
     const lit=lights.filter(id=>this.hass?.states[id]?.state==='on'),on=lit.length;
-    return html`<section class="card ${on?'lit':''}" aria-label="Vue d’ensemble du niveau">
-      <header><span class="orb">${mpIcon('home',24)}</span><div class="title"><small>Vue d’ensemble</small><h3>${floor.name}</h3></div></header>
-      <div class="stats"><div class="stat"><small>Pièces</small><strong>${floor.rooms.length}</strong></div><div class="stat"><small>Surface</small><strong>${this.format(area,0)} m²</strong></div>${lights.length?this.lightsStat(lights.length,on):nothing}${this.coversStat(floor.rooms)}</div>
-      ${lights.length?html`<button class="master ${on?'on':''}" ?disabled=${this.busy||!on} @click=${()=>this.lights(floor.rooms,'turn_off',lit)}>${mpIcon('power',16)}<span>${on?'Éteindre tout le niveau':'Tout est éteint'}</span></button>`:nothing}
-      ${this.coverPair(floor.rooms,'du niveau')}
-      <p class="lead">Touchez une pièce sur le plan ou dans la liste pour afficher ses équipements.</p>
+    return html`<section class="card ${on?'lit':''}" aria-label=${tr('Vue d’ensemble du niveau')}>
+      <header><span class="orb">${mpIcon('home',24)}</span><div class="title"><small>${tr('Vue d’ensemble')}</small><h3>${floor.name}</h3></div></header>
+      <div class="stats"><div class="stat"><small>${tr('Pièces')}</small><strong>${floor.rooms.length}</strong></div><div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(area,0)})}</strong></div>${lights.length?this.lightsStat(lights.length,on):nothing}${this.coversStat(floor.rooms)}</div>
+      ${lights.length?html`<button class="master ${on?'on':''}" ?disabled=${this.busy||!on} @click=${()=>this.lights(floor.rooms,'turn_off',lit)}>${mpIcon('power',16)}<span>${on?tr('Éteindre tout le niveau'):tr('Tout est éteint')}</span></button>`:nothing}
+      ${this.coverPair(floor.rooms,'floor')}
+      <p class="lead">${tr('Touchez une pièce sur le plan ou dans la liste pour afficher ses équipements.')}</p>
     </section>`;
   }
   /** Every floor at a glance: the house in figures, a command for all its lights, then each floor from the top one down. */
   private houseCard(floors: SpatialFloor[]) {
     const rooms=floors.flatMap(f=>f.rooms),area=rooms.reduce((sum,r)=>sum+roomArea(r),0),{all,on}=this.lightsOf(rooms);
     const order=floors.map((floor,index)=>({floor,index})).sort((a,b)=>b.floor.elevation-a.floor.elevation||b.index-a.index).map(({floor})=>floor);
-    return html`<section class="card ${on.length?'lit':''}" aria-label="Vue d’ensemble de la maison">
-      <header><span class="orb">${mpIcon('layers',24)}</span><div class="title"><small>Vue d’ensemble</small><h3>Toute la maison</h3></div></header>
-      <div class="stats"><div class="stat"><small>Niveaux</small><strong>${floors.length}</strong></div><div class="stat"><small>Pièces</small><strong>${rooms.length}</strong></div><div class="stat"><small>Surface</small><strong>${this.format(area,0)} m²</strong></div>${all.length?this.lightsStat(all.length,on.length):nothing}${this.coversStat(rooms)}</div>
-      ${all.length?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy||!on.length} @click=${()=>this.lights(rooms,'turn_off',on)}>${mpIcon('power',16)}<span>${on.length?'Éteindre toute la maison':'Tout est éteint'}</span></button>`:nothing}
-      ${this.coverPair(rooms,'de la maison')}
-      <ul class="levels" aria-label="Niveaux">${order.map(f=>this.levelRow(f))}</ul>
-      <p class="lead">Touchez un niveau sur le plan ou dans la liste pour l’ouvrir.</p>
+    return html`<section class="card ${on.length?'lit':''}" aria-label=${tr('Vue d’ensemble de la maison')}>
+      <header><span class="orb">${mpIcon('layers',24)}</span><div class="title"><small>${tr('Vue d’ensemble')}</small><h3>${tr('Toute la maison')}</h3></div></header>
+      <div class="stats"><div class="stat"><small>${tr('Niveaux')}</small><strong>${floors.length}</strong></div><div class="stat"><small>${tr('Pièces')}</small><strong>${rooms.length}</strong></div><div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(area,0)})}</strong></div>${all.length?this.lightsStat(all.length,on.length):nothing}${this.coversStat(rooms)}</div>
+      ${all.length?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy||!on.length} @click=${()=>this.lights(rooms,'turn_off',on)}>${mpIcon('power',16)}<span>${on.length?tr('Éteindre toute la maison'):tr('Tout est éteint')}</span></button>`:nothing}
+      ${this.coverPair(rooms,'house')}
+      <ul class="levels" aria-label=${tr('Niveaux')}>${order.map(f=>this.levelRow(f))}</ul>
+      <p class="lead">${tr('Touchez un niveau sur le plan ou dans la liste pour l’ouvrir.')}</p>
     </section>`;
   }
   private levelRow(floor: SpatialFloor) {
     const {all,on}=this.lightsOf(floor.rooms),count=floor.rooms.length;
-    const lights=!all.length?'':on.length?` · ${on.length} ${on.length>1?'lumières allumées':'lumière allumée'}`:' · lumières éteintes';
-    return html`<li><button class="level ${on.length?'on':''} ${this.pointed===floor.id?'pointed':''}" title="Ouvrir ce niveau" @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
+    const lights=!all.length?'':` · ${on.length?tr('{n} lumière allumée|{n} lumières allumées',{n:on.length}):tr('lumières éteintes')}`;
+    return html`<li><button class="level ${on.length?'on':''} ${this.pointed===floor.id?'pointed':''}" title=${tr('Ouvrir ce niveau')} @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>
       <span class="dev-icon">${mpIcon(on.length?'bulb':'layers',20)}</span>
-      <span class="text"><strong>${floor.name}</strong><small>${count} ${count>1?'pièces':'pièce'}${lights}</small></span>
+      <span class="text"><strong>${floor.name}</strong><small>${tr('{n} pièce|{n} pièces',{n:count})}${lights}</small></span>
       ${this.temperatures(floor)}${mpIcon('arrow',16)}
     </button></li>`;
   }
@@ -836,36 +848,36 @@ export class MPSpatialViewer extends LitElement {
     const href=room.areaId?this.areaHref?.(room.areaId):undefined;
     const group=lights.filter(d=>d.switchable);
     return html`<section class="card ${lit?'lit':''}" aria-labelledby="room-title">
-      <header><span class="orb">${mpIcon(roomIcon(room.name),26)}</span><div class="title"><small>${floor.name}</small><h3 id="room-title">${room.name}</h3></div><button class="close" aria-label="Fermer la pièce" title="Fermer" @click=${this.close}>${mpIcon('close',18)}</button></header>
+      <header><span class="orb">${mpIcon(roomIcon(room.name),26)}</span><div class="title"><small>${floor.name}</small><h3 id="room-title">${room.name}</h3></div><button class="close" aria-label=${tr('Fermer la pièce')} title=${tr('Fermer')} @click=${this.close}>${mpIcon('close',18)}</button></header>
       <div class="stats">
-        <div class="stat"><small>Surface</small><strong>${this.format(surface)} m²</strong>${rectangle?html`<span>${this.format(width)} × ${this.format(depth)} m</span>`:nothing}</div>
+        <div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(surface)})}</strong>${rectangle?html`<span>${tr('{width} × {depth} m',{width:this.format(width),depth:this.format(depth)})}</span>`:nothing}</div>
         ${lights.length?this.lightsStat(lights.length,on.length):nothing}
-        ${temperature===undefined?nothing:html`<div class="stat"><small>Température</small><strong title=${temperature.id}>${this.format(temperature.value)}${temperature.unit==='°C'?'°':temperature.unit}</strong></div>`}
-        ${humidity===undefined?nothing:html`<div class="stat"><small>Humidité</small><strong>${this.format(humidity,0)} %</strong></div>`}
+        ${temperature===undefined?nothing:html`<div class="stat"><small>${tr('Température')}</small><strong title=${temperature.id}>${this.format(temperature.value)}${temperature.unit==='°C'?'°':temperature.unit}</strong></div>`}
+        ${humidity===undefined?nothing:html`<div class="stat"><small>${tr('Humidité')}</small><strong>${tr('{n} %',{n:this.format(humidity,0)})}</strong></div>`}
       </div>
-      ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights([room],on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?'Tout éteindre':'Tout allumer'}</span></button>`:nothing}
-      ${this.coverPair([room],'de la pièce',2)}
-      ${openings.length?html`<p class="section-title">Portes et fenêtres</p><ul class="devices" aria-label="Portes et fenêtres">${openings.map(o=>this.openingRow(room,o))}</ul>${devices.length?html`<p class="section-title">Équipements</p>`:nothing}`:nothing}
-      ${devices.length?html`<ul class="devices" aria-label="Équipements">${devices.map(d=>this.deviceRow(room,d))}</ul>`:openings.length?nothing:html`<p class="lead">Aucun équipement associé à cette pièce. Choisissez-les dans Studio → Plan 3D.</p>`}
-      ${href?html`<a class="open" href=${href}><span>Ouvrir la pièce</span>${mpIcon('arrow',16)}</a>`:nothing}
+      ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights([room],on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?tr('Tout éteindre'):tr('Tout allumer')}</span></button>`:nothing}
+      ${this.coverPair([room],'room',2)}
+      ${openings.length?html`<p class="section-title">${tr('Portes et fenêtres')}</p><ul class="devices" aria-label=${tr('Portes et fenêtres')}>${openings.map(o=>this.openingRow(room,o))}</ul>${devices.length?html`<p class="section-title">${tr('Équipements')}</p>`:nothing}`:nothing}
+      ${devices.length?html`<ul class="devices" aria-label=${tr('Équipements')}>${devices.map(d=>this.deviceRow(room,d))}</ul>`:openings.length?nothing:html`<p class="lead">${tr('Aucun équipement associé à cette pièce. Choisissez-les dans Studio → Plan 3D.')}</p>`}
+      ${href?html`<a class="open" href=${href}><span>${tr('Ouvrir la pièce')}</span>${mpIcon('arrow',16)}</a>`:nothing}
     </section>`;
   }
   /** A door or a window named by its kind, numbered when the room has several of that kind. */
   private openingName(room: SpatialRoom, opening: SpatialOpening) {
     if(opening.name) return opening.name;
     const same=(room.openings??[]).filter(o=>o.kind===opening.kind);
-    return same.length>1?`${OPENING_NAMES[opening.kind]} ${same.indexOf(opening)+1}`:OPENING_NAMES[opening.kind];
+    return same.length>1?`${tr(OPENING_NAMES[opening.kind])} ${same.indexOf(opening)+1}`:tr(OPENING_NAMES[opening.kind]);
   }
   /** A door or a window: open or closed by its contact sensors, its size, then each of its covers with its commands. */
   private openingRow(room: SpatialRoom, opening: SpatialOpening) {
     const states=this.hass?.states??{},ids=opening.entityIds??[],name=this.openingName(room,opening);
     const sensors=ids.filter(id=>id.startsWith('binary_sensor.')),covers=ids.filter(id=>id.startsWith('cover.')).map(id=>this.device(id,room));
     const open=this.isOpen(opening),known=sensors.some(id=>available(states[id]));
-    const placed=openingPlacement(room,opening),size=placed?`${this.format(placed.width,2)} × ${this.format(placed.height,2)} m`:'';
-    const target=sensors[0]??covers[0]?.id,body=html`<span class="dev-icon">${mpIcon(OPENING_ICONS[opening.kind],20)}</span><span class="text"><strong>${name}</strong><small>${size}${sensors.length||covers.length?'':`${size?' · ':''}sans équipement relié`}</small></span>`;
+    const placed=openingPlacement(room,opening),size=placed?tr('{width} × {depth} m',{width:this.format(placed.width,2),depth:this.format(placed.height,2)}):'';
+    const target=sensors[0]??covers[0]?.id,body=html`<span class="dev-icon">${mpIcon(OPENING_ICONS[opening.kind],20)}</span><span class="text"><strong>${name}</strong><small>${size}${sensors.length||covers.length?'':`${size?' · ':''}${tr('sans équipement relié')}`}</small></span>`;
     return html`<li class="device opening ${open?'ajar':''}" data-kind="opening">
-      ${target?html`<button class="main" aria-label=${`Détails ${name}`} @click=${()=>this.moreInfo(target)}>${body}</button>`:html`<div class="main">${body}</div>`}
-      ${sensors.length?html`<span class=${`state ${open?'ajar':''}`}>${known?open?'Ouverte':'Fermée':'Indisponible'}</span>`:nothing}
+      ${target?html`<button class="main" aria-label=${tr('Détails {name}',{name})} @click=${()=>this.moreInfo(target)}>${body}</button>`:html`<div class="main">${body}</div>`}
+      ${sensors.length?html`<span class=${`state ${open?'ajar':''}`}>${known?open?tr('Ouverte'):tr('Fermée'):tr('Indisponible')}</span>`:nothing}
       ${covers.map(d=>html`<div class="cover-line">${mpIcon(COVER_ICONS[coverStyle(states[d.id])],14)}<span>${d.name}</span><small>${d.detail}</small></div>${this.coverControls(room,d)}`)}
     </li>`;
   }
@@ -873,10 +885,10 @@ export class MPSpatialViewer extends LitElement {
   private coverControls(room: SpatialRoom, d: Device) {
     const state=this.hass?.states[d.id],tilt=coverTilt(state);
     return html`<div class="cover-controls">
-        ${([['open_cover','Ouvrir le volet','↑'],['stop_cover','Arrêter le volet','■'],['close_cover','Fermer le volet','↓']] as const).map(([action,label,icon])=>html`<button aria-label=${`${label} ${d.name}`} ?disabled=${this.busy||!canCover(state,action)} @click=${()=>this.cover(room,d.id,action)}>${icon}</button>`)}
-        ${canCover(state,'set_cover_position')?html`<label><input type="range" min="0" max="100" .value=${String(d.percent??50)} aria-label=${`Ouverture ${d.name}`} aria-valuetext=${d.percent===undefined?'Position actuelle inconnue':`${this.format(d.percent,0)} % ouvert`} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_position',Number((e.target as HTMLInputElement).value))}><output>${d.percent===undefined?'—':`${this.format(d.percent,0)} %`}</output></label>`:nothing}
+        ${([['open_cover','Ouvrir le volet {name}','↑'],['stop_cover','Arrêter le volet {name}','■'],['close_cover','Fermer le volet {name}','↓']] as const).map(([action,label,icon])=>html`<button aria-label=${tr(label,{name:d.name})} ?disabled=${this.busy||!canCover(state,action)} @click=${()=>this.cover(room,d.id,action)}>${icon}</button>`)}
+        ${canCover(state,'set_cover_position')?html`<label><input type="range" min="0" max="100" .value=${String(d.percent??50)} aria-label=${tr('Ouverture {name}',{name:d.name})} aria-valuetext=${d.percent===undefined?tr('Position actuelle inconnue'):tr('{n} % ouvert',{n:this.format(d.percent,0)})} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_position',Number((e.target as HTMLInputElement).value))}><output>${d.percent===undefined?'—':tr('{n} %',{n:this.format(d.percent,0)})}</output></label>`:nothing}
       </div>
-      ${canCover(state,'set_cover_tilt_position')?html`<div class="cover-controls"><label title="Inclinaison des lames">${mpIcon('sliders',14)}<input type="range" min="0" max="100" .value=${String(tilt??50)} aria-label=${`Inclinaison ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_tilt_position',Number((e.target as HTMLInputElement).value))}><output>${tilt===undefined?'—':`${this.format(tilt,0)} %`}</output></label></div>`:nothing}`;
+      ${canCover(state,'set_cover_tilt_position')?html`<div class="cover-controls"><label title=${tr('Inclinaison des lames')}>${mpIcon('sliders',14)}<input type="range" min="0" max="100" .value=${String(tilt??50)} aria-label=${tr('Inclinaison {name}',{name:d.name})} ?disabled=${this.busy} @change=${(e:Event)=>this.cover(room,d.id,'set_cover_tilt_position',Number((e.target as HTMLInputElement).value))}><output>${tilt===undefined?'—':tr('{n} %',{n:this.format(tilt,0)})}</output></label></div>`:nothing}`;
   }
   /** Previous, play or pause and next, the volume and its mute, and the source, each as far as the player offers it. */
   private mediaControls(room: SpatialRoom, d: Device) {
@@ -889,32 +901,32 @@ export class MPSpatialViewer extends LitElement {
     if(!transport&&!volume&&!mute&&!source) return nothing;
     return html`<div class="media-controls">
       ${transport?html`<div class="transport">
-        ${canMedia(state,'previous_track')?html`<button aria-label=${`Piste précédente ${d.name}`} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'media_previous_track')}>${mpIcon('previous',16)}</button>`:nothing}
-        ${toggle?html`<button class="play" aria-label=${`${playing?'Pause':'Lecture'} ${d.name}`} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,toggle)}>${mpIcon(playing?'pause':'play',17)}</button>`:nothing}
-        ${canMedia(state,'next_track')?html`<button aria-label=${`Piste suivante ${d.name}`} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'media_next_track')}>${mpIcon('next',16)}</button>`:nothing}
+        ${canMedia(state,'previous_track')?html`<button aria-label=${tr('Piste précédente {name}',{name:d.name})} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'media_previous_track')}>${mpIcon('previous',16)}</button>`:nothing}
+        ${toggle?html`<button class="play" aria-label=${playing?tr('Pause {name}',{name:d.name}):tr('Lecture {name}',{name:d.name})} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,toggle)}>${mpIcon(playing?'pause':'play',17)}</button>`:nothing}
+        ${canMedia(state,'next_track')?html`<button aria-label=${tr('Piste suivante {name}',{name:d.name})} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'media_next_track')}>${mpIcon('next',16)}</button>`:nothing}
       </div>`:nothing}
       ${volume||mute?html`<div class="volume">
-        ${mute?html`<button aria-label=${`${muted?'Rétablir le son':'Couper le son'} ${d.name}`} aria-pressed=${muted} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'volume_mute',{is_volume_muted:!muted})}>${mpIcon(muted?'mute':'volume',16)}</button>`:mpIcon('volume',16)}
-        ${volume?html`<input type="range" min="0" max="100" .value=${String(d.percent??0)} aria-label=${`Volume ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.media(room,d.id,'volume_set',{volume_level:Number((e.target as HTMLInputElement).value)/100})}>`:html`<span></span>`}
-        <output>${muted?'Muet':d.percent===undefined?'—':`${d.percent} %`}</output>
+        ${mute?html`<button aria-label=${muted?tr('Rétablir le son {name}',{name:d.name}):tr('Couper le son {name}',{name:d.name})} aria-pressed=${muted} ?disabled=${this.busy} @click=${()=>this.media(room,d.id,'volume_mute',{is_volume_muted:!muted})}>${mpIcon(muted?'mute':'volume',16)}</button>`:mpIcon('volume',16)}
+        ${volume?html`<input type="range" min="0" max="100" .value=${String(d.percent??0)} aria-label=${tr('Volume {name}',{name:d.name})} ?disabled=${this.busy} @change=${(e:Event)=>this.media(room,d.id,'volume_set',{volume_level:Number((e.target as HTMLInputElement).value)/100})}>`:html`<span></span>`}
+        <output>${muted?tr('Muet'):d.percent===undefined?'—':tr('{n} %',{n:d.percent})}</output>
       </div>`:nothing}
-      ${source?html`<label class="source">Source<select aria-label=${`Source ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.media(room,d.id,'select_source',{source:(e.target as HTMLSelectElement).value})}>
+      ${source?html`<label class="source">${tr('Source')}<select aria-label=${tr('Source {name}',{name:d.name})} ?disabled=${this.busy} @change=${(e:Event)=>this.media(room,d.id,'select_source',{source:(e.target as HTMLSelectElement).value})}>
         ${state.attributes.source&&sources.includes(String(state.attributes.source))?nothing:html`<option value="" selected disabled>—</option>`}
         ${sources.map(s=>html`<option value=${s} .selected=${s===state.attributes.source}>${s}</option>`)}
       </select></label>`:nothing}
     </div>`;
   }
   private deviceRow(room: SpatialRoom, d: Device) {
-    const action=d.on?'Éteindre':'Allumer';
+    const action=d.on?tr('Éteindre {name}',{name:d.name}):tr('Allumer {name}',{name:d.name});
     const state=this.hass?.states[d.id],icon=d.kind==='media'?mediaIsTv(state)?'tv':'speaker':d.kind==='cover'?COVER_ICONS[coverStyle(state)]:KIND_ICONS[d.kind];
     return html`<li class="device ${d.on?'on':''} ${d.ready?'':'offline'}" data-kind=${d.kind}>
-      <button class="main" aria-label=${`Détails ${d.name}`} @click=${()=>this.moreInfo(d.id)}><span class="dev-icon">${mpIcon(icon,20)}</span><span class="text"><strong>${d.name}</strong><small>${d.detail}</small></span></button>
+      <button class="main" aria-label=${tr('Détails {name}',{name:d.name})} @click=${()=>this.moreInfo(d.id)}><span class="dev-icon">${mpIcon(icon,20)}</span><span class="text"><strong>${d.name}</strong><small>${d.detail}</small></span></button>
       ${d.kind==='light'
-        ? html`<button class="switch ${d.on?'on':''}" aria-label=${action} title=${`${action} ${d.name}`} ?disabled=${this.busy||!d.switchable} @click=${()=>this.toggle(room,d.id)}><span></span></button>`
-        : d.kind==='media'?d.switchable?html`<button class="switch media ${d.on?'on':''}" aria-label=${`${action} ${d.name}`} title=${`${action} ${d.name}`} ?disabled=${this.busy||!canMedia(state,d.on?'turn_off':'turn_on')} @click=${()=>this.media(room,d.id,d.on?'turn_off':'turn_on')}><span></span></button>`:nothing
+        ? html`<button class="switch ${d.on?'on':''}" aria-label=${d.on?tr('Éteindre'):tr('Allumer')} title=${action} ?disabled=${this.busy||!d.switchable} @click=${()=>this.toggle(room,d.id)}><span></span></button>`
+        : d.kind==='media'?d.switchable?html`<button class="switch media ${d.on?'on':''}" aria-label=${action} title=${action} ?disabled=${this.busy||!canMedia(state,d.on?'turn_off':'turn_on')} @click=${()=>this.media(room,d.id,d.on?'turn_off':'turn_on')}><span></span></button>`:nothing
         : d.value?html`<strong class="value">${d.value}</strong>`:nothing}
       ${d.kind==='media'?this.mediaControls(room,d):nothing}
-      ${d.on&&d.dimmable?html`<label class="dim">${mpIcon('sun',14)}<input type="range" min="1" max="100" .value=${String(d.percent??1)} aria-label=${`Luminosité ${d.name}`} ?disabled=${this.busy} @change=${(e:Event)=>this.lights([room],'turn_on',[d.id],{brightness_pct:Number((e.target as HTMLInputElement).value)})}><output>${d.percent===undefined?'—':`${d.percent} %`}</output></label>`:nothing}
+      ${d.on&&d.dimmable?html`<label class="dim">${mpIcon('sun',14)}<input type="range" min="1" max="100" .value=${String(d.percent??1)} aria-label=${tr('Luminosité {name}',{name:d.name})} ?disabled=${this.busy} @change=${(e:Event)=>this.lights([room],'turn_on',[d.id],{brightness_pct:Number((e.target as HTMLInputElement).value)})}><output>${d.percent===undefined?'—':tr('{n} %',{n:d.percent})}</output></label>`:nothing}
       ${d.kind==='cover'?this.coverControls(room,d):nothing}
     </li>`;
   }

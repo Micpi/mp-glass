@@ -27,7 +27,8 @@ export class MPPresentationResolver {
 }
 
 export class MPDashboardComposer {
-  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory') {
+  /** `inventoryTitle` and `titles` name the views in the interface language, which the frontend knows. */
+  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory', titles = { lights: 'Lumières', rooms: 'Pièces' }) {
     const visible = graph.devices.filter(d => !d.hidden && !d.disabled);
     const devices = visible.filter(d => d.category !== 'generic');
     const lights = devices.filter(d => d.category === 'light');
@@ -80,8 +81,8 @@ export class MPDashboardComposer {
       title: project.project.name,
       views: [
         view('home', project.project.name, 'home', cards(devices), 'mdi:home'),
-        view('lights', 'Lumières', 'lights', cards(lights), 'mdi:lightbulb-group'),
-        view('rooms', 'Pièces', 'rooms', [], 'mdi:floor-plan'),
+        view('lights', titles.lights, 'lights', cards(lights), 'mdi:lightbulb-group'),
+        view('rooms', titles.rooms, 'rooms', [], 'mdi:floor-plan'),
         ...areas.map(a => view(`area-${a.id}`, a.name, 'area', cards(devices.filter(d => d.areaId === a.id)), a.icon ?? 'mdi:floor-plan')),
         ...(inventory.length ? [view('inventory', inventoryTitle, 'inventory', cards(inventory), 'mdi:archive-search')] : []),
       ],

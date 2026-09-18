@@ -6,6 +6,7 @@ import type { SpatialPlan } from '../shared/spatial';
 import type { Hass } from './ha/client';
 import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
+import { LanguageController, locale, tr, trDefault, trPlan } from './i18n';
 
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
 interface ViewConfig {
@@ -49,15 +50,16 @@ export class MPGlassView extends LitElement {
 
   cards: HTMLElement[] = [];
   hass?: Hass;
+  private language = new LanguageController(this);
   private spatial?: SpatialPlan;
   private spatialOrigin: ViewConfig['mp_spatial_origin'] = 'project';
   badges: HTMLElement[] = [];
-  private projectName = 'Maison';
+  private projectName = '';
   private appearance: AppearanceConfig = { preset:'glass-blue' };
   private navigation: NavigationConfig = { items:['home','lights','rooms'], showLabels:true };
   private viewKind: ViewConfig['mp_view_kind'] = 'home';
   private viewPath = 'home';
-  private viewTitle = 'Maison';
+  private viewTitle = '';
   private areas: AreaSummary[] = [];
   private inventory?: ViewConfig['mp_inventory'];
   /** hui-root whose bar this view made transparent. */
@@ -77,7 +79,7 @@ export class MPGlassView extends LitElement {
     this.spatial = config?.mp_spatial;
     this.spatialOrigin = config?.mp_spatial_origin ?? 'project';
     this.requestUpdate();
-    this.projectName = config?.mp_project_name ?? config?.title ?? 'Maison';
+    this.projectName = config?.mp_project_name ?? config?.title ?? '';
     this.appearance = config?.mp_appearance ?? { preset:'glass-blue' };
     this.navigation = config?.mp_navigation ?? { items:['home','lights','rooms'], showLabels:true };
     this.viewKind = config?.mp_view_kind ?? 'home';
@@ -93,7 +95,7 @@ export class MPGlassView extends LitElement {
 
   private greeting() {
     const hour = new Date().getHours();
-    return hour < 12 ? 'Bonjour' : hour < 18 ? 'Bon après-midi' : 'Bonsoir';
+    return hour < 12 ? tr('Bonjour') : hour < 18 ? tr('Bon après-midi') : tr('Bonsoir');
   }
   private route(path: string) {
     const parts = window.location.pathname.split('/').filter(Boolean);
@@ -102,15 +104,15 @@ export class MPGlassView extends LitElement {
   private areaHref = (areaId: string) => this.areas.some(area=>area.id===areaId) ? this.route(`area-${areaId}`) : undefined;
   private navItem(item: NavigationItem) {
     const meta = {
-      home:{label:'Accueil',icon:'home' as const},
-      lights:{label:'Lumières',icon:'bulb' as const},
-      rooms:{label:'Pièces',icon:'rooms' as const},
+      home:{label:tr('Accueil'),icon:'home' as const},
+      lights:{label:tr('Lumières'),icon:'bulb' as const},
+      rooms:{label:tr('Pièces'),icon:'rooms' as const},
     }[item];
     const active = this.viewKind === item || (item === 'rooms' && this.viewKind === 'area');
     return html`<a class=${active?'active':''} href=${this.route(item)} aria-current=${active?'page':nothing}>${mpIcon(meta.icon,item==='home'?20:19)}<span>${meta.label}</span></a>`;
   }
   private section(title: string, subtitle: string) {
-    return html`<div class="section-head"><div class="section-label"><span class="section-icon">${mpIcon(this.viewKind==='rooms'?'rooms':'bulb',23)}</span><div><h2>${title}</h2><p>${subtitle}</p></div></div><span class="section-action"><i></i> Synchronisé avec Home Assistant</span></div>`;
+    return html`<div class="section-head"><div class="section-label"><span class="section-icon">${mpIcon(this.viewKind==='rooms'?'rooms':'bulb',23)}</span><div><h2>${title}</h2><p>${subtitle}</p></div></div><span class="section-action"><i></i> ${tr('Synchronisé avec Home Assistant')}</span></div>`;
   }
 
   render() {
@@ -120,30 +122,33 @@ export class MPGlassView extends LitElement {
     const fonts = a.fontStyle === 'modern' ? '--mp-display-font:Inter,system-ui,sans-serif' : a.fontStyle === 'soft' ? '--mp-display-font:ui-rounded,system-ui,sans-serif' : '--mp-display-font:Georgia,serif';
     const style = `--mp-accent:${a.accent ?? '#69b7ff'};--mp-secondary:${a.secondaryAccent ?? '#efbd8b'};--mp-tint:${a.glassTint ?? '#12344f'};--mp-opacity:${a.glassOpacity ?? .66};--mp-blur:${a.glassBlur ?? 24}px;--mp-border:${a.borderStrength ?? .2};--mp-shadow:${a.shadowStrength ?? .35};--mp-radius:${a.radius ?? 22}px;--mp-columns:${a.cardColumns ?? 4};--mp-gap:${a.cardGap ?? 12}px;--mp-max-width:${a.maxWidth ?? 1560}px;--mp-hero-height:${a.heroHeight ?? 455}px;--mp-bg-blur:${a.backgroundBlur ?? 0}px;--mp-bg-saturation:${a.backgroundSaturation ?? 1};${fonts}`;
     const total = this.cards.length;
-    const title = this.viewKind === 'lights' ? 'Toutes les lumières' : this.viewKind === 'rooms' ? 'Vos pièces' : this.viewTitle;
-    const subtitle = this.viewKind === 'lights' ? `${total} éclairages détectés et contrôlables` : this.viewKind === 'rooms' ? `${this.areas.length} espaces organisés automatiquement` : `Les équipements de ${this.viewTitle}`;
+    const projectName = this.projectName || tr('Maison'), viewTitle = this.viewTitle || projectName;
+    const title = this.viewKind === 'lights' ? tr('Toutes les lumières') : this.viewKind === 'rooms' ? tr('Vos pièces') : viewTitle;
+    const subtitle = this.viewKind === 'lights' ? tr('{n} éclairage détecté et contrôlable|{n} éclairages détectés et contrôlables',{n:total}) : this.viewKind === 'rooms' ? tr('{n} espace organisé automatiquement|{n} espaces organisés automatiquement',{n:this.areas.length}) : tr('Les équipements de {name}',{name:viewTitle});
+    // A plan MP Glass drew itself (from the areas, or its example) names its own rooms and floors in the interface language.
+    const spatial = this.spatial && this.spatialOrigin !== 'project' ? trPlan(this.spatial, this.spatialOrigin === 'example') : this.spatial;
     return html`
       <div class="backdrop" style=${`background-image:url(${bg});background-position:${a.backgroundPosition ?? 'right'} center`}></div>
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
       <div class="shell" style=${style}>
         <header class="glass">
-          <div class="brand"><span class="mark">≋</span><div><strong>${this.projectName}</strong><small>Home Assistant · MP Glass</small></div></div>
-          <nav class=${this.navigation.showLabels?'':'hide-labels'} aria-label="Navigation">${this.navigation.items.map(item=>this.navItem(item))}${a.showSettingsShortcut === false ? nothing : html`<a class="settings-nav" href="/mp-glass-settings" title="Personnaliser MP Glass">${mpIcon('tune',18)}<span>Personnaliser</span></a>`}</nav>
+          <div class="brand"><span class="mark">≋</span><div><strong>${projectName}</strong><small>Home Assistant · MP Glass</small></div></div>
+          <nav class=${this.navigation.showLabels?'':'hide-labels'} aria-label=${tr('Navigation')}>${this.navigation.items.map(item=>this.navItem(item))}${a.showSettingsShortcut === false ? nothing : html`<a class="settings-nav" href="/mp-glass-settings" title=${tr('Personnaliser MP Glass')}>${mpIcon('tune',18)}<span>${tr('Personnaliser')}</span></a>`}</nav>
           <div class="header-tools">
-            ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(undefined,{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small><i></i>${new Intl.DateTimeFormat(undefined,{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
+            ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(locale(),{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small><i></i>${new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && this.spatial?.enabled ? html`<mp-spatial-viewer .plan=${this.spatial} .hass=${this.hass} .areaHref=${this.areaHref}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? 'Plan schématique créé à partir de vos pièces Home Assistant.' : 'Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.'}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">Importer ou dessiner mon plan</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${a.eyebrow ?? 'Une maison plus simple à vivre'}</div><h1>${this.greeting()},<br>la maison est avec vous.</h1><p>${a.subtitle ?? 'Vos équipements sont prêts, pièce par pièce.'}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${total} équipements</span><span class="chip">${mpIcon('shield',14)} Interface locale</span></div></div><div class="quote">« ${a.quote ?? 'Les plus beaux moments commencent à la maison.'} »</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
-        ${this.viewKind === 'home' && a.showOverview !== false ? html`<section class="overview"><div class="overview-card glass"><div class="overview-title"><span class="seal">${mpIcon('shield',25)}</span><div><strong>La maison</strong><small>Tout est prêt</small></div></div><div class="overview-item">${mpIcon('bulb',21)}<div><strong>${total} équipements</strong><small>Détectés</small></div></div><div class="overview-item">${mpIcon('rooms',21)}<div><strong>${this.areas.length} pièces</strong><small>Organisation automatique</small></div></div><div class="overview-item">${mpIcon('sliders',21)}<div><strong>Contrôles</strong><small>Disponibles en direct</small></div></div></div></section>` : nothing}
+        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && a.showOverview !== false ? html`<section class="overview"><div class="overview-card glass"><div class="overview-title"><span class="seal">${mpIcon('shield',25)}</span><div><strong>${tr('La maison')}</strong><small>${tr('Tout est prêt')}</small></div></div><div class="overview-item">${mpIcon('bulb',21)}<div><strong>${tr('{n} équipement|{n} équipements',{n:total})}</strong><small>${tr('Détectés')}</small></div></div><div class="overview-item">${mpIcon('rooms',21)}<div><strong>${tr('{n} pièce|{n} pièces',{n:this.areas.length})}</strong><small>${tr('Organisation automatique')}</small></div></div><div class="overview-item">${mpIcon('sliders',21)}<div><strong>${tr('Contrôles')}</strong><small>${tr('Disponibles en direct')}</small></div></div></div></section>` : nothing}
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'rooms' ? html`
-          ${this.section('Pièces','Ouvrez une pièce pour retrouver uniquement ses équipements')}
-          <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${area.deviceCount} équipement${area.deviceCount>1?'s':''} · ${area.lightCount} lumière${area.lightCount>1?'s':''}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${this.inventory.count} entité${this.inventory.count>1?'s':''} sans carte dédiée</p></div></a>` : nothing}</main>
+          ${this.section(tr('Pièces'),tr('Ouvrez une pièce pour retrouver uniquement ses équipements'))}
+          <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${tr('{n} équipement|{n} équipements',{n:area.deviceCount})} · ${tr('{n} lumière|{n} lumières',{n:area.lightCount})}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${tr('{n} entité sans carte dédiée|{n} entités sans carte dédiée',{n:this.inventory.count})}</p></div></a>` : nothing}</main>
         ` : html`
-          ${this.section(this.viewKind === 'home' ? (a.sectionTitle ?? 'Lumières') : title,this.viewKind === 'home' ? (a.sectionSubtitle ?? 'Contrôle rapide de tous les éclairages détectés') : subtitle)}
+          ${this.section(this.viewKind === 'home' ? trDefault(a.sectionTitle,'Lumières') : title,this.viewKind === 'home' ? trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           <main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>
         `}
-        ${a.showFooter === false ? nothing : html`<footer><span>≋</span> MP Glass · Votre maison, simplement</footer>`}
+        ${a.showFooter === false ? nothing : html`<footer><span>≋</span> MP Glass · ${tr('Votre maison, simplement')}</footer>`}
       </div>`;
   }
 }

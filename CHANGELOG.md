@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.9.0 — français, anglais et russe
+
+Demande utilisateur : « est-ce qu’on peut ajouter un sélecteur de langue à cette interface, j’aimerais pouvoir choisir entre français, anglais et russe ».
+
+- **Menu de langue** en haut du Studio, à côté de **Voir le dashboard** : **Automatique**, **Français**, **English**, **Русский**. Le changement est immédiat, sans recharger la page, et vaut pour tout MP Glass : Studio, dashboard, cartes lumière, plan 3D, import Gemini et édition des niveaux.
+- **Pour l’utilisateur, sur tous ses appareils** : Home Assistant garde le choix dans les données de l’utilisateur ; le navigateur en garde une copie pour s’ouvrir directement dans la bonne langue. **Automatique** (par défaut) suit la langue du profil Home Assistant : français et russe tels quels, anglais pour toute autre langue. Jusqu’ici, un profil en anglais voyait le plan 3D et le Studio en français.
+- **Les noms restent les vôtres** : nom de la maison, pièces, niveaux et équipements ne sont jamais traduits. Les textes par défaut de l’accueil (accroche, sous-titre, citation, titre de section) suivent la langue tant qu’ils n’ont pas été modifiés ; le plan d’exemple et le « Niveau principal » du plan déduit des pièces aussi.
+- **Nombres et dates** au format de la langue : horloge, surfaces (m² / м²), pourcentages. Les pluriels sont justes dans chaque langue, russe compris (1 комната, 3 комнаты, 5 комнат) ; « 1 pièces » devient « 1 pièce ».
+- La fenêtre de configuration de l’intégration dans Home Assistant existe aussi en russe. Les noms de pièces proposés par Gemini restent en français, comme les remarques qu’il rédige lui-même ; celles de MP Glass sont traduites.
+- Les six captures de référence de l’accueil sont mises à jour (horloge au format français, « 1 pièce »).
+
 ## 0.8.4 — ambiances Ouvrants et Audio-vidéo sur le plan
 
 Demande utilisateur : « en plus de Lumières et Climat il faudrait des boutons pour ouvrants et audio vidéo ».

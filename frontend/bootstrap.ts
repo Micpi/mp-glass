@@ -11,6 +11,25 @@ interface MPGlassModule {
  */
 const TAG = 'll-strategy-dashboard-mp-glass';
 const log = (message: string) => console.info(`[MP Glass ${__MP_GLASS_VERSION__}] ${message} (${Math.round(performance.now())} ms après l’ouverture de la page)`);
+type Language = 'fr' | 'en' | 'ru';
+/** The interface language as frontend/i18n.ts decides it (this file imports nothing), for the two messages shown from here. */
+function language(hass?: Hass): Language {
+  let choice: string | null = null;
+  try { choice = localStorage.getItem('mp-glass.language'); } catch { /* Storage blocked: the language of Home Assistant. */ }
+  if (choice === 'fr' || choice === 'en' || choice === 'ru') return choice;
+  const tag = (hass?.locale?.language ?? hass?.language ?? '').toLowerCase();
+  return !tag || tag.startsWith('fr') ? 'fr' : tag.startsWith('ru') ? 'ru' : 'en';
+}
+const TOO_OLD: Record<Language, (agent: string) => string> = {
+  fr: agent => `Ce navigateur est trop ancien pour l’interface MP Glass (au minimum Chrome 107, Safari 16 ou Firefox 104). Mettez à jour le navigateur, ou Android System WebView pour une application. Navigateur : ${agent}`,
+  en: agent => `This browser is too old for the MP Glass interface (Chrome 107, Safari 16 or Firefox 104 at least). Update the browser, or Android System WebView for an app. Browser: ${agent}`,
+  ru: agent => `Этот браузер слишком старый для интерфейса MP Glass (нужен как минимум Chrome 107, Safari 16 или Firefox 104). Обновите браузер или Android System WebView для приложения. Браузер: ${agent}`,
+};
+const UNREACHABLE: Record<Language, (error: string) => string> = {
+  fr: error => `MP Glass n’a pas pu charger son interface (${error}). Vérifiez la connexion à Home Assistant, puis rechargez la page.`,
+  en: error => `MP Glass could not load its interface (${error}). Check the connection to Home Assistant, then reload the page.`,
+  ru: error => `MP Glass не удалось загрузить интерфейс (${error}). Проверьте подключение к Home Assistant, затем перезагрузите страницу.`,
+};
 /** Waits before each new attempt at loading the engine. */
 const RETRIES = [1000, 2000, 4000, 8000];
 /** Registries whose change regenerates a strategy dashboard, as Home Assistant does by default. */
@@ -21,7 +40,7 @@ let healed = false;
 let failures = 0;
 
 /** A failed module fetch stays failed for the whole page, so each new attempt uses another URL. */
-async function loadEngine(): Promise<MPGlassModule> {
+async function loadEngine(lang: Language): Promise<MPGlassModule> {
   for (let attempt = 0; ; attempt++) {
     const url = new URL(/* @vite-ignore */ `./mp-glass.js?v=${__MP_GLASS_VERSION__}`, import.meta.url);
     if (failures) url.searchParams.set('retry', String(failures));
@@ -30,9 +49,9 @@ async function loadEngine(): Promise<MPGlassModule> {
     } catch (error) {
       failures++;
       // The engine downloaded but this browser cannot read it: waiting would not help.
-      if (error instanceof SyntaxError) throw new Error(`Ce navigateur est trop ancien pour l’interface MP Glass (au minimum Chrome 107, Safari 16 ou Firefox 104). Mettez à jour le navigateur, ou Android System WebView pour une application. Navigateur : ${navigator.userAgent}`);
+      if (error instanceof SyntaxError) throw new Error(TOO_OLD[lang](navigator.userAgent));
       const wait = RETRIES[attempt];
-      if (wait === undefined) throw new Error(`MP Glass n’a pas pu charger son interface (${String(error)}). Vérifiez la connexion à Home Assistant, puis rechargez la page.`);
+      if (wait === undefined) throw new Error(UNREACHABLE[lang](String(error)));
       log(`interface injoignable, nouvel essai dans ${wait / 1000} s`);
       await new Promise(resolve => setTimeout(resolve, wait));
     }
@@ -57,7 +76,7 @@ class MPGlassDashboardBootstrap extends HTMLElement {
   static async generate(config: { debug?: boolean }, hass: Hass) {
     requested = true;
     log('dashboard demandé par Home Assistant');
-    return (await loadEngine()).generateMPGlassDashboard(config, hass);
+    return (await loadEngine(language(hass))).generateMPGlassDashboard(config, hass);
   }
 }
 

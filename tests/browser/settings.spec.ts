@@ -131,6 +131,48 @@ test('an update installed while the page is open asks for a reload',async({page}
   await expect(page.getByRole('alert')).toContainText('MP Glass 0.0.1 est installé, mais cette page affiche encore la version');
   await expect(page.getByRole('button',{name:'Recharger la page'})).toBeVisible();
 });
+test('the Studio speaks French, English or Russian, and so does the dashboard, for this user on all their devices',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async()=>{
+    const projectModule='/shared/project.ts';
+    const {defaultProject}=await import(projectModule);
+    const record={revision:0,project:defaultProject('Maison test')};
+    const requests:Record<string,unknown>[]=[];
+    const hass={connection:{},states:{},language:'fr',user:{id:'test',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
+      requests.push(message);
+      if(message.type==='mp_glass/project/get')return structuredClone(record);
+      if(String(message.type).startsWith('config/'))return [];
+      if(message.type==='frontend/get_user_data')return {value:null};
+      if(message.type==='frontend/set_user_data')return null;
+      throw Error('unexpected command');
+    }};
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
+    panel.hass=hass;document.body.replaceChildren(panel);
+    Object.assign(window,{languageTest:{requests}});
+  });
+  const menu=page.getByRole('combobox',{name:'Langue de l’interface'});
+  await expect(menu).toHaveValue('auto');
+  await expect(menu.locator('option').first()).toHaveText('Automatique · Français');
+  await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeVisible();
+  await menu.selectOption('en');
+  await expect(page.getByRole('button',{name:'Save',exact:true})).toBeVisible();
+  await expect(page.getByRole('button',{name:'Identity'})).toBeVisible();
+  await expect(page.getByRole('combobox',{name:'Interface language'})).toHaveValue('en');
+  await page.getByRole('combobox',{name:'Interface language'}).selectOption('ru');
+  await expect(page.getByRole('button',{name:'Сохранить',exact:true})).toBeVisible();
+  await expect(page.getByLabel('Предпросмотр')).toContainText('Главная');
+  // Kept by Home Assistant for the user, and in this browser until it answers.
+  expect(await page.evaluate(()=>(window as unknown as {languageTest:{requests:Record<string,unknown>[]}}).languageTest.requests.filter(r=>String(r.type).startsWith('frontend/')))).toEqual([
+    {type:'frontend/get_user_data',key:'mp_glass_language'},
+    {type:'frontend/set_user_data',key:'mp_glass_language',value:'en'},
+    {type:'frontend/set_user_data',key:'mp_glass_language',value:'ru'},
+  ]);
+  expect(await page.evaluate(()=>localStorage.getItem('mp-glass.language'))).toBe('ru');
+  await page.evaluate(()=>{document.body.replaceChildren(document.createElement('mp-glass-view-v4'));});
+  await expect(page.getByRole('link',{name:'Главная'})).toBeVisible();
+  await expect(page.getByRole('link',{name:'Комнаты'})).toBeVisible();
+  await page.evaluate(()=>{localStorage.removeItem('mp-glass.language');});
+});
 test('card editor emits config-changed and filters unrelated domains',async({page})=>{
   await page.goto('/');
   await page.evaluate(()=>{

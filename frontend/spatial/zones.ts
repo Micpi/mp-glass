@@ -3,6 +3,8 @@ import { arcPoints, bent, insideRoom, OPENING_SIZES, outline, roomArea, roomOutl
 import { attachFixtures, isOpening, type DraftFixture, type FixtureKind } from '../../shared/fixtures';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
+import { LanguageController, locale, tr } from '../i18n';
+import type { MessageKey } from '../locales';
 
 /**
  * A room as detected on the image, in 0-1000 coordinates (Gemini's convention: box_2d is [ymin, xmin, ymax, xmax], a point [y, x]).
@@ -38,7 +40,7 @@ interface Guides { lines:Line[]; sx:number; sy:number; tolerance:number }
 interface Drag { index:number; handle:Handle; start:[number,number]; origin:number[]; box:number[]; moved:boolean; shape?:number[][]; from?:number[][]; arcs?:number[]; vertex?:number; side?:number; inserted?:boolean; guides?:Guides; angle?:number }
 
 /** Doors, windows, televisions and speakers placed on the draft: their names, marks and colours, apart from the rooms'. */
-const FIXTURES:Record<FixtureKind,{name:string;article:string;icon:MPIconName;color:string}>={
+const FIXTURES:Record<FixtureKind,{name:MessageKey;article:MessageKey;icon:MPIconName;color:string}>={
   door:{name:'Porte',article:'la porte',icon:'door',color:'#ffb35c'},window:{name:'Fenêtre',article:'la fenêtre',icon:'window',color:'#3fc6ff'},
   french_window:{name:'Porte-fenêtre',article:'la porte-fenêtre',icon:'french',color:'#a58cff'},tv:{name:'Téléviseur',article:'le téléviseur',icon:'tv',color:'#ff6fae'},
   speaker:{name:'Enceinte',article:'l’enceinte',icon:'speaker',color:'#5fe0a0'},
@@ -398,6 +400,7 @@ export class MPPlanZones extends LitElement {
   private pending:''|'curve'|'round'='';
   /** Drawing a new room: a rectangle dragged diagonally, or an outline corner by corner ([x, y] points; `cursor`: the next one). */
   private mode:''|'rect'|'trace'|FixtureKind='';private draft?:{start:[number,number];box:number[]};private trace?:{points:number[][];cursor?:number[]};private tracing=false;
+  private language=new LanguageController(this);
   private drag?:Drag;private notice='';private frame={width:0,height:0};
   private zoomLevel=1;private panning=false;private magnet=true;
   private pan?:{x:number;y:number;left:number;top:number};
@@ -506,7 +509,7 @@ export class MPPlanZones extends LitElement {
     return shape&&this.drawnPoints(shape.points,shape.arcs);
   }
   /** What the rooms belong to, in the messages. */
-  private get where(){return this.level?'du niveau':'du brouillon';}
+  private get where(){return this.level?tr('du niveau'):tr('du brouillon');}
   private emit(detection:DetectionRoom[]){this.notice='';this.dispatchEvent(new CustomEvent('zones-change',{detail:detection}));}
   private drop(index:number){if(index<0||this.busy)return;this.selected=-1;this.vertex=-1;this.side=-1;this.emit(this.detection.filter((_,i)=>i!==index));}
   private rename(index:number,name:string){const clean=name.trim().slice(0,80);if(!clean||clean===this.detection[index]?.name)return;this.emit(this.detection.map((room,i)=>i===index?{...room,name:clean}:room));}
@@ -515,7 +518,7 @@ export class MPPlanZones extends LitElement {
   /** New shape of a room, with the bends of its sides; refused when it crosses itself or is too small (the room stays as it was). */
   private reshape(index:number,shape:number[][],arcs?:number[]){
     const bends=tidyArcs(arcs),box=bounds(this.drawnPoints(shape,bends));
-    if(shape.length<3||box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(shape,bends)){this.notice='Contour impossible : il se croise ou il est trop petit. La pièce reste comme avant.';return;}
+    if(shape.length<3||box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(shape,bends)){this.notice=tr('Contour impossible : il se croise ou il est trop petit. La pièce reste comme avant.');return;}
     this.emit(this.detection.map((room,i)=>{
       if(i!==index)return room;
       const next={...room,polygon:toYX(shape),box_2d:box,...(bends?{arcs:bends}:{})};
@@ -539,7 +542,7 @@ export class MPPlanZones extends LitElement {
   private removeVertex(){
     const room=this.detection[this.selected];
     if(!room?.polygon||this.vertex<0||this.busy)return;
-    if(room.polygon.length<=3){this.notice='Un contour garde au moins trois points.';return;}
+    if(room.polygon.length<=3){this.notice=tr('Un contour garde au moins trois points.');return;}
     const shape=toXY(room.polygon).filter((_,k)=>k!==this.vertex);
     const arcs=room.arcs?.filter((_,k)=>k!==this.vertex);
     this.vertex=-1;this.side=-1;this.reshape(this.selected,shape,arcs);
@@ -577,15 +580,15 @@ export class MPPlanZones extends LitElement {
     const room=this.detection[this.selected];
     if(!room?.polygon||this.vertex<0||this.busy)return;
     const shape=toXY(room.polygon),count=shape.length,v=this.vertex,before=(v+count-1)%count,arcs=shape.map((_,i)=>bendOf(room.arcs,i));
-    if(bent(arcs[before])||bent(arcs[v])){this.notice='Cet angle touche un côté courbe : redressez-le d’abord pour arrondir l’angle.';return;}
-    if(count>=MAX_POINTS){this.notice=`Un contour compte au plus ${MAX_POINTS} points : supprimez-en un pour arrondir cet angle.`;return;}
+    if(bent(arcs[before])||bent(arcs[v])){this.notice=tr('Cet angle touche un côté courbe : redressez-le d’abord pour arrondir l’angle.');return;}
+    if(count>=MAX_POINTS){this.notice=tr('Un contour compte au plus {n} points : supprimez-en un pour arrondir cet angle.',{n:MAX_POINTS});return;}
     const {sx,sy}=this.unit,points=this.pixels(shape),corner=points[v]!,previous=points[before]!,next=points[(v+1)%count]!;
     const reach=Math.min(Math.hypot(previous[0]-corner[0],previous[1]-corner[1]),Math.hypot(next[0]-corner[0],next[1]-corner[1]))/3;
     const toward=(p:Point)=>{const u=direction(corner,p);return fromPixel([corner[0]+u[0]*reach,corner[1]+u[1]*reach],sx,sy);};
     const rounded=[...shape];rounded.splice(v,1,toward(previous),toward(next));
     const bends=[...arcs];bends.splice(v,0,0);
     const tangent=this.tangentBends(rounded,v,bends)[0];
-    if(tangent===undefined){this.notice='Cet angle est plat : il n’y a rien à arrondir.';return;}
+    if(tangent===undefined){this.notice=tr('Cet angle est plat : il n’y a rien à arrondir.');return;}
     bends[v]=tangent;
     this.vertex=-1;this.side=v;this.reshape(this.selected,rounded,bends);
   }
@@ -725,7 +728,7 @@ export class MPPlanZones extends LitElement {
   private startPlacing(kind:FixtureKind,p:[number,number]){
     if(!isOpening(kind)){this.placing={kind,a:p,b:p};return true;}
     const {sx,sy}=this.unit,wall=this.nearestWall(toPixel(p,sx,sy));
-    if(!wall){this.notice=`Touchez un mur d’une pièce ${this.where} : ${FIXTURES[kind].article} s’y pose.`;return false;}
+    if(!wall){this.notice=tr('Touchez un mur d’une pièce {where} : {article} s’y pose.',{where:this.where,article:tr(FIXTURES[kind].article)});return false;}
     this.placing={kind,a:p,b:p,wall};
     return true;
   }
@@ -737,7 +740,7 @@ export class MPPlanZones extends LitElement {
     let fixture:DraftFixture;
     if(isOpening(placing.kind)&&placing.wall){const [a,b]=this.onWall(placing.wall,placing.a,placing.b,placing.kind);fixture={id,kind:placing.kind,a,b};}
     else{
-      if(!this.inRoom(placing.a)){this.notice=`Touchez l’intérieur d’une pièce ${this.where}, là où se trouve ${FIXTURES[placing.kind].article}.`;return;}
+      if(!this.inRoom(placing.a)){this.notice=tr('Touchez l’intérieur d’une pièce {where}, là où se trouve {article}.',{where:this.where,article:tr(FIXTURES[placing.kind].article)});return;}
       fixture={id,kind:placing.kind,a:placing.a.map(round)};
     }
     this.fixture=id;
@@ -784,7 +787,7 @@ export class MPPlanZones extends LitElement {
     const points=this.trace?.points??[];
     if(points.length<3)return;
     const box=bounds(points);
-    if(box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(points)){this.notice='Contour impossible : il se croise ou il est trop petit. Retirez le dernier point (Retour arrière) ou recommencez.';return;}
+    if(box[2]!-box[0]!<MIN||box[3]!-box[1]!<MIN||!this.validShape(points)){this.notice=tr('Contour impossible : il se croise ou il est trop petit. Retirez le dernier point (Retour arrière) ou recommencez.');return;}
     this.trace=undefined;this.mode='';
     this.add({box_2d:box,polygon:toYX(points)});
   }
@@ -792,7 +795,7 @@ export class MPPlanZones extends LitElement {
   private add(shape:{box_2d:number[];polygon?:number[][]}){
     this.selected=this.naming=this.detection.length;this.vertex=-1;this.side=-1;
     const hue=Math.max(this.detection.length-1,...this.detection.map(r=>r.hue??0))+1;
-    this.emit([...this.detection,{name:`Pièce ${this.detection.length+1}`,...shape,hue}]);
+    this.emit([...this.detection,{name:tr('Pièce {n}',{n:this.detection.length+1}),...shape,hue}]);
   }
   /**
    * What the pointer took: a corner, a side's + or a side of the selected outline, its bend or rotation handle, a handle of
@@ -986,24 +989,24 @@ export class MPPlanZones extends LitElement {
     return size<9?html`<span class="label number" style=${`${style};color:${colour(room,index)}`} title=${name}>${index+1}</span>`:html`<span class="label" style=${`${style};font-size:${size}px`}>${name}</span>`;
   }
   private get hint(){
-    if(this.aligning)return 'Glissez le plan pour poser ses murs sous ceux des pièces ; ses boutons − et + règlent sa taille. Échap ou « Caler le fond » pour terminer.';
+    if(this.aligning)return tr('Glissez le plan pour poser ses murs sous ceux des pièces ; ses boutons − et + règlent sa taille. Échap ou « Caler le fond » pour terminer.');
     const room=this.detection[this.selected],count=this.trace?.points.length??0,kind=this.fixtureMode;
-    if(kind&&isOpening(kind))return `Glissez le long d’un mur, d’un bord à l’autre de ${FIXTURES[kind].article}, ou touchez le mur pour la poser à sa largeur usuelle (${new Intl.NumberFormat('fr',{minimumFractionDigits:2}).format(OPENING_SIZES[kind].width)} m). Échap pour terminer.`;
-    if(kind)return `Touchez l’endroit de la pièce où se trouve ${FIXTURES[kind].article}. Échap pour terminer.`;
-    if(this.fixture)return this.level?'Glissez sa marque pour le déplacer : ses volets, capteurs ou son lecteur le suivent. Suppr ou « Retirer » l’enlève.'
-      :'Glissez sa marque pour le déplacer ; Suppr ou « Retirer » l’enlève. Volets, capteurs et lecteurs se relient ensuite, dans le Studio, sous le plan 3D.';
-    if(this.mode==='rect')return 'Glissez en diagonale sur le plan pour tracer un rectangle.';
-    if(this.mode==='trace')return count<3?'Touchez les angles de la pièce l’un après l’autre ; les murs et les autres pièces attirent les points.'
-      :'Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Les côtés restent parallèles et d’équerre au premier, même en biais.';
+    if(kind&&isOpening(kind))return tr('Glissez le long d’un mur, d’un bord à l’autre de {article}, ou touchez le mur pour la poser à sa largeur usuelle ({width} m). Échap pour terminer.',{article:tr(FIXTURES[kind].article),width:new Intl.NumberFormat(locale(),{minimumFractionDigits:2}).format(OPENING_SIZES[kind].width)});
+    if(kind)return tr('Touchez l’endroit de la pièce où se trouve {article}. Échap pour terminer.',{article:tr(FIXTURES[kind].article)});
+    if(this.fixture)return this.level?tr('Glissez sa marque pour le déplacer : ses volets, capteurs ou son lecteur le suivent. Suppr ou « Retirer » l’enlève.')
+      :tr('Glissez sa marque pour le déplacer ; Suppr ou « Retirer » l’enlève. Volets, capteurs et lecteurs se relient ensuite, dans le Studio, sous le plan 3D.');
+    if(this.mode==='rect')return tr('Glissez en diagonale sur le plan pour tracer un rectangle.');
+    if(this.mode==='trace')return count<3?tr('Touchez les angles de la pièce l’un après l’autre ; les murs et les autres pièces attirent les points.')
+      :tr('Touchez l’angle suivant ; pour fermer, touchez le premier point ou deux fois le dernier. Les côtés restent parallèles et d’équerre au premier, même en biais.');
     const turning=this.drag?.handle==='rotate'&&this.drag.angle!==undefined;
-    if(turning)return `Rotation : ${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(this.drag!.angle!*180/Math.PI)}° — relâchez pour valider.`;
-    if(room&&this.pending==='curve')return 'Touchez le côté à courber : il se bombe vers l’extérieur en quart de cercle, puis son rond du milieu règle la courbure. Échap pour annuler.';
-    if(room&&this.pending==='round')return 'Touchez l’angle à arrondir : un arc le remplace, raccordé aux deux murs, puis son rond du milieu règle le rayon. Échap pour annuler.';
-    if(room?.polygon&&this.side>=0)return `Glissez le côté pour le déplacer sans le tourner, son rond du milieu pour le courber${bent(room.arcs?.[this.side])?' ou le redresser':''} ; ⟳ tourne la pièce.`;
-    if(room?.polygon&&this.vertex>=0)return 'Glissez le point, ou « Arrondir l’angle » pour le remplacer par un arc ; deux touches rapides le suppriment.';
-    if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie.';
-    if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie, « Forme libre » pour un autre contour.';
-    return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan.';
+    if(turning)return tr('Rotation : {angle}° — relâchez pour valider.',{angle:new Intl.NumberFormat(locale(),{maximumFractionDigits:1}).format(this.drag!.angle!*180/Math.PI)});
+    if(room&&this.pending==='curve')return tr('Touchez le côté à courber : il se bombe vers l’extérieur en quart de cercle, puis son rond du milieu règle la courbure. Échap pour annuler.');
+    if(room&&this.pending==='round')return tr('Touchez l’angle à arrondir : un arc le remplace, raccordé aux deux murs, puis son rond du milieu règle le rayon. Échap pour annuler.');
+    if(room?.polygon&&this.side>=0)return bent(room.arcs?.[this.side])?tr('Glissez le côté pour le déplacer sans le tourner, son rond du milieu pour le courber ou le redresser ; ⟳ tourne la pièce.'):tr('Glissez le côté pour le déplacer sans le tourner, son rond du milieu pour le courber ; ⟳ tourne la pièce.');
+    if(room?.polygon&&this.vertex>=0)return tr('Glissez le point, ou « Arrondir l’angle » pour le remplacer par un arc ; deux touches rapides le suppriment.');
+    if(room?.polygon)return tr('Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie.');
+    if(room)return tr('Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie, « Forme libre » pour un autre contour.');
+    return tr('Touchez une pièce pour l’ajuster, ou ajoutez-en une. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan.');
   }
   /** Where the plan kept under a saved level is drawn, following the pointer while it is being moved. */
   private backdropStyle(rect:{x:number;y:number;width:number;height:number}){
@@ -1028,7 +1031,7 @@ export class MPPlanZones extends LitElement {
     const room=this.detection[this.selected],dragging=this.drag?.index===this.selected?this.drag:undefined;
     // Where each door, window, television or speaker goes on the plan, as the level will get it.
     const placed=this.plan?attachFixtures(this.plan,this.fixtures,source).placed:new Map<string,{room:string;width?:number}>();
-    const roomNames=new Map((this.plan?.floors[0]?.rooms??[]).map(r=>[r.id,r.name])),metres=new Intl.NumberFormat('fr',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const roomNames=new Map((this.plan?.floors[0]?.rooms??[]).map(r=>[r.id,r.name])),metres=new Intl.NumberFormat(locale(),{minimumFractionDigits:2,maximumFractionDigits:2});
     const preview=this.placing?.wall&&isOpening(this.placing.kind)?this.onWall(this.placing.wall,this.placing.a,this.placing.b,this.placing.kind):undefined;
     // The selected room as it is being edited: its outline (with its bends), or its rectangle. Turning a rectangle gives it one.
     const shape=dragging?.handle==='rotate'?dragging.shape:room?.polygon?dragging?.shape??(dragging?shifted(toXY(room.polygon),dragging):toXY(room.polygon)):undefined;
@@ -1071,32 +1074,32 @@ export class MPPlanZones extends LitElement {
     };
     return html`
       ${this.aligning?nothing:html`<div class="tools">
-        <button aria-pressed=${this.mode==='rect'} ?disabled=${this.busy} @click=${()=>this.startMode('rect')}>${mpIcon('plus',16)} Ajouter une pièce</button>
-        <button aria-pressed=${this.mode==='trace'} ?disabled=${this.busy} @click=${()=>this.startMode('trace')}>${mpIcon('walls',16)} Tracer un contour</button>
-        ${this.mode==='trace'?html`<button ?disabled=${(trace?.points.length??0)<3} @click=${()=>this.finishTrace()}>${mpIcon('check',16)} Terminer le contour</button>`
-          :html`<button ?disabled=${!room||!!this.mode||this.busy} @click=${()=>room?.polygon?this.rectangle():this.freeShape()}>${room?.polygon?'Rectangle':'Forme libre'}</button>`}
-        <button ?disabled=${!room?.polygon||this.vertex<0||this.busy} @click=${()=>this.removeVertex()}>Supprimer le point</button>
-        <button aria-pressed=${this.pending==='curve'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('curve')}>${room?.polygon&&bent(room.arcs?.[this.side])?'Redresser le côté':'Courber le côté'}</button>
-        <button aria-pressed=${this.pending==='round'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('round')}>Arrondir l’angle</button>
-        <button ?disabled=${this.selected<0||this.busy} @click=${()=>this.drop(this.selected)}>${mpIcon('close',16)} Supprimer la pièce</button>
-        <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>Annuler</button>
+        <button aria-pressed=${this.mode==='rect'} ?disabled=${this.busy} @click=${()=>this.startMode('rect')}>${mpIcon('plus',16)} ${tr('Ajouter une pièce')}</button>
+        <button aria-pressed=${this.mode==='trace'} ?disabled=${this.busy} @click=${()=>this.startMode('trace')}>${mpIcon('walls',16)} ${tr('Tracer un contour')}</button>
+        ${this.mode==='trace'?html`<button ?disabled=${(trace?.points.length??0)<3} @click=${()=>this.finishTrace()}>${mpIcon('check',16)} ${tr('Terminer le contour')}</button>`
+          :html`<button ?disabled=${!room||!!this.mode||this.busy} @click=${()=>room?.polygon?this.rectangle():this.freeShape()}>${room?.polygon?tr('Rectangle'):tr('Forme libre')}</button>`}
+        <button ?disabled=${!room?.polygon||this.vertex<0||this.busy} @click=${()=>this.removeVertex()}>${tr('Supprimer le point')}</button>
+        <button aria-pressed=${this.pending==='curve'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('curve')}>${room?.polygon&&bent(room.arcs?.[this.side])?tr('Redresser le côté'):tr('Courber le côté')}</button>
+        <button aria-pressed=${this.pending==='round'} ?disabled=${!room||!!this.mode||this.busy} @click=${()=>this.useTool('round')}>${tr('Arrondir l’angle')}</button>
+        <button ?disabled=${this.selected<0||this.busy} @click=${()=>this.drop(this.selected)}>${mpIcon('close',16)} ${tr('Supprimer la pièce')}</button>
+        <button ?disabled=${!this.canUndo||this.busy} @click=${()=>this.dispatchEvent(new CustomEvent('zones-undo'))}>${tr('Annuler#undo')}</button>
       </div>
-      <div class="tools place" role="toolbar" aria-label="Placer sur le plan"><span>Placer :</span>
-        ${FIXTURE_KINDS.map(kind=>html`<button style=${`--tone:${FIXTURES[kind].color}`} aria-pressed=${this.mode===kind} ?disabled=${this.busy} @click=${()=>this.startMode(kind)}>${mpIcon(FIXTURES[kind].icon,16)}${FIXTURES[kind].name}</button>`)}
-        <button ?disabled=${!this.fixture||this.busy} @click=${()=>this.dropFixture(this.fixture)}>${mpIcon('close',16)} Retirer</button>
+      <div class="tools place" role="toolbar" aria-label=${tr('Placer sur le plan')}><span>${tr('Placer :')}</span>
+        ${FIXTURE_KINDS.map(kind=>html`<button style=${`--tone:${FIXTURES[kind].color}`} aria-pressed=${this.mode===kind} ?disabled=${this.busy} @click=${()=>this.startMode(kind)}>${mpIcon(FIXTURES[kind].icon,16)}${tr(FIXTURES[kind].name)}</button>`)}
+        <button ?disabled=${!this.fixture||this.busy} @click=${()=>this.dropFixture(this.fixture)}>${mpIcon('close',16)} ${tr('Retirer')}</button>
       </div>`}
-      <p class="hint" aria-live="polite">${this.busy?'Mise à jour du plan…':this.notice||this.hint}</p>
-      <div class="tools zoom-tools" role="toolbar" aria-label="Précision du plan">
-        <button aria-label="Zoom arrière du plan" ?disabled=${this.zoomLevel<=1} @click=${()=>this.zoomTo(this.zoomLevel/1.5)}>−</button><output aria-label="Zoom du plan">${Math.round(this.zoomLevel*100)} %</output><button aria-label="Zoom avant du plan" ?disabled=${this.zoomLevel>=8} @click=${()=>this.zoomTo(this.zoomLevel*1.5)}>+</button>
-        <button @click=${()=>this.zoomTo(1)}>Ajuster à l’écran</button>
-        <button aria-pressed=${this.panning} @click=${()=>{this.panning=!this.panning;this.mode='';this.trace=undefined;}}>Déplacer le plan</button>
-        <button aria-pressed=${this.magnet} @click=${()=>{this.magnet=!this.magnet;}}>Aimantation</button>
+      <p class="hint" aria-live="polite">${this.busy?tr('Mise à jour du plan…'):this.notice||this.hint}</p>
+      <div class="tools zoom-tools" role="toolbar" aria-label=${tr('Précision du plan')}>
+        <button aria-label=${tr('Zoom arrière du plan')} ?disabled=${this.zoomLevel<=1} @click=${()=>this.zoomTo(this.zoomLevel/1.5)}>−</button><output aria-label=${tr('Zoom du plan')}>${tr('{n} %',{n:Math.round(this.zoomLevel*100)})}</output><button aria-label=${tr('Zoom avant du plan')} ?disabled=${this.zoomLevel>=8} @click=${()=>this.zoomTo(this.zoomLevel*1.5)}>+</button>
+        <button @click=${()=>this.zoomTo(1)}>${tr('Ajuster à l’écran')}</button>
+        <button aria-pressed=${this.panning} @click=${()=>{this.panning=!this.panning;this.mode='';this.trace=undefined;}}>${tr('Déplacer le plan')}</button>
+        <button aria-pressed=${this.magnet} @click=${()=>{this.magnet=!this.magnet;}}>${tr('Aimantation')}</button>
       </div>
       <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(max(52vh,100dvh - 330px) * ${source.width/source.height}))`} @wheel=${this.wheel}>
-      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.aligning?'aligning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label=${this.level?'Pièces du niveau sur le plan':'Pièces détectées sur le plan'} style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
+      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.aligning?'aligning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label=${this.level?tr('Pièces du niveau sur le plan'):tr('Pièces détectées sur le plan')} style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
         @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;this.placing=undefined;this.moving=undefined;this.shifting=undefined;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
-        ${this.src&&this.backdrop?html`${this.grid(source)}<img class="backdrop" src=${this.src} alt="Fond de plan du niveau" draggable="false" style=${this.backdropStyle(this.backdrop)}>`
-          :this.src?html`<img src=${this.src} alt="Plan analysé par Gemini" draggable="false">`:this.grid(source)}
+        ${this.src&&this.backdrop?html`${this.grid(source)}<img class="backdrop" src=${this.src} alt=${tr('Fond de plan du niveau')} draggable="false" style=${this.backdropStyle(this.backdrop)}>`
+          :this.src?html`<img src=${this.src} alt=${tr('Plan analysé par Gemini')} draggable="false">`:this.grid(source)}
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
           ${this.detection.map((r,i)=>{
             const plan=r.id?rooms.get(r.id):undefined;
@@ -1122,36 +1125,36 @@ export class MPPlanZones extends LitElement {
             // touched, the round handle that bends it.
             const q=shape[(i+1)%shape.length]!,length=Math.hypot((q[0]!-p[0]!)*this.frame.width,(q[1]!-p[1]!)*this.frame.height)/1000;
             const [x,y]=middleOf(shape,i) as [number,number];
-            if(i===this.side)return html`<span class="bend" data-bend=${i} title="Courber ce côté" style=${at(x,y)}></span>`;
-            return length<44||shape.length>=MAX_POINTS||this.pending?nothing:html`<span class="handle mid" data-mid=${i} title="Ajouter un point" style=${at(x,y)}></span>`;
+            if(i===this.side)return html`<span class="bend" data-bend=${i} title=${tr('Courber ce côté')} style=${at(x,y)}></span>`;
+            return length<44||shape.length>=MAX_POINTS||this.pending?nothing:html`<span class="handle mid" data-mid=${i} title=${tr('Ajouter un point')} style=${at(x,y)}></span>`;
           }):nothing}
           ${shape?shape.map((p,i)=>html`<span class=${`handle vertex${i===this.vertex?' active':''}`} data-vertex=${i} style=${at(p[0]!,p[1]!)}></span>`):nothing}
-          ${turner&&!this.mode&&(!this.drag||this.drag.handle==='rotate')?html`<span class="rotate" data-rotate="1" title="Tourner la pièce" style=${at(turner.x,turner.y)}></span>`:nothing}
+          ${turner&&!this.mode&&(!this.drag||this.drag.handle==='rotate')?html`<span class="rotate" data-rotate="1" title=${tr('Tourner la pièce')} style=${at(turner.x,turner.y)}></span>`:nothing}
           ${trace?trace.points.map((p,i)=>html`<span class=${`handle point${i===0?' first':''}`} style=${at(p[0]!,p[1]!)}></span>`):nothing}
           ${this.fixtures.map(f=>{
             const {a,b}=this.shown(f),[x,y]=b?[(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2]:a,info=FIXTURES[f.kind],where=placed.get(f.id);
-            return html`<span class=${`mark${f.id===this.fixture?' selected':''}${where?'':' lost'}`} data-fixture=${f.id} title=${`${info.name} · ${where?roomNames.get(where.room)??'':'hors des pièces : à replacer'}`} style=${`${at(x!,y!)};--tone:${info.color}`}>${mpIcon(info.icon,13)}</span>`;
+            return html`<span class=${`mark${f.id===this.fixture?' selected':''}${where?'':' lost'}`} data-fixture=${f.id} title=${`${tr(info.name)} · ${where?roomNames.get(where.room)??'':tr('hors des pièces : à replacer')}`} style=${`${at(x!,y!)};--tone:${info.color}`}>${mpIcon(info.icon,13)}</span>`;
           })}
           ${this.placing&&!isOpening(this.placing.kind)?html`<span class="mark" style=${`${at(this.placing.a[0]!,this.placing.a[1]!)};--tone:${FIXTURES[this.placing.kind].color}`}>${mpIcon(FIXTURES[this.placing.kind].icon,13)}</span>`:nothing}
         </div>
       </figure>
       </div>
-      <ul aria-label=${`Pièces ${this.where}`}>${this.detection.map((r,i)=>{
+      <ul aria-label=${tr('Pièces {where}',{where:this.where})}>${this.detection.map((r,i)=>{
         const plan=r.id?rooms.get(r.id):undefined;
         return html`<li class=${i===this.selected?'selected':''} @click=${()=>{if(!this.mode&&i!==this.selected){this.selected=i;this.vertex=-1;this.side=-1;this.pending='';}}}>
           <span class="swatch" style=${`background:${colour(r,i)}`}>${i+1}</span>
-          <input data-index=${i} maxlength="80" .value=${r.name} aria-label=${`Nom de la pièce ${i+1}`} ?disabled=${this.busy} @change=${(e:Event)=>this.rename(i,(e.target as HTMLInputElement).value)}>
-          <small>${plan?`${new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(roomArea(plan))} m²`:'écartée'}</small>
-          <button aria-label=${`Supprimer ${r.name}`} title="Supprimer" ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.drop(i);}}>${mpIcon('close',14)}</button>
+          <input data-index=${i} maxlength="80" .value=${r.name} aria-label=${tr('Nom de la pièce {n}',{n:i+1})} ?disabled=${this.busy} @change=${(e:Event)=>this.rename(i,(e.target as HTMLInputElement).value)}>
+          <small>${plan?tr('{n} m²',{n:new Intl.NumberFormat(locale(),{maximumFractionDigits:1}).format(roomArea(plan))}):tr('écartée')}</small>
+          <button aria-label=${tr('Supprimer {name}',{name:r.name})} title=${tr('Supprimer')} ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.drop(i);}}>${mpIcon('close',14)}</button>
         </li>`;
       })}</ul>
-      ${this.fixtures.length?html`<ul class="fixtures" aria-label=${`Portes, fenêtres et appareils ${this.where}`}>${this.fixtures.map((f,i)=>{
+      ${this.fixtures.length?html`<ul class="fixtures" aria-label=${tr('Portes, fenêtres et appareils {where}',{where:this.where})}>${this.fixtures.map((f,i)=>{
         const info=FIXTURES[f.kind],where=placed.get(f.id);
         return html`<li class=${f.id===this.fixture?'selected':''} @click=${()=>{if(!this.mode){this.fixture=f.id;this.selected=-1;this.vertex=-1;this.side=-1;this.pending='';}}}>
           <span class="swatch" style=${`background:${info.color}`}>${mpIcon(info.icon,13)}</span>
-          <span class="what">${info.name} · ${where?roomNames.get(where.room)??'':'hors des pièces'}</span>
-          <small class=${where?'':'lost'}>${where?.width?`${metres.format(where.width)} m`:where?'':'à replacer'}</small>
-          <button aria-label=${`Retirer ${info.name} ${i+1}`} title="Retirer" ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.dropFixture(f.id);}}>${mpIcon('close',14)}</button>
+          <span class="what">${tr(info.name)} · ${where?roomNames.get(where.room)??'':tr('hors des pièces')}</span>
+          <small class=${where?'':'lost'}>${where?.width?tr('{n} m',{n:metres.format(where.width)}):where?'':tr('à replacer')}</small>
+          <button aria-label=${tr('Retirer {name} {n}',{name:tr(info.name),n:i+1})} title=${tr('Retirer')} ?disabled=${this.busy} @click=${(e:Event)=>{e.stopPropagation();this.dropFixture(f.id);}}>${mpIcon('close',14)}</button>
         </li>`;
       })}</ul>`:nothing}`;
   }

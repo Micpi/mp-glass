@@ -2,7 +2,7 @@ import { LitElement, html, nothing } from 'lit';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
 import type { CardConfig } from '../../shared/models';
 import type { Hass } from '../ha/client';
-import { t } from '../i18n';
+import { LanguageController, locale, tr } from '../i18n';
 import { glassStyles } from '../styles';
 import { mpIcon } from '../icons';
 export class MPGlassLight extends LitElement {
@@ -12,6 +12,7 @@ export class MPGlassLight extends LitElement {
   protected currentHass?: Hass;
   protected busy = false;
   protected failure = false;
+  private language = new LanguageController(this);
   set hass(value: Hass) {
     const old = this.currentHass; this.currentHass = value;
     if (!old || old.states[this.config?.entity ?? ''] !== value.states[this.config?.entity ?? ''] || old.language !== value.language || old.locale?.language !== value.locale?.language) this.requestUpdate();
@@ -49,7 +50,6 @@ export class MPGlassLight extends LitElement {
   }
   protected render() {
     if (!this.config || !this.currentHass) return nothing;
-    const lang = this.hass.locale?.language ?? this.hass.language;
     const state = this.hass.states[this.config.entity];
     const enabled = available(state);
     const isOn = state?.state === 'on';
@@ -60,20 +60,20 @@ export class MPGlassLight extends LitElement {
     const dimmable = light && capabilities.some(b => b.capability === 'DIM');
     const showDetails = this.config.appearance?.showCardDetails !== false;
     const showBrightness = this.config.appearance?.showBrightness !== false;
-    const stateLabel = !enabled ? t(lang,'unavailable') : light ? t(lang,isOn ? 'on' : 'off') : String(state?.state ?? '—');
+    const stateLabel = !enabled ? tr('Indisponible') : light ? (isOn ? tr('Allumée') : tr('Éteinte')) : String(state?.state ?? '—');
     return html`<article class="device-card" data-on=${String(isOn && light)} data-available=${String(enabled)} aria-busy=${this.busy}>
       <div class="card-head">
         <span class=${`device-icon ${isOn && light ? 'on' : ''}`}>${mpIcon(light ? 'bulb' : 'tune',23)}</span>
-        <div class="identity"><h2>${String(name)}</h2><p>${light ? (dimmable ? 'Éclairage variable' : 'Éclairage') : 'Équipement'}</p></div>
-        ${showDetails ? html`<button class="icon-button" title=${t(lang,'details')} aria-label=${t(lang,'details')} @click=${this.moreInfo}>${mpIcon('arrow',18)}</button>` : nothing}
+        <div class="identity"><h2>${String(name)}</h2><p>${light ? (dimmable ? tr('Éclairage variable') : tr('Éclairage')) : tr('Équipement')}</p></div>
+        ${showDetails ? html`<button class="icon-button" title=${tr('Détails')} aria-label=${tr('Détails')} @click=${this.moreInfo}>${mpIcon('arrow',18)}</button>` : nothing}
       </div>
       <div class="control-row">
-        <div class="state-copy"><strong>${stateLabel}</strong><small>${dimmable && enabled ? `${percent ?? 0} %` : enabled ? 'Prêt' : 'Hors ligne'}</small></div>
-        ${light ? html`<button class=${`power-button ${isOn ? 'on' : ''}`} ?disabled=${!enabled || this.busy} @click=${() => this.act(isOn ? 'turn_off' : 'turn_on')}>${mpIcon('power',17)} ${t(lang,isOn ? 'turnOff' : 'turnOn')}</button>` : nothing}
+        <div class="state-copy"><strong>${stateLabel}</strong><small>${dimmable && enabled ? tr('{n} %',{n:percent ?? 0}) : enabled ? tr('Prêt') : tr('Hors ligne')}</small></div>
+        ${light ? html`<button class=${`power-button ${isOn ? 'on' : ''}`} ?disabled=${!enabled || this.busy} @click=${() => this.act(isOn ? 'turn_off' : 'turn_on')}>${mpIcon('power',17)} ${isOn ? tr('Éteindre') : tr('Allumer')}</button>` : nothing}
       </div>
-      ${dimmable && showBrightness ? html`<label class="dimmer"><span>${t(lang,'brightness')} ${percent === undefined ? '—' : new Intl.NumberFormat(lang).format(percent) + ' %'}</span><input aria-label=${t(lang,'brightness')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : html`<div class="no-dimmer" aria-hidden="true"></div>`}
-      ${this.failure ? html`<p class="error" role="alert">${t(lang,'error')}</p>` : nothing}
-      ${this.config.debug ? html`<details><summary>${t(lang,'why')}</summary><pre>${JSON.stringify({ entity: this.config.entity, evidence: light ? 'domain:light' : 'fallback', capabilities, presentation: this.config.type }, null, 2)}</pre></details>` : nothing}
+      ${dimmable && showBrightness ? html`<label class="dimmer"><span>${tr('Luminosité')} ${percent === undefined ? '—' : tr('{n} %',{n:new Intl.NumberFormat(locale()).format(percent)})}</span><input aria-label=${tr('Luminosité')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : html`<div class="no-dimmer" aria-hidden="true"></div>`}
+      ${this.failure ? html`<p class="error" role="alert">${tr('Action impossible. Vérifiez la connexion et vos droits.')}</p>` : nothing}
+      ${this.config.debug ? html`<details><summary>${tr('Pourquoi cette carte ?')}</summary><pre>${JSON.stringify({ entity: this.config.entity, evidence: light ? 'domain:light' : 'fallback', capabilities, presentation: this.config.type }, null, 2)}</pre></details>` : nothing}
     </article>`;
   }
 }

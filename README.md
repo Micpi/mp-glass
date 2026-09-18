@@ -4,7 +4,7 @@
 
 Framework de dashboards Home Assistant : configurer une installation, puis déduire son interface à partir des pièces, des appareils et de leurs capacités.
 
-**État : version de développement 0.8.3, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
+**État : version de développement 0.9.0, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
 
 ![Aperçu de la fixture desktop](tests/browser/light.spec.ts-snapshots/desktop-win32.png)
 
@@ -15,6 +15,7 @@ Cette image montre une fixture de développement, pas une maison cliente. [Résu
 - Backend Home Assistant : Config Flow, Options Flow, stockage projet validé, API authentifiée et diagnostics limités aux compteurs.
 - Core TypeScript indépendant : normalisation, capacités lumière, classification explicable, overrides, registre de cartes et composition déterministe.
 - Frontend : stratégie MP Glass Dashboard, vue responsive, carte lumière marche/arrêt et luminosité, fallback, editor, panneau de découverte et apparence.
+- Français, anglais et russe : menu de langue en haut du Studio. Le choix vaut pour le Studio, le dashboard et le plan 3D, sur tous les appareils de l’utilisateur ; **Automatique** suit la langue de son profil Home Assistant.
 - Six presets : Glass Blue, Warm, Dark, Light, OLED et Neutral. La direction photographique premium et le wizard complet restent au programme.
 - [MP Spatial](docs/FLOORPLAN.md) : plan 3D manipulable, pièces/niveaux, états et commandes. Chaque pièce du plan se relie d’un clic à sa pièce Home Assistant et en affiche les équipements ; un équipement déplacé l’est aussi sur le dashboard. Portes, fenêtres et portes-fenêtres se placent sur les murs, avec leurs volets roulants, stores, rideaux et capteurs d’ouverture ; téléviseurs et enceintes se placent dans les pièces : le plan les montre et les commande ([détails](docs/FLOORPLAN.md#portes-fenêtres-volets-et-audio-vidéo)). **Modifier le plan** corrige un niveau enregistré sur son plan d’architecte, gardé sous ses pièces, portes et appareils compris ([détails](docs/FLOORPLAN.md#modifier-le-plan-dun-niveau)). [Gemini direct, sans add-on](docs/GEMINI_QUICKSTART.md) : une clé API dans MP Glass suffit pour importer PDF/images en brouillons corrigibles. Le worker séparé reste une option avancée.
 

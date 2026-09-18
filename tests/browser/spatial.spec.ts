@@ -323,6 +323,46 @@ test('on a phone the floors of the house leave room for their labels',async({pag
   await page.screenshot({path:'artifacts/spatial-house-mobile.png',fullPage:true});
 });
 
+test('on an iPhone a house of five floors keeps every label, its header and its floor list inside their cards',async({page})=>{
+  await page.setViewportSize({width:390,height:844});await page.goto('/?spatial&floors');
+  // As reported: five floors with long names, an iPhone held upright.
+  await page.evaluate(()=>{
+    type Floor={id:string;name:string;elevation:number};
+    const view=document.querySelector('mp-glass-view-v4') as HTMLElement&{spatial:{floors:Floor[]};projectName:string;requestUpdate:()=>void};
+    const plan=structuredClone(view.spatial),floor=(id:string)=>plan.floors.find(f=>f.id===id)!;
+    const [basement,ground,upstairs]=[floor('basement'),floor('ground'),floor('upstairs')];
+    basement.name='SJ2 - Basement';ground.name='SJ2 - Ground Floor';upstairs.name='SJ2 - First Floor';
+    plan.floors=[basement,{...structuredClone(ground),id:'exterior',name:'SJ2 - Exterior'},ground,{...structuredClone(upstairs),id:'sj5',name:'SJ5 - Ground Floor'},upstairs];
+    view.spatial=plan;view.projectName='Saint Jaume';view.requestUpdate();
+  });
+  const viewer=page.locator('mp-spatial-viewer'),labels=viewer.locator('[data-floor]');
+  await expect(labels).toHaveCount(5);
+  const boxes=await Promise.all(['upstairs','sj5','ground','exterior','basement'].map(async id=>{const label=viewer.locator(`[data-floor="${id}"]`);await expect(label).toBeVisible();return (await label.boundingBox())!;}));
+  const [stage,tabs,modes]=await Promise.all([viewer.locator('.stage').boundingBox(),viewer.locator('.floors').boundingBox(),viewer.locator('.modes').boundingBox()]);
+  for(const [i,a] of boxes.entries()){
+    expect(a.x).toBeGreaterThanOrEqual(stage!.x);expect(a.x+a.width).toBeLessThanOrEqual(stage!.x+stage!.width);
+    expect(a.y).toBeGreaterThanOrEqual(tabs!.y+tabs!.height);expect(a.y+a.height).toBeLessThanOrEqual(modes!.y);
+    // From the top floor down, one under the other.
+    if(i)expect(a.y).toBeGreaterThanOrEqual(boxes[i-1]!.y+boxes[i-1]!.height);
+  }
+  // The rows of the floors stay inside the card of the whole house.
+  const card=(await viewer.getByRole('region',{name:'Vue d’ensemble de la maison'}).boundingBox())!;
+  for(const row of await viewer.locator('.level').all()){const box=(await row.boundingBox())!;expect(box.x+box.width).toBeLessThanOrEqual(card.x+card.width);}
+  // The flag stands on the row of the name, the navigation inside the header, its names whole or, too long, replaced by their icons.
+  const header=page.locator('mp-glass-view-v4 header.glass');
+  const [head,nav,flag]=await Promise.all([header.boundingBox(),header.locator('nav').boundingBox(),page.getByRole('button',{name:'Langue : Français'}).boundingBox()]);
+  expect(nav!.x+nav!.width).toBeLessThanOrEqual(head!.x+head!.width);
+  expect(flag!.y+flag!.height).toBeLessThanOrEqual(nav!.y);
+  for(const width of [390,320]){
+    await page.setViewportSize({width,height:844});
+    await expect.poll(()=>page.evaluate(()=>{
+      const nav=document.querySelector('mp-glass-view-v4')!.shadowRoot!.querySelector('nav')!,shown=Array.from(nav.querySelectorAll('a span:last-child')).filter(name=>getComputedStyle(name).display!=='none');
+      return nav.getBoundingClientRect().right<=nav.closest('header')!.getBoundingClientRect().right&&shown.every(name=>name.scrollWidth<=name.clientWidth+1);
+    })).toBe(true);
+  }
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+});
+
 test('in the Studio, a floor opened on the plan becomes the floor edited',async({page})=>{
   await mountEditor(page);
   await page.getByRole('button',{name:'Ajouter un niveau',exact:true}).click();

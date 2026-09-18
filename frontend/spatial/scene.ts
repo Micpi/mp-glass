@@ -115,6 +115,8 @@ export class SpatialScene {
   private tween = 0;
   /** Pixels kept free on the left of the stage for labels beside the house, less those the controls take on its right. */
   private margin = 0;
+  /** Pixels kept free above and below the house, under the controls at the top and bottom of the stage. */
+  private band = { top: 0, bottom: 0 };
   /** Called once the camera flight ends, or when a gesture cuts it short. */
   private landing?: ()=>void;
   /**
@@ -149,15 +151,24 @@ export class SpatialScene {
     this.observer=new ResizeObserver(()=>{const {width,height}=this.host.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.shift();this.render();});
     this.observer.observe(this.host);
   }
-  /** Moves the picture, not the camera, so that the house stands in the middle of the room left to it; rays and projections follow. */
+  /**
+   * Moves the picture, not the camera, so that the house stands in the middle of the room left to it, and shrinks it to the height
+   * left between the band kept at the top and the one at the bottom; rays and projections follow.
+   */
   private shift(){
-    const {clientWidth:w,clientHeight:h}=this.host;
-    if(this.margin&&w&&h)this.camera.setViewOffset(w,h,-this.margin/2,0,w,h);else this.camera.clearViewOffset();
+    const {clientWidth:w,clientHeight:h}=this.host,{top,bottom}=this.band;
+    if(!w||!h||(!this.margin&&!top&&!bottom)){this.camera.clearViewOffset();return;}
+    const k=Math.max(.4,(h-top-bottom)/h),full=[w*k,h*k] as const;
+    // The middle of the picture, `full` pixels wide, falls on the middle of the room left: (w + margin) / 2 across, between the bands down.
+    this.camera.setViewOffset(full[0],full[1],full[0]/2-(w+this.margin)/2,full[1]/2-(top+(h-top-bottom)/2),w,h);
   }
-  /** Keeps `left` pixels free on the left of the stage and `right` on its right; whether that changed anything (the plan is then drawn again). */
-  reserve(left:number,right=0){
-    if(Math.abs(left-right-this.margin)<2)return false;
-    this.margin=left-right;this.shift();this.render();
+  /**
+   * Keeps `left` pixels free on the left of the stage and `right` on its right, `top` above the house and `bottom` below it;
+   * whether that changed anything (the plan is then drawn again).
+   */
+  reserve(left:number,right=0,top=0,bottom=0){
+    if(Math.abs(left-right-this.margin)<2&&Math.abs(top-this.band.top)<2&&Math.abs(bottom-this.band.bottom)<2)return false;
+    this.margin=left-right;this.band={top,bottom};this.shift();this.render();
     return true;
   }
   /** First object hit at (x, y), trying a few neighbouring points when `slop` is set. */

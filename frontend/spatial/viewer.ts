@@ -113,7 +113,7 @@ export class MPSpatialViewer extends LitElement {
     .layout{display:grid;gap:12px;align-items:start}.stage-col,.side{display:grid;gap:12px;min-width:0;align-content:start}
     .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 60%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.14),rgba(3,16,29,.44));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18)}
     /* Every floor at once needs more height on a phone. */
-    :host([stacked]) .stage{height:var(--mp-stage-height,clamp(360px,min(62cqw,72vh),620px))}
+    :host([stacked]) .stage{height:var(--mp-stage-height,max(clamp(360px,min(62cqw,72vh),620px),min(calc(var(--floors,3) * 60px + 150px),80vh)))}
     .canvas{position:absolute;inset:0}.canvas canvas{display:block;width:100%;height:100%;touch-action:pan-y;outline-offset:-4px}
     .glass{background:rgba(5,20,34,.58);border:1px solid var(--line);backdrop-filter:blur(16px) saturate(140%);box-shadow:0 10px 28px rgba(0,8,18,.28)}
     .floor-tag{position:absolute;top:12px;left:12px;z-index:2;display:inline-flex;align-items:center;gap:7px;max-width:calc(100% - 84px);min-height:32px;padding:0 12px;border-radius:999px;font-size:10.5px;letter-spacing:.12em;text-transform:uppercase;color:#cfe0ef;pointer-events:none;white-space:nowrap;overflow:hidden}
@@ -189,16 +189,17 @@ export class MPSpatialViewer extends LitElement {
     .stat.warm{border-color:rgba(255,214,110,.26);background:linear-gradient(145deg,rgba(255,205,80,.12),rgba(255,255,255,.03))}.stat.warm strong{color:#ffe08a}
     .master{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;margin-top:12px;border-radius:14px;border:1px solid rgba(202,228,255,.18);background:rgba(8,29,48,.45);font-weight:650;color:#dae7f3}
     .master.on{color:#0a2338;background:linear-gradient(135deg,#ffe481,#ffc540);border-color:#ffea9d;box-shadow:0 8px 22px rgba(255,192,45,.2),inset 0 1px rgba(255,255,255,.55)}
-    .devices{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
+    .devices{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
     .device{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;padding:4px 6px 4px 4px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(214,236,255,.08);transition:background .25s,border-color .25s}
     .device.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}.device.offline{opacity:.6}
     .main{display:flex;align-items:center;gap:11px;min-width:0;min-height:50px;padding:4px 6px;border:0;border-radius:12px;background:transparent;text-align:left}.main:hover{background:rgba(255,255,255,.045)}
     .dev-icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:12px;color:#cfe0f0;background:rgba(197,220,243,.08);border:1px solid rgba(220,237,255,.1);transition:.25s ease}
-    .levels{list-style:none;margin:14px 0 0;padding:0;display:grid;gap:8px}
+    /* One column as wide as the card: a long floor name or reading is cut short rather than widening the list past the card. */
+    .levels{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
     .level{display:flex;align-items:center;gap:11px;width:100%;min-height:56px;padding:6px 12px 6px 6px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(214,236,255,.08);text-align:left;transition:background .25s,border-color .25s}
     .level:hover,.level.pointed{background:rgba(255,255,255,.07);border-color:color-mix(in srgb,var(--accent) 50%,transparent)}
     .level.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}
-    .level .text{flex:1}.level>.mp-icon{color:#9fb6cb}
+    .level .text{flex:1}.level .text small{white-space:normal}.level>.mp-icon{color:#9fb6cb}
     .temps{display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;color:#cce3f2}.readings .temps{font-size:inherit}
     .device.on .dev-icon,.level.on .dev-icon{color:#ffe175;background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.08));border-color:rgba(255,225,138,.3);box-shadow:0 0 22px rgba(255,192,45,.26)}
     .device[data-kind=temperature] .dev-icon,.device[data-kind=climate] .dev-icon{color:#ffbf96}.device[data-kind=humidity] .dev-icon{color:#8fd3ff}
@@ -314,6 +315,8 @@ export class MPSpatialViewer extends LitElement {
       this.selected=placing.roomId;this.focusAfter=placing.roomId;this.engaged=true;
     }
     this.toggleAttribute('stacked', this.stacked);
+    // Every floor at once needs room for each label beside it, one above the other.
+    this.style.setProperty('--floors', String(this.plan?.floors.length ?? 1));
   }
   private escape=(e:KeyboardEvent)=>{ if(e.key==='Escape'&&this.placing){ e.preventDefault(); this.cancelPick(); } };
   /** The point touched while placing, told to the Studio with the room it is for. */
@@ -441,7 +444,9 @@ export class MPSpatialViewer extends LitElement {
     // On a narrow stage the floors of the house stand between their labels and the controls; the plan then comes back here, drawn again.
     const aside=this.stacked&&frame.width<NARROW?Array.from(this.renderRoot.querySelectorAll<HTMLElement>('[data-floor]'),l=>l.offsetWidth):[];
     const rail=this.renderRoot.querySelector<HTMLElement>('.rail')?.offsetWidth??0;
-    if(this.scene?.reserve(aside.length?Math.max(...aside)+2*LABEL_GAP:0,aside.length?rail+LABEL_GAP:0)) return;
+    // There, the floors stand between the tabs of the floors (and the hint) above and the ambiances below, where their labels can be read.
+    const [top,bottom]=aside.length?this.bands(frame):[0,0];
+    if(this.scene?.reserve(aside.length?Math.max(...aside)+2*LABEL_GAP:0,aside.length?rail+LABEL_GAP:0,top,bottom)) return;
     if(this.stacked){this.placeLevels(levels,frame,occupied);return;}
     const labels=new Map(Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-room]')).map(el=>[el.dataset.room!,el]));
     const ordered=[...positions].sort(([a],[b])=>a===this.selected?-1:b===this.selected?1:0);
@@ -454,30 +459,43 @@ export class MPSpatialViewer extends LitElement {
       label.style.left=`${position.x}px`;label.style.top=`${position.y}px`;label.style.visibility=visible?'visible':'hidden';
     }
   }
+  /** Height the controls take at the top of the stage (tabs of the floors, hint) and at its bottom (ambiances and their legend). */
+  private bands(frame: DOMRect): [number,number] {
+    const boxes=(selector:string)=>Array.from(this.renderRoot.querySelectorAll<HTMLElement>(selector)).filter(el=>!el.hidden&&el.offsetParent).map(el=>el.getBoundingClientRect());
+    const top=Math.max(0,...boxes('.floors,.hint').map(r=>r.bottom-frame.top+LABEL_GAP));
+    const bottom=Math.max(0,...boxes('.modes,.legend').map(r=>frame.bottom-r.top+LABEL_GAP));
+    return [top,bottom];
+  }
   /**
    * A floor's label stands beside the floor, on its left, else on its right. When neither side has room (a phone), it keeps to
-   * the edge with more room, over the floor, moved up or down off the controls and labels it would hide or cover.
+   * the edge with more room, over the floor. Labels never cover one another nor the controls above and below the house.
    */
   private placeLevels(levels: LevelProjection, frame: DOMRect, occupied: {left:number;right:number;top:number;bottom:number}[]) {
     type Box=(typeof occupied)[number];
     const overlap=(a:Box,b:Box)=>a.left<b.right&&a.right>b.left&&a.top<b.bottom&&a.bottom>b.top;
-    for (const label of this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-floor]')) {
+    const labels=Array.from(this.renderRoot.querySelectorAll<HTMLButtonElement>('[data-floor]')).flatMap(label=>{
       const position=levels.get(label.dataset.floor!);
-      if(!position) continue;
-      const width=label.offsetWidth,height=label.offsetHeight,half=width/2+3;
-      const box=(x:number,y:number):Box=>({left:x-half,right:x+half,top:y-height/2-3,bottom:y+height/2+3});
-      const left=position.left-LABEL_GAP-width/2,right=position.right+LABEL_GAP+width/2;
-      let y=position.y,x=[left,right].find(x=>x-half>=0&&x+half<=frame.width&&!occupied.some(o=>overlap(box(x,y),o)));
-      if(x===undefined){
-        x=Math.min(Math.max(position.left>frame.width-position.right?left:right,half),frame.width-half);
-        let down:boolean|undefined;
-        for(let blocker=occupied.find(o=>overlap(box(x!,y),o));blocker;blocker=occupied.find(o=>overlap(box(x!,y),o))){
-          down??=y>=(blocker.top+blocker.bottom)/2;
-          y=down?blocker.bottom+height/2+4:blocker.top-height/2-4;
-        }
-      }
-      occupied.push(box(x,y));
-      label.style.left=`${x}px`;label.style.top=`${y}px`;label.style.visibility=position.visible&&y>=0&&y<=frame.height?'visible':'hidden';
+      return position?[{label,position,width:label.offsetWidth,height:label.offsetHeight,x:0,y:position.y}]:[];
+    }).sort((a,b)=>a.position.y-b.position.y);
+    for(const l of labels){
+      const half=l.width/2+3,box=(x:number):Box=>({left:x-half,right:x+half,top:l.y-l.height/2-3,bottom:l.y+l.height/2+3});
+      const left=l.position.left-LABEL_GAP-l.width/2,right=l.position.right+LABEL_GAP+l.width/2;
+      l.x=[left,right].find(x=>x-half>=0&&x+half<=frame.width&&!occupied.some(o=>overlap(box(x),o)))
+        ??Math.min(Math.max(l.position.left>frame.width-l.position.right?left:right,half),frame.width-half);
+    }
+    // One above the other in the order of the floors, each as near its floor as the others let it, between the controls above and below.
+    const [top,bottom]=this.bands(frame),space=6,gap=(a:typeof labels[number],b:typeof labels[number])=>(a.height+b.height)/2+space;
+    const down=()=>{for(let i=1;i<labels.length;i++)labels[i]!.y=Math.max(labels[i]!.y,labels[i-1]!.y+gap(labels[i-1]!,labels[i]!));};
+    const up=()=>{for(let i=labels.length-2;i>=0;i--)labels[i]!.y=Math.min(labels[i]!.y,labels[i+1]!.y-gap(labels[i]!,labels[i+1]!));};
+    const first=labels[0],last=labels.at(-1);
+    if(first)first.y=Math.max(first.y,top+first.height/2);
+    down();
+    if(last&&last.y+last.height/2>frame.height-bottom){last.y=frame.height-bottom-last.height/2;up();}
+    // Too many to fit between the controls: the top one stays under those above, the others follow it down.
+    if(first&&first.y-first.height/2<top){first.y=top+first.height/2;down();}
+    for(const l of labels){
+      l.label.style.left=`${l.x}px`;l.label.style.top=`${l.y}px`;
+      l.label.style.visibility=l.position.visible&&l.y-l.height/2>=0&&l.y+l.height/2<=frame.height?'visible':'hidden';
     }
   }
   private litRooms(floor: SpatialFloor) {

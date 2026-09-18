@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.2 — affichage corrigé sur iPhone
+
+Retour utilisateur, captures d’un iPhone à l’appui : « l’affichage n’est pas correct sur certaines parties ».
+
+- **En-tête** : la navigation débordait de sa carte et coupait le drapeau (les libellés « Accueil », « Lumières », « Pièces » sont plus larges avec les polices de l’iPhone). Sur téléphone, le drapeau passe sur la ligne du nom de la maison, où il y a de la place. Si les libellés ne tiennent toujours pas (petit écran, langue aux mots longs), seule la page affichée garde le sien, les autres gardent leur icône : c’est mesuré, pas fixé à une largeur.
+- **Toute la maison** : les lignes des niveaux dépassaient à droite de la carte dès qu’un nom ou une température était long. Elles restent dans la carte ; le détail (« 14 pièces · lumières éteintes ») passe à la ligne au lieu d’être coupé.
+- **Plan à plusieurs niveaux sur téléphone** : avec cinq niveaux, l’étiquette du niveau du haut disparaissait, cachée sous les onglets des niveaux. Le plan grandit avec le nombre de niveaux, la maison se place entre les onglets en haut et les ambiances en bas, et les étiquettes se rangent l’une sous l’autre dans l’ordre des niveaux, sans se chevaucher : toutes restent visibles.
+- Nouveau test navigateur reproduisant la maison des captures (iPhone, cinq niveaux aux noms longs) ; captures de référence téléphone et tablette en portrait mises à jour.
+
 ## 0.9.1 — la langue se choisit sur le dashboard
 
 Retour utilisateur sur 0.9.0 : « le choix de la langue doit être sur le dashboard, pas dans le Studio, pour que chaque utilisateur puisse choisir sa langue, et ça ne doit pas être un gros bouton, un bouton avec le drapeau de la langue suffira ».

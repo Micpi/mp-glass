@@ -52,6 +52,28 @@ class GeometryTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 project.validate_project(project.load_validator(), value)
 
+    def test_doors_windows_and_players_are_checked_with_the_plan(self):
+        plan = server.normalize_result(RESULT)["plan"]
+        room = plan["floors"][0]["rooms"][0]
+        room["openings"] = [{"id": "baie", "kind": "french_window", "side": 0, "at": .5, "width": 2.4,
+                             "entityIds": ["cover.salon", "binary_sensor.salon_baie"]}]
+        room["media"] = [{"id": "tv", "kind": "tv", "at": [1, 1], "entityId": "media_player.salon"}]
+        value = project.default_project() | {"spatial": plan}
+        self.assertEqual(project.validate_project(project.load_validator(), value)["spatial"]["floors"][0]["rooms"][0]["openings"], room["openings"])
+        opening, media = room["openings"][0], room["media"][0]
+        for patch in ({"openings": [opening | {"side": len(room["polygon"])}]}, {"openings": [opening, dict(opening)]},
+                      {"media": [media, dict(media)]}):
+            broken = deepcopy(value)
+            broken["spatial"]["floors"][0]["rooms"][0].update(patch)
+            with self.assertRaises(ValueError):
+                project.validate_project(project.load_validator(), broken)
+        for patch in ({"openings": [opening | {"entityIds": ["light.salon"]}]}, {"openings": [opening | {"kind": "garage"}]},
+                      {"media": [media | {"entityId": "switch.tv"}]}, {"media": [media | {"command": "on"}]}):
+            broken = deepcopy(value)
+            broken["spatial"]["floors"][0]["rooms"][0].update(patch)
+            with self.assertRaises(Exception):
+                project.validate_project(project.load_validator(), broken)
+
     def test_model_cannot_add_commands_or_return_no_rooms(self):
         for patch in ({"instructions": "do something"}, {"rooms": []}):
             with self.assertRaises(Exception):

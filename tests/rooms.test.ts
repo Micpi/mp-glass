@@ -8,7 +8,7 @@ import { examplePlan, type SpatialPlan } from '../shared/spatial';
 import { home } from './fixtures';
 
 const state = (entity_id: string, attributes: Record<string, unknown> = {}, value = 'on'): HAState => ({ entity_id, state: value, attributes });
-/** Salon with lights (fixture), a shutter, a thermostat, sensors and entities that have no place on a plan. */
+/** Salon with lights (fixture), a shutter, a thermostat, sensors, a television and entities that have no place on a plan. */
 function house(): Snapshot {
   const snapshot = home();
   const add = (entity_id: string, attributes: Record<string, unknown> = {}, extra: Partial<Snapshot['entities'][number]> = {}) => {
@@ -21,6 +21,7 @@ function house(): Snapshot {
   add('sensor.salon_humidity', { device_class: 'humidity', unit_of_measurement: '%' });
   add('binary_sensor.salon_fenetre', { device_class: 'window' });
   add('binary_sensor.salon_presence', { device_class: 'occupancy' });
+  add('media_player.salon_tv', { device_class: 'tv' });
   add('sensor.salon_power', { device_class: 'power', unit_of_measurement: 'W' });
   add('sensor.salon_device_temperature', { device_class: 'temperature', unit_of_measurement: '°C' }, { entity_category: 'diagnostic' });
   add('switch.salon_prise');
@@ -36,12 +37,14 @@ describe('equipment of a room',()=>{
     expect(planKind('sensor.a',state('sensor.a',{device_class:'humidity'}))).toBe('humidity');
     expect(planKind('binary_sensor.a',state('binary_sensor.a',{device_class:'door'}))).toBe('opening');
     expect(planKind('binary_sensor.a',state('binary_sensor.a',{device_class:'motion'}))).toBe('motion');
+    // Televisions, speakers and amplifiers, whatever Home Assistant calls them.
+    for(const deviceClass of ['tv','speaker','receiver',undefined])expect(planKind('media_player.a',state('media_player.a',{device_class:deviceClass}))).toBe('media');
     for(const [id,attributes] of [['sensor.a',{device_class:'power'}],['binary_sensor.a',{device_class:'problem'}],['switch.a',{}],['sensor.a',{}]] as const) expect(planKind(id,state(id,attributes))).toBeUndefined();
     expect(planKind('light.a',undefined,'config')).toBeUndefined();
   });
   it('lists the equipment of an area in the order of the room card',()=>{
     const graph=MPDiscoveryEngine.discover(house(),defaultProject());
-    expect(areaEquipment('salon',graph.devices).map(d=>d.entityId)).toEqual(['light.circuit_1','light.circuit_2','light.circuit_0','cover.salon','climate.salon','sensor.salon_temperature','sensor.salon_humidity','binary_sensor.salon_fenetre','binary_sensor.salon_presence']);
+    expect(areaEquipment('salon',graph.devices).map(d=>d.entityId)).toEqual(['light.circuit_1','light.circuit_2','light.circuit_0','cover.salon','climate.salon','sensor.salon_temperature','sensor.salon_humidity','media_player.salon_tv','binary_sensor.salon_fenetre','binary_sensor.salon_presence']);
   });
   it('fills rooms that follow an area, leaves chosen lists alone and never stores the result',()=>{
     const graph=MPDiscoveryEngine.discover(house(),defaultProject());
@@ -49,7 +52,7 @@ describe('equipment of a room',()=>{
     living.areaId='salon';dining.areaId='salon';dining.entityIds=['light.circuit_0'];kitchen.areaId='kitchen';
     const before=structuredClone(plan);
     const shown=resolvePlan(plan,graph.devices).floors[0]!.rooms;
-    expect(shown[0]!.entityIds).toHaveLength(9);expect(shown[1]!.entityIds).toEqual(['light.circuit_0']);expect(shown[2]!.entityIds).toEqual(['sensor.cuisine_temperature']);
+    expect(shown[0]!.entityIds).toHaveLength(10);expect(shown[1]!.entityIds).toEqual(['light.circuit_0']);expect(shown[2]!.entityIds).toEqual(['sensor.cuisine_temperature']);
     expect(shown[3]!.entityIds).toBeUndefined();expect(plan).toEqual(before);
   });
   it('shows at most 12 entities, hidden ones excepted',()=>{

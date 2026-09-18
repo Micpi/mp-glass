@@ -37,6 +37,18 @@ const icons = {
   gauge: '<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 4-4"/><circle cx="12" cy="13" r="1.2"/>',
   flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.3 1.2-3.9 2.5-5 .2 1.8 1 2.8 2 3.2C11 8.8 11 6 12 3z"/>',
   window: '<rect x="5" y="3" width="14" height="18" rx="1.2"/><path d="M12 3v18M5 12h14"/>',
+  french: '<rect x="4.5" y="2.5" width="15" height="19" rx="1"/><path d="M12 2.5v19M3 21.5h18M9.6 11.5v2M14.4 11.5v2"/>',
+  shutter: '<rect x="3.5" y="3" width="17" height="4" rx="1"/><path d="M5 7h14v12H5zM5 10h14M5 13h14M5 16h14"/>',
+  curtain: '<path d="M3 3.5h18M5.5 3.5V20.5M18.5 3.5V20.5M5.5 3.5c.8 6 2.5 11 4.5 15.5M18.5 3.5c-.8 6-2.5 11-4.5 15.5"/>',
+  tv: '<rect x="2.5" y="5" width="19" height="12.5" rx="1.5"/><path d="M8 21h8M8 1.8l4 3.2 4-3.2"/>',
+  speaker: '<rect x="6" y="2.5" width="12" height="19" rx="2"/><circle cx="12" cy="14.5" r="3.2"/><circle cx="12" cy="7" r="1.1"/>',
+  play: '<path d="M7.5 4.8v14.4L19 12z"/>',
+  pause: '<path d="M8.5 5v14M15.5 5v14"/>',
+  next: '<path d="M5.5 5.5v13l9.5-6.5zM18.5 5.5v13"/>',
+  previous: '<path d="M18.5 5.5v13L9 12zM5.5 5.5v13"/>',
+  volume: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
+  mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
+  pin: '<path d="M12 21s6.5-6.2 6.5-11.5a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/>',
 } as const;
 
 export type MPIconName = keyof typeof icons;

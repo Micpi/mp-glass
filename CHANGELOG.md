@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.8.0 — portes, fenêtres, volets et audio-vidéo sur le plan
+
+Demande utilisateur : pouvoir ajouter les ouvrants (portes, fenêtres, portes-fenêtres) pour gérer volets roulants, stores et rideaux, ainsi que les téléviseurs et haut-parleurs pour l’audio-vidéo, le tout harmonisé avec le reste de MP Glass.
+
+- **Portes, fenêtres, portes-fenêtres** : dans **Studio → Plan 3D**, chaque pièce reçoit ses ouvertures. **Porte**, **Fenêtre** ou **Porte-fenêtre** l’ajoute à sa taille usuelle, puis on touche sur le plan 3D le mur qui la reçoit. Mur, position le long du mur, largeur, hauteur et allège se règlent aussi dans la liste ; les murs y sont décrits par leur orientation sur le plan et leur longueur (« Mur 2 · à droite · 4 m »).
+- **Volets roulants, stores, rideaux** : chaque ouverture se relie à ses volets, stores et rideaux et à ses capteurs d’ouverture. Sur le plan, la porte ou la fenêtre est dessinée dans son mur avec ses vantaux, qui pivotent vers la pièce quand le capteur la dit ouverte. Le volet roulant descend dehors avec ses lames, le store dedans, les rideaux se ferment des deux côtés, chacun à sa position réelle. Murs abaissés, les ouvertures deviennent des traits au sol, avec l’arc de chaque vantail de porte.
+- **Fiche de la pièce** : une section **Portes et fenêtres** donne l’état de chacune (Ouverte, Fermée) et, en dessous, ouvrir, arrêter, fermer, la position et l’inclinaison des lames d’un store orientable. **Tout ouvrir / Tout fermer** commande en une fois les volets de la pièce, du niveau (Vue d’ensemble, avec le nombre de volets ouverts) ou de la maison. Portes de garage, portails, portes motorisées et clapets n’en font jamais partie : ils restent commandés un par un.
+- **Téléviseurs et enceintes** : ils se placent dans la pièce d’un toucher sur le plan, reliés à leur lecteur Home Assistant (le premier de la pièce de même nature est proposé). Le plan dessine un écran sur pied ou une colonne d’enceinte, allumés ou en lecture ; ce qui est lu s’affiche sous le nom de la pièce. La fiche permet d’allumer et éteindre, lecture/pause, pistes précédente et suivante, volume, sourdine et source, chacune seulement si le lecteur la propose.
+- **Pièces reliées** : les lecteurs multimédias d’une pièce Home Assistant s’affichent d’eux-mêmes dans sa pièce du plan, comme lumières et volets. Une fenêtre ouverte s’affiche sur l’étiquette de sa pièce.
+- **Modifier une pièce** : ajouter ou retirer un sommet garde les ouvertures sur leurs murs ; une ouverture qui n’est plus près d’un mur est retirée, avec un message. Un niveau réimporté par Gemini reprend les ouvertures des pièces de même nom.
+- Une modification du Studio qui ne change pas les contours (nom, association, ouverture placée) ne recadre plus la caméra du plan.
+- **Contrat** : une pièce peut porter `openings` et `media`, vérifiés côté navigateur, intégration et worker. Les plans enregistrés avant cette version restent valides et inchangés. Gemini ne reconnaît pas encore les ouvertures sur un plan importé : elles se placent à la main.
+
 ## 0.7.21 — plan plus grand, pièces arrondies en deux gestes
 
 Demande utilisateur : « je voudrais cette fenêtre plus grande pour avoir le plan en plus grand », et « le bouton [Courber le côté] est présent mais inactif ». Le bouton ne s’activait que sur une pièce déjà passée en **Forme libre** et dont on avait touché un côté. Or la plupart des pièces sont des rectangles : il restait donc grisé.

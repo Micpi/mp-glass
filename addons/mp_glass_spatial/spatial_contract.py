@@ -113,8 +113,16 @@ def valid_ring(points, arcs=None):
     return True
 
 
+def valid_fixtures(room):
+    """Doors and windows on sides the room has, doors, windows, televisions and speakers each with an ID used once."""
+    openings = [opening["id"] for opening in room.get("openings", [])]
+    media = [item["id"] for item in room.get("media", [])]
+    return (all(opening["side"] < len(room["polygon"]) for opening in room.get("openings", []))
+            and len(set(openings)) == len(openings) and len(set(media)) == len(media))
+
+
 def validate_geometry(plan):
-    """Call after JSON Schema validation. Reject duplicate IDs and invalid rings."""
+    """Call after JSON Schema validation. Reject duplicate IDs, invalid rings and openings on sides that do not exist."""
     floors = set()
     for floor in plan["floors"]:
         if floor["id"] in floors or not all(math.isfinite(floor[k]) for k in ("height", "elevation")):
@@ -122,6 +130,6 @@ def validate_geometry(plan):
         floors.add(floor["id"])
         rooms = set()
         for room in floor["rooms"]:
-            if room["id"] in rooms or not valid_ring(room["polygon"], room.get("arcs")):
+            if room["id"] in rooms or not valid_ring(room["polygon"], room.get("arcs")) or not valid_fixtures(room):
                 raise ValueError("invalid_geometry")
             rooms.add(room["id"])

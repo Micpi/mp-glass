@@ -10,4 +10,4 @@ Les valeurs absentes, inconnues, unavailable ou non finies n'activent pas de con
 
 Confidence : >= 0,90 automatique, [0,65;0,90[ à vérifier, <0,65 non classé. Score heuristique explicable, jamais présenté comme probabilité statistiquement calibrée. Une lumière standard a un signal domain explicite ; un domaine inconnu conserve le fallback. Une attribution forcée par override ne fabrique aucune capability.
 
-Extensions prévues : cover bits OPEN/CLOSE/STOP/POSITION/TILT ; climate temperature/HVAC/presets ; media playback/volume/source ; remote bindings validés. Chaque extension exige fixtures et tests sur API HA courante.
+Extensions prévues : cover bits OPEN/CLOSE/STOP/POSITION/TILT ; climate temperature/HVAC/presets ; media playback/volume/source ; remote bindings validés. Depuis 0.8.0, le plan 3D commande déjà volets (ouvrir, arrêter, fermer, position, inclinaison) et lecteurs (marche, lecture/pause, pistes, volume, sourdine, source) d’après `supported_features`, sans binding de capability ni carte de page dédiée. Chaque extension exige fixtures et tests sur API HA courante.

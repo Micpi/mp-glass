@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { alignRooms, defaultSpatialPlan, examplePlan, parseSpatial, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point, type SpatialFloor } from '../shared/spatial';
+import { alignRooms, defaultSpatialPlan, examplePlan, insideRoom, nearestSide, OPENING_SIZES, openingPlacement, parseSpatial, reattachOpenings, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point, type SpatialFloor, type SpatialRoom } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
@@ -188,5 +188,72 @@ describe('default plan',()=>{
     expect(MPDashboardComposer.compose(MPDiscoveryEngine.discover(empty,project),project).views[0]).toMatchObject({mp_spatial_origin:'example',mp_spatial:examplePlan()});
     project.spatial={...examplePlan(),enabled:false};
     expect(MPDashboardComposer.compose(MPDiscoveryEngine.discover(home(),project),project).views[0]).toMatchObject({mp_spatial_origin:'project',mp_spatial:project.spatial});
+  });
+});
+
+describe('doors, windows, televisions and speakers',()=>{
+  const rectangle=(x0:number,y0:number,x1:number,y1:number):Point[]=>[[x0,y0],[x1,y0],[x1,y1],[x0,y1]];
+  const plan=(room:Partial<SpatialRoom>)=>({version:1 as const,enabled:true,floors:[{id:'ground',name:'RDC',elevation:0,height:2.6,rooms:[{id:'living',name:'Salon',polygon:rectangle(0,0,5,4),...room}]}]});
+  it('stand on their wall, face into their room and keep within the wall',()=>{
+    const room:SpatialRoom={id:'living',name:'Salon',polygon:rectangle(0,0,5,4)};
+    // The top wall, from (0, 0) to (5, 0): the room lies below it, whichever way its corners turn.
+    const placed=openingPlacement(room,{id:'w',kind:'window',side:0,at:.5,width:1.2})!;
+    expect(placed.center).toEqual([2.5,0]);expect(placed.tangent).toEqual([1,0]);expect(placed.inward[1]).toBeCloseTo(1);
+    expect({height:placed.height,sill:placed.sill}).toEqual({height:OPENING_SIZES.window.height,sill:OPENING_SIZES.window.sill});
+    const reversed={...room,polygon:[...room.polygon].reverse()};
+    expect(openingPlacement(reversed,{id:'w',kind:'door',side:2,at:.5,width:.9})!.inward[1]).toBeCloseTo(1);
+    // Near a corner or wider than the wall: it stays within the wall.
+    const corner=openingPlacement(room,{id:'d',kind:'door',side:1,at:0,width:.9,height:2.2})!;
+    expect(corner.center[1]).toBeCloseTo(.45);expect(corner.height).toBe(2.2);
+    expect(openingPlacement(room,{id:'b',kind:'french_window',side:1,at:.5,width:9})!.width).toBeCloseTo(3.9);
+    expect(openingPlacement(room,{id:'x',kind:'door',side:4,at:.5,width:.9})).toBeUndefined();
+    // On a curved wall, on the curve, along it.
+    const bay={...room,arcs:[0,-Math.tan(Math.PI/8),0,0]};
+    const curved=openingPlacement(bay,{id:'c',kind:'window',side:1,at:.5,width:1})!;
+    expect(curved.center[0]).toBeCloseTo(5+2*Math.tan(Math.PI/8),3);expect(curved.tangent[1]).toBeCloseTo(1);expect(curved.inward[0]).toBeCloseTo(-1);
+  });
+  it('find the wall nearest to a point touched on the plan, straight or curved, and tell inside from outside',()=>{
+    const room={polygon:rectangle(0,0,5,4)};
+    expect(nearestSide(room,[5.05,1])).toMatchObject({side:1,t:.25});
+    expect(nearestSide(room,[2,-.1]).side).toBe(0);
+    const bay={polygon:rectangle(0,0,5,4),arcs:[0,-Math.tan(Math.PI/8),0,0]};
+    const near=nearestSide(bay,[5+2*Math.tan(Math.PI/8),2]);
+    expect(near.side).toBe(1);expect(near.t).toBeCloseTo(.5);expect(near.distance).toBeLessThan(1e-6);
+    expect(insideRoom(room,[2,2])).toBe(true);expect(insideRoom(room,[6,2])).toBe(false);
+    expect(insideRoom(bay,[5.5,2])).toBe(true);
+  });
+  it('follow a change of corners: kept on their wall, moved to the nearest one, or dropped far from every wall',()=>{
+    const before:SpatialRoom={id:'r',name:'R',polygon:rectangle(0,0,5,4),openings:[{id:'a',kind:'window',side:1,at:.25,width:1},{id:'b',kind:'door',side:0,at:.5,width:.9}]};
+    // Same count of corners: nothing moves.
+    expect(reattachOpenings(before,{...before,polygon:rectangle(0,0,6,4)})).toEqual(before.openings);
+    // A corner added in the middle of the top wall: the door lands on either half, the window keeps its place on the right wall.
+    const split=reattachOpenings(before,{...before,polygon:[[0,0],[2.5,0],[5,0],[5,4],[0,4]]});
+    expect(split.find(o=>o.id==='a')).toMatchObject({side:2,at:.25});
+    expect([0,1]).toContain(split.find(o=>o.id==='b')!.side);
+    // The top right corner removed: the right wall becomes a diagonal far from the window, which goes.
+    expect(reattachOpenings(before,{...before,polygon:[[0,0],[5,4],[0,4]]}).map(o=>o.id)).toEqual([]);
+  });
+  it('are part of the saved plan, checked like its geometry',()=>{
+    const openings=[{id:'baie',kind:'french_window' as const,side:0,at:.5,width:2.4,entityIds:['cover.salon','binary_sensor.baie']}];
+    const media=[{id:'tv',kind:'tv' as const,at:[2.5,3.6] as Point,entityId:'media_player.salon'}];
+    expect(parseSpatial(plan({openings,media})).floors[0]!.rooms[0]).toMatchObject({openings,media});
+    const refused=[
+      {openings:[{...openings[0]!,side:4}]},{openings:[openings[0]!,{...openings[0]!}]},{media:[media[0]!,{...media[0]!}]},
+      {openings:[{...openings[0]!,entityIds:['light.salon']}]},{openings:[{...openings[0]!,width:.1}]},{openings:[{...openings[0]!,kind:'garage'}]},
+      {media:[{...media[0]!,entityId:'light.salon'}]},{media:[{...media[0]!,kind:'radio'}]},{openings:[{...openings[0]!,at:1.2}]},
+    ];
+    for(const room of refused)expect(()=>parseSpatial(plan(room as Partial<SpatialRoom>))).toThrow();
+    const project=parseProject({...defaultProject(),spatial:plan({openings,media})});
+    expect(project.spatial!.floors[0]!.rooms[0]!.openings).toEqual(openings);
+  });
+  it('move with their room when the floors of the house are stacked',()=>{
+    const floors:SpatialFloor[]=[
+      {id:'a',name:'A',elevation:0,height:2.5,rooms:[{id:'r',name:'R',polygon:rectangle(0,0,10,6)}]},
+      {id:'b',name:'B',elevation:2.5,height:2.5,rooms:[{id:'r',name:'R',polygon:rectangle(0,0,4,2),media:[{id:'s',kind:'speaker',at:[1,1]}],openings:[{id:'w',kind:'window',side:0,at:.5,width:1}]}]},
+    ];
+    const upstairs=stackFloors(floors)[1]!.rooms[0]!;
+    expect(upstairs.polygon[0]).toEqual([3,2]);expect(upstairs.media![0]!.at).toEqual([4,3]);
+    expect(upstairs.openings).toEqual(floors[1]!.rooms[0]!.openings);
+    expect(floors[1]!.rooms[0]!.media![0]!.at).toEqual([1,1]);
   });
 });

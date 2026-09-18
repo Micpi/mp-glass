@@ -2,9 +2,9 @@ import type { HAArea, HAFloor, HAState, LogicalDevice } from './models';
 import type { SpatialPlan, SpatialRoom } from './spatial';
 
 /** Equipment worth showing in a room of the plan; energy, diagnostics and settings stay off it. */
-export type PlanKind = 'light' | 'cover' | 'climate' | 'temperature' | 'humidity' | 'opening' | 'motion';
+export type PlanKind = 'light' | 'cover' | 'climate' | 'temperature' | 'humidity' | 'media' | 'opening' | 'motion';
 /** Order of the room card: the first temperature sensor gives the room its temperature. */
-const ORDER: PlanKind[] = ['light', 'cover', 'climate', 'temperature', 'humidity', 'opening', 'motion'];
+const ORDER: PlanKind[] = ['light', 'cover', 'climate', 'temperature', 'humidity', 'media', 'opening', 'motion'];
 /** Same limit as a list chosen by hand. */
 export const ROOM_ENTITY_LIMIT = 12;
 
@@ -12,6 +12,8 @@ export function planKind(entityId: string, state?: HAState, entityCategory?: str
   if (entityCategory) return undefined;
   const domain = entityId.split('.')[0], deviceClass = String(state?.attributes.device_class ?? ''), unit = String(state?.attributes.unit_of_measurement ?? '');
   if (domain === 'light' || domain === 'cover' || domain === 'climate') return domain;
+  // Televisions, speakers and amplifiers alike: whatever plays sound or pictures in the room.
+  if (domain === 'media_player') return 'media';
   if (domain === 'binary_sensor') return ['door', 'window', 'opening', 'garage_door'].includes(deviceClass) ? 'opening' : ['motion', 'occupancy', 'presence'].includes(deviceClass) ? 'motion' : undefined;
   if (domain === 'sensor') return deviceClass === 'temperature' || /^°[CF]$/.test(unit) ? 'temperature' : deviceClass === 'humidity' ? 'humidity' : undefined;
   return undefined;

@@ -223,7 +223,8 @@ test('room card groups the lights of a room and shows its climate',async({page})
   await viewer.getByRole('navigation',{name:'Pièces du niveau'}).getByRole('button',{name:'Chambre'}).click();
   const bedroom=viewer.getByRole('region',{name:'Chambre'});
   await expect(bedroom.getByText('Chauffage · consigne 20 °')).toBeVisible();
-  await expect(bedroom.getByText('Fermé',{exact:true})).toBeVisible();
+  // Its window, with its contact sensor and its shutter.
+  await expect(bedroom.getByRole('list',{name:'Portes et fenêtres'}).getByText('Fermée',{exact:true})).toBeVisible();
   await expect(bedroom.getByText('19,5°',{exact:true})).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:'artifacts/spatial-room-mobile.png',fullPage:true});
@@ -1040,8 +1041,10 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await expect(label('kitchen').locator('i')).toHaveCount(1);await expect(label('dining').locator('i')).toHaveCount(0);
   await expect(label('dining')).toHaveText('Séjour');await expect(label('dining').locator('.readings')).toHaveCount(0);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
-  await expect(label('bedroom').locator('.reading')).toHaveText('19,5 °C');
-  for(const room of ['kitchen','dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
+  await expect(label('bedroom').locator('.reading.temp')).toHaveText('19,5 °C');
+  // The kitchen blind and the bedroom shutter keep their position; the other rooms have nothing to read.
+  await expect(label('kitchen').locator('.reading.temp')).toHaveCount(0);await expect(label('kitchen')).toContainText('100 %');
+  for(const room of ['dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(0);
   // An offline thermometer still says so; its room keeps its shutter.
   await setStates({'sensor.salon_temperature':{state:'unavailable'}});
@@ -1053,7 +1056,7 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await setStates({'sensor.salon_temperature':null,'climate.chambre':null});
   await expect(viewer.getByRole('button',{name:'Climat',exact:true})).toHaveCount(0);
   await expect(viewer.locator('.legend')).toHaveCount(0);
-  await expect(label('bedroom').locator('.readings')).toHaveCount(0);
+  await expect(label('bedroom').locator('.reading.temp')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(1);
 });
 
@@ -1170,6 +1173,144 @@ test('associating automatically lets a hand-made list follow its area only when 
   expect(rooms[0]).toMatchObject({areaId:'salon'});expect(rooms[0]!.entityIds).toBeUndefined();
   expect(rooms[2]).toMatchObject({areaId:'cuisine',entityIds:['sensor.bureau_temperature']});
   await expect(editor.getByText('Équipements automatiques · 2')).toBeVisible();
+});
+
+test('doors and windows tell whether they are open, and their shutters, blinds and curtains are commanded from their room',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();
+  // Shutter at 65 %, curtain at 35 %, blind up: three let daylight in; the bedroom shutter is down.
+  const overview=viewer.getByRole('region',{name:'Vue d’ensemble du niveau'});
+  await expect(overview.locator('.stat',{hasText:'Volets'})).toContainText('3 / 4');
+  await expect(viewer.locator('[data-room="living"]')).toContainText('65 %');await expect(viewer.locator('[data-room="living"]')).toContainText('35 %');
+  await viewer.locator('[data-room="living"]').click();
+  const living=viewer.getByRole('region',{name:'Salon'}),bay=living.getByRole('list',{name:'Portes et fenêtres'});
+  await expect(bay.getByText('Baie vitrée',{exact:true})).toBeVisible();await expect(bay.getByText('2,4 × 2,15 m')).toBeVisible();
+  // What the bay window holds is not listed again with the rest of the room.
+  await expect(living.getByRole('list',{name:'Équipements'}).getByText('Volet baie')).toHaveCount(0);
+  await bay.getByRole('button',{name:'Fermer le volet Rideau'}).click();
+  await living.getByRole('button',{name:'Fermer tous les volets de la pièce'}).click();
+  await expect(viewer.locator('[data-room="living"]')).not.toContainText('65 %');
+  await expect(living.getByRole('button',{name:'Fermer tous les volets de la pièce'})).toBeDisabled();
+  await viewer.screenshot({path:'artifacts/spatial-openings-living.png'});
+  // A blind that tilts has a slider for its slats.
+  await viewer.getByRole('navigation',{name:'Pièces du niveau'}).getByRole('button',{name:'Cuisine'}).click();
+  await viewer.getByRole('region',{name:'Cuisine'}).getByRole('slider',{name:'Inclinaison Store'}).fill('30');
+  // The bedroom window is closed, then its sensor says it is open: on its row, and on the plan.
+  await viewer.getByRole('navigation',{name:'Pièces du niveau'}).getByRole('button',{name:'Chambre'}).click();
+  const bedroom=viewer.getByRole('region',{name:'Chambre'}).getByRole('list',{name:'Portes et fenêtres'});
+  await expect(bedroom.getByText('Fermée',{exact:true})).toBeVisible();
+  await page.evaluate(()=>(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo.hass.callService('binary_sensor','turn_on',{entity_id:'binary_sensor.chambre_fenetre'}));
+  await expect(bedroom.getByText('Ouverte',{exact:true})).toBeVisible();
+  await expect(viewer.locator('[data-room="bedroom"] .reading.ajar')).toHaveText('Ouverte');
+  await viewer.screenshot({path:'artifacts/spatial-openings-bedroom.png'});
+  // The whole floor at once, each cover once.
+  await viewer.getByRole('button',{name:'Fermer la pièce'}).click();
+  await overview.getByRole('button',{name:'Fermer tous les volets du niveau'}).click();
+  await expect(overview.locator('.stat',{hasText:'Volets'})).toContainText('0 / 4');
+  expect(await demoCalls(page)).toEqual([
+    {domain:'cover',service:'close_cover',data:{entity_id:'cover.salon_rideau'}},
+    {domain:'cover',service:'close_cover',data:{entity_id:['cover.salon','cover.salon_rideau']}},
+    {domain:'cover',service:'set_cover_tilt_position',data:{entity_id:'cover.cuisine_store',tilt_position:30}},
+    {domain:'binary_sensor',service:'turn_on',data:{entity_id:'binary_sensor.chambre_fenetre'}},
+    {domain:'cover',service:'close_cover',data:{entity_id:['cover.salon','cover.salon_rideau','cover.cuisine_store','cover.chambre']}},
+  ]);
+  await expect(overview.getByRole('button',{name:'Fermer tous les volets du niveau'})).toBeDisabled();
+});
+
+test('a television and a speaker are switched, played, paused, turned down and moved to another source from their room',async({page})=>{
+  await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
+  const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('canvas')).toBeVisible();
+  // What plays shows under the name of its room.
+  await expect(viewer.locator('[data-room="living"] .reading.media')).toHaveText('Le Grand Bleu');
+  await viewer.locator('[data-room="living"]').click();
+  const living=viewer.getByRole('region',{name:'Salon'});
+  await expect(living.getByText('Lecture · Le Grand Bleu')).toBeVisible();
+  await living.getByRole('button',{name:'Pause Téléviseur'}).click();
+  await expect(living.getByRole('button',{name:'Lecture Téléviseur'})).toBeVisible();
+  await expect(viewer.locator('[data-room="living"] .reading.media')).toHaveCount(0);
+  await living.getByRole('slider',{name:'Volume Téléviseur'}).fill('50');
+  await expect(living.locator('.volume output')).toHaveText('50 %');
+  await living.getByRole('button',{name:'Couper le son Téléviseur'}).click();
+  await expect(living.getByRole('button',{name:'Rétablir le son Téléviseur'})).toHaveAttribute('aria-pressed','true');
+  await expect(living.locator('.volume output')).toHaveText('Muet');
+  await living.getByRole('combobox',{name:'Source Téléviseur'}).selectOption('HDMI 1');
+  await viewer.screenshot({path:'artifacts/spatial-media-living.png'});
+  await living.getByRole('button',{name:'Éteindre Téléviseur'}).click();
+  await expect(living.getByRole('button',{name:'Allumer Téléviseur'})).toBeVisible();
+  await expect(living.getByRole('button',{name:'Lecture Téléviseur'})).toHaveCount(0);
+  // The kitchen speaker, paused: it plays again, then skips to the next track.
+  await viewer.getByRole('navigation',{name:'Pièces du niveau'}).getByRole('button',{name:'Cuisine'}).click();
+  const kitchen=viewer.getByRole('region',{name:'Cuisine'});
+  await expect(kitchen.getByText('En pause · So What · Miles Davis')).toBeVisible();
+  await kitchen.getByRole('button',{name:'Lecture Enceinte'}).click();
+  await kitchen.getByRole('button',{name:'Piste suivante Enceinte'}).click();
+  await expect(viewer.locator('[data-room="kitchen"] .reading.media')).toHaveText('So What · Miles Davis');
+  const tv={entity_id:'media_player.salon_tv'},speaker={entity_id:'media_player.cuisine'};
+  expect(await demoCalls(page)).toEqual([
+    {domain:'media_player',service:'media_pause',data:tv},{domain:'media_player',service:'volume_set',data:{...tv,volume_level:.5}},
+    {domain:'media_player',service:'volume_mute',data:{...tv,is_volume_muted:true}},{domain:'media_player',service:'select_source',data:{...tv,source:'HDMI 1'}},
+    {domain:'media_player',service:'turn_off',data:tv},{domain:'media_player',service:'media_play',data:speaker},{domain:'media_player',service:'media_next_track',data:speaker},
+  ]);
+});
+
+test('in the Studio, doors, windows, televisions and speakers are added, placed with a tap on the plan and linked',async({page})=>{
+  await page.setViewportSize({width:1280,height:1000});
+  await mountEditor(page);
+  const editor=page.locator('mp-spatial-editor'),viewer=editor.locator('mp-spatial-viewer');
+  type Room=import('../../shared/spatial').SpatialRoom;
+  const living=()=>page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms[0]! as Room);
+  const openings=editor.getByRole('region',{name:'Portes et fenêtres de la pièce'});
+  // A window goes on the longest wall, in its middle, as wide as usual; the plan then waits for the wall it is on.
+  await openings.getByRole('button',{name:'Fenêtre',exact:true}).click();
+  expect((await living()).openings).toEqual([{id:expect.stringMatching(/^opening-/),kind:'window',side:0,at:.5,width:1.2}]);
+  await expect(viewer.locator('.picking')).toHaveText(/Touchez sur le plan le mur de « Salon » qui reçoit « Fenêtre »/);
+  await expect(openings.getByRole('button',{name:'Touchez le plan…'})).toHaveAttribute('aria-pressed','true');
+  await viewer.screenshot({path:'artifacts/spatial-studio-placing.png'});
+  // Touched beside the right wall, 1.2 m down it.
+  await viewer.evaluate(v=>v.dispatchEvent(new CustomEvent('plan-pick',{detail:{floorId:'ground',roomId:'living',point:[5.04,1.2],room:''}})));
+  expect((await living()).openings![0]).toMatchObject({side:1,at:.3});
+  await expect(viewer.locator('.picking')).toHaveCount(0);
+  const wall=openings.getByRole('combobox',{name:'Mur de Fenêtre'});
+  await expect(wall).toHaveValue('1');await expect(wall.locator('option:checked')).toHaveText('Mur 2 · à droite · 4 m');
+  await expect(wall.locator('option').first()).toHaveText('Mur 1 · en haut · 5 m');
+  // Its shutter, and what it really is: a French window, 60 % down the wall.
+  await openings.getByRole('group',{name:'Équipements de Fenêtre'}).getByRole('checkbox',{name:/Salon · Volet baie/}).check();
+  await openings.getByRole('combobox',{name:'Type de Fenêtre'}).selectOption('french_window');
+  await openings.getByRole('slider',{name:'Position de Porte-fenêtre le long du mur'}).fill('60');
+  expect((await living()).openings![0]).toMatchObject({kind:'french_window',side:1,at:.6,width:1.4,entityIds:['cover.salon']});
+  // A speaker in the middle of the room, placed with a real tap on the floor of the room on the plan.
+  const media=editor.getByRole('region',{name:'Audio et vidéo de la pièce'});
+  await media.getByRole('button',{name:'Enceinte',exact:true}).click();
+  const added=(await living()).media![0]!;
+  expect(added).toMatchObject({kind:'speaker',at:[2.5,2]});expect(added.entityId).toBeUndefined();
+  await expect(viewer.locator('.picking')).toHaveText(/l’endroit de « Salon » où placer « Enceinte »/);
+  await page.waitForTimeout(700);  // The camera flies to the room.
+  const tap=await viewer.evaluate(v=>{
+    const root=v.shadowRoot!,canvas=root.querySelector('canvas')!,r=canvas.getBoundingClientRect();
+    return ([[0,70],[40,70],[-40,70],[0,100],[60,40],[-60,40]] as const).map(([dx,dy])=>({x:r.x+r.width/2+dx,y:r.y+r.height/2+dy})).find(p=>root.elementFromPoint(p.x,p.y)===canvas);
+  });
+  if(!tap)throw Error('room hidden by labels');
+  await page.mouse.click(tap.x,tap.y);
+  await expect(viewer.locator('.picking')).toHaveCount(0);
+  const placed=(await living()).media![0]!;
+  expect(placed.at).not.toEqual([2.5,2]);
+  for(const [value,max] of [[placed.at[0],5],[placed.at[1],4]] as const){expect(value).toBeGreaterThan(-.3);expect(value).toBeLessThan(max+.3);}
+  // Linked to its player; then a television instead. Escape leaves a placement without moving anything.
+  await media.getByRole('combobox',{name:'Lecteur de Enceinte'}).selectOption('media_player.cuisine');
+  await media.getByRole('combobox',{name:'Type de Enceinte'}).selectOption('tv');
+  await media.getByRole('button',{name:'Placer sur le plan'}).click();
+  await expect(viewer.locator('.picking')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(viewer.locator('.picking')).toHaveCount(0);
+  expect((await living()).media).toEqual([{id:added.id,kind:'tv',at:placed.at,entityId:'media_player.cuisine'}]);
+  await editor.screenshot({path:'artifacts/spatial-studio-fixtures.png'});
+  // A corner added keeps it on its wall; the corner it stands by removed, the wall it was on is gone and so is it.
+  await editor.getByText('Corriger les sommets (X / Y en mètres) et les courbes').click();
+  await editor.getByRole('button',{name:'Ajouter un sommet'}).click();
+  expect((await living()).openings![0]).toMatchObject({side:1,at:.6});
+  await editor.getByRole('button',{name:'Supprimer sommet 2'}).click();
+  expect((await living()).openings).toBeUndefined();
+  await expect(editor.getByRole('status').filter({hasText:'Une porte ou une fenêtre, trop loin des murs modifiés, a été retirée'})).toBeVisible();
 });
 
 test.describe('precision touch',()=>{

@@ -3,16 +3,31 @@ import schema from './spatial.schema.json';
 import type { HAArea, HAFloor } from './models';
 
 export type Point = [number, number];
+export type OpeningKind = 'door' | 'window' | 'french_window';
+/**
+ * A door or a window in a wall of its room: on side `side` (from corner `side` to the next one), its middle at `at` along
+ * that side (0 at its first corner, 1 at the next, along the curve of a curved wall), `width` metres wide. Without `height`
+ * or `sill` (height of its bottom above the floor), those usual for its kind. `entityIds`: its shutters, blinds and curtains
+ * (covers) and the contact sensors that tell whether it is open.
+ */
+export interface SpatialOpening { id: string; kind: OpeningKind; name?: string; side: number; at: number; width: number; height?: number; sill?: number; entityIds?: string[] }
+export type MediaKind = 'tv' | 'speaker';
+/** A television or a speaker standing at `at`, in metres like the room's corners, and the media player that runs it. */
+export interface SpatialMedia { id: string; kind: MediaKind; name?: string; at: Point; entityId?: string }
 /**
  * `arcs`, one value per side (side i runs from corner i to corner i + 1): 0 for a straight wall, otherwise how far the wall
  * bends, as the height of its arc over half the side's length, towards (−dy, dx) when positive. ±1 is a half circle.
  */
-export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?: number[]; areaId?: string; entityIds?: string[] }
+export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?: number[]; areaId?: string; entityIds?: string[]; openings?: SpatialOpening[]; media?: SpatialMedia[] }
 export interface SpatialFloor { id: string; name: string; elevation: number; height: number; rooms: SpatialRoom[] }
 export interface SpatialPlan { version: 1; enabled: boolean; floors: SpatialFloor[] }
 const validate = new Ajv({ strict: true }).compile<SpatialPlan>(schema);
+/** Positive when the corners turn from x towards y: the inside of the ring is then on the left of each side. */
+function signedArea(points: Point[]): number {
+  return points.reduce((area, p, i) => { const q = points[(i + 1) % points.length]!; return area + p[0] * q[1] - q[0] * p[1]; }, 0) / 2;
+}
 export function polygonArea(points: Point[]): number {
-  return Math.abs(points.reduce((area, p, i) => { const q = points[(i + 1) % points.length]!; return area + p[0] * q[1] - q[0] * p[1]; }, 0)) / 2;
+  return Math.abs(signedArea(points));
 }
 const cross = (a: Point, b: Point, c: Point) => (b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
 const onSegment = (a: Point, b: Point, c: Point) => Math.abs(cross(a,b,c)) < 1e-8 && c[0] >= Math.min(a[0],b[0])-1e-8 && c[0] <= Math.max(a[0],b[0])+1e-8 && c[1] >= Math.min(a[1],b[1])-1e-8 && c[1] <= Math.max(a[1],b[1])+1e-8;
@@ -110,6 +125,101 @@ export function splitSide(polygon: Point[], arcs: number[] | undefined, index: n
   const bends = [...arcs];
   bends.splice(index, 1, ...(arc ? [Math.tan(-arc.sweep * t / 4), Math.tan(-arc.sweep * (1 - t) / 4)] : [0, 0]));
   return { polygon: points, arcs: bends };
+}
+/** Usual size of each kind of opening, in metres: its width, its height and the height of its bottom above the floor. */
+export const OPENING_SIZES: Record<OpeningKind, { width: number; height: number; sill: number }> = {
+  door: { width: .9, height: 2.1, sill: 0 }, window: { width: 1.2, height: 1.25, sill: .9 }, french_window: { width: 1.4, height: 2.15, sill: 0 },
+};
+/** Length of side `index`, along its curve when it is curved. */
+export function sideLength(room: Shape, index: number): number {
+  const a = room.polygon[index]!, b = room.polygon[(index + 1) % room.polygon.length]!, arc = arcCircle(a, b, room.arcs?.[index]);
+  return arc ? arc.radius * Math.abs(arc.sweep) : Math.hypot(b[0] - a[0], b[1] - a[1]);
+}
+/** Direction of travel along a side at `t`, from `a` towards `b`, following its curve. */
+function sideTangent(a: Point, b: Point, bulge: number | undefined, t: number): Point {
+  const arc = arcCircle(a, b, bulge);
+  if (arc) { const angle = arc.start + arc.sweep * t, sign = Math.sign(arc.sweep); return [-Math.sin(angle) * sign, Math.cos(angle) * sign]; }
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+  return [(b[0] - a[0]) / length, (b[1] - a[1]) / length];
+}
+/** The point at `t` along side `side` of a room, the direction of the wall there (`tangent`) and the normal pointing into the room (`inward`). */
+export function wallFrame(room: Shape, side: number, t: number) {
+  const a = room.polygon[side]!, b = room.polygon[(side + 1) % room.polygon.length]!, bulge = room.arcs?.[side];
+  const tangent = sideTangent(a, b, bulge, t);
+  const inward: Point = signedArea(roomOutline(room)) > 0 ? [-tangent[1], tangent[0]] : [tangent[1], -tangent[0]];
+  return { point: sidePoint(a, b, bulge, t), tangent, inward };
+}
+/**
+ * Where an opening stands: its middle on its wall, the direction of the wall there (`tangent`), the normal pointing into the
+ * room (`inward`), and its size, kept within its wall (a door wider than its wall is drawn as wide as the wall allows).
+ * Undefined when its side no longer exists. Computed on the room as saved, never on `alignRooms`, whose corners can differ.
+ */
+export function openingPlacement(room: Shape, opening: SpatialOpening) {
+  if (!Number.isInteger(opening.side) || opening.side < 0 || opening.side >= room.polygon.length) return undefined;
+  const length = sideLength(room, opening.side);
+  if (length < .05) return undefined;
+  const width = Math.min(opening.width, Math.max(length * .8, length - .1)), half = width / 2 / length;
+  const t = Math.min(1 - half, Math.max(half, opening.at)), { point, tangent, inward } = wallFrame(room, opening.side, t);
+  const size = OPENING_SIZES[opening.kind];
+  return { center: point, tangent, inward, width, t, height: opening.height ?? size.height, sill: opening.sill ?? size.sill };
+}
+export type OpeningPlacement = NonNullable<ReturnType<typeof openingPlacement>>;
+/** The side of a room nearest to `p`: its index, where along it (0 to 1, along the curve of a curved side) and how far `p` is. */
+export function nearestSide(room: Shape, p: Point): { side: number; t: number; distance: number } {
+  let best = { side: 0, t: .5, distance: Infinity };
+  room.polygon.forEach((a, i) => {
+    const b = room.polygon[(i + 1) % room.polygon.length]!, bulge = room.arcs?.[i], arc = arcCircle(a, b, bulge);
+    let t: number;
+    if (!arc) {
+      const dx = b[0] - a[0], dy = b[1] - a[1], squared = dx * dx + dy * dy;
+      t = squared ? Math.min(1, Math.max(0, ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / squared)) : 0;
+    } else {
+      // Around the centre, from the first end in the direction of the curve; beyond the arc, its nearer end.
+      const turn = Math.abs(arc.sweep), around = (((Math.atan2(p[1] - arc.center[1], p[0] - arc.center[0]) - arc.start) * Math.sign(arc.sweep)) % (2 * Math.PI) + 2 * Math.PI) % (2 * Math.PI);
+      t = around <= turn ? around / turn : around - turn < 2 * Math.PI - around ? 1 : 0;
+    }
+    const q = sidePoint(a, b, bulge, t), distance = Math.hypot(p[0] - q[0], p[1] - q[1]);
+    if (distance < best.distance) best = { side: i, t, distance };
+  });
+  return best;
+}
+/**
+ * Openings of `room` once its outline changed from `before`. With as many sides as before, each keeps its side and its place
+ * along it; otherwise (a corner added or removed) each goes to the side now nearest to where it stood on `before`, and one
+ * left more than `reach` metres from every wall is dropped.
+ */
+export function reattachOpenings(before: Shape, room: SpatialRoom, reach = .6): SpatialOpening[] {
+  const openings = room.openings ?? [];
+  if (before.polygon.length === room.polygon.length) return openings;
+  return openings.flatMap(opening => {
+    const placed = openingPlacement(before, opening);
+    if (!placed) return [];
+    const { side, t, distance } = nearestSide(room, placed.center);
+    return distance <= reach ? [{ ...opening, side, at: Math.round(t * 1e4) / 1e4 }] : [];
+  });
+}
+/** Whether `p` lies inside the room, curved walls included. */
+export function insideRoom(room: Shape, p: Point): boolean {
+  const ring = roomOutline(room);
+  let inside = false;
+  ring.forEach((a, i) => {
+    const b = ring[(i + 1) % ring.length]!;
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < a[0] + (p[1] - a[1]) * (b[0] - a[0]) / (b[1] - a[1])) inside = !inside;
+  });
+  return inside;
+}
+/** Openings on sides that exist, and ids used once in their room: the checks JSON Schema cannot make. */
+function validFixtures(room: SpatialRoom): boolean {
+  const openings = new Set<string>(), media = new Set<string>();
+  for (const opening of room.openings ?? []) {
+    if (opening.side >= room.polygon.length || openings.has(opening.id)) return false;
+    openings.add(opening.id);
+  }
+  for (const item of room.media ?? []) {
+    if (media.has(item.id)) return false;
+    media.add(item.id);
+  }
+  return true;
 }
 /**
  * Repeated corners, and those on the line of their straight neighbours (the fold of a notch closed by `alignRooms` included),
@@ -269,7 +379,9 @@ export function stackFloors(floors: SpatialFloor[]): SpatialFloor[] {
     if (!middle) return floor;
     const dx = house[0] - middle[0], dy = house[1] - middle[1];
     if (!dx && !dy) return floor;
-    return { ...floor, rooms: floor.rooms.map(room => ({ ...room, polygon: room.polygon.map(([x, y]): Point => [x + dx, y + dy]) })) };
+    // Televisions and speakers move with their room.
+    const move = ([x, y]: Point): Point => [x + dx, y + dy];
+    return { ...floor, rooms: floor.rooms.map(room => ({ ...room, polygon: room.polygon.map(move), ...(room.media ? { media: room.media.map(item => ({ ...item, at: move(item.at) })) } : {}) })) };
   });
   // The house as it now stands, floors centred: what the stack takes up on screen, and so how far apart its floors sit.
   const points = centred.flatMap(f => f.rooms.flatMap(r => roomOutline(r))), xs = points.map(p => p[0]), ys = points.map(p => p[1]);
@@ -287,7 +399,7 @@ export function parseSpatial(value: unknown): SpatialPlan {
     ids.add(floor.id);
     const rooms = new Set<string>();
     for (const room of floor.rooms) {
-      if (rooms.has(room.id) || !validRoom(room)) throw new Error(`Géométrie invalide : ${room.name}`);
+      if (rooms.has(room.id) || !validRoom(room) || !validFixtures(room)) throw new Error(`Géométrie invalide : ${room.name}`);
       rooms.add(room.id);
     }
   }

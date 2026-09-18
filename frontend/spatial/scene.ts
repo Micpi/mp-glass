@@ -1,7 +1,7 @@
 import * as T from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
-import type { Point, SpatialFloor, WallSegment } from '../../shared/spatial';
-import type { RoomAmbient } from '../../shared/spatial-state';
+import type { MediaKind, OpeningKind, Point, SpatialFloor, WallSegment } from '../../shared/spatial';
+import type { CoverStyle, RoomAmbient } from '../../shared/spatial-state';
 
 /**
  * A wall following `points` on the floor, `thickness` thick and `height` tall, built as one piece so that a curved wall
@@ -39,10 +39,31 @@ type Projection = Map<string,{x:number;y:number;visible:boolean}>;
 export type LevelProjection = Map<string,{x:number;y:number;left:number;right:number;visible:boolean}>;
 /** A camera kept as the user left it, told relative to the house so a redrawn or edited plan keeps the same view. */
 export interface CameraView { target:[number,number,number]; offset:[number,number,number]; fov:number }
-/** A floor to draw at its elevation, with its walls. Room ids must be unique across the floors drawn together. */
-export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[] }
+/**
+ * A door or a window as drawn: its middle on its wall, `tangent` along the wall and `inward` into its room, its width and,
+ * from the floor, its sill and its height. `covers`: its shutters, blinds and curtains, and how each hangs.
+ */
+export interface SceneOpening { key:string; room:string; kind:OpeningKind; center:Point; tangent:Point; inward:Point; width:number; height:number; sill:number; covers:{id:string;style:CoverStyle}[] }
+/** A television or a speaker standing at `at`, a television turned towards `facing`. */
+export interface SceneMedia { key:string; room:string; kind:MediaKind; at:Point; facing:Point }
+/** A floor to draw at its elevation, with its walls, doors and windows, televisions and speakers. Room ids must be unique across the floors drawn together. */
+export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[]; openings?:SceneOpening[]; media?:SceneMedia[] }
+/** A door or window open (its contact sensor says so), and how much of it each cover hides, 0 open to 1 closed, undefined unknown. */
+export interface OpeningState { open:boolean; covers:Record<string,number|undefined> }
+export interface MediaState { on:boolean; playing:boolean }
 interface RoomParts { floor:string; surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
 interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
+/** Leaves turn about their hinge: `sign` is the way that swings them into the room. */
+interface Leaf { pivot:T.Group; sign:number }
+interface CoverParts { group:T.Group; style:CoverStyle; fill:T.MeshBasicMaterial; lines:T.LineBasicMaterial }
+interface OpeningParts { room:string; opening:SceneOpening; frame:T.LineBasicMaterial; leaves:Leaf[]; covers:Map<string,CoverParts>; bottom:number; top:number; swing:number }
+interface MediaParts { room:string; kind:MediaKind; screen:T.MeshBasicMaterial; frame:T.LineBasicMaterial; glow?:T.Mesh<T.PlaneGeometry,T.MeshBasicMaterial>; rings?:T.Group }
+/** Colours of what the walls hold: frames, glass, door leaves, and each kind of cover. */
+const FRAME=0xe3f3ff,OPEN_FRAME=0x8ff0c8,GLASS=0xaee2ff,LEAF=0x8fb8d8,SHUTTER=0xd4e6f6,BLIND=0xe8eef4,CURTAIN=0xf3dcc0,PLAYING=0x7fd0ff;
+/** How far each kind of leaf turns when its contact sensor says it is open. */
+const SWING:Record<OpeningKind,number>={door:Math.PI*.38,french_window:Math.PI*.3,window:Math.PI*.2};
+/** Line segments from pairs of points, each [x, y, z]. */
+const strokes=(points:number[][],material:T.LineBasicMaterial)=>new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(points.flat(),3)),material);
 /** A floor of a stack: the middle of its box, its size, and the corners of its footprint halfway up. */
 interface LevelParts { center:T.Vector3; radius:number; corners:T.Vector3[] }
 /** Extra pixels around the house still counted as "on the plan" for a finger. */
@@ -67,6 +88,14 @@ export class SpatialScene {
   private surfaces: T.Object3D[] = [];
   private solids: T.Object3D[] = [];
   private wallParts: WallParts[] = [];
+  private openingParts = new Map<string,OpeningParts>();
+  private mediaParts = new Map<string,MediaParts>();
+  /** States last drawn on doors, windows and players, kept to draw them again on a plan drawn anew. */
+  private openingStates: ReadonlyMap<string,OpeningState> = new Map();
+  private mediaStates: ReadonlyMap<string,MediaState> = new Map();
+  private fixtureKey = '';
+  /** While set, the next tap on the house gives the point touched on the plan, and the room under it, instead of selecting a room. */
+  picking?: (point:Point,room:string)=>void;
   private levels = new Map<string,LevelParts>();
   private ray = new T.Raycaster();
   private halo?: T.CanvasTexture;
@@ -132,14 +161,15 @@ export class SpatialScene {
     return true;
   }
   /** First object hit at (x, y), trying a few neighbouring points when `slop` is set. */
-  private cast(x:number,y:number,slop:number,targets:T.Object3D[]) {
+  private cast(x:number,y:number,slop:number,targets:T.Object3D[]) {return this.hit(x,y,slop,targets)?.object;}
+  private hit(x:number,y:number,slop:number,targets:T.Object3D[]) {
     const rect=this.renderer.domElement.getBoundingClientRect();
     if(!rect.width||!rect.height||!targets.length)return undefined;
     const offsets:[number,number][]=slop?[[0,0],[slop,0],[-slop,0],[0,slop],[0,-slop]]:[[0,0]];
     for(const [dx,dy] of offsets){
       this.ray.setFromCamera(new T.Vector2((x+dx-rect.left)/rect.width*2-1,-(y+dy-rect.top)/rect.height*2+1),this.camera);
       const hit=this.ray.intersectObjects(targets,false)[0];
-      if(hit)return hit.object;
+      if(hit)return hit;
     }
     return undefined;
   }
@@ -187,7 +217,7 @@ export class SpatialScene {
     const {clientX:x,clientY:y}=e;
     this.hover=requestAnimationFrame(()=>{
       this.hover=0;const hit=this.cast(x,y,0,this.solids);
-      this.renderer.domElement.style.cursor=hit?'grab':'';
+      this.renderer.domElement.style.cursor=hit?this.picking?'crosshair':'grab':'';
       if(this.levels.size)this.point(String(hit?.userData.floorId??''));
     });
   };
@@ -196,6 +226,12 @@ export class SpatialScene {
   private pointerDown=(e:PointerEvent)=>{this.down={x:e.clientX,y:e.clientY};};
   private pointerUp=(e:PointerEvent)=>{
     if(e.button!==0 || Math.hypot(e.clientX-this.down.x,e.clientY-this.down.y)>5)return;
+    if(this.picking){
+      // A wall or a floor: the point touched, as a point of the plan; the room is known on its floor only.
+      const hit=this.hit(e.clientX,e.clientY,e.pointerType==='mouse'?0:SLOP,this.solids);
+      if(hit)this.picking([hit.point.x,hit.point.z],String(hit.object.userData.roomId??''));
+      return;
+    }
     const hit=this.cast(e.clientX,e.clientY,e.pointerType==='mouse'?0:SLOP,this.surfaces);if(hit)this.select(String(hit.userData.roomId),String(hit.userData.floorId));
   };
   private stopTween=()=>{cancelAnimationFrame(this.tween);this.tween=0;const land=this.landing;this.landing=undefined;land?.();};
@@ -231,19 +267,24 @@ export class SpatialScene {
   private fit(){return this.span(this.radius)*this.depth;}
   private clear() {
     this.group.traverse(object=>{if(object instanceof T.Mesh || object instanceof T.LineSegments){object.geometry.dispose();for(const material of Array.isArray(object.material)?object.material:[object.material])material.dispose();}});
-    this.group.clear();this.rooms.clear();this.levels.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';
+    this.group.clear();this.rooms.clear();this.levels.clear();this.openingParts.clear();this.mediaParts.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';this.fixtureKey='';
   }
   /** Soft light pool under the house so it does not float over the background. */
-  private addHalo(box:T.Box3,elevation:number) {
+  /** A white spot fading to nothing, tinted by each material that uses it. */
+  private haloTexture() {
     if(!this.halo){
       const canvas=document.createElement('canvas');canvas.width=canvas.height=128;
-      const context=canvas.getContext('2d');if(!context)return;
+      const context=canvas.getContext('2d');if(!context)return undefined;
       const gradient=context.createRadialGradient(64,64,0,64,64,64);
       gradient.addColorStop(0,'rgba(255,255,255,1)');gradient.addColorStop(.5,'rgba(255,255,255,.34)');gradient.addColorStop(1,'rgba(255,255,255,0)');
       context.fillStyle=gradient;context.fillRect(0,0,128,128);this.halo=new T.CanvasTexture(canvas);
     }
+    return this.halo;
+  }
+  private addHalo(box:T.Box3,elevation:number) {
+    const halo=this.haloTexture();if(!halo)return;
     const size=box.getSize(new T.Vector3());
-    const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:this.halo,color:0x2f8fe0,transparent:true,opacity:.3,depthWrite:false}));
+    const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:halo,color:0x2f8fe0,transparent:true,opacity:.3,depthWrite:false}));
     plane.rotation.x=-Math.PI/2;plane.position.set(this.center.x,elevation-.02,this.center.z);plane.renderOrder=-1;this.group.add(plane);
   }
   /**
@@ -256,10 +297,147 @@ export class SpatialScene {
     for(const level of levels)this.addLevel(level,levels.length>1);
     const box=new T.Box3().setFromObject(this.group);box.getCenter(this.center);this.radius=Math.max(box.getSize(new T.Vector3()).length()/2,2);
     this.addHalo(box,Math.min(...levels.map(l=>l.floor.elevation)));
+    this.applyFixtures();
     if(!reset)this.render();else if(top)this.top();else this.reset();
   }
-  private addLevel({floor,segments}:SceneLevel,stacked:boolean) {
-    const group=new T.Group(),walls=this.walls;this.group.add(group);
+  /** A soft pool of light on the floor, reusing the halo under the house. */
+  private pool(width:number,depth:number,color:number,opacity:number){
+    const mesh=new T.Mesh(new T.PlaneGeometry(width,depth),new T.MeshBasicMaterial({map:this.haloTexture()??null,color,transparent:true,opacity,depthWrite:false}));
+    mesh.rotation.x=-Math.PI/2;return mesh;
+  }
+  /**
+   * A door or a window in its wall: its frame, its leaves (glass, or a panel for a door) turning about their hinges when it is
+   * open, and each of its covers, drawn at their positions by `applyFixtures`. With the walls lowered, a mark on the floor
+   * instead, and for a door the arc its leaf sweeps.
+   */
+  private addOpening(group:T.Group,floor:SpatialFloor,opening:SceneOpening){
+    const {center,tangent,inward,width,kind}=opening,half=width/2;
+    const holder=new T.Group();holder.position.set(center[0],floor.elevation,center[1]);holder.rotation.y=-Math.atan2(tangent[1],tangent[0]);
+    // The holder's z axis points to the left of the wall's direction: `into` is +1 when that is the inside of the room.
+    const into=inward[0]*-tangent[1]+inward[1]*tangent[0]>=0?1:-1;
+    group.add(holder);
+    const frame=new T.LineBasicMaterial({color:FRAME,transparent:true,opacity:.95});
+    const parts:OpeningParts={room:opening.room,opening,frame,leaves:[],covers:new Map(),bottom:0,top:0,swing:SWING[kind]};
+    this.openingParts.set(opening.key,parts);
+    // A door has one leaf, a window or a French window two when it is wide enough.
+    const hinges=kind==='door'||width<.75?[-half]:[-half,half],leafWidth=width/hinges.length;
+    if(!this.walls){
+      // Lowered walls: a bright mark across the wall, and the quarter circle each leaf of a door or a French window sweeps.
+      const y=.045,mark=new T.Mesh(new T.BoxGeometry(width,.012,.16),new T.MeshBasicMaterial({color:kind==='door'?LEAF:GLASS,transparent:true,opacity:.75,depthWrite:false}));
+      mark.position.y=y;holder.add(mark);
+      if(kind!=='window')for(const hinge of hinges){
+        const toward=hinge<0?1:-1,swing:number[][]=[[hinge,y,0],[hinge,y,into*leafWidth]];
+        for(let k=0;k<12;k++)for(const angle of [k,k+1].map(n=>n/12*Math.PI/2))swing.push([hinge+toward*leafWidth*Math.cos(angle),y,into*leafWidth*Math.sin(angle)]);
+        holder.add(strokes(swing,frame));
+      }
+      return;
+    }
+    const top=Math.max(.3,Math.min(opening.sill+opening.height,floor.height-.04)),bottom=Math.min(opening.sill,top-.25),height=top-bottom;
+    parts.top=top;parts.bottom=bottom;
+    holder.add(strokes(kind==='window'
+      ?[[-half,bottom,0],[half,bottom,0],[half,bottom,0],[half,top,0],[half,top,0],[-half,top,0],[-half,top,0],[-half,bottom,0]]
+      :[[-half,0,0],[-half,top,0],[-half,top,0],[half,top,0],[half,top,0],[half,0,0]],frame));
+    for(const hinge of hinges){
+      const toward=hinge<0?1:-1,pivot=new T.Group();
+      pivot.position.set(hinge,bottom,0);holder.add(pivot);
+      const pane=new T.Mesh(new T.PlaneGeometry(leafWidth,height),new T.MeshBasicMaterial({color:kind==='door'?LEAF:GLASS,transparent:true,opacity:kind==='door'?.24:.15,side:T.DoubleSide,depthWrite:false}));
+      pane.position.set(toward*leafWidth/2,height/2,0);pivot.add(pane);
+      const x=toward*leafWidth;
+      pivot.add(strokes([[0,0,0],[x,0,0],[x,0,0],[x,height,0],[x,height,0],[0,height,0],[0,height,0],[0,0,0]],new T.LineBasicMaterial({color:FRAME,transparent:true,opacity:.45})));
+      // Turning by `sign` times its swing brings the leaf into the room, whichever side its hinge is on.
+      parts.leaves.push({pivot,sign:-into*toward});
+    }
+    for(const {id,style} of opening.covers){
+      const group=new T.Group();group.position.z=style==='outside'?-into*.1:style==='curtain'?into*.14:into*.1;holder.add(group);
+      const color=style==='curtain'?CURTAIN:style==='inside'?BLIND:SHUTTER;
+      parts.covers.set(id,{group,style,fill:new T.MeshBasicMaterial({color,transparent:true,opacity:style==='curtain'?.42:.4,side:T.DoubleSide,depthWrite:false}),lines:new T.LineBasicMaterial({color:style==='curtain'?0xfff1e0:0xf1f8ff,transparent:true,opacity:.55})});
+    }
+  }
+  /** Redraws a cover hiding `closed` of its opening: a shutter or a blind comes down from the top, curtains close in from both sides. */
+  private drawCover(parts:OpeningParts,cover:CoverParts,closed:number|undefined){
+    for(const child of [...cover.group.children]){if(child instanceof T.Mesh||child instanceof T.LineSegments)child.geometry.dispose();cover.group.remove(child);}
+    if(closed===undefined||!this.walls)return;
+    const {width}=parts.opening,{top,bottom}=parts;
+    if(cover.style==='curtain'){
+      // Gathered at the sides when open, meeting in the middle when closed; from above the opening to near the floor.
+      const high=top+.08,low=Math.max(0,bottom-.15),each=.12+(width/2-.04)*closed,x0=width/2+.08;
+      for(const side of [-1,1]){
+        const panel=new T.Mesh(new T.PlaneGeometry(each,high-low),cover.fill);
+        panel.position.set(side*(x0-each/2),(high+low)/2,0);cover.group.add(panel);
+        const folds:number[][]=[];for(let x=.06;x<each;x+=.12)folds.push([side*(x0-x),low,0],[side*(x0-x),high,0]);
+        if(folds.length)cover.group.add(strokes(folds,cover.lines));
+      }
+      cover.group.add(strokes([[-x0-.04,high+.02,0],[x0+.04,high+.02,0]],cover.lines));
+      return;
+    }
+    // A box at the top, then the apron coming down, its slats every 9 cm, and its bottom bar.
+    const x=width/2+.03,drop=(top-bottom)*closed,low=top-drop;
+    cover.group.add(strokes([[-x,top+.07,0],[x,top+.07,0],[-x,top+.07,0],[-x,top,0],[x,top+.07,0],[x,top,0]],cover.lines));
+    if(drop<.01)return;
+    const apron=new T.Mesh(new T.PlaneGeometry(2*x,drop),cover.fill);apron.position.set(0,top-drop/2,0);cover.group.add(apron);
+    const slats:number[][]=[];for(let y=top-.09;y>low+.02;y-=.09)slats.push([-x,y,0],[x,y,0]);
+    slats.push([-x,low,0],[x,low,0],[-x,low,0],[-x,top,0],[x,low,0],[x,top,0]);
+    cover.group.add(strokes(slats,cover.lines));
+  }
+  /** A television on its foot, turned towards the room, or a speaker standing on the floor; lit while on, glowing while playing. */
+  private addMedia(group:T.Group,floor:SpatialFloor,media:SceneMedia){
+    const holder=new T.Group();holder.position.set(media.at[0],floor.elevation,media.at[1]);holder.rotation.y=Math.atan2(media.facing[0],media.facing[1]);group.add(holder);
+    const screen=new T.MeshBasicMaterial({color:0x08131f,transparent:true,opacity:.9,side:T.DoubleSide,depthWrite:false});
+    const frame=new T.LineBasicMaterial({color:FRAME,transparent:true,opacity:.7});
+    const parts:MediaParts={room:media.room,kind:media.kind,screen,frame};
+    const body=(mesh:T.Mesh)=>{mesh.userData.roomId=media.room;mesh.userData.floorId=floor.id;this.surfaces.push(mesh);this.solids.push(mesh);return mesh;};
+    if(media.kind==='tv'){
+      const [w,h,y]=[1.12,.64,1.12];
+      const panel=body(new T.Mesh(new T.PlaneGeometry(w,h),screen));panel.position.set(0,y,0);holder.add(panel);
+      holder.add(strokes([[-w/2,y-h/2,0],[w/2,y-h/2,0],[w/2,y-h/2,0],[w/2,y+h/2,0],[w/2,y+h/2,0],[-w/2,y+h/2,0],[-w/2,y+h/2,0],[-w/2,y-h/2,0],[0,0,-.05],[0,y-h/2,-.05],[-.22,0,-.05],[.22,0,-.05]],frame));
+      const glow=this.pool(1.9,1.5,PLAYING,0);glow.position.set(0,.012,.75);holder.add(glow);parts.glow=glow;
+    }else{
+      const speaker=body(new T.Mesh(new T.CylinderGeometry(.12,.14,.95,24),screen));speaker.position.y=.475;holder.add(speaker);
+      const rim:number[][]=[];for(let k=0;k<24;k++){const [a,b]=[k/24*2*Math.PI,(k+1)/24*2*Math.PI];rim.push([.12*Math.cos(a),.95,.12*Math.sin(a)],[.12*Math.cos(b),.95,.12*Math.sin(b)]);}
+      holder.add(strokes(rim,frame));
+      const rings=new T.Group();rings.position.y=.012;rings.visible=false;holder.add(rings);
+      for(const [inner,opacity] of [[.3,.5],[.55,.28]] as const){const ring=new T.Mesh(new T.RingGeometry(inner,inner+.035,40),new T.MeshBasicMaterial({color:PLAYING,transparent:true,opacity,side:T.DoubleSide,depthWrite:false}));ring.rotation.x=-Math.PI/2;rings.add(ring);}
+      parts.rings=rings;
+    }
+    this.mediaParts.set(media.key,parts);
+  }
+  /**
+   * Doors and windows opened or closed and their covers drawn at their positions, players off, on or playing; whether that
+   * changed anything (the plan is then drawn again).
+   */
+  fixtures(openings:ReadonlyMap<string,OpeningState>,media:ReadonlyMap<string,MediaState>){
+    this.openingStates=openings;this.mediaStates=media;
+    const key=JSON.stringify([[...openings],[...media]]);
+    if(key===this.fixtureKey)return false;
+    this.applyFixtures();
+    return true;
+  }
+  private applyFixtures(){
+    this.fixtureKey=JSON.stringify([[...this.openingStates],[...this.mediaStates]]);
+    for(const [key,parts] of this.openingParts){
+      const state=this.openingStates.get(key),open=!!state?.open;
+      parts.frame.color.setHex(open?OPEN_FRAME:FRAME);
+      for(const {pivot,sign} of parts.leaves)pivot.rotation.y=open?sign*parts.swing:0;
+      for(const [id,cover] of parts.covers)this.drawCover(parts,cover,state?.covers[id]);
+    }
+    for(const [key,parts] of this.mediaParts){
+      const state=this.mediaStates.get(key),playing=!!state?.playing,on=!!state?.on;
+      parts.screen.color.setHex(playing?PLAYING:on?(parts.kind==='tv'?0x2f6d9c:0x1d4a6e):parts.kind==='tv'?0x08131f:0x10263a);
+      parts.screen.opacity=playing?.92:on?.85:.88;
+      parts.frame.color.setHex(playing?0xf1fbff:FRAME);parts.frame.opacity=on?.95:.55;
+      if(parts.glow)parts.glow.material.opacity=playing?.4:0;
+      if(parts.rings)parts.rings.visible=playing;
+    }
+  }
+  private addLevel({floor,segments:walls,openings=[],media=[]}:SceneLevel,stacked:boolean) {
+    const group=new T.Group();this.group.add(group);
+    this.addWalls(group,floor,walls);
+    for(const opening of openings)this.addOpening(group,floor,opening);
+    for(const item of media)this.addMedia(group,floor,item);
+    if(stacked)this.addStack(group,floor);
+  }
+  private addWalls(group:T.Group,floor:SpatialFloor,segments:WallSegment[]) {
+    const walls=this.walls;
     for(const room of floor.rooms) {
       const shape=new T.Shape(room.polygon.map(p=>new T.Vector2(p[0],-p[1])));
       const surface=new T.Mesh(new T.ShapeGeometry(shape),new T.MeshBasicMaterial({color:0x3496d1,transparent:true,opacity:.22,side:T.DoubleSide,depthWrite:false}));
@@ -347,7 +525,9 @@ export class SpatialScene {
       const [x,z]=corner.at,y=floor.elevation;
       group.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([x,y,z,x,y+floor.height,z],3)),corner.lines));
     }
-    if(!stacked)return;
+  }
+  /** A floor of a stack: where it stands, to fly into it and to label it. */
+  private addStack(group:T.Group,floor:SpatialFloor) {
     const box=new T.Box3().setFromObject(group),center=box.getCenter(new T.Vector3()),points=floor.rooms.flatMap(r=>r.polygon);
     const xs=points.map(p=>p[0]),zs=points.map(p=>p[1]),[x0,x1,z0,z1]=[Math.min(...xs),Math.max(...xs),Math.min(...zs),Math.max(...zs)];
     this.levels.set(floor.id,{center,radius:Math.max(box.getSize(new T.Vector3()).length()/2,2),corners:[[x0,z0],[x1,z0],[x1,z1],[x0,z1]].map(([x,z])=>new T.Vector3(x,center.y,z))});
@@ -369,6 +549,10 @@ export class SpatialScene {
       mesh.material.opacity=this.walls?(picked?.16:muted?.04:exterior?.1:.06):(picked?.55:muted?.15:exterior?.35:.2);
       lines.color.setHex(picked?0xf1fbff:exterior?0xb5e2ff:0x94d5ff);
       lines.opacity=picked?1:muted?.35:exterior?.95:.6;
+    }
+    for(const {room,frame} of this.openingParts.values()){
+      const floor=this.rooms.get(room)?.floor,muted=!!selected&&room!==selected||!!level&&floor!==level;
+      frame.opacity=muted?.4:.95;
     }
     return true;
   }

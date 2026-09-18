@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { canCover,coverPosition,hasThermometer,roomAmbient,roomTemperature,temperatureRange } from '../shared/spatial-state';
+import { canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,roomAmbient,roomTemperature,temperatureRange } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -54,5 +54,34 @@ describe('room runtime information',()=>{
     const simple=state('cover.a','open',{supported_features:3});
     expect(canCover(simple,'close_cover')).toBe(true);expect(canCover(simple,'set_cover_position')).toBe(false);expect(canCover(simple,'stop_cover')).toBe(false);
     expect(canCover(undefined,'open_cover')).toBe(false);
+  });
+});
+
+describe('shutters, blinds, curtains and players',()=>{
+  it('tell how much of their opening covers hide and how they hang',()=>{
+    expect(coverClosed(state('cover.a','open',{current_position:65}))).toBeCloseTo(.35);
+    expect(coverClosed(state('cover.a','closed'))).toBe(1);
+    expect(coverClosed(state('cover.a','open'))).toBe(0);
+    expect(coverClosed(state('cover.a','opening'))).toBeUndefined();
+    expect(coverClosed(state('cover.a','unavailable',{current_position:20}))).toBeUndefined();
+    expect(coverOpen(state('cover.a','open',{current_position:1}))).toBe(true);expect(coverOpen(state('cover.a','closed'))).toBe(false);
+    expect(['curtain','blind','shade','shutter','awning',undefined].map(c=>coverStyle(state('cover.a','open',{device_class:c})))).toEqual(['curtain','inside','inside','outside','outside','outside']);
+    expect(coverTilt(state('cover.a','open',{current_tilt_position:40}))).toBe(40);expect(coverTilt(state('cover.a','open'))).toBeUndefined();
+    expect(canCover(state('cover.a','open',{supported_features:128}),'set_cover_tilt_position')).toBe(true);
+  });
+  it('never move garage doors, gates, doors or dampers with the shutters',()=>{
+    expect(['shutter','blind','curtain',undefined].every(c=>groupCover(state('cover.a','open',{device_class:c})))).toBe(true);
+    expect(['garage','gate','door','damper'].some(c=>groupCover(state('cover.a','open',{device_class:c})))).toBe(false);
+  });
+  it('read what a player does and what it offers',()=>{
+    const tv=state('media_player.tv','playing',{device_class:'tv',media_title:'Le Grand Bleu',media_artist:'  ',app_name:'Netflix',volume_level:.325,supported_features:1|4|16384});
+    expect(mediaOn(tv)).toBe(true);expect(mediaPlaying(tv)).toBe(true);expect(mediaIsTv(tv)).toBe(true);expect(mediaVolume(tv)).toBe(33);
+    expect(nowPlaying(tv)).toBe('Le Grand Bleu');
+    expect(nowPlaying(state('media_player.a','paused',{media_title:'So What',media_artist:'Miles Davis'}))).toBe('So What · Miles Davis');
+    expect(nowPlaying(state('media_player.a','idle',{app_name:'Spotify'}))).toBe('Spotify');
+    expect(nowPlaying(state('media_player.a','off',{media_title:'Old'}))).toBeUndefined();
+    expect(['off','standby','unavailable','unknown'].some(s=>mediaOn(state('media_player.a',s)))).toBe(false);
+    expect(canMedia(tv,'pause')).toBe(true);expect(canMedia(tv,'next_track')).toBe(false);expect(canMedia(state('media_player.a','unavailable',{supported_features:1}),'pause')).toBe(false);
+    expect(mediaVolume(state('media_player.a','on',{volume_level:2}))).toBeUndefined();
   });
 });

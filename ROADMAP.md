@@ -2,7 +2,7 @@
 
 ## MP Spatial 0.2.0 — développement local
 
-Vue 3D orbitale, niveaux, murs transparents, états/lumières, éditeur de contours et worker Gemini Flash-Lite pour PDF/images implémentés. Installation Supervisor et appel réel Gemini restent à valider. [Détails](docs/FLOORPLAN.md). Meubles, portes/fenêtres, manipulation graphique des sommets et undo/redo restent futurs.
+Vue 3D orbitale, niveaux, murs transparents, états/lumières, éditeur de contours et worker Gemini Flash-Lite pour PDF/images implémentés. Installation Supervisor et appel réel Gemini restent à valider. [Détails](docs/FLOORPLAN.md). Depuis 0.8.0 : portes, fenêtres et portes-fenêtres placées sur les murs avec volets, stores, rideaux et capteurs, téléviseurs et enceintes commandés depuis le plan. Meubles, reconnaissance des ouvertures par Gemini, manipulation graphique des sommets et undo/redo restent futurs.
 
 ## Incrément 0 — fondations
 

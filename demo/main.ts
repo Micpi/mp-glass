@@ -5,6 +5,7 @@ import { MPDiscoveryEngine } from '../shared/discovery';
 import { MPDashboardComposer } from '../shared/presentation';
 import { defaultProject } from '../shared/project';
 import type { Hass } from '../frontend/ha/client';
+import type { HAState } from '../shared/models';
 import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPGlassView } from '../frontend/view';
 const snapshot = home();
@@ -20,6 +21,13 @@ if(spatial) {
   rooms[0]!.entityIds=['light.circuit_0','sensor.salon_temperature','sensor.salon_humidity','cover.salon'];
   rooms[2]!.entityIds=['light.circuit_1','light.circuit_2'];
   rooms[3]!.entityIds=['climate.chambre','binary_sensor.chambre_fenetre'];
+  // Doors and windows with their shutters, blinds, curtains and sensors; a television and a speaker.
+  rooms[0]!.openings=[{id:'baie',kind:'french_window',name:'Baie vitrée',side:0,at:.5,width:2.4,entityIds:['cover.salon','cover.salon_rideau']}];
+  rooms[0]!.media=[{id:'tv',kind:'tv',at:[2.5,3.6],entityId:'media_player.salon_tv'}];
+  rooms[2]!.openings=[{id:'fenetre',kind:'window',side:0,at:.5,width:1.2,entityIds:['cover.cuisine_store']}];
+  rooms[2]!.media=[{id:'enceinte',kind:'speaker',at:[12.3,3.3],entityId:'media_player.cuisine'}];
+  rooms[3]!.openings=[{id:'fenetre',kind:'window',side:2,at:.5,width:1.4,entityIds:['binary_sensor.chambre_fenetre','cover.chambre']}];
+  rooms[4]!.openings=[{id:'porte',kind:'door',name:'Porte d’entrée',side:2,at:.5,width:1,entityIds:['binary_sensor.entree_porte']}];
   if(floors){
     const room=(id:string,name:string,x:number,z:number,w:number,d:number,entityIds?:string[])=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]] as [number,number][],...(entityIds?{entityIds}:{})});
     project.spatial.floors.unshift({id:'basement',name:'Sous-sol',elevation:-2.4,height:2.2,rooms:[room('garage','Garage',0,0,7,8,['light.garage']),room('cellar','Cave',7,0,6,4),room('laundry','Buanderie',7,4,6,4,['light.buanderie'])]});
@@ -31,9 +39,28 @@ if(spatial) {
 }
 const calls: unknown[] = [];
 const cards: MPGlassLight[] = [];
+/** What Home Assistant would report once a command is done, roughly: enough for the fixture to follow its own commands. */
+function commanded(domain:string,service:string,data:Record<string,unknown>,old:HAState):HAState{
+  const attributes={...old.attributes};
+  if(domain==='cover'){
+    if(service==='set_cover_tilt_position'){attributes.current_tilt_position=Number(data.tilt_position);return {...old,attributes};}
+    if(service==='stop_cover')return old;
+    attributes.current_position=service==='close_cover'?0:service==='open_cover'?100:Number(data.position);
+    return {...old,state:attributes.current_position===0?'closed':'open',attributes};
+  }
+  if(domain==='media_player'){
+    if(service==='volume_set')attributes.volume_level=Number(data.volume_level);
+    if(service==='volume_mute')attributes.is_volume_muted=data.is_volume_muted===true;
+    if(service==='select_source')attributes.source=String(data.source);
+    const state=({turn_off:'off',turn_on:'idle',media_play:'playing',media_pause:'paused'} as Record<string,string>)[service]??old.state;
+    return {...old,state,attributes};
+  }
+  if('brightness_pct' in data)attributes.brightness=Number(data.brightness_pct)*255/100;
+  return {...old,state:service==='turn_off'?'off':'on',attributes};
+}
 const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id:'demo',is_admin:true},callWS:async<T>()=>[] as T,callService:async(domain,service,data)=>{
   calls.push({domain,service,data});const states={...hass.states};
-  for(const entityId of ([] as unknown[]).concat(data.entity_id).map(String)){const old=states[entityId]!;states[entityId]={...old,state:domain==='cover'?(service==='close_cover'?'closed':service==='stop_cover'?old.state:'open'):service==='turn_off'?'off':'on',attributes:{...old.attributes,...(domain==='cover'&&service!=='stop_cover'?{current_position:service==='close_cover'?0:service==='open_cover'?100:Number(data.position)}:{}),...('brightness_pct' in data?{brightness:Number(data.brightness_pct)*255/100}:{})}};}
+  for(const entityId of ([] as unknown[]).concat(data.entity_id).map(String))states[entityId]=commanded(domain,service,data,states[entityId]!);
   hass.states=states;
   for(const card of cards) card.hass={...hass};
   view.hass={...hass};
@@ -46,6 +73,13 @@ if(spatial) hass.states={...hass.states,
   'sensor.salon_humidity':{entity_id:'sensor.salon_humidity',state:'46',last_changed:new Date(Date.now()-18*60_000).toISOString(),attributes:{friendly_name:'Salon · Humidité',device_class:'humidity',unit_of_measurement:'%'}},
   'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20}},
   'binary_sensor.chambre_fenetre':{entity_id:'binary_sensor.chambre_fenetre',state:'off',attributes:{friendly_name:'Chambre · Fenêtre',device_class:'window'}},
+  'cover.salon_rideau':{entity_id:'cover.salon_rideau',state:'open',attributes:{friendly_name:'Salon · Rideau',device_class:'curtain',current_position:35,supported_features:15}},
+  'cover.cuisine_store':{entity_id:'cover.cuisine_store',state:'open',attributes:{friendly_name:'Cuisine · Store',device_class:'blind',current_position:100,current_tilt_position:60,supported_features:15|128}},
+  'cover.chambre':{entity_id:'cover.chambre',state:'closed',attributes:{friendly_name:'Chambre · Volet',device_class:'shutter',current_position:0,supported_features:15}},
+  'binary_sensor.entree_porte':{entity_id:'binary_sensor.entree_porte',state:'off',attributes:{friendly_name:'Entrée · Porte',device_class:'door'}},
+  // Play, pause, volume, mute, previous and next, on and off, source.
+  'media_player.salon_tv':{entity_id:'media_player.salon_tv',state:'playing',attributes:{friendly_name:'Salon · Téléviseur',device_class:'tv',media_title:'Le Grand Bleu',app_name:'Netflix',volume_level:.32,is_volume_muted:false,source:'Netflix',source_list:['TV','HDMI 1','Netflix','YouTube'],supported_features:1|4|8|16|32|128|256|2048|16384}},
+  'media_player.cuisine':{entity_id:'media_player.cuisine',state:'paused',attributes:{friendly_name:'Cuisine · Enceinte',device_class:'speaker',media_title:'So What',media_artist:'Miles Davis',volume_level:.2,is_volume_muted:false,supported_features:1|4|8|16|32|128|256|16384}},
 };
 const light=(id:string,name:string,on=false)=>({entity_id:id,state:on?'on':'off',attributes:{friendly_name:name,supported_color_modes:['brightness'],brightness:200}});
 const temperature=(id:string,name:string,value:string)=>({entity_id:id,state:value,attributes:{friendly_name:name,device_class:'temperature',unit_of_measurement:'°C'}});

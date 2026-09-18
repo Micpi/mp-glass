@@ -34,6 +34,38 @@
                 "arcs": {
                   "type": "array", "minItems": 3, "maxItems": 40,
                   "items": {"type": "number", "minimum": -1, "maximum": 1}
+                },
+                "openings": {
+                  "type": "array", "maxItems": 24,
+                  "items": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["id", "kind", "side", "at", "width"],
+                    "properties": {
+                      "id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
+                      "kind": {"enum": ["door", "window", "french_window"]},
+                      "name": {"type": "string", "minLength": 1, "maxLength": 80},
+                      "side": {"type": "integer", "minimum": 0, "maximum": 39},
+                      "at": {"type": "number", "minimum": 0, "maximum": 1},
+                      "width": {"type": "number", "minimum": 0.3, "maximum": 12},
+                      "height": {"type": "number", "minimum": 0.3, "maximum": 8},
+                      "sill": {"type": "number", "minimum": 0, "maximum": 6},
+                      "entityIds": {"type": "array", "maxItems": 4, "uniqueItems": true, "items": {"type": "string", "pattern": "^(cover|binary_sensor)\\.[a-z0-9_]+$", "maxLength": 255}}
+                    }
+                  }
+                },
+                "media": {
+                  "type": "array", "maxItems": 12,
+                  "items": {
+                    "type": "object", "additionalProperties": false,
+                    "required": ["id", "kind", "at"],
+                    "properties": {
+                      "id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
+                      "kind": {"enum": ["tv", "speaker"]},
+                      "name": {"type": "string", "minLength": 1, "maxLength": 80},
+                      "at": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": -200, "maximum": 200}},
+                      "entityId": {"type": "string", "pattern": "^media_player\\.[a-z0-9_]+$", "maxLength": 255}
+                    }
+                  }
                 }
               }
             }

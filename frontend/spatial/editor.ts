@@ -3,10 +3,10 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
-import { bent, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type MediaKind, type OpeningKind, type Point, type SpatialMedia, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { bent, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { groupCover, roomTemperature } from '../../shared/spatial-state';
-import { attachFixtures, type DraftFixture } from '../../shared/fixtures';
-import { levelPlan, levelWalls, openLevel, placeMarks, rebuildLevel, type LevelDraft, type LevelZone } from '../../shared/level';
+import { attachFixtures, type DraftFixture, type ImageFrame } from '../../shared/fixtures';
+import { backdropRect, backdropWalls, fitBackdrop, levelPlan, levelWalls, openLevel, placeMarks, rebuildLevel, reframeLevel, shiftBackdrop, zoomBackdrop, type LevelDraft, type LevelZone, type PlanWalls } from '../../shared/level';
 import type { Hass } from '../ha/client';
 import { mpIcon, type MPIconName } from '../icons';
 import { defineElement } from '../registry';
@@ -40,7 +40,17 @@ interface Placing { what:'opening'|'media'; id:string; floorId:string; roomId:st
  * A saved level edited on its plan: its rooms as they are being edited, and the states before for « Annuler ». Nothing reaches
  * the plan before « Appliquer au niveau »; closed with changes, it waits in its card. `initial`: the room selected when it opens.
  */
-interface LevelEdit { floorId:string; draft:LevelDraft; history:LevelDraft[]; open:boolean; view:'plan'|'3d'; notice:string; initial:string }
+interface LevelEdit {
+  floorId:string; draft:LevelDraft; history:LevelDraft[]; open:boolean; view:'plan'|'3d'; notice:string; initial:string;
+  /** The plan under the rooms, shown or not, being aligned or not, changed since the window opened or not; `page`: of a PDF chosen. */
+  backdrop?:LevelBackdrop; showBackdrop:boolean; aligning:boolean; backdropChanged:boolean; working:boolean; page:number;
+}
+/**
+ * The plan a level was drawn from, under its rooms: where it lies (`image`), the image itself, the walls seen on it, and whether
+ * Home Assistant keeps it already (`id`) or it is still to be sent (`blob`).
+ */
+interface LevelBackdrop { image:ImageFrame; id?:string; blob?:Blob; url:string; walls?:PlanWalls; state:'loading'|'ready'|'missing' }
+const backdropFrame=(backdrop:SpatialBackdrop):ImageFrame=>({width:backdrop.width,height:backdrop.height,scale:[...backdrop.scale],origin:[...backdrop.origin]});
 const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 /** Centimetres are enough for a plan. */
 const round=(value:number)=>Math.round(value*100)/100;
@@ -126,7 +136,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},applying:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
@@ -156,7 +166,12 @@ export class MPSpatialEditor extends LitElement {
     .job-status{margin:14px 0 0;color:#dbe9f5}.job-status.failure{color:#ffd9cf}.job-status small{display:block;margin-top:8px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.muted{margin:8px 0 0;font-size:12px;color:#9fb6ca}
     .warnings{margin:12px 0 0;padding:10px 14px 10px 30px;border-radius:12px;background:#ffd36a12;border:1px solid #ffd36a33;color:#ffe3a3;font-size:12px}
     .job-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}.job mp-spatial-viewer{--mp-stage-height:min(42vh,360px);margin:16px 0 0}
-    .edit-plan{display:inline-flex;align-items:center;justify-content:center;gap:7px}.pending-level p{margin:6px 0 0}.pending-level .row{margin-bottom:0}
+    .edit-plan{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+    .backdrop-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0 0}.backdrop-tools>span{color:#9fb6ca;font-size:12px}
+    .backdrop-tools button,.backdrop-tools .file{min-height:36px;padding:0 12px;border-radius:10px}.backdrop-tools button[aria-pressed=true]{background:#2a648e;border-color:#8acbff}.backdrop-tools .step{padding:0 9px;font-variant-numeric:tabular-nums}
+    .backdrop-tools .file{position:relative;flex:none;flex-direction:row;align-items:center;gap:6px;min-width:0;border:1px solid #b2d7f23b;background:#0b253d;cursor:pointer}.backdrop-tools .file:focus-within{outline:2px solid #8acbff}
+    .backdrop-tools .file input{position:absolute;inset:0;width:100%;min-height:0;padding:0;opacity:0;cursor:pointer}
+    .backdrop-tools .page{flex:none;flex-direction:row;align-items:center;gap:6px;min-width:0;margin-left:auto;color:#9fb6ca;font-size:12px}.backdrop-tools .page input{width:64px;min-height:36px;padding:4px 8px}.pending-level p{margin:6px 0 0}.pending-level .row{margin-bottom:0}
     .tabs{display:inline-flex;gap:2px;margin:16px 0 0;padding:3px;border-radius:12px;background:#ffffff0d;border:1px solid #d6ecff1f}.tabs button{min-height:34px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:#b9cfe2}.tabs button[aria-selected=true]{background:#2a648e;color:#fff}
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
@@ -174,7 +189,11 @@ export class MPSpatialEditor extends LitElement {
   /** What the confirmation window is about to remove, nothing while it is closed. */
   private asking:''|'plan'|'floor'='';
   /** A level being edited on its plan, « Modifier le plan ». */
-  private level?:LevelEdit;private levelCache?:{rooms:SpatialRoom[];zones:SpatialPlan;preview:SpatialPlan;walls:Walls};
+  private level?:LevelEdit;private levelCache?:{draft:LevelDraft;backdrop?:LevelBackdrop;zones:SpatialPlan;preview:SpatialPlan;walls:Walls};
+  /** Images shown while a level is edited on its plan, let go when it ends. */
+  private urls=new Set<string>();
+  /** The analysed plan being sent to Home Assistant, before the draft becomes the level. */
+  private applying=false;
   private timer?:ReturnType<typeof setTimeout>;private disposed=false;private generation=0;private startedAt=0;
   /** Analysis window: progress while `busy`, then the draft or the failure. */
   private phase?:'preparing'|'uploading'|'analyzing'|'done'|'error';private dialogOpen=false;private jobId='';private warnings:string[]=[];private elapsed=0;private tick=0;private ticker?:ReturnType<typeof setInterval>;
@@ -206,6 +225,8 @@ export class MPSpatialEditor extends LitElement {
     // Leaving the Studio: free the server for the next analysis instead of letting an orphan job run.
     if(this.jobId)void this.stopJob(this.jobId);
     this.busy=false;this.jobId='';this.phase=undefined;this.dialogOpen=false;this.setSource();
+    for(const url of this.urls)URL.revokeObjectURL(url);
+    this.urls.clear();
   }
   protected updated(){
     const dialog=this.renderRoot.querySelector<HTMLDialogElement>('dialog.job:not(.level)');
@@ -353,13 +374,30 @@ export class MPSpatialEditor extends LitElement {
     this.busy=false;this.phase=undefined;this.dialogOpen=false;this.jobId='';this.message='Analyse annulée. Le plan enregistré est conservé.';this.detail='';
     if(id)void this.stopJob(id);
   };
-  private applyCandidate(){
-    if(!this.candidate||this.recomputing)return;
+  /** A plan sent to Home Assistant, to be kept under a level; its identifier. */
+  private async uploadBackdrop(blob:Blob){
+    const response=await this.hass!.fetchWithAuth!('/api/mp_glass/spatial/backdrop',{method:'POST',headers:{'Content-Type':blob.type||'image/png'},body:blob});
+    const answer=await response.json().catch(()=>({})) as {id?:string;error?:string};
+    if(!response.ok||!/^[a-f0-9]{32}$/.test(answer.id??''))throw Error(answer.error??(response.status===404?'not_installed':`http_${response.status}`));
+    return answer.id!;
+  }
+  private async applyCandidate(){
+    if(!this.candidate||this.recomputing||this.applying)return;
+    // The analysed plan stays in Home Assistant, under the rooms of the level, for « Modifier le plan ».
+    let backdrop:SpatialBackdrop|undefined,unkept='';
+    if(this.sourceBlob&&this.source&&this.hass?.fetchWithAuth){
+      const source=this.source;this.applying=true;
+      try{backdrop={id:await this.uploadBackdrop(this.sourceBlob),width:Math.round(source.width),height:Math.round(source.height),scale:[...source.scale],origin:[...source.origin]};}
+      catch(error){unkept=` Le plan d’origine n’a pas pu être gardé sous le niveau (${(error as Error).message}) : « Modifier le plan » permettra de le choisir à nouveau.`;}
+      finally{this.applying=false;}
+      if(!this.candidate||this.source!==source)return;
+    }
     // The doors, windows, televisions and speakers placed on the image go to their rooms first.
     const attached=this.source&&this.fixtures.length?attachFixtures(this.candidate,this.fixtures,this.source):undefined;
     const incoming=structuredClone((attached?.plan??this.candidate).floors[0]!);
     if(!incoming.rooms.length)return;
     for(const r of incoming.rooms)r.id=`room-${shortId()}`;
+    if(backdrop)incoming.backdrop=backdrop;
     let lost=0;
     if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;lost+=this.carryFixtures(old,r);}}}
     const plan=this.draft?structuredClone(this.draft):{version:1 as const,enabled:true,floors:[]};
@@ -375,6 +413,7 @@ export class MPSpatialEditor extends LitElement {
       const kept=attached.placed.size,left=this.fixtures.length-kept;
       this.message=`${this.message} Portes, fenêtres et appareils du brouillon : ${kept} repris${links?`, dont ${links} relié${links>1?'s':''} d’office (seul volet, capteur ou lecteur de sa pièce)`:''}${left?`, ${left} hors des pièces non repris`:''}. Vérifiez-les et reliez les autres dans chaque pièce, sous le plan 3D.`;
     }
+    if(unkept&&this.draft!==before)this.message+=unkept;
     this.candidate=undefined;this.fixtures=[];this.selected='';this.phase=undefined;this.dialogOpen=false;this.setSource();
   }
   /**
@@ -533,23 +572,89 @@ export class MPSpatialEditor extends LitElement {
     this.mutate(p=>{const f=p.floors[this.floorIndex]!;const x=Math.max(...f.rooms.flatMap(r=>r.polygon.map(v=>v[0])))+.3;const id=`room-${shortId()}`;f.rooms.push({id,name:'Nouvelle pièce',polygon:[[x,0],[x+4,0],[x+4,4],[x,4]]});this.selected=id;});
   }
   /**
-   * « Modifier le plan » : the level on screen in the plan editor, with `room` selected. Changes kept from a closed window
-   * come back; nothing reaches the plan before « Appliquer au niveau ».
+   * « Modifier le plan » : the level on screen in the plan editor, over the plan it was drawn from, with `room` selected.
+   * Changes kept from a closed window come back; nothing reaches the plan before « Appliquer au niveau ».
    */
   private openLevel(room=''){
     const floor=this.floor;
     if(!floor)return;
     this.placing=undefined;
-    this.level=this.level?.floorId===floor.id?{...this.level,open:true,view:'plan',initial:room}:{floorId:floor.id,draft:openLevel(floor.rooms),history:[],open:true,view:'plan',notice:'',initial:room};
+    if(this.level?.floorId===floor.id){this.level={...this.level,open:true,view:'plan',initial:room};return;}
+    this.endLevel();
+    const stored=floor.backdrop,image=stored&&backdropFrame(stored);
+    this.level={floorId:floor.id,draft:openLevel(floor.rooms,image),history:[],open:true,view:'plan',notice:'',initial:room,
+      ...(stored?{backdrop:{image:image!,id:stored.id,url:'',state:'loading' as const}}:{}),showBackdrop:true,aligning:false,backdropChanged:false,working:false,page:this.page};
+    if(stored)void this.loadBackdrop(stored.id);
   }
+  /** The plan kept for the level, from Home Assistant, with the walls seen on it for the rooms' sides to be drawn to. */
+  private async loadBackdrop(id:string){
+    const current=()=>{const b=this.level?.backdrop;return b?.id===id&&!b.blob?b:undefined;};
+    try{
+      const response=await this.hass!.fetchWithAuth!(`/api/mp_glass/spatial/backdrop/${id}`);
+      if(!response.ok)throw Error(`http_${response.status}`);
+      const blob=await response.blob(),b=current();
+      if(!b)return;
+      const url=URL.createObjectURL(blob);this.urls.add(url);
+      this.level={...this.level!,backdrop:{...b,url,state:'ready'}};
+      const walls=await detectWalls(blob).catch(()=>undefined),ready=current();
+      if(ready&&walls)this.level={...this.level!,backdrop:{...ready,walls}};
+    }catch{
+      const b=current();
+      if(b)this.level={...this.level!,backdrop:{...b,state:'missing'},notice:'Le plan de ce niveau est introuvable dans Home Assistant : choisissez à nouveau son fichier.'};
+    }
+  }
+  /** A plan chosen for the level (an image, or a page of a PDF drawn here), laid under the rooms where its walls meet theirs. */
+  private async chooseBackdrop(file:File){
+    const level=this.level;
+    if(!level||level.working)return;
+    this.level={...level,working:true,notice:'Préparation du plan…'};
+    try{
+      const blob=await prepareUpload(file,level.page),bitmap=await createImageBitmap(blob),{width,height}=bitmap;bitmap.close();
+      const walls:PlanWalls=await detectWalls(blob).catch(()=>({x:[],y:[]})),now=this.level;
+      if(!now||now.floorId!==level.floorId)return;
+      const {backdrop:image,score}=fitBackdrop(now.draft.rooms,walls,width,height),url=URL.createObjectURL(blob);this.urls.add(url);
+      this.level={...now,working:false,draft:reframeLevel(now.draft.rooms,image),backdrop:{image,blob,url,walls,state:'ready'},showBackdrop:true,aligning:score<.5,backdropChanged:true,
+        notice:score>=.5?`Plan calé sur les murs des pièces (${Math.round(score*100)} % de leurs côtés) : vérifiez, puis « Appliquer au niveau ».`
+          :'Aucun repère sûr : le plan est posé sur la maison. Glissez-le pour poser ses murs sous ceux des pièces ; − et + règlent sa taille.'};
+    }catch(error){
+      const code=error instanceof Error?error.message:String(error),pages=Number(/^page_missing:(\d+)$/.exec(code)?.[1]);
+      if(this.level)this.level={...this.level,working:false,notice:pages?`La page ${level.page} n’existe pas : ce PDF compte ${pages} page${pages>1?'s':''}.`:MESSAGES[code]??`Plan illisible (${code}).`};
+    }
+  }
+  /** Laid again where the walls of the plan meet the sides of the rooms. */
+  private refitBackdrop=()=>{
+    const level=this.level,b=level?.backdrop;
+    if(!level||!b?.walls)return;
+    const {backdrop:image,score}=fitBackdrop(level.draft.rooms,b.walls,b.image.width,b.image.height);
+    this.level={...level,draft:reframeLevel(level.draft.rooms,image),backdrop:{...b,image},backdropChanged:true,aligning:false,
+      notice:score>=.5?`Plan calé sur les murs des pièces (${Math.round(score*100)} % de leurs côtés).`:'Aucun repère sûr sur ce plan : calez-le à la main avec « Caler le fond ».'};
+  };
+  private backdropShift=(e:CustomEvent<{dx:number;dy:number}>)=>{
+    const level=this.level,b=level?.backdrop;
+    if(!level||!b)return;
+    const {frame}=level.draft,image=shiftBackdrop(b.image,e.detail.dx/1000*frame.width*frame.scale[0]!,e.detail.dy/1000*frame.height*frame.scale[1]!);
+    this.level={...level,backdrop:{...b,image},backdropChanged:true};
+  };
+  private backdropZoom(factor:number){const level=this.level,b=level?.backdrop;if(level&&b)this.level={...level,backdrop:{...b,image:zoomBackdrop(b.image,factor)},backdropChanged:true};}
+  /** Aligning by hand; once done, the level is drawn again to hold the whole plan. */
+  private toggleAligning=()=>{
+    const level=this.level;
+    if(!level)return;
+    this.level=level.aligning?{...level,aligning:false,draft:reframeLevel(level.draft.rooms,level.backdrop?.image)}:{...level,aligning:true,view:'plan'};
+  };
+  private removeBackdrop=()=>{const level=this.level;if(level)this.level={...level,backdrop:undefined,aligning:false,backdropChanged:true,draft:reframeLevel(level.draft.rooms),notice:'Plan retiré : il ne sera plus sous ce niveau une fois appliqué.'};};
   private get levelFloor(){return this.draft?.floors.find(f=>f.id===this.level?.floorId);}
   /**
-   * The level as the plan editor draws it (its doors, windows and players are marks there), with the sides of its rooms as the
-   * walls that attract the others, and as the 3D preview shows it.
+   * The level as the plan editor draws it (its doors, windows and players are marks there), with the sides of its rooms and
+   * the walls of its plan as the walls that attract the others, and as the 3D preview shows it.
    */
   private get levelPlans(){
-    const {rooms,frame}=this.level!.draft,floor=this.levelFloor;
-    if(this.levelCache?.rooms!==rooms)this.levelCache={rooms,zones:levelPlan(rooms.map(r=>{const bare={...r};delete bare.openings;delete bare.media;return bare;})),preview:levelPlan(rooms,floor?.name,floor?.height),walls:levelWalls(rooms,frame)};
+    const level=this.level!,{draft}=level,backdrop=level.showBackdrop&&level.backdrop?.state==='ready'?level.backdrop:undefined,floor=this.levelFloor;
+    if(this.levelCache?.draft!==draft||this.levelCache.backdrop!==backdrop){
+      const {rooms,frame}=draft,own=levelWalls(rooms,frame),seen=backdrop?.walls&&backdropWalls(backdrop.walls,backdrop.image,frame);
+      this.levelCache={draft,backdrop,zones:levelPlan(rooms.map(r=>{const bare={...r};delete bare.openings;delete bare.media;return bare;})),preview:levelPlan(rooms,floor?.name,floor?.height),
+        walls:seen?{x:[...own.x,...seen.x],y:[...own.y,...seen.y],slanted:[...own.slanted,...seen.slanted??[]]}:own};
+    }
     return this.levelCache;
   }
   private levelChange(next:LevelDraft,notice=''){const level=this.level!;this.level={...level,draft:next,history:[...level.history,level.draft].slice(-30),notice};}
@@ -564,38 +669,75 @@ export class MPSpatialEditor extends LitElement {
     this.levelChange(next,refused?'Rien ne s’y pose : une porte ou une fenêtre va sur le mur d’une pièce, un téléviseur ou une enceinte dans sa pièce (24 ouvertures et 12 appareils au plus par pièce).':'');
   };
   private levelUndo=()=>{const level=this.level,previous=level?.history.at(-1);if(!level||!previous)return;this.level={...level,draft:previous,history:level.history.slice(0,-1),notice:''};};
+  private get levelChanged(){return !!this.level&&(this.level.history.length>0||this.level.backdropChanged);}
+  /** The level edit ends: its images are let go. */
+  private endLevel(){for(const url of this.urls)URL.revokeObjectURL(url);this.urls.clear();this.level=undefined;}
   /** Closed without applying: changes wait in their card, a level left as it was is simply closed. */
-  private closeLevel=()=>{const level=this.level;if(!level?.open)return;this.level=level.history.length?{...level,open:false,notice:''}:undefined;};
-  private dropLevel=()=>{this.level=undefined;this.message='Modifications du plan abandonnées. Le niveau reste comme avant.';this.detail='';};
-  /** The rooms edited on the plan replace those of the level, with their links; « Enregistrer » in the Studio then saves them. */
-  private applyLevel=()=>{
+  private closeLevel=()=>{const level=this.level;if(!level?.open)return;if(this.levelChanged)this.level={...level,open:false,aligning:false,notice:''};else this.endLevel();};
+  private dropLevel=()=>{this.endLevel();this.message='Modifications du plan abandonnées. Le niveau reste comme avant.';this.detail='';};
+  /**
+   * The rooms edited on the plan replace those of the level, with their links, and the plan under them is sent to Home
+   * Assistant when it is new; « Enregistrer » in the Studio then saves them.
+   */
+  private applyLevel=async()=>{
     const level=this.level,index=this.draft?.floors.findIndex(f=>f.id===level?.floorId)??-1;
-    if(!level)return;
-    if(index<0){this.level=undefined;this.message='Ce niveau n’existe plus : modifications abandonnées.';return;}
-    const rooms=level.draft.rooms,refuse=(notice:string)=>{this.level={...level,open:true,view:'plan',notice};};
+    if(!level||level.working)return;
+    if(index<0){this.endLevel();this.message='Ce niveau n’existe plus : modifications abandonnées.';return;}
+    const rooms=level.draft.rooms,refuse=(notice:string)=>{this.level={...this.level!,open:true,view:'plan',working:false,notice};};
     if(!rooms.length){refuse('Un niveau garde au moins une pièce : ajoutez-en une, ou annulez.');return;}
     if(rooms.length>60){refuse(`Un niveau compte 60 pièces au plus : il en a ${rooms.length}.`);return;}
     const plan=structuredClone(this.draft!),floor=plan.floors[index]!;floor.rooms=structuredClone(rooms);
     try{parseSpatial(plan);}catch(error){refuse((error as Error).message);return;}
+    const b=level.backdrop;
+    if(level.backdropChanged&&(!b||b.state==='missing'))delete floor.backdrop;
+    else if(level.backdropChanged&&b){
+      let id=b.id;
+      if(b.blob){
+        this.level={...level,working:true,notice:'Envoi du plan à Home Assistant…'};
+        try{id=await this.uploadBackdrop(b.blob);}
+        catch(error){refuse(`Le plan n’a pas pu être gardé dans Home Assistant (${(error as Error).message}). Réessayez, ou retirez-le pour appliquer les pièces seules.`);return;}
+        if(this.level?.floorId!==level.floorId)return;
+      }
+      floor.backdrop={id:id!,width:Math.round(b.image.width),height:Math.round(b.image.height),scale:[...b.image.scale],origin:[...b.image.origin]};
+      try{parseSpatial(plan);}catch{refuse('Ce plan ne peut pas être gardé sous le niveau : retirez-le, ou choisissez-en un autre.');return;}
+    }
     this.commit(plan);
-    this.level=undefined;this.floorIndex=index;
+    this.endLevel();this.floorIndex=index;
     if(!rooms.some(r=>r.id===this.selected))this.selected='';
     this.message=`Plan du niveau « ${floor.name} » modifié. Cliquez sur Enregistrer dans le Studio.`;
   };
-  /** The plan editor on a saved level: its rooms over a grid of metres, with the same tools as a draft, then applied to the level. */
+  /** Choosing, showing, aligning and removing the plan under the level. */
+  private backdropTools(level:LevelEdit){
+    const b=level.backdrop,ready=b?.state==='ready';
+    const file=(label:string)=>html`<label class="file">${mpIcon('plan',15)}${label}<input type="file" accept="application/pdf,image/*" ?disabled=${level.working} @change=${(e:Event)=>{const input=e.target as HTMLInputElement,chosen=input.files?.[0];input.value='';if(chosen)void this.chooseBackdrop(chosen);}}></label>`;
+    return html`<div class="backdrop-tools" role="toolbar" aria-label="Fond de plan"><span>Fond de plan :</span>
+      ${!b?file('Choisir le plan (PDF ou image)'):b.state==='missing'?html`${file('Choisir à nouveau le plan')}<button class="danger" @click=${this.removeBackdrop}>Retirer le fond</button>`:html`
+        ${b.state==='loading'?html`<span>chargement…</span>`:nothing}
+        <button aria-pressed=${level.showBackdrop} ?disabled=${!ready} @click=${()=>{this.level={...level,showBackdrop:!level.showBackdrop,aligning:false};}}>Afficher</button>
+        <button aria-pressed=${level.aligning} ?disabled=${!ready||!level.showBackdrop||level.working} @click=${this.toggleAligning}>Caler le fond</button>
+        ${level.aligning?([[1/1.05,'−5 %'],[1/1.01,'−1 %'],[1.01,'+1 %'],[1.05,'+5 %']] as [number,string][]).map(([factor,label])=>html`<button class="step" aria-label=${`Taille du fond ${label}`} @click=${()=>this.backdropZoom(factor)}>${label}</button>`):nothing}
+        <button ?disabled=${!ready||!b.walls||level.working} @click=${this.refitBackdrop}>Recaler automatiquement</button>
+        ${file('Changer de plan')}
+        <button class="danger" ?disabled=${level.working} @click=${this.removeBackdrop}>Retirer le fond</button>`}
+      <label class="page">Page du PDF<input type="number" min="1" max="100" .value=${String(level.page)} @change=${(e:Event)=>{this.level={...this.level!,page:Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1))};}}></label>
+    </div>`;
+  }
+  /** The plan editor on a saved level: its rooms over the plan they were drawn from (or a grid of metres), with the tools of a draft. */
   private renderLevel(){
     const level=this.level;
     if(!level?.open)return nothing;
-    const floor=this.levelFloor,rooms=level.draft.rooms,plans=this.levelPlans,changed=level.history.length>0;
+    const floor=this.levelFloor,rooms=level.draft.rooms,plans=this.levelPlans,changed=this.levelChanged,b=level.backdrop;
+    const shown=level.showBackdrop&&b?.state==='ready'?b:undefined;
     const area=new Intl.NumberFormat('fr',{maximumFractionDigits:1}).format(rooms.reduce((sum,r)=>sum+roomArea(r),0));
-    const tab=(view:LevelEdit['view'])=>()=>{this.level={...level,view,initial:''};};
-    return html`<dialog class="job wide level" aria-labelledby="level-title" @close=${this.closeLevel}>
+    const tab=(view:LevelEdit['view'])=>()=>{this.level={...level,view,initial:'',aligning:false};};
+    // Escape ends aligning the plan first, and only then closes the window.
+    return html`<dialog class="job wide level" aria-labelledby="level-title" @cancel=${(e:Event)=>{if(this.level?.aligning){e.preventDefault();this.toggleAligning();}}} @close=${this.closeLevel}>
       <header class="job-head"><span class="job-orb">${mpIcon('plan',26)}</span><div><small>Plan 3D · ${changed?'modifications non appliquées':this.usingDefault?'plan par défaut':'niveau enregistré'}</small><h3 id="level-title">Modifier « ${floor?.name??''} »</h3><p>${count(rooms.length,'pièce')} · ${area} m²</p></div></header>
       <div class="tabs" role="tablist" aria-label="Affichage du niveau"><button role="tab" aria-selected=${level.view==='plan'} @click=${tab('plan')}>Sur le plan</button><button role="tab" aria-selected=${level.view==='3d'} @click=${tab('3d')}>En 3D</button></div>
-      ${level.view==='plan'?html`<mp-plan-zones level .initial=${level.initial} .source=${level.draft.frame} .plan=${plans.zones} .walls=${plans.walls} .detection=${level.draft.zones} .fixtures=${level.draft.fixtures} ?canUndo=${changed} @zones-change=${this.levelZones} @zones-undo=${this.levelUndo} @fixtures-change=${this.levelMarks}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${plans.preview}></mp-spatial-viewer>`}
+      ${level.view==='plan'?html`${this.backdropTools(level)}<mp-plan-zones level .initial=${level.initial} .src=${shown?.url??''} .backdrop=${shown?backdropRect(shown.image,level.draft.frame):undefined} ?aligning=${level.aligning} ?busy=${level.working} .source=${level.draft.frame} .plan=${plans.zones} .walls=${plans.walls} .detection=${level.draft.zones} .fixtures=${level.draft.fixtures} ?canUndo=${level.history.length>0} @zones-change=${this.levelZones} @zones-undo=${this.levelUndo} @fixtures-change=${this.levelMarks} @backdrop-shift=${this.backdropShift} @backdrop-done=${this.toggleAligning}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${plans.preview}></mp-spatial-viewer>`}
       ${level.notice?html`<ul class="warnings"><li>${level.notice}</li></ul>`:nothing}
-      <p role="status" class="job-status">Chaque pièce garde sa pièce Home Assistant et ses équipements ; portes et fenêtres suivent leurs murs, téléviseurs et enceintes leur pièce. Rien n’est enregistré avant « Enregistrer » dans le Studio.</p>
-      <div class="job-actions">${changed?html`<button @click=${this.dropLevel}>Abandonner les modifications</button>`:nothing}<button @click=${()=>this.renderRoot.querySelector<HTMLDialogElement>('dialog.level')?.close()}>Fermer</button><button class="primary" ?disabled=${!changed} @click=${this.applyLevel}>Appliquer au niveau</button></div>
+      <p role="status" class="job-status">Chaque pièce garde sa pièce Home Assistant et ses équipements ; portes et fenêtres suivent leurs murs, téléviseurs et enceintes leur pièce. Le plan sous les pièces est gardé dans Home Assistant, visible des seuls administrateurs. Rien n’est enregistré avant « Enregistrer » dans le Studio.</p>
+      <div class="job-actions">${changed?html`<button ?disabled=${level.working} @click=${this.dropLevel}>Abandonner les modifications</button>`:nothing}<button @click=${()=>this.renderRoot.querySelector<HTMLDialogElement>('dialog.level')?.close()}>Fermer</button><button class="primary" ?disabled=${!changed||level.working} @click=${this.applyLevel}>${level.working&&level.notice.startsWith('Envoi')?'Envoi du plan…':'Appliquer au niveau'}</button></div>
     </dialog>`;
   }
   /** Modal window: steps and elapsed time during the analysis, then the draft with its 3D preview, or the failure. */
@@ -621,7 +763,7 @@ export class MPSpatialEditor extends LitElement {
         ${this.view==='overlay'&&this.detection&&this.source&&this.sourceUrl?html`<mp-plan-zones .src=${this.sourceUrl} .source=${this.source} .plan=${this.candidate} .detection=${this.detection} .walls=${this.walls} .fixtures=${this.fixtures} ?busy=${this.recomputing} ?canUndo=${this.history.length>0} @zones-change=${this.zonesChanged} @zones-undo=${this.zonesUndo} @fixtures-change=${this.fixturesChanged}></mp-plan-zones>`:html`<mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer>`}
         ${this.warnings.length?html`<ul class="warnings">${this.warnings.map(w=>html`<li>${w}</li>`)}</ul>`:nothing}
         <p role="status" class="job-status">Vérifiez les pièces et l’échelle. Le brouillon remplacera la géométrie du niveau ${floorName?`« ${floorName} »`:'sélectionné'} ; les associations des pièces de même nom sont reprises. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan ; leurs volets, capteurs et lecteurs se relient ensuite, pièce par pièce, dans le Studio.</p>
-        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||this.recomputing||!rooms.length} @click=${this.applyCandidate}>Utiliser pour ce niveau</button></div>`;
+        <div class="job-actions"><button @click=${this.discard}>Ignorer</button><button class="primary" ?disabled=${!this.hass?.user?.is_admin||this.recomputing||this.applying||!rooms.length} @click=${this.applyCandidate}>${this.applying?'Envoi du plan…':'Utiliser pour ce niveau'}</button></div>`;
     }else{
       const quota=this.errorCode==='quota',daily=quota&&(this.quotaInfo?.period==='day'||this.quotaInfo?.limit===0);
       // The other model on a click, never on its own: after an overload, or a quota that is not a matter of seconds (each model has its own).
@@ -818,9 +960,9 @@ export class MPSpatialEditor extends LitElement {
     ${this.askDialog()}
     ${this.renderLevel()}
     ${this.level&&!this.level.open?html`<div class="box pending-level"><strong>Plan de « ${this.levelFloor?.name??''} » · modifications non appliquées</strong><p>Appliquer remplace les pièces de ce niveau par celles modifiées sur le plan, avec leurs associations.</p><div class="row"><button class="edit-plan" ?disabled=${!admin} @click=${()=>{this.level={...this.level!,open:true};}}>${mpIcon('plan',16)}Reprendre</button><button class="primary" ?disabled=${!admin} @click=${this.applyLevel}>Appliquer au niveau</button><button @click=${this.dropLevel}>Abandonner</button></div></div>`:nothing}
-    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?'Modifier le brouillon':'Revoir le brouillon'}</button><button class="primary" ?disabled=${!admin} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${this.discard}>Ignorer</button><p>${this.editable?'Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse. ':''}Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
+    ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>Brouillon IA · non enregistré</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?'Modifier le brouillon':'Revoir le brouillon'}</button><button class="primary" ?disabled=${!admin||this.applying} @click=${this.applyCandidate}>Utiliser pour ce niveau</button><button @click=${this.discard}>Ignorer</button><p>${this.editable?'Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse. ':''}Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.</p></div>`:nothing}
     ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>Afficher le plan sur l’accueil</label><div class="row"><label>Niveau à modifier<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}Modifier le plan</button><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:`Niveau ${p.floors.length}`,elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:'Nouvelle pièce',polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>Ajouter un niveau</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>Supprimer ce niveau</button></div><div class="row"><label>Nom du niveau<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>Hauteur des murs (m)<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
-      <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{for(const r of p.floors[this.floorIndex]!.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}});}}>Appliquer l’échelle</button></div>
+      <div class="row"><label>Multiplier l’échelle du niveau<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{const f=p.floors[this.floorIndex]!;for(const r of f.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}if(f.backdrop)f.backdrop={...f.backdrop,scale:f.backdrop.scale.map(k=>k*factor)};});}}>Appliquer l’échelle</button></div>
       ${this.renderLinks(suggestions)}</fieldset>
       <mp-spatial-viewer .plan=${this.shown} .hass=${this.hass} .placing=${this.placing} @room-select=${this.roomSelected} @floor-select=${this.floorSelected} @plan-pick=${this.picked} @plan-pick-cancel=${this.stopPlacing}></mp-spatial-viewer>
       ${room?html`<fieldset ?disabled=${!admin||this.busy}><div class="box"><label>Pièce à modifier<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;this.entitySearch='';}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><p class="muted">Ou touchez-la sur le plan.</p><div class="row"><label>Nom de la pièce<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>Pièce Home Assistant<select .value=${room.areaId??''} @change=${(e:Event)=>this.linkRoom((e.target as HTMLSelectElement).value)}><option value="" .selected=${!room.areaId}>Non associée</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${suggested?html`<button class="suggest" @click=${()=>this.linkRoom(suggested.area_id)}>Relier à « ${suggested.name} »</button>`:nothing}${followsArea(room)?this.automatic(room):this.entityPicker(room)}${this.openingsEditor(room)}${this.mediaEditor(room)}<div class="row"><button class="edit-plan" @click=${()=>this.openLevel(room.id)}>${mpIcon('plan',16)}Modifier sa forme sur le plan</button></div><details><summary>Corriger les sommets (X / Y en mètres) et les courbes</summary><p class="muted">Courbure du côté qui part du sommet : 0 pour un mur droit, 1 pour un demi-cercle, négatif pour courber de l’autre côté.</p>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${`Sommet ${i+1} X`} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Sommet ${i+1} Y`} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${`Courbure du côté ${i+1}`} type="number" min="-1" max="1" step="0.05" .value=${String(room.arcs?.[i]??0)} @change=${(e:Event)=>this.editBend(i,Number((e.target as HTMLInputElement).value))}><button aria-label=${`Supprimer sommet ${i+1}`} ?disabled=${room.polygon.length<=3} @click=${()=>this.dropVertex(i)}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.addVertex()}>Ajouter un sommet</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>Supprimer cette pièce</button></div></fieldset>`:nothing}`:nothing}`;

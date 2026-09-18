@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { levelMarks, onFrame, openLevel, placeMarks, rebuildLevel, type LevelZone } from '../shared/level';
+import { backdropRect, backdropWalls, fitBackdrop, levelMarks, onFrame, openLevel, placeMarks, rebuildLevel, reframeLevel, shiftBackdrop, zoomBackdrop, type LevelZone, type PlanWalls } from '../shared/level';
 import { toMetres } from '../shared/fixtures';
 import { openingPlacement, parseSpatial, type Point, type SpatialRoom } from '../shared/spatial';
 
@@ -99,6 +99,49 @@ describe('a saved level edited on its plan', () => {
     const again = placeMarks(next, next.fixtures.map(f => f.id === 'tv1' ? { ...f, a: at([-1.9, -1.9]) } : f));
     expect(again.refused).toBe(1);
     expect(again.level.rooms[0]!.media).toEqual(rooms()[0]!.media);
+  });
+  it('holds the plan kept under the level, and finds where a drawing of the house lies from its walls', () => {
+    // The drawing: 1000 x 700 pixels, 37.5 pixels per metre, the house's corner at (120.3, 64.8).
+    const s = 37.5, ox = 120.3, oy = 64.8, width = 1000, height = 700, image = { width, height, scale: [1 / s, 1 / s], origin: [ox, oy] };
+    const level = openLevel(rooms(), image), rect = backdropRect(image, level.frame);
+    expect(toMetres([rect.x, rect.y], level.frame).map(v => Math.round(v * 1000) / 1000)).toEqual([-ox / s, -oy / s].map(v => Math.round(v * 1000) / 1000));
+    expect(toMetres([rect.x + rect.width, rect.y + rect.height], level.frame).map(v => Math.round(v * 100) / 100)).toEqual([(width - ox) / s, (height - oy) / s].map(v => Math.round(v * 100) / 100));
+    // Its walls: the rooms' sides as drawn (the thick walls a little off their line), a title block and a scale bar besides.
+    const px = (x: number) => (s * x + ox) / width * 1000, py = (y: number) => (s * y + oy) / height * 1000;
+    const walls: PlanWalls = { x: [], y: [] };
+    for (const room of rooms()) room.polygon.forEach((a, i) => {
+      const b = room.polygon[(i + 1) % room.polygon.length]!, wobble = (i % 2 ? .6 : -.4) / 1000;
+      if (a[0] === b[0]) walls.x.push({ at: px(a[0]) + wobble, from: py(Math.min(a[1], b[1])), to: py(Math.max(a[1], b[1])) });
+      else walls.y.push({ at: py(a[1]) + wobble, from: px(Math.min(a[0], b[0])), to: px(Math.max(a[0], b[0])) });
+    });
+    walls.x.push({ at: 900, from: 700, to: 990 }, { at: 980, from: 700, to: 990 });
+    walls.y.push({ at: 700, from: 900, to: 980 }, { at: 990, from: 50, to: 400 });
+    const { backdrop, score } = fitBackdrop(rooms(), walls, width, height);
+    expect(score).toBeGreaterThan(.9);
+    expect(1 / backdrop.scale[0]!).toBeCloseTo(s, 1);
+    expect(backdrop.origin[0]).toBeCloseTo(ox, 0);
+    expect(backdrop.origin[1]).toBeCloseTo(oy, 0);
+    // Without walls, the drawing is laid over the house, centred, for the user to adjust.
+    const blank = fitBackdrop(rooms(), { x: [], y: [] }, width, height);
+    expect(blank.score).toBe(0);
+    const middle = toMetres([500, 500], blank.backdrop);
+    expect(middle.map(v => Math.round(v * 100) / 100)).toEqual([4.5, 3.5]);
+  });
+  it('moves and enlarges the plan kept under the level, and brings its walls onto the level', () => {
+    const image = { width: 1000, height: 700, scale: [.02, .02], origin: [100, 50] };
+    const moved = shiftBackdrop(image, 1, -2);
+    expect(toMetres([0, 0], moved)).toEqual([toMetres([0, 0], image)[0] + 1, toMetres([0, 0], image)[1] - 2]);
+    const larger = zoomBackdrop(image, 1.1);
+    expect(toMetres([500, 500], larger).map(v => Math.round(v * 1e6) / 1e6)).toEqual(toMetres([500, 500], image).map(v => Math.round(v * 1e6) / 1e6));
+    expect(larger.scale[0]).toBeCloseTo(.022, 9);
+    const level = openLevel(rooms(), image), walls = backdropWalls({ x: [{ at: 300, from: 100, to: 200 }], y: [], slanted: [{ a: [0, 0], b: [1000, 1000] }] }, image, level.frame);
+    const [x, from] = toMetres([walls.x[0]!.at, walls.x[0]!.from], level.frame), [atX, atY] = toMetres([300, 100], image);
+    expect(x).toBeCloseTo(atX, 6);expect(from).toBeCloseTo(atY, 6);
+    expect(toMetres(walls.slanted![0]!.b, level.frame)[0]).toBeCloseTo(toMetres([1000, 1000], image)[0], 6);
+    // Drawn again on a frame that holds a new plan, the rooms stay where they are.
+    const reframed = reframeLevel(level.rooms, larger);
+    expect(reframed.rooms).toBe(level.rooms);
+    expect(toMetres([reframed.zones[0]!.box_2d[1]!, reframed.zones[0]!.box_2d[0]!], reframed.frame).map(v => Math.round(v * 1e6) / 1e6)).toEqual([0, 0]);
   });
   it('keeps each id once in its room when a door moves next door', () => {
     const level = openLevel(rooms()), { frame } = level, at = (p: Point) => onFrame(p, frame);

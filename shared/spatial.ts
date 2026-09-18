@@ -19,7 +19,12 @@ export interface SpatialMedia { id: string; kind: MediaKind; name?: string; at: 
  * bends, as the height of its arc over half the side's length, towards (−dy, dx) when positive. ±1 is a half circle.
  */
 export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?: number[]; areaId?: string; entityIds?: string[]; openings?: SpatialOpening[]; media?: SpatialMedia[] }
-export interface SpatialFloor { id: string; name: string; elevation: number; height: number; rooms: SpatialRoom[] }
+/**
+ * The plan a level was drawn from, kept in Home Assistant under `id` to be shown under its rooms in the Studio: its size in
+ * pixels, and where it lies, pixel = metre / scale + origin.
+ */
+export interface SpatialBackdrop { id: string; width: number; height: number; scale: number[]; origin: number[] }
+export interface SpatialFloor { id: string; name: string; elevation: number; height: number; backdrop?: SpatialBackdrop; rooms: SpatialRoom[] }
 export interface SpatialPlan { version: 1; enabled: boolean; floors: SpatialFloor[] }
 const validate = new Ajv({ strict: true }).compile<SpatialPlan>(schema);
 /** Positive when the corners turn from x towards y: the inside of the ring is then on the left of each side. */

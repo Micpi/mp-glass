@@ -13,6 +13,7 @@ from homeassistant.components.http.const import KEY_HASS
 from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
+from .backdrop import CONTENT_TYPES, EXTENSIONS, MAX_FILE as MAX_BACKDROP, find, image_extension, store
 from .spatial_contract import validate_geometry
 from .spatial_gemini import DEFAULT_MODEL, MAX_ROOMS, QUALITIES, SpatialError, normalize_result, quota_info, request_gemini, selected_backend, valid_detection
 
@@ -166,6 +167,58 @@ class SpatialUploadView(HomeAssistantView):
         finally:
             if not transferred:
                 runtime.lock.release()
+
+
+def backdrop_folder(hass):
+    """Plans kept under their levels: in Home Assistant's private storage (and its backups), never served as static files."""
+    return hass.config.path(".storage", "mp_glass_backdrops")
+
+
+class SpatialBackdropView(HomeAssistantView):
+    """Keeps the plan a level was drawn from, for the Studio to show under its rooms. Administrators only."""
+    url = "/api/mp_glass/spatial/backdrop"
+    name = "api:mp_glass:spatial:backdrop"
+    requires_auth = True
+
+    async def post(self, request):
+        if not request["hass_user"].is_admin:
+            return web.json_response({"error": "unauthorized"}, status=403)
+        if request.content_type not in EXTENSIONS:
+            return web.json_response({"error": "invalid_file"}, status=415)
+        if request.content_length and request.content_length > MAX_BACKDROP:
+            return web.json_response({"error": "file_too_large"}, status=413)
+        data = bytearray()
+        try:
+            async with asyncio.timeout(60):
+                async for chunk in request.content.iter_chunked(65536):
+                    data.extend(chunk)
+                    if len(data) > MAX_BACKDROP:
+                        return web.json_response({"error": "file_too_large"}, status=413)
+        except TimeoutError:
+            return web.json_response({"error": "timeout"}, status=408)
+        extension = image_extension(bytes(data), request.content_type)
+        if not extension:
+            return web.json_response({"error": "invalid_file"}, status=400)
+        hass = request.app[KEY_HASS]
+        identifier = uuid4().hex
+        await hass.async_add_executor_job(store, backdrop_folder(hass), identifier, bytes(data), extension)
+        return web.json_response({"id": identifier}, status=201)
+
+
+class SpatialBackdropImageView(HomeAssistantView):
+    """A kept plan, back to the Studio. Its identifier names one image for good, so the browser may keep it."""
+    url = "/api/mp_glass/spatial/backdrop/{backdrop_id}"
+    name = "api:mp_glass:spatial:backdrop:image"
+    requires_auth = True
+
+    async def get(self, request, backdrop_id):
+        if not request["hass_user"].is_admin:
+            return web.json_response({"error": "unauthorized"}, status=403)
+        hass = request.app[KEY_HASS]
+        path = await hass.async_add_executor_job(find, backdrop_folder(hass), backdrop_id)
+        if path is None:
+            return web.json_response({"error": "not_found"}, status=404)
+        return web.FileResponse(path, headers={"Content-Type": CONTENT_TYPES[path.suffix[1:]], "Cache-Control": "private, max-age=31536000, immutable", "X-Content-Type-Options": "nosniff"})
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/spatial/job", vol.Required("job_id"): str})

@@ -310,7 +310,7 @@ const pairs=(points:number[][])=>points.map(p=>`${p[0]},${p[1]}`).join(' ');
  * rooms and `zones-undo`; the Studio rebuilds the plan.
  */
 export class MPPlanZones extends LitElement {
-  static properties={src:{attribute:false},level:{type:Boolean},initial:{attribute:false},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},fixtures:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},fixture:{state:true},placing:{state:true},moving:{state:true},
+  static properties={src:{attribute:false},level:{type:Boolean},initial:{attribute:false},backdrop:{attribute:false},aligning:{type:Boolean},shifting:{state:true},source:{attribute:false},plan:{attribute:false},detection:{attribute:false},walls:{attribute:false},fixtures:{attribute:false},busy:{type:Boolean},canUndo:{type:Boolean},fixture:{state:true},placing:{state:true},moving:{state:true},
     selected:{state:true},vertex:{state:true},side:{state:true},pending:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
@@ -325,7 +325,11 @@ export class MPPlanZones extends LitElement {
     figure{position:relative;max-width:calc(100% - 16px);margin:8px auto;border-radius:14px;background:#fff;box-shadow:0 10px 30px #0006;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:3px}
     figure.adding{cursor:crosshair;touch-action:none}figure.busy{opacity:.85}
     img{display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
-    /* A saved level has no drawing under it: a grid of metres, every fifth line stronger. */
+    /* The plan a saved level was drawn from, where it lies under the rooms. */
+    img.backdrop{position:absolute;border-radius:0;max-width:none}
+    /* Aligning the plan under the rooms: the whole plan moves, the rooms let it show through. */
+    figure.aligning{cursor:move;touch-action:none}figure.aligning polygon{fill-opacity:.14;cursor:move}
+    /* Around it, or without one, a grid of metres, every fifth line stronger. */
     svg.grid{pointer-events:none}.grid line{stroke:#dde6ee;stroke-width:1;vector-effect:non-scaling-stroke}.grid line.major{stroke:#b3c6d6}svg,.layer{position:absolute;inset:0;width:100%;height:100%;border-radius:inherit}.layer{pointer-events:none}
     /* Rooms and names stay on the plan; the handles of a room along its edge may overflow it. */
     svg,.names{overflow:hidden}
@@ -377,6 +381,11 @@ export class MPPlanZones extends LitElement {
   src='';source?:Source;plan?:SpatialPlan;detection:DetectionRoom[]=[];walls?:Walls;busy=false;canUndo=false;
   /** A saved level rather than an analysed plan: no image under the rooms; `initial`, the room selected when it opens. */
   level=false;initial='';
+  /**
+   * On a saved level, where the plan it was drawn from lies (`src`), in 0-1000 over the frame; while `aligning`, dragging moves
+   * that plan instead of the rooms (`backdrop-shift`, in 0-1000), and Escape ends it (`backdrop-done`).
+   */
+  backdrop?:{x:number;y:number;width:number;height:number};aligning=false;private shifting?:{start:[number,number];delta:[number,number]};
   /** Doors, windows, televisions and speakers placed on the draft; `fixture`: the one selected. */
   fixtures:DraftFixture[]=[];private fixture='';
   /** An opening being drawn along `wall` (plan pixels) from `a` to `b`, or a television or a speaker being put down. */
@@ -846,6 +855,7 @@ export class MPPlanZones extends LitElement {
     if(this.busy||e.button>0)return;
     if(this.pinch)return;
     if(this.panning){const v=this.renderRoot.querySelector<HTMLElement>('.viewport')!;this.pan={x:e.clientX,y:e.clientY,left:v.scrollLeft,top:v.scrollTop};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);e.preventDefault();return;}
+    if(this.aligning){this.shifting={start:this.point(e),delta:[0,0]};(e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);e.preventDefault();return;}
     const figure=e.currentTarget as HTMLElement,p=this.point(e);
     this.notice='';
     if(this.mode==='trace')this.tracing=this.tracePoint(p);
@@ -859,6 +869,7 @@ export class MPPlanZones extends LitElement {
   private move=(e:PointerEvent)=>{
     if(this.pinch)return;
     if(this.pan){const v=this.renderRoot.querySelector<HTMLElement>('.viewport')!;v.scrollLeft=this.pan.left+this.pan.x-e.clientX;v.scrollTop=this.pan.top+this.pan.y-e.clientY;return;}
+    if(this.shifting){const p=this.point(e);this.shifting={...this.shifting,delta:[p[0]-this.shifting.start[0],p[1]-this.shifting.start[1]]};return;}
     // An opening drawn along its wall, a television or a speaker following the pointer, a mark being dragged.
     if(this.placing){const p=this.point(e);this.placing={...this.placing,b:p,...(isOpening(this.placing.kind)?{}:{a:p})};return;}
     if(this.moving){const p=this.point(e);this.moving={...this.moving,delta:[p[0]-this.moving.start[0]!,p[1]-this.moving.start[1]!]};return;}
@@ -910,6 +921,7 @@ export class MPPlanZones extends LitElement {
   };
   private up=()=>{
     if(this.pan){this.pan=undefined;return;}
+    if(this.shifting){const [dx,dy]=this.shifting.delta;this.shifting=undefined;if(dx||dy)this.dispatchEvent(new CustomEvent('backdrop-shift',{detail:{dx,dy}}));return;}
     if(this.pinch)return;
     if(this.placing){this.finishPlacing();return;}
     if(this.moving){this.finishMoving();return;}
@@ -952,6 +964,7 @@ export class MPPlanZones extends LitElement {
     if((e.key==='Delete'||e.key==='Backspace')&&this.fixture){e.preventDefault();this.dropFixture(this.fixture);}
     else if((e.key==='Delete'||e.key==='Backspace')&&this.selected>=0){e.preventDefault();if(this.vertex>=0)this.removeVertex();else this.drop(this.selected);}
     else if(e.key==='Escape'&&this.pending){e.preventDefault();this.pending='';}
+    else if(e.key==='Escape'&&this.aligning){e.preventDefault();this.dispatchEvent(new CustomEvent('backdrop-done'));}
     // Placing doors, windows and players, or one of them selected: Escape ends that, the window stays open.
     else if(e.key==='Escape'&&(this.fixtureMode||this.fixture)){e.preventDefault();this.mode='';this.placing=undefined;this.fixture='';}
     else if(e.key==='Escape'){this.mode='';this.draft=undefined;this.trace=undefined;this.placing=undefined;this.selected=-1;this.vertex=-1;this.side=-1;this.fixture='';}
@@ -963,7 +976,7 @@ export class MPPlanZones extends LitElement {
       if(!this.pinch){this.pinch={distance:Math.max(1,distance),zoom:this.zoomLevel};this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;}
       else this.zoomTo(this.pinch.zoom*distance/this.pinch.distance,(a.clientX+b.clientX)/2,(a.clientY+b.clientY)/2);
     }else if(this.pinch){if(!e.touches.length)this.pinch=undefined;else e.preventDefault();}
-    else if(this.mode||this.panning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate],[data-fixture]'))e.preventDefault();
+    else if(this.mode||this.panning||this.aligning||(e.target as Element).closest('[data-handle],[data-zone],[data-vertex],[data-mid],[data-side],[data-bend],[data-rotate],[data-fixture]'))e.preventDefault();
   },passive:false};
   private label(index:number,room:DetectionRoom,points:number[][]){
     const spot=labelSpot(points),name=room.name;
@@ -973,6 +986,7 @@ export class MPPlanZones extends LitElement {
     return size<9?html`<span class="label number" style=${`${style};color:${colour(room,index)}`} title=${name}>${index+1}</span>`:html`<span class="label" style=${`${style};font-size:${size}px`}>${name}</span>`;
   }
   private get hint(){
+    if(this.aligning)return 'Glissez le plan pour poser ses murs sous ceux des pièces ; ses boutons − et + règlent sa taille. Échap ou « Caler le fond » pour terminer.';
     const room=this.detection[this.selected],count=this.trace?.points.length??0,kind=this.fixtureMode;
     if(kind&&isOpening(kind))return `Glissez le long d’un mur, d’un bord à l’autre de ${FIXTURES[kind].article}, ou touchez le mur pour la poser à sa largeur usuelle (${new Intl.NumberFormat('fr',{minimumFractionDigits:2}).format(OPENING_SIZES[kind].width)} m). Échap pour terminer.`;
     if(kind)return `Touchez l’endroit de la pièce où se trouve ${FIXTURES[kind].article}. Échap pour terminer.`;
@@ -990,6 +1004,11 @@ export class MPPlanZones extends LitElement {
     if(room?.polygon)return 'Glissez un point, un côté (il reste parallèle) ou ⟳ pour tourner la pièce ; un + ajoute un point. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie.';
     if(room)return 'Glissez la pièce ou ses poignées, ⟳ pour la tourner. « Courber le côté » ou « Arrondir l’angle » pour une pièce arrondie, « Forme libre » pour un autre contour.';
     return 'Touchez une pièce pour l’ajuster, ou ajoutez-en une. « Placer » pose portes, fenêtres, téléviseurs et enceintes sur le plan.';
+  }
+  /** Where the plan kept under a saved level is drawn, following the pointer while it is being moved. */
+  private backdropStyle(rect:{x:number;y:number;width:number;height:number}){
+    const [dx,dy]=this.shifting?.delta??[0,0];
+    return `left:${(rect.x+dx)/10}%;top:${(rect.y+dy)/10}%;width:${rect.width/10}%;height:${rect.height/10}%`;
   }
   /** The metres of the plan, where there is no drawing to follow. */
   private grid(source:Source){
@@ -1051,7 +1070,7 @@ export class MPPlanZones extends LitElement {
       return bent(bulge)?fromPixel(sidePoint(toPixel(a,sx,sy),toPixel(b,sx,sy),bulge,.5),sx,sy):[(a[0]!+b[0]!)/2,(a[1]!+b[1]!)/2];
     };
     return html`
-      <div class="tools">
+      ${this.aligning?nothing:html`<div class="tools">
         <button aria-pressed=${this.mode==='rect'} ?disabled=${this.busy} @click=${()=>this.startMode('rect')}>${mpIcon('plus',16)} Ajouter une pièce</button>
         <button aria-pressed=${this.mode==='trace'} ?disabled=${this.busy} @click=${()=>this.startMode('trace')}>${mpIcon('walls',16)} Tracer un contour</button>
         ${this.mode==='trace'?html`<button ?disabled=${(trace?.points.length??0)<3} @click=${()=>this.finishTrace()}>${mpIcon('check',16)} Terminer le contour</button>`
@@ -1065,7 +1084,7 @@ export class MPPlanZones extends LitElement {
       <div class="tools place" role="toolbar" aria-label="Placer sur le plan"><span>Placer :</span>
         ${FIXTURE_KINDS.map(kind=>html`<button style=${`--tone:${FIXTURES[kind].color}`} aria-pressed=${this.mode===kind} ?disabled=${this.busy} @click=${()=>this.startMode(kind)}>${mpIcon(FIXTURES[kind].icon,16)}${FIXTURES[kind].name}</button>`)}
         <button ?disabled=${!this.fixture||this.busy} @click=${()=>this.dropFixture(this.fixture)}>${mpIcon('close',16)} Retirer</button>
-      </div>
+      </div>`}
       <p class="hint" aria-live="polite">${this.busy?'Mise à jour du plan…':this.notice||this.hint}</p>
       <div class="tools zoom-tools" role="toolbar" aria-label="Précision du plan">
         <button aria-label="Zoom arrière du plan" ?disabled=${this.zoomLevel<=1} @click=${()=>this.zoomTo(this.zoomLevel/1.5)}>−</button><output aria-label="Zoom du plan">${Math.round(this.zoomLevel*100)} %</output><button aria-label="Zoom avant du plan" ?disabled=${this.zoomLevel>=8} @click=${()=>this.zoomTo(this.zoomLevel*1.5)}>+</button>
@@ -1074,9 +1093,10 @@ export class MPPlanZones extends LitElement {
         <button aria-pressed=${this.magnet} @click=${()=>{this.magnet=!this.magnet;}}>Aimantation</button>
       </div>
       <div class="viewport" style=${`aspect-ratio:${source.width}/${source.height};width:min(100% - 16px,calc(max(52vh,100dvh - 330px) * ${source.width/source.height}))`} @wheel=${this.wheel}>
-      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label=${this.level?'Pièces du niveau sur le plan':'Pièces détectées sur le plan'} style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
-        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;this.placing=undefined;this.moving=undefined;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
-        ${this.src?html`<img src=${this.src} alt="Plan analysé par Gemini" draggable="false">`:this.grid(source)}
+      <figure class=${`${this.mode?'adding':''} ${this.busy?'busy':''} ${this.panning?'panning':''} ${this.aligning?'aligning':''} ${this.pending&&room?.polygon?`picking-${this.pending}`:''}`} tabindex="0" aria-label=${this.level?'Pièces du niveau sur le plan':'Pièces détectées sur le plan'} style=${`aspect-ratio:${source.width}/${source.height};width:${this.zoomLevel*100}%`}
+        @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${()=>{this.drag=undefined;this.draft=undefined;this.pan=undefined;this.tracing=false;this.placing=undefined;this.moving=undefined;this.shifting=undefined;}} @keydown=${this.key} @touchstart=${this.touch} @touchmove=${this.touch} @touchend=${this.touch} @touchcancel=${this.touch}>
+        ${this.src&&this.backdrop?html`${this.grid(source)}<img class="backdrop" src=${this.src} alt="Fond de plan du niveau" draggable="false" style=${this.backdropStyle(this.backdrop)}>`
+          :this.src?html`<img src=${this.src} alt="Plan analysé par Gemini" draggable="false">`:this.grid(source)}
         <svg viewBox="0 0 1000 1000" preserveAspectRatio="none">
           ${this.detection.map((r,i)=>{
             const plan=r.id?rooms.get(r.id):undefined;

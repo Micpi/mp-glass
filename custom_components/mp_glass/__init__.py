@@ -1,4 +1,6 @@
 """MP Glass project storage and authenticated WebSocket API."""
+import logging
+
 import voluptuous as vol
 from jsonschema.exceptions import ValidationError
 
@@ -9,7 +11,10 @@ from homeassistant.helpers.storage import Store
 from .const import DOMAIN, VERSION
 from .frontend import async_register_module, async_register_studio, async_unregister_module, async_unregister_studio
 from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
-from .spatial import KEY as SPATIAL_KEY, SpatialRuntime, SpatialUploadView, websocket_cancel, websocket_info, websocket_job, websocket_normalize
+from .backdrop import prune, referenced, remove_all
+from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdropView, SpatialRuntime, SpatialUploadView, backdrop_folder, websocket_cancel, websocket_info, websocket_job, websocket_normalize
+
+_LOGGER = logging.getLogger(__name__)
 
 
 async def async_setup_entry(hass, entry):
@@ -37,6 +42,8 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_normalize)
         websocket_api.async_register_command(hass, websocket_info)
         hass.http.register_view(SpatialUploadView())
+        hass.http.register_view(SpatialBackdropView())
+        hass.http.register_view(SpatialBackdropImageView())
         hass.data["mp_glass_ws_registered"] = True
     await async_register_studio(hass, entry.options.get("show_settings", True))
     entry.async_on_unload(entry.add_update_listener(async_reload))
@@ -59,6 +66,7 @@ async def async_unload_entry(hass, entry):
 
 async def async_remove_entry(hass, entry):
     async_unregister_module(hass)
+    await hass.async_add_executor_job(remove_all, backdrop_folder(hass))
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/project/get"})
@@ -88,3 +96,8 @@ async def websocket_save(hass, connection, msg):
         connection.send_error(msg["id"], "conflict", "Reload before saving")
         return
     connection.send_result(msg["id"], record)
+    # Plans no saved level shows any more are removed from the storage.
+    try:
+        await hass.async_add_executor_job(prune, backdrop_folder(hass), referenced(record["project"]))
+    except OSError as err:
+        _LOGGER.warning("MP Glass could not remove unused plans: %s", err)

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.8.3 — le plan d’architecte reste sous le niveau
+
+Retour utilisateur sur 0.8.2 : « je perds mon fond de plan ! ». **Modifier le plan** montrait les pièces sur une simple grille : l’image analysée par Gemini n’était gardée nulle part une fois le brouillon utilisé.
+
+- **Gardé à l’import** : **Utiliser pour ce niveau** envoie l’image analysée à Home Assistant, avec sa place exacte sous les pièces. **Modifier le plan** l’affiche sous le niveau, comme dans le brouillon, et ses murs attirent les côtés des pièces.
+- **Retrouvé pour un niveau déjà importé** : rangée **Fond de plan**, **Choisir le plan (PDF ou image)**. MP Glass repère les murs dessinés et cale l’image seul, en cherchant l’échelle et la place qui posent le plus de côtés des pièces sur ces murs ; le message dit la part retrouvée.
+- **Caler le fond** à la main si besoin : glisser le plan, **−5 %** à **+5 %** pour sa taille, Échap pour finir ; **Recaler automatiquement**, **Changer de plan**, **Afficher** et **Retirer le fond** complètent la rangée. **Appliquer au niveau** garde le fond avec les pièces, puis **Enregistrer**.
+- **Confidentialité** : l’image est rangée dans `.storage/mp_glass_backdrops/` de Home Assistant, jamais sous `www`, rendue aux seuls administrateurs, et supprimée une fois qu’aucun niveau enregistré ne la montre plus. Le plan ne garde qu’un identifiant et la place de l’image (`backdrop`, champ facultatif du contrat).
+
 ## 0.8.2 — modifier le plan d’un niveau enregistré
 
 Retour utilisateur : « je ne trouve pas de bouton modifier sur cette page pour modifier mon plan d’étage ». L’éditeur sur plan (déplacer, redimensionner, tracer, courber…) n’existait que dans la fenêtre du brouillon Gemini ; un plan enregistré, ou le plan par défaut, ne se corrigeait qu’en saisissant les sommets en mètres, repliés au bas de la pièce.

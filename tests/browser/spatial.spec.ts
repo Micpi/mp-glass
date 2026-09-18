@@ -19,11 +19,18 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
     const plan=examplePlan();
     const demo=(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo;
     const changed:unknown[]=[];const uploads:{url:string;method?:string;type?:string;side?:number}[]=[];const messages:Record<string,unknown>[]=[];
+    // Plans kept under their levels, as Home Assistant keeps them.
+    const backdrops=new Map<string,Blob>();
     const editor=document.createElement('mp-spatial-editor') as HTMLElement&{hass:import('../../frontend/ha/client').Hass;plan?:typeof plan;fallback?:typeof plan;areas:unknown[]};
     if(options.saved!==false)editor.plan=plan;
     if(options.fallback){const fallback=examplePlan();fallback.floors[0].name='RDC';fallback.floors[0].rooms[0].areaId='salon';editor.fallback=fallback;}
     editor.areas=[{area_id:'salon',name:'Salon'}];
     editor.hass={...demo.hass,user:{id:'test',is_admin:isAdmin},fetchWithAuth:async(url,init)=>{
+      if(url.startsWith('/api/mp_glass/spatial/backdrop')){
+        if(init?.method==='POST'){const id=Array.from(crypto.getRandomValues(new Uint8Array(16)),b=>b.toString(16).padStart(2,'0')).join('');backdrops.set(id,init.body as Blob);return new Response(JSON.stringify({id}),{status:201});}
+        const kept=backdrops.get(url.split('/').pop()!);
+        return kept?new Response(kept,{status:200,headers:{'Content-Type':kept.type}}):new Response(JSON.stringify({error:'not_found'}),{status:404});
+      }
       const body=init?.body as Blob;const bitmap=await createImageBitmap(body).catch(()=>undefined);
       uploads.push({url,method:init?.method,type:(init?.headers as Record<string,string>)['Content-Type'],side:bitmap&&Math.max(bitmap.width,bitmap.height)});
       if(options.uploadStatus)return new Response('404: Not Found',{status:options.uploadStatus});
@@ -57,7 +64,7 @@ async function mountEditor(page:Page, isAdmin=true, jobError=false, options:Moun
     }};
     // Like the Studio: what the editor gives back becomes the saved plan it is shown next, removal included.
     editor.addEventListener('spatial-change',e=>{const detail=(e as CustomEvent).detail;changed.push(detail);editor.plan=detail as typeof plan|undefined;});
-    document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages}});
+    document.body.replaceChildren(editor);Object.assign(window,{spatialTest:{changed,uploads,messages,backdrops}});
   },{isAdmin,jobError,options});
 }
 /** Chooses a PNG of the example plan drawn at 100 px per metre: exterior and interior walls, 8 px thick. */
@@ -683,6 +690,103 @@ test('the shape of a room is edited on the plan from its own settings',async({pa
   await expect(page.locator('mp-spatial-editor .box').filter({hasText:'modifications non appliquées'})).toHaveCount(0);
 });
 
+test('the analysed plan stays under its level and comes back under the rooms when the level is edited',async({page})=>{
+  await page.setViewportSize({width:1400,height:950});
+  await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);
+  const draft=page.getByRole('dialog');
+  await expect(draft.getByRole('listitem').filter({hasText:/aux murs du plan/})).toBeVisible();
+  await draft.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  // Kept in Home Assistant with where it lies: 100 px per metre, the house's corner on the image's.
+  const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
+  const backdrop=saved.floors[0]!.backdrop!;
+  expect(backdrop).toEqual({id:expect.stringMatching(/^[a-f0-9]{32}$/),width:1300,height:800,scale:[.01,.01],origin:[0,0]});
+  expect(await page.evaluate(id=>(window as unknown as {spatialTest:{backdrops:Map<string,Blob>}}).spatialTest.backdrops.get(id)?.type,backdrop.id)).toBe('image/png');
+
+  await page.getByRole('button',{name:'Modifier le plan',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:/^Modifier « /}),figure=dialog.locator('mp-plan-zones figure'),image=figure.locator('img.backdrop');
+  await expect(image).toHaveJSProperty('naturalWidth',1300);
+  // Each room lies on the image where it was drawn: its first corner, at 100 px per metre from the image's corner.
+  const [frame,drawn]=[(await figure.boundingBox())!,(await image.boundingBox())!];
+  const [x,y]=saved.floors[0]!.rooms[0]!.polygon[0]!;
+  const [px,py]=(await figure.locator('polygon[data-zone="0"]').getAttribute('points'))!.split(' ')[0]!.split(',').map(Number) as [number,number];
+  expect(frame.x+px/1000*frame.width).toBeCloseTo(drawn.x+x*100/1300*drawn.width,0);
+  expect(frame.y+py/1000*frame.height).toBeCloseTo(drawn.y+y*100/800*drawn.height,0);
+  expect(drawn.width/drawn.height).toBeCloseTo(1300/800,2);
+  await page.screenshot({path:'artifacts/spatial-level-backdrop.png'});
+  // Hidden and shown again; left as it was, the window leaves nothing behind.
+  const tools=dialog.getByRole('toolbar',{name:'Fond de plan'});
+  await tools.getByRole('button',{name:'Afficher'}).click();
+  await expect(image).toHaveCount(0);
+  await tools.getByRole('button',{name:'Afficher'}).click();
+  await expect(image).toBeVisible();
+  await dialog.getByRole('button',{name:'Fermer'}).click();
+  await expect(page.locator('mp-spatial-editor .box').filter({hasText:'modifications non appliquées'})).toHaveCount(0);
+});
+
+test('a plan chosen for a saved level is laid under its rooms by its walls, then moved by hand and kept',async({page})=>{
+  await page.setViewportSize({width:1400,height:950});
+  await mountEditor(page);
+  await page.getByRole('button',{name:'Modifier le plan',exact:true}).click();
+  const dialog=page.getByRole('dialog',{name:'Modifier « Rez-de-chaussée »'}),figure=dialog.locator('mp-plan-zones figure'),tools=dialog.getByRole('toolbar',{name:'Fond de plan'});
+  await expect(figure.locator('img')).toHaveCount(0);
+  // The example plan drawn at 50 px per metre, its corner at (80, 70) on a 900 x 600 image, with a title block.
+  await page.evaluate(async()=>{
+    const canvas=document.createElement('canvas');canvas.width=900;canvas.height=600;const context=canvas.getContext('2d')!;
+    context.fillStyle='#fff';context.fillRect(0,0,900,600);context.lineWidth=6;
+    const at=(x:number,y:number):[number,number]=>[80+x*50,70+y*50];
+    context.strokeRect(...at(0,0),650,400);
+    for(const [x0,y0,x1,y1] of [[5,0,5,4],[9,0,9,4],[0,4,13,4],[4,4,4,8],[7,4,7,8],[10,4,10,8]]){context.beginPath();context.moveTo(...at(x0!,y0!));context.lineTo(...at(x1!,y1!));context.stroke();}
+    context.lineWidth=2;context.strokeRect(760,520,120,60);
+    const blob=await new Promise<Blob>(resolve=>canvas.toBlob(b=>resolve(b!),'image/png'));
+    const input=document.querySelector('mp-spatial-editor')!.shadowRoot!.querySelector<HTMLInputElement>('dialog.level .backdrop-tools input[type=file]')!;
+    const transfer=new DataTransfer();transfer.items.add(new File([blob],'plan.png',{type:'image/png'}));input.files=transfer.files;input.dispatchEvent(new Event('change'));
+  });
+  await expect(dialog.getByRole('listitem').filter({hasText:/^Plan calé sur les murs des pièces/})).toBeVisible();
+  const image=figure.locator('img.backdrop');
+  await expect(image).toHaveJSProperty('naturalWidth',900);
+  await expect(dialog.getByText('Plan 3D · modifications non appliquées')).toBeVisible();
+  await dialog.getByRole('button',{name:'Appliquer au niveau'}).click();
+  await expect(page.getByRole('status')).toContainText('Plan du niveau « Rez-de-chaussée » modifié');
+  const kept=async()=>(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!)).floors[0]!.backdrop!;
+  const fitted=await kept();
+  expect(fitted).toMatchObject({id:expect.stringMatching(/^[a-f0-9]{32}$/),width:900,height:600});
+  expect(1/fitted.scale[0]!).toBeCloseTo(50,0);expect(fitted.origin[0]).toBeCloseTo(80,-.5);expect(fitted.origin[1]).toBeCloseTo(70,-.5);
+
+  // Opened again, it comes back; « Caler le fond » moves it with the pointer and « +5 % » enlarges it.
+  await page.getByRole('button',{name:'Modifier le plan',exact:true}).click();
+  await expect(image).toHaveJSProperty('naturalWidth',900);
+  await tools.getByRole('button',{name:'Caler le fond'}).click();
+  await expect(dialog.getByRole('button',{name:'Ajouter une pièce'})).toHaveCount(0);
+  const before=(await image.boundingBox())!,box=(await figure.boundingBox())!;
+  await page.mouse.move(box.x+box.width/2,box.y+box.height/2);await page.mouse.down();
+  await page.mouse.move(box.x+box.width/2+20,box.y+box.height/2,{steps:3});await page.mouse.move(box.x+box.width/2+40,box.y+box.height/2,{steps:3});await page.mouse.up();
+  expect((await image.boundingBox())!.x-before.x).toBeCloseTo(40,-.5);
+  await tools.getByRole('button',{name:'Taille du fond +5 %'}).click();
+  expect((await image.boundingBox())!.width/before.width).toBeCloseTo(1.05,2);
+  await page.keyboard.press('Escape');
+  await expect(tools.getByRole('button',{name:'Caler le fond'})).toHaveAttribute('aria-pressed','false');
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await dialog.getByRole('button',{name:'Appliquer au niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  const moved=await kept();
+  // The same image, not sent again: only where it lies changed.
+  expect(moved.id).toBe(fitted.id);
+  expect(await page.evaluate(()=>(window as unknown as {spatialTest:{backdrops:Map<string,Blob>}}).spatialTest.backdrops.size)).toBe(1);
+  expect(moved.scale[0]!/fitted.scale[0]!).toBeCloseTo(1.05,6);
+  // Its middle, around which it grew, moved 40 screen pixels to the right: 18 m of plan were drawn over `before.width`.
+  const middle=(b:{width:number;scale:number[];origin:number[]})=>(b.width/2-b.origin[0]!)*b.scale[0]!;
+  expect(middle(moved)-middle(fitted)).toBeCloseTo(40*18/before.width,1);
+
+  // Removed, it goes from the level.
+  await page.getByRole('button',{name:'Modifier le plan',exact:true}).click();
+  await tools.getByRole('button',{name:'Retirer le fond'}).click();
+  await expect(image).toHaveCount(0);
+  await dialog.getByRole('button',{name:'Appliquer au niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
+  expect((await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!)).floors[0]!.backdrop).toBeUndefined();
+});
+
 test('without the analysed image the card reopens the draft in 3D',async({page})=>{
   await mountEditor(page);
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
@@ -775,6 +879,7 @@ test('detected rooms fit the drawn walls and can be moved, resized, drawn, delet
   await dialog.getByRole('tab',{name:'En 3D'}).click();
   await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
   await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
   const names=saved.floors[0]!.rooms.map(r=>r.name);
   expect(names).toHaveLength(6);expect(names).toContain('Cellier');expect(names).not.toContain('Cuisine');
@@ -937,6 +1042,7 @@ test('a room turns, its sides slide parallel and its walls curve',async({page})=
   await dialog.getByRole('tab',{name:'En 3D'}).click();
   await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
   await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   const saved=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!);
   expect(saved.floors[0]!.rooms[0]!.arcs?.filter(b=>Math.abs(b)>.001)).toHaveLength(1);
   expect(errors).toEqual([]);
@@ -992,6 +1098,7 @@ test('doors, windows, televisions and speakers are placed on the analysed plan, 
   await expect(dialog.locator('mp-spatial-viewer canvas')).toBeVisible();
   await dialog.screenshot({path:'artifacts/spatial-draft-fixtures-3d.png'});
   await dialog.getByRole('button',{name:'Utiliser pour ce niveau'}).click();
+  await expect(page.getByRole('dialog')).toHaveCount(0);
   const rooms=await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!.floors[0]!.rooms);
   const kitchen=rooms.find(r=>r.name==='Cuisine')!;
   expect(kitchen.areaId).toBe('cuisine');

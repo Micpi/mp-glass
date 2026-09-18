@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.20 — en-tête lisible sur téléphone en paysage
+
+Sur un écran d’environ 844 px de large (téléphone tenu en paysage), le nom de la maison passait sous les boutons de navigation : **Accueil** en cachait la fin. Le défaut existait déjà en 0.7.3.
+
+- **Nom de la maison** : il ne déborde plus de sa place, à aucune largeur. S’il est trop long pour la ligne, il se termine par « … », comme la ligne « Home Assistant · MP Glass » en dessous, au lieu de passer sous la navigation ou hors de l’en-tête.
+- **Personnaliser** : jusqu’à 960 px de large, le bouton ne montre plus que son icône, comme il le faisait déjà jusqu’à 820 px. Sur téléphone en paysage, « Maison de démonstration » tient ainsi en entier à côté de la navigation, toujours sur une seule ligne. Le bouton garde son info-bulle « Personnaliser MP Glass ».
+- Téléphone en portrait, tablette, bureau et écran mural ne changent pas : leurs captures de référence restent identiques au pixel près. Seule celle du téléphone en paysage a été régénérée, et le test visuel vérifie maintenant aussi que le nom est entier et ne touche pas la navigation, aux six largeurs.
+
 ## 0.7.19 — captures de référence à jour
 
 Maintenance : le dashboard ne change pas. Les six tests visuels de l’accueil (`tests/browser/light.spec.ts`) échouaient : leurs captures de référence dataient de 0.7.3.

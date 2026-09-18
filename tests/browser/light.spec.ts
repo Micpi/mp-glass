@@ -1,4 +1,10 @@
-import { test, expect } from '@playwright/test';
+import { test, expect, type Page } from '@playwright/test';
+/** Whether the project name in the header is cut short, or runs under the navigation. */
+const headerClash=(page:Page)=>page.evaluate(()=>{
+  const root=document.querySelector('mp-glass-view-v4')!.shadowRoot!,title=root.querySelector('.brand strong')!;
+  const name=root.querySelector('.brand>div')!.getBoundingClientRect(),nav=root.querySelector('nav')!.getBoundingClientRect();
+  return {clipped:title.scrollWidth>title.clientWidth,overlap:name.right>nav.left&&name.left<nav.right&&name.bottom>nav.top&&name.top<nav.bottom};
+});
 test('commands the correct light; dimmer only where declared; more-info bubbles',async({page})=>{
   await page.goto('/');const first=page.locator('mp-glass-light-v4').nth(0);
   await first.getByRole('button',{name:'Allumer',exact:true}).click();await expect(first.getByRole('button',{name:'Éteindre',exact:true})).toBeVisible();
@@ -17,5 +23,5 @@ test('displays unavailable and service errors without claiming success',async({p
   await expect(first.getByText('Indisponible')).toBeVisible();await expect(first.getByRole('button',{name:'Allumer',exact:true})).toBeDisabled();
 });
 for(const [name,width,height] of [['phone-portrait',390,844],['phone-landscape',844,390],['tablet-portrait',820,1180],['tablet-landscape',1180,820],['desktop',1440,1000],['wall',1920,1080]] as const){
-  test(`${name}: no overflow and visual baseline`,async({page})=>{await page.clock.setFixedTime(new Date('2026-09-12T20:42:00'));await page.setViewportSize({width,height});await page.goto('/');await expect(page.locator('mp-glass-light-v4')).toHaveCount(3);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);await expect(page).toHaveScreenshot(`${name}.png`,{fullPage:true,animations:'disabled'});});
+  test(`${name}: no overflow and visual baseline`,async({page})=>{await page.clock.setFixedTime(new Date('2026-09-12T20:42:00'));await page.setViewportSize({width,height});await page.goto('/');await expect(page.locator('mp-glass-light-v4')).toHaveCount(3);expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);expect(await headerClash(page)).toEqual({clipped:false,overlap:false});await expect(page).toHaveScreenshot(`${name}.png`,{fullPage:true,animations:'disabled'});});
 }

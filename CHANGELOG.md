@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.7.19 — captures de référence à jour
+
+Maintenance : le dashboard ne change pas. Les six tests visuels de l’accueil (`tests/browser/light.spec.ts`) échouaient : leurs captures de référence dataient de 0.7.3.
+
+- **Page plus haute de 56 px** sur téléphone (portrait et paysage) et tablette en portrait : c’est le bouton **Tout est éteint** ajouté en 0.7.13 à la fiche « Vue d’ensemble » (44 px de haut, 12 px de marge). Sur tablette en paysage, bureau et écran mural, la fiche est à côté du plan et s’allonge sans changer la hauteur de la page. La barre Home Assistant transparente (0.7.7) n’y est pour rien : la page de démonstration n’en a pas.
+- **Plan** : les autres écarts viennent des murs en vitre (0.7.10) et des étiquettes sans point bleu, sans sélecteur Lumières / Climat quand aucune pièce ne mesure la température (0.7.9).
+- Les captures ont été régénérées puis vérifiées une à une : le rendu est celui voulu par ces versions, et les tests passent de nouveau d’un lancement à l’autre.
+
 ## 0.7.18 — niveaux alignés sur leur centre
 
 Demande utilisateur : « ce serait mieux d’aligner les plans par leur point central, l’affichage en cas de superficie différente aura un meilleur rendu ». Sur une maison dont les niveaux n’ont ni la même superficie ni la même origine, la pile partait en escalier : chaque niveau restait là où il avait été dessiné.

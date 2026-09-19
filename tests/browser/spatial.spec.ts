@@ -113,6 +113,9 @@ test('3D rotates, zooms, pans, resets and controls a bound light',async({page})=
   await label.click();
   const card=viewer.getByRole('region',{name:'Salon'});
   await expect(card.getByText('Suspension',{exact:true})).toBeVisible();
+  await expect(card.locator('.section-title',{hasText:'Lumières'})).toBeVisible();
+  await expect(card.locator('.section-title',{hasText:'Climat'})).toBeVisible();
+  await expect(card.locator('.section-title',{hasText:'Audio-vidéo'})).toBeVisible();
   await expect(card.getByText('21,5°',{exact:true})).toBeVisible();
   await expect(card.locator('.stat',{hasText:'Humidité'})).toContainText('46 %');
   await card.getByRole('button',{name:'Allumer',exact:true}).click();

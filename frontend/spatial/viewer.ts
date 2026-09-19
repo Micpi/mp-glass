@@ -871,6 +871,10 @@ export class MPSpatialViewer extends LitElement {
     const humidity=devices.find(d=>d.kind==='humidity'&&d.numeric!==undefined)?.numeric;
     const href=room.areaId?this.areaHref?.(room.areaId):undefined;
     const group=lights.filter(d=>d.switchable);
+    const climate=devices.filter(d=>['climate','temperature','humidity'].includes(d.kind));
+    const media=devices.filter(d=>d.kind==='media');
+    const other=devices.filter(d=>!lights.includes(d)&&!climate.includes(d)&&!media.includes(d));
+    const deviceGroup=(title:MessageKey,items:Device[])=>items.length?html`<p class="section-title">${tr(title)}</p><ul class="devices" aria-label=${tr(title)}>${items.map(d=>this.deviceRow(room,d))}</ul>`:nothing;
     return html`<section class="card ${lit?'lit':''}" aria-labelledby="room-title">
       <header><span class="orb">${mpIcon(roomIcon(room.name),26)}</span><div class="title"><small>${floor.name}</small><h3 id="room-title">${room.name}</h3></div><button class="close" aria-label=${tr('Fermer la pièce')} title=${tr('Fermer')} @click=${this.close}>${mpIcon('close',18)}</button></header>
       <div class="stats">
@@ -880,8 +884,12 @@ export class MPSpatialViewer extends LitElement {
       </div>
       ${group.length>1?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy} @click=${()=>this.lights([room],on.length?'turn_off':'turn_on',(on.length?on:group).map(d=>d.id))}>${mpIcon('power',16)}<span>${on.length?tr('Tout éteindre'):tr('Tout allumer')}</span></button>`:nothing}
       ${this.coverPair([room],'room',2)}
-      ${openings.length?html`<p class="section-title">${tr('Portes et fenêtres')}</p><ul class="devices" aria-label=${tr('Portes et fenêtres')}>${openings.map(o=>this.openingRow(room,o))}</ul>${devices.length?html`<p class="section-title">${tr('Équipements')}</p>`:nothing}`:nothing}
-      ${devices.length?html`<ul class="devices" aria-label=${tr('Équipements')}>${devices.map(d=>this.deviceRow(room,d))}</ul>`:openings.length?nothing:html`<p class="lead">${tr('Aucun équipement associé à cette pièce. Choisissez-les dans Studio → Plan 3D.')}</p>`}
+      ${openings.length?html`<p class="section-title">${tr('Portes et fenêtres')}</p><ul class="devices" aria-label=${tr('Portes et fenêtres')}>${openings.map(o=>this.openingRow(room,o))}</ul>`:nothing}
+      ${deviceGroup('Lumières',lights)}
+      ${deviceGroup('Climat',climate)}
+      ${deviceGroup('Audio-vidéo',media)}
+      ${deviceGroup('Équipements',other)}
+      ${!devices.length&&!openings.length?html`<p class="lead">${tr('Aucun équipement associé à cette pièce. Choisissez-les dans Studio → Plan 3D.')}</p>`:nothing}
       ${href?html`<a class="open" href=${href}><span>${tr('Ouvrir la pièce')}</span>${mpIcon('arrow',16)}</a>`:nothing}
     </section>`;
   }

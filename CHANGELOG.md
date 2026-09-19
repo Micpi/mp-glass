@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.12 — équipements rangés par catégorie
+
+- **Fiches des pièces** : les équipements sont maintenant regroupés dans les catégories « Lumières », « Climat » et « Audio-vidéo », tandis que les appareils non classés restent visibles dans « Équipements ».
+
 ## 0.9.11 — informations simplifiées
 
 - **Plan 3D** : la fiche d’une pièce sélectionnée n’affiche plus sa surface ni ses dimensions en m².

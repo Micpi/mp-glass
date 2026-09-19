@@ -18,7 +18,7 @@ function lovelace(dashboards: { url_path: string; config?: object }[], panels: s
   return { hass, calls, dashboards };
 }
 
-describe('MP Glass dashboard', () => {
+describe('MP Nexus dashboard', () => {
   it('reuses a dashboard that already runs the strategy, whatever its URL', async () => {
     const { hass, calls } = lovelace([{ url_path: 'dashboard-maison', config: { strategy: { type: 'custom:mp-glass' } } }, { url_path: 'energie', config: { views: [] } }]);
     expect(await ensureDashboard(hass)).toEqual({ urlPath: 'dashboard-maison', created: false });
@@ -28,7 +28,7 @@ describe('MP Glass dashboard', () => {
   it('creates it in the sidebar with the strategy when missing', async () => {
     const { hass, calls, dashboards } = lovelace([{ url_path: 'energie', config: { views: [] } }]);
     expect(await ensureDashboard(hass)).toEqual({ urlPath: 'mp-glass', created: true });
-    expect(calls).toContainEqual({ type: 'lovelace/dashboards/create', url_path: 'mp-glass', title: 'MP Glass', icon: 'mdi:view-dashboard', show_in_sidebar: true, require_admin: false });
+    expect(calls).toContainEqual({ type: 'lovelace/dashboards/create', url_path: 'mp-glass', title: 'MP Nexus', icon: 'mdi:view-dashboard', show_in_sidebar: true, require_admin: false });
     expect(dashboards.find(d => d.url_path === 'mp-glass')?.config).toEqual({ strategy: { type: 'custom:mp-glass' } });
     expect(await ensureDashboard(hass)).toEqual({ urlPath: 'mp-glass', created: false });
   });

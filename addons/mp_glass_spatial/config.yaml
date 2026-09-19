@@ -1,7 +1,7 @@
-name: MP Glass Spatial
+name: MP Nexus Spatial
 version: "0.6.0"
 slug: mp_glass_spatial
-description: Génération de plans 3D avec Gemini Flash-Lite, pilotée depuis MP Glass Studio
+description: Génération de plans 3D avec Gemini Flash-Lite, pilotée depuis MP Nexus Studio
 arch:
   - amd64
   - aarch64

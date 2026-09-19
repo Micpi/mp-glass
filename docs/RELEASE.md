@@ -1,4 +1,4 @@
-# Release MP Glass
+# Release MP Nexus
 
 Le dépôt public `Micpi/mp-glass` est la source HACS (catégorie Intégration). HACS installe le dossier `custom_components/mp_glass` de la **dernière release GitHub** : frontend compilé (`www/`), schéma et backend y sont commités. `hacs.json` porte le nom et le minimum HA ; la version proposée est le tag de la release.
 
@@ -8,7 +8,7 @@ Le dépôt public `Micpi/mp-glass` est la source HACS (catégorie Intégration).
 2. Renseigner le `CHANGELOG.md`.
 3. `npm run check`, `npm run test:e2e`, tests Python (`python -m unittest discover -s tests -p 'test_*.py'`) : le build régénère `www/` et synchronise les schémas et le contrat Gemini avec le worker.
 4. Commiter sur `main` et pousser.
-5. `gh release create vX.Y.Z --target main --title "MP Glass X.Y.Z" --notes-file <notes>` : le tag doit correspondre à la version du manifest. HACS signale la mise à jour dans Home Assistant.
+5. `gh release create vX.Y.Z --target main --title "MP Nexus X.Y.Z" --notes-file <notes>` : le tag doit correspondre à la version du manifest. HACS signale la mise à jour dans Home Assistant.
 
 Le CI (`.github/workflows/ci.yml`) exécute les contrôles frontend, Python, hassfest et la validation HACS à chaque push. La vérification `brands` de HACS est ignorée : l’intégration n’est pas référencée dans `home-assistant/brands`.
 

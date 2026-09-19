@@ -17,7 +17,7 @@ class MPGlassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
         self._abort_if_unique_id_configured()
         if user_input is not None:
             return self.async_create_entry(title=user_input["name"], data=user_input)
-        return self.async_show_form(step_id="user", data_schema=vol.Schema({vol.Required("name", default="MP Glass"): vol.All(str, vol.Length(min=1, max=100))}))
+        return self.async_show_form(step_id="user", data_schema=vol.Schema({vol.Required("name", default="MP Nexus"): vol.All(str, vol.Length(min=1, max=100))}))
 
     @staticmethod
     @callback

@@ -42,11 +42,11 @@ Modèle par défaut `gemini-3.5-flash-lite` : `gemini-2.5-flash-lite` est refus�
 
 ## 0.2.2
 
-Contrat Gemini partagé mis à jour : schéma compatible, géométrie réparée plutôt que rejetée, erreurs Google détaillées renvoyées à MP Glass.
+Contrat Gemini partagé mis à jour : schéma compatible, géométrie réparée plutôt que rejetée, erreurs Google détaillées renvoyées à MP Nexus.
 
 ## 0.2.1
 
-Client Gemini partagé avec l’intégration. Ce worker devient facultatif : le mode Gemini direct de MP Glass fonctionne avec une seule clé API, sans installation d’add-on.
+Client Gemini partagé avec l’intégration. Ce worker devient facultatif : le mode Gemini direct de MP Nexus fonctionne avec une seule clé API, sans installation d’add-on.
 
 ## 0.2.0
 

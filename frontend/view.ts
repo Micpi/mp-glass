@@ -21,7 +21,8 @@ interface ViewConfig {
   title?: string;
   mp_appearance?: AppearanceConfig;
   mp_navigation?: NavigationConfig;
-  mp_view_kind?: 'home'|'lights'|'rooms'|'area'|'inventory';
+  mp_view_kind?: 'home'|'lights'|'rooms'|'area'|'inventory'|'info';
+  mp_info?: { version?: string; deviceCount: number; lightCount: number; areaCount: number };
   mp_view_path?: string;
   mp_view_title?: string;
   mp_areas?: AreaSummary[];
@@ -55,7 +56,8 @@ export class MPGlassView extends LitElement {
     footer{display:flex;align-items:center;justify-content:center;gap:14px;padding:42px 0 4px;color:#9fb2c4;letter-spacing:.23em;text-transform:uppercase;font-size:9px}footer::before,footer::after{content:'';height:1px;width:50px;background:linear-gradient(90deg,transparent,rgba(207,228,248,.45))}footer::after{transform:scaleX(-1)}
     :host([motion]) nav .active{animation:breathe 3.4s ease-in-out infinite}:host([motion]) .room{transition:transform .2s ease,border-color .2s ease}:host([card-style=compact]) .grid{--mp-gap:8px}:host([card-style=spacious]) .grid{--mp-gap:20px}:host([icon-style=orb]){--mp-icon-radius:50%}:host([icon-style=minimal]){--mp-icon-radius:5px}:host([density=compact]) .hero{min-height:245px;padding-top:42px}@keyframes breathe{50%{filter:brightness(1.09);box-shadow:0 8px 29px color-mix(in srgb,var(--mp-accent) 34%,transparent)}}
     @container (max-width:1180px){nav .language{display:flex}.grid{grid-template-columns:repeat(min(3,var(--mp-columns)),minmax(0,1fr))}.rooms-grid{grid-template-columns:repeat(2,minmax(0,1fr))}header{grid-template-columns:minmax(200px,1fr) auto}.header-tools{display:none}.hero{grid-template-columns:minmax(0,1.4fr) minmax(210px,.6fr)}}
-    @container (max-width:960px){.settings-nav span{display:none}}
+    .info-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:18px}.info-card{padding:26px;border-radius:var(--mp-radius);min-width:0}.info-card h2{display:flex;align-items:center;gap:10px;margin:0 0 20px;font-size:18px;font-weight:500}.info-card h2 .mp-icon{color:var(--mp-accent)}.info-card dl{margin:0}.info-card dl>div{display:flex;justify-content:space-between;align-items:baseline;gap:18px;padding:12px 0;border-top:1px solid #d7ebff1f}.info-card dt,.info-card p{color:#b9cad9;font-size:13px;line-height:1.6}.info-card dd{margin:0;text-align:right;overflow-wrap:anywhere}.info-card .settings-link{display:inline-flex;margin-top:8px;font-size:13px}.info-update{padding:18px;border-radius:var(--mp-radius);margin:0 0 18px;font-size:14px;line-height:1.6}.info-update button{min-height:44px;margin:8px;padding:0 14px;border:1px solid #d4e8fa55;border-radius:12px;background:#ffffff14;color:inherit;font:inherit;cursor:pointer}
+    @container (min-width:821px) and (max-width:960px){.info-nav span:last-child{display:none}}
     @container (max-width:820px){nav .language{display:none}.brand .language{display:flex}.shell{padding:14px 20px 46px}header{grid-template-columns:1fr}.brand{justify-content:center}.brand small{display:none}nav{width:100%;min-width:0}nav a{flex:1 1 auto;min-width:0}nav a span:last-child{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.hero{min-height:300px;grid-template-columns:1fr;padding:48px 20px 30px}.quote{display:none}.overview-card{grid-template-columns:1fr repeat(3,minmax(90px,.48fr))}.overview-item{padding:7px 9px}.overview-item small{display:none}.grid{grid-template-columns:repeat(2,minmax(0,1fr))}}
     @container (max-width:540px){.shell{padding:9px 10px 36px}header{padding:10px;gap:9px}.brand{justify-content:flex-start}.mark{width:40px;height:40px;border-radius:13px;font-size:29px}.brand strong{font-size:21px}nav a{padding:0 8px;font-size:12px}nav.hide-labels a span:last-child{display:none}.hero{min-height:285px;padding:44px 10px 26px}.hero h1{font-size:43px}.overview-card{grid-template-columns:1fr 1fr;padding:11px}.overview-title{grid-column:1/-1}.overview-item{border-left:0;border-top:1px solid rgba(215,235,255,.11)}.overview-item:last-child{display:none}.section-action{display:none}.grid,.rooms-grid{grid-template-columns:1fr;gap:10px}.page-intro{padding:42px 5px 27px}.room{min-height:150px}}
     /* Names too long for a narrow phone (a language, the fonts of the phone): the page shown keeps its name, the others their icon. */
@@ -88,6 +90,7 @@ export class MPGlassView extends LitElement {
   private spatialOrigin: ViewConfig['mp_spatial_origin'] = 'project';
   badges: HTMLElement[] = [];
   private projectName = '';
+  private info?: ViewConfig['mp_info'];
   private appearance: AppearanceConfig = { preset:'glass-blue' };
   private navigation: NavigationConfig = { items:['home','lights','rooms'], showLabels:true };
   private viewKind: ViewConfig['mp_view_kind'] = 'home';
@@ -169,6 +172,7 @@ export class MPGlassView extends LitElement {
     this.spatialOrigin = config?.mp_spatial_origin ?? 'project';
     this.requestUpdate();
     this.projectName = config?.mp_project_name ?? config?.title ?? '';
+    this.info = config?.mp_info;
     this.appearance = config?.mp_appearance ?? { preset:'glass-blue' };
     this.navigation = config?.mp_navigation ?? { items:['home','lights','rooms'], showLabels:true };
     this.viewKind = config?.mp_view_kind ?? 'home';
@@ -203,6 +207,29 @@ export class MPGlassView extends LitElement {
   }
   private section(title: string, subtitle: string, icon?: MPIconName) {
     return html`<div class="section-head"><div class="section-label"><span class="section-icon">${mpIcon(icon ?? (this.viewKind==='rooms'?'rooms':'bulb'),23)}</span><div><h2>${title}</h2><p>${subtitle}</p></div></div><span class="section-action"><i></i> ${tr('Synchronisé avec Home Assistant')}</span></div>`;
+  }
+
+  private renderInfo() {
+    const info = this.info, unknown = tr('Indisponible');
+    const row = (label: string, value: string | number) => html`<div><dt>${label}</dt><dd>${value}</dd></div>`;
+    return html`
+      ${info?.version && info.version !== __MP_GLASS_VERSION__ ? html`<div class="info-update glass" role="alert">${tr('MP Nexus {installed} est installé, mais cette page affiche encore la version {shown}. Rechargez-la pour utiliser la nouvelle interface.', { installed: info.version, shown: __MP_GLASS_VERSION__ })}<button @click=${() => location.reload()}>${tr('Recharger la page')}</button></div>` : nothing}
+      <main class="info-grid">
+        <section class="info-card glass"><h2>${mpIcon('info',22)}${tr('Versions')}</h2><dl>
+          ${row(tr('Version actuelle de MP Nexus'), info?.version ?? unknown)}
+          ${row(tr('Version de l’interface'), __MP_GLASS_VERSION__)}
+          ${row('Home Assistant', this.hass?.config?.version ?? unknown)}
+        </dl></section>
+        <section class="info-card glass"><h2>${mpIcon('home',22)}${tr('Votre installation')}</h2><dl>
+          ${row(tr('Maison'), this.projectName || tr('Maison'))}
+          ${row(tr('Pièces'), info?.areaCount ?? this.areas.length)}
+          ${row(tr('Équipements du dashboard'), info?.deviceCount ?? unknown)}
+          ${row(tr('Lumières'), info?.lightCount ?? unknown)}
+          ${row(tr('Langue de l’interface'), LANGUAGE_NAMES[language()])}
+        </dl></section>
+        <section class="info-card glass"><h2>${mpIcon('bulb',22)}${tr('Au quotidien')}</h2><p>${tr('Retrouvez vos équipements dans Lumières et Pièces. Touchez un équipement pour accéder à ses commandes.')}</p><p>${tr('Le drapeau permet de choisir la langue de votre interface.')}</p></section>
+        ${this.hass?.user?.is_admin ? html`<section class="info-card glass"><h2>${mpIcon('tune',22)}MP Nexus Studio</h2><p>${tr('Personnalisez l’apparence, les équipements et le plan de votre maison.')}</p><a class="settings-link" href="/mp-glass-settings">${mpIcon('tune',18)}${tr('Personnaliser')}</a></section>` : nothing}
+      </main>`;
   }
 
   /** Title, subtitle and icon of the home section for each ambiance of the plan. */
@@ -308,33 +335,33 @@ export class MPGlassView extends LitElement {
     const style = `--mp-accent:${a.accent ?? '#69b7ff'};--mp-secondary:${a.secondaryAccent ?? '#efbd8b'};--mp-tint:${a.glassTint ?? '#12344f'};--mp-opacity:${a.glassOpacity ?? .66};--mp-blur:${a.glassBlur ?? 24}px;--mp-border:${a.borderStrength ?? .2};--mp-shadow:${a.shadowStrength ?? .35};--mp-radius:${a.radius ?? 22}px;--mp-columns:${a.cardColumns ?? 4};--mp-gap:${a.cardGap ?? 12}px;--mp-max-width:${a.maxWidth ?? 1560}px;--mp-hero-height:${a.heroHeight ?? 455}px;--mp-bg-blur:${a.backgroundBlur ?? 0}px;--mp-bg-saturation:${a.backgroundSaturation ?? 1};${fonts}`;
     const total = this.cards.length;
     const projectName = this.projectName || tr('Maison'), viewTitle = this.viewTitle || projectName;
-    const title = this.viewKind === 'lights' ? tr('Toutes les lumières') : this.viewKind === 'rooms' ? tr('Vos pièces') : viewTitle;
-    const subtitle = this.viewKind === 'lights' ? tr('{n} éclairage détecté et contrôlable|{n} éclairages détectés et contrôlables',{n:total}) : this.viewKind === 'rooms' ? tr('{n} espace organisé automatiquement|{n} espaces organisés automatiquement',{n:this.areas.length}) : tr('Les équipements de {name}',{name:viewTitle});
-    // A plan MP Glass drew itself (from the areas, or its example) names its own rooms and floors in the interface language.
+    const title = this.viewKind === 'info' ? tr('Info') : this.viewKind === 'lights' ? tr('Toutes les lumières') : this.viewKind === 'rooms' ? tr('Vos pièces') : viewTitle;
+    const subtitle = this.viewKind === 'info' ? tr('Les informations utiles sur votre maison et votre interface.') : this.viewKind === 'lights' ? tr('{n} éclairage détecté et contrôlable|{n} éclairages détectés et contrôlables',{n:total}) : this.viewKind === 'rooms' ? tr('{n} espace organisé automatiquement|{n} espaces organisés automatiquement',{n:this.areas.length}) : tr('Les équipements de {name}',{name:viewTitle});
+    // A plan MP Nexus drew itself (from the areas, or its example) names its own rooms and floors in the interface language.
     const spatial = this.spatial && this.spatialOrigin !== 'project' ? trPlan(this.spatial, this.spatialOrigin === 'example') : this.spatial;
     return html`
       <div class="backdrop" style=${`background-image:url(${bg});background-position:${a.backgroundPosition ?? 'right'} center`}></div>
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
       <div class="shell" style=${style}>
         <header class="glass">
-          <div class="brand"><span class="mark">≋</span><div><strong>${projectName}</strong><small>Home Assistant · MP Glass</small></div>${this.languageMenu()}</div>
-          <nav class=${this.navigation.showLabels?'':'hide-labels'} aria-label=${tr('Navigation')}>${this.navigation.items.map(item=>this.navItem(item))}${a.showSettingsShortcut === false ? nothing : html`<a class="settings-nav" href="/mp-glass-settings" title=${tr('Personnaliser MP Glass')}>${mpIcon('tune',18)}<span>${tr('Personnaliser')}</span></a>`}${this.languageMenu()}</nav>
+          <div class="brand"><span class="mark">≋</span><div><strong>${projectName}</strong><small>Home Assistant · MP Nexus</small></div>${this.languageMenu()}</div>
+          <nav class=${this.navigation.showLabels?'':'hide-labels'} aria-label=${tr('Navigation')}>${this.navigation.items.map(item=>this.navItem(item))}${a.showSettingsShortcut === false ? nothing : html`<a class=${this.viewKind === 'info' ? 'info-nav active' : 'info-nav'} href=${this.route('info')} aria-label=${tr('Info')} aria-current=${this.viewKind === 'info' ? 'page' : nothing} title=${tr('Info')}>${mpIcon('info',18)}<span>${tr('Info')}</span></a>`}${this.languageMenu()}</nav>
           <div class="header-tools">
             ${this.languageMenu()}
             ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(locale(),{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small><i></i>${new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Nexus</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
         ${this.viewKind === 'home' && a.showOverview !== false ? html`<section class="overview"><div class="overview-card glass"><div class="overview-title"><span class="seal">${mpIcon('shield',25)}</span><div><strong>${tr('La maison')}</strong><small>${tr('Tout est prêt')}</small></div></div><div class="overview-item">${mpIcon('bulb',21)}<div><strong>${tr('{n} équipement|{n} équipements',{n:total})}</strong><small>${tr('Détectés')}</small></div></div><div class="overview-item">${mpIcon('rooms',21)}<div><strong>${tr('{n} pièce|{n} pièces',{n:this.areas.length})}</strong><small>${tr('Organisation automatique')}</small></div></div><div class="overview-item">${mpIcon('sliders',21)}<div><strong>${tr('Contrôles')}</strong><small>${tr('Disponibles en direct')}</small></div></div></div></section>` : nothing}
         <div class="badges">${this.badges}</div>
-        ${this.viewKind === 'rooms' ? html`
+        ${this.viewKind === 'info' ? this.renderInfo() : this.viewKind === 'rooms' ? html`
           ${this.section(tr('Pièces'),tr('Ouvrez une pièce pour retrouver uniquement ses équipements'))}
           <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${tr('{n} équipement|{n} équipements',{n:area.deviceCount})} · ${tr('{n} lumière|{n} lumières',{n:area.lightCount})}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${tr('{n} entité sans carte dédiée|{n} entités sans carte dédiée',{n:this.inventory.count})}</p></div></a>` : nothing}</main>
         ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(spatial) : html`
           ${this.section(this.viewKind === 'home' ? trDefault(a.sectionTitle,'Lumières') : title,this.viewKind === 'home' ? trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           <main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>
         `}
-        ${a.showFooter === false ? nothing : html`<footer><span>≋</span> MP Glass · ${tr('Votre maison, simplement')}</footer>`}
+        ${a.showFooter === false ? nothing : html`<footer><span>≋</span> MP Nexus · ${tr('Votre maison, simplement')}</footer>`}
       </div>`;
   }
 }

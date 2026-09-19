@@ -1,23 +1,23 @@
 {
-  "title": "MP Glass",
+  "title": "MP Nexus",
   "config": {
     "step": {
       "user": {
-        "title": "Welcome to MP Glass",
-        "description": "Name your home. Then open MP Glass in the sidebar to discover your installation.",
+        "title": "Welcome to MP Nexus",
+        "description": "Name your home. Then open MP Nexus in the sidebar to discover your installation.",
         "data": {
           "name": "Home name"
         }
       }
     },
     "abort": {
-      "already_configured": "MP Glass is already configured."
+      "already_configured": "MP Nexus is already configured."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "MP Glass options",
+        "title": "MP Nexus options",
         "data": {
           "show_settings": "Show the integrator settings panel",
           "spatial_backend": "Plan analysis",

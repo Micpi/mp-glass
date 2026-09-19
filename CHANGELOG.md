@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.9.6 — Info et MP Nexus
+
+- Le bouton « Info » remplace « Personnaliser » dans la navigation. La nouvelle page présente les versions, le résumé de l’installation et des conseils d’utilisation pour tous ; les administrateurs y retrouvent « Personnaliser » vers le Studio.
+- Remplacement de la marque visible MP Glass par MP Nexus dans l'interface, la documentation, les traductions, les métadonnées, les messages utilisateur et les artefacts concernés.
+- Conservation des identifiants techniques (mp_glass, custom:mp-glass) et des noms liés au style Glass afin de préserver la compatibilité Home Assistant.
+- Versions du frontend et de l’intégration alignées sur 0.9.6 ; artefacts compilés inclus dans le commit de la release.
+- Vérifications : lint, typecheck, 88 tests unitaires frontend, 83 tests navigateur et 55 tests Python.
+
+## 0.9.5 — publication sans le code prévu
+
+Le tag GitHub v0.9.5 pointait encore sur le commit 0.9.4. Le renommage MP Nexus et les versions correspondantes étaient restés locaux ; la release 0.9.6 les publie avec la page Info.
+
 ## 0.9.4 — groupes de pièces repliables
 
 - **Pièces repliables** : chaque groupe d’équipements sous le plan peut être réduit ou rouvert en un clic, au clavier ou sur écran tactile. L’état de chaque pièce est indépendant et son contenu reste accessible avec un contrôle correctement annoncé aux technologies d’assistance.
@@ -27,19 +39,19 @@ Retour utilisateur, captures d’un iPhone à l’appui : « l’affichage n’e
 Retour utilisateur sur 0.9.0 : « le choix de la langue doit être sur le dashboard, pas dans le Studio, pour que chaque utilisateur puisse choisir sa langue, et ça ne doit pas être un gros bouton, un bouton avec le drapeau de la langue suffira ».
 
 - **Un petit drapeau** dans l’en-tête du dashboard montre la langue de l’interface : à côté de l’horloge sur grand écran, au bout de la navigation sur tablette et téléphone. Un clic ouvre les trois drapeaux, **Français**, **English**, **Русский** ; Échap ou un clic ailleurs le referme.
-- **Chaque utilisateur choisit la sienne**, administrateur ou non : Home Assistant la garde pour lui, sur tous ses appareils. Tant qu’il n’a rien choisi, MP Glass suit la langue de son profil Home Assistant. Le Studio, réservé aux administrateurs, n’a plus de menu de langue : il parle celle choisie sur le dashboard.
-- Les drapeaux sont dessinés par MP Glass : Windows affiche des lettres à la place des emoji de drapeau.
+- **Chaque utilisateur choisit la sienne**, administrateur ou non : Home Assistant la garde pour lui, sur tous ses appareils. Tant qu’il n’a rien choisi, MP Nexus suit la langue de son profil Home Assistant. Le Studio, réservé aux administrateurs, n’a plus de menu de langue : il parle celle choisie sur le dashboard.
+- Les drapeaux sont dessinés par MP Nexus : Windows affiche des lettres à la place des emoji de drapeau.
 - Captures de référence de l’accueil mises à jour avec le drapeau.
 
 ## 0.9.0 — français, anglais et russe
 
 Demande utilisateur : « est-ce qu’on peut ajouter un sélecteur de langue à cette interface, j’aimerais pouvoir choisir entre français, anglais et russe ».
 
-- **Menu de langue** en haut du Studio, à côté de **Voir le dashboard** : **Automatique**, **Français**, **English**, **Русский**. Le changement est immédiat, sans recharger la page, et vaut pour tout MP Glass : Studio, dashboard, cartes lumière, plan 3D, import Gemini et édition des niveaux.
+- **Menu de langue** en haut du Studio, à côté de **Voir le dashboard** : **Automatique**, **Français**, **English**, **Русский**. Le changement est immédiat, sans recharger la page, et vaut pour tout MP Nexus : Studio, dashboard, cartes lumière, plan 3D, import Gemini et édition des niveaux.
 - **Pour l’utilisateur, sur tous ses appareils** : Home Assistant garde le choix dans les données de l’utilisateur ; le navigateur en garde une copie pour s’ouvrir directement dans la bonne langue. **Automatique** (par défaut) suit la langue du profil Home Assistant : français et russe tels quels, anglais pour toute autre langue. Jusqu’ici, un profil en anglais voyait le plan 3D et le Studio en français.
 - **Les noms restent les vôtres** : nom de la maison, pièces, niveaux et équipements ne sont jamais traduits. Les textes par défaut de l’accueil (accroche, sous-titre, citation, titre de section) suivent la langue tant qu’ils n’ont pas été modifiés ; le plan d’exemple et le « Niveau principal » du plan déduit des pièces aussi.
 - **Nombres et dates** au format de la langue : horloge, surfaces (m² / м²), pourcentages. Les pluriels sont justes dans chaque langue, russe compris (1 комната, 3 комнаты, 5 комнат) ; « 1 pièces » devient « 1 pièce ».
-- La fenêtre de configuration de l’intégration dans Home Assistant existe aussi en russe. Les noms de pièces proposés par Gemini restent en français, comme les remarques qu’il rédige lui-même ; celles de MP Glass sont traduites.
+- La fenêtre de configuration de l’intégration dans Home Assistant existe aussi en russe. Les noms de pièces proposés par Gemini restent en français, comme les remarques qu’il rédige lui-même ; celles de MP Nexus sont traduites.
 - Les six captures de référence de l’accueil sont mises à jour (horloge au format français, « 1 pièce »).
 
 ## 0.8.4 — ambiances Ouvrants et Audio-vidéo sur le plan
@@ -56,7 +68,7 @@ Demande utilisateur : « en plus de Lumières et Climat il faudrait des boutons 
 Retour utilisateur sur 0.8.2 : « je perds mon fond de plan ! ». **Modifier le plan** montrait les pièces sur une simple grille : l’image analysée par Gemini n’était gardée nulle part une fois le brouillon utilisé.
 
 - **Gardé à l’import** : **Utiliser pour ce niveau** envoie l’image analysée à Home Assistant, avec sa place exacte sous les pièces. **Modifier le plan** l’affiche sous le niveau, comme dans le brouillon, et ses murs attirent les côtés des pièces.
-- **Retrouvé pour un niveau déjà importé** : rangée **Fond de plan**, **Choisir le plan (PDF ou image)**. MP Glass repère les murs dessinés et cale l’image seul, en cherchant l’échelle et la place qui posent le plus de côtés des pièces sur ces murs ; le message dit la part retrouvée.
+- **Retrouvé pour un niveau déjà importé** : rangée **Fond de plan**, **Choisir le plan (PDF ou image)**. MP Nexus repère les murs dessinés et cale l’image seul, en cherchant l’échelle et la place qui posent le plus de côtés des pièces sur ces murs ; le message dit la part retrouvée.
 - **Caler le fond** à la main si besoin : glisser le plan, **−5 %** à **+5 %** pour sa taille, Échap pour finir ; **Recaler automatiquement**, **Changer de plan**, **Afficher** et **Retirer le fond** complètent la rangée. **Appliquer au niveau** garde le fond avec les pièces, puis **Enregistrer**.
 - **Confidentialité** : l’image est rangée dans `.storage/mp_glass_backdrops/` de Home Assistant, jamais sous `www`, rendue aux seuls administrateurs, et supprimée une fois qu’aucun niveau enregistré ne la montre plus. Le plan ne garde qu’un identifiant et la place de l’image (`backdrop`, champ facultatif du contrat).
 
@@ -80,7 +92,7 @@ Retour utilisateur sur 0.8.0 : « il est plus facile pour moi de placer les fen�
 
 ## 0.8.0 — portes, fenêtres, volets et audio-vidéo sur le plan
 
-Demande utilisateur : pouvoir ajouter les ouvrants (portes, fenêtres, portes-fenêtres) pour gérer volets roulants, stores et rideaux, ainsi que les téléviseurs et haut-parleurs pour l’audio-vidéo, le tout harmonisé avec le reste de MP Glass.
+Demande utilisateur : pouvoir ajouter les ouvrants (portes, fenêtres, portes-fenêtres) pour gérer volets roulants, stores et rideaux, ainsi que les téléviseurs et haut-parleurs pour l’audio-vidéo, le tout harmonisé avec le reste de MP Nexus.
 
 - **Portes, fenêtres, portes-fenêtres** : dans **Studio → Plan 3D**, chaque pièce reçoit ses ouvertures. **Porte**, **Fenêtre** ou **Porte-fenêtre** l’ajoute à sa taille usuelle, puis on touche sur le plan 3D le mur qui la reçoit. Mur, position le long du mur, largeur, hauteur et allège se règlent aussi dans la liste ; les murs y sont décrits par leur orientation sur le plan et leur longueur (« Mur 2 · à droite · 4 m »).
 - **Volets roulants, stores, rideaux** : chaque ouverture se relie à ses volets, stores et rideaux et à ses capteurs d’ouverture. Sur le plan, la porte ou la fenêtre est dessinée dans son mur avec ses vantaux, qui pivotent vers la pièce quand le capteur la dit ouverte. Le volet roulant descend dehors avec ses lames, le store dedans, les rideaux se ferment des deux côtés, chacun à sa position réelle. Murs abaissés, les ouvertures deviennent des traits au sol, avec l’arc de chaque vantail de porte.
@@ -104,8 +116,8 @@ Demande utilisateur : « je voudrais cette fenêtre plus grande pour avoir le pl
 
 Sur un écran d’environ 844 px de large (téléphone tenu en paysage), le nom de la maison passait sous les boutons de navigation : **Accueil** en cachait la fin. Le défaut existait déjà en 0.7.3.
 
-- **Nom de la maison** : il ne déborde plus de sa place, à aucune largeur. S’il est trop long pour la ligne, il se termine par « … », comme la ligne « Home Assistant · MP Glass » en dessous, au lieu de passer sous la navigation ou hors de l’en-tête.
-- **Personnaliser** : jusqu’à 960 px de large, le bouton ne montre plus que son icône, comme il le faisait déjà jusqu’à 820 px. Sur téléphone en paysage, « Maison de démonstration » tient ainsi en entier à côté de la navigation, toujours sur une seule ligne. Le bouton garde son info-bulle « Personnaliser MP Glass ».
+- **Nom de la maison** : il ne déborde plus de sa place, à aucune largeur. S’il est trop long pour la ligne, il se termine par « … », comme la ligne « Home Assistant · MP Nexus » en dessous, au lieu de passer sous la navigation ou hors de l’en-tête.
+- **Personnaliser** : jusqu’à 960 px de large, le bouton ne montre plus que son icône, comme il le faisait déjà jusqu’à 820 px. Sur téléphone en paysage, « Maison de démonstration » tient ainsi en entier à côté de la navigation, toujours sur une seule ligne. Le bouton garde son info-bulle « Personnaliser MP Nexus ».
 - Téléphone en portrait, tablette, bureau et écran mural ne changent pas : leurs captures de référence restent identiques au pixel près. Seule celle du téléphone en paysage a été régénérée, et le test visuel vérifie maintenant aussi que le nom est entier et ne touche pas la navigation, aux six largeurs.
 
 ## 0.7.19 — captures de référence à jour
@@ -128,7 +140,7 @@ Demande utilisateur : « ce serait mieux d’aligner les plans par leur point ce
 
 Demande utilisateur : « une fois les plans enregistrés, je ne sais pas comment le modifier ou le supprimer ». Le Studio savait ajouter un niveau et supprimer une pièce, mais rien ne retirait un niveau ni le plan lui-même : décocher **Afficher le plan sur l’accueil** ne faisait que le masquer.
 
-- **Supprimer le plan** : dans **Plan 3D**, à côté de **Repartir du plan par défaut**, un bouton retire le plan enregistré après confirmation. MP Glass repart alors du plan déduit de vos pièces Home Assistant, celui qui s’affiche quand rien n’est enregistré.
+- **Supprimer le plan** : dans **Plan 3D**, à côté de **Repartir du plan par défaut**, un bouton retire le plan enregistré après confirmation. MP Nexus repart alors du plan déduit de vos pièces Home Assistant, celui qui s’affiche quand rien n’est enregistré.
 - **Supprimer ce niveau** : à côté de **Ajouter un niveau**, retire le niveau affiché avec ses pièces, après confirmation. Le bouton reste grisé sur un plan d’un seul niveau : un plan garde toujours un niveau.
 - Les deux suppressions passent par une fenêtre de confirmation qui dit ce qui est perdu, et rien n’est retiré tant que **Enregistrer** n’a pas été cliqué dans le Studio : quitter le Studio sans enregistrer laisse le plan intact.
 
@@ -148,7 +160,7 @@ Demande utilisateur : sur un vrai plan, certaines pièces sont arrondies ou dess
 - **En 3D** : un mur courbe est une paroi d’un seul tenant qui suit sa courbe, sans facettes, ses lignes du haut et du pied comprises ; partagé par deux pièces, il n’est dessiné qu’une fois. Sols, halos, surfaces et cotes suivent la courbe exacte.
 - **Pièces en biais** : la marque **⟳** à côté de la pièce sélectionnée la fait tourner autour de son milieu. L’angle s’affiche pendant le geste et s’aimante sur les axes de l’image comme sur **les directions des murs du plan** : un corps de bâtiment dessiné de travers se met exactement dans son axe. Une pièce au bord du plan rentre dedans en tournant.
 - **Déplacer un côté** : glisser un côté du contour le déplace parallèlement à lui-même, ses angles suivant les murs voisins, qui gardent leur direction. Une pièce inclinée garde ses angles droits pendant qu’on ajuste sa largeur ou sa profondeur.
-- **Aimantation en biais** : MP Glass repère aussi les murs du plan qui ne suivent pas les bords de l’image, en tournant l’image dans les directions où ses traits sont les plus nombreux. Un point se pose sur le croisement des deux repères les plus proches — murs droits ou en biais, bords et angles des autres pièces, directions du plan — au lieu d’être rabattu sur les axes.
+- **Aimantation en biais** : MP Nexus repère aussi les murs du plan qui ne suivent pas les bords de l’image, en tournant l’image dans les directions où ses traits sont les plus nombreux. Un point se pose sur le croisement des deux repères les plus proches — murs droits ou en biais, bords et angles des autres pièces, directions du plan — au lieu d’être rabattu sur les axes.
 - **Analyse** : Gemini rend désormais un contour dès qu’une pièce n’est pas un rectangle droit (forme en L, pièce inclinée, mur courbe suivi point par point). Une suite de points qui tournent régulièrement le long d’un même cercle devient un arc ; les angles francs et les pans coupés d’un bow-window restent des angles. L’alignement automatique des murs ne rabat plus sur les axes un mur en biais ou une courbe.
 - **Murs partagés en biais** : deux pièces séparées par l’épaisseur d’un mur partagent une seule cloison quelle que soit sa direction ; les angles suivent leurs deux murs et restent droits. Seul l’affichage change.
 - **Studio** : sous **Corriger les sommets**, une colonne donne la courbure du côté qui part de chaque sommet (0 pour un mur droit, 1 pour un demi-cercle, négatif de l’autre côté).
@@ -213,22 +225,22 @@ Demande utilisateur : améliorer l’affichage des noms de pièce sur le plan 3D
 Retour utilisateur : après 0.7.7, la flèche retour et le titre ont disparu mais le bandeau noir reste en haut des sous-vues.
 
 - **Cause** : 0.7.7 rendait la barre de Home Assistant transparente. Sur l’installation réelle, une autre règle continue de la peindre (un thème ou un module peut le faire, y compris en `!important`, sur la barre ou sa toolbar), alors que Home Assistant seul la laisserait transparente.
-- **Correction** : sur les vues MP Glass, la barre est désormais masquée, pas seulement transparente. Seules ses actions (recherche, Assist, modification) et, sur téléphone, le bouton du menu latéral restent visibles. Ce qui la peindrait ne s’affiche plus, et les clics au-dessus du contenu défilé atteignent MP Glass.
+- **Correction** : sur les vues MP Nexus, la barre est désormais masquée, pas seulement transparente. Seules ses actions (recherche, Assist, modification) et, sur téléphone, le bouton du menu latéral restent visibles. Ce qui la peindrait ne s’affiche plus, et les clics au-dessus du contenu défilé atteignent MP Nexus.
 - Mode édition et autres dashboards : inchangés.
 
 ## 0.7.7 — plus de bandeau noir sur les sous-vues
 
 Demande utilisateur : retirer le bandeau noir affiché en haut des pages Lumières, Pièces, des pièces et de l’Inventaire.
 
-- Ce bandeau était la barre de Home Assistant, opaque sur une sous-vue avec sa flèche retour et le titre de la vue. Sur les vues MP Glass, elle est désormais transparente comme sur l’accueil : le fond passe dessous et seules restent ses actions (recherche, Assist, modification). La flèche retour et le titre, redondants avec l’en-tête MP Glass, ne sont plus affichés ; le retour du navigateur ramène toujours à la page précédente.
+- Ce bandeau était la barre de Home Assistant, opaque sur une sous-vue avec sa flèche retour et le titre de la vue. Sur les vues MP Nexus, elle est désormais transparente comme sur l’accueil : le fond passe dessous et seules restent ses actions (recherche, Assist, modification). La flèche retour et le titre, redondants avec l’en-tête MP Nexus, ne sont plus affichés ; le retour du navigateur ramène toujours à la page précédente.
 - En mode édition, la barre de Home Assistant reprend son aspect habituel. Les autres dashboards ne sont pas concernés.
 
 ## 0.7.6 — cause trouvée : le registre des éléments remplacé
 
 Retour utilisateur : après 0.7.5, `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` aussi sur ordinateur.
 
-- **Cause, observée sur l’installation réelle** : un module HACS charge le polyfill `scoped-custom-element-registry`, qui remplace le registre des éléments du navigateur (`window.customElements`) par un nouveau registre ignorant tout ce qui a été déclaré avant lui. MP Glass, chargé très tôt, s’y trouvait donc absent, et Home Assistant l’y attendait en vain. L’erreur dépendait de l’ordre de chargement, d’où son côté aléatoire, surtout sur tablette et téléphone.
-- **Correction** : MP Glass déclare à nouveau sa stratégie, ses vues, ses cartes et son plan dans tout registre qui remplace le précédent. Même si c’est après les 5 s d’attente, le dashboard remplace l’erreur de lui-même. Aucune ressource ni réglage à ajouter.
+- **Cause, observée sur l’installation réelle** : un module HACS charge le polyfill `scoped-custom-element-registry`, qui remplace le registre des éléments du navigateur (`window.customElements`) par un nouveau registre ignorant tout ce qui a été déclaré avant lui. MP Nexus, chargé très tôt, s’y trouvait donc absent, et Home Assistant l’y attendait en vain. L’erreur dépendait de l’ordre de chargement, d’où son côté aléatoire, surtout sur tablette et téléphone.
+- **Correction** : MP Nexus déclare à nouveau sa stratégie, ses vues, ses cartes et son plan dans tout registre qui remplace le précédent. Même si c’est après les 5 s d’attente, le dashboard remplace l’erreur de lui-même. Aucune ressource ni réglage à ajouter.
 - Téléchargement de l’interface : une nouvelle génération du dashboard sur la même page ne réessaie plus des adresses déjà en échec.
 - Page de diagnostic : message explicite quand elle est ouverte comme fichier local plutôt que depuis Home Assistant.
 
@@ -236,7 +248,7 @@ Retour utilisateur : après 0.7.5, `Timeout waiting for strategy element ll-stra
 
 Retour utilisateur : l’erreur `Timeout waiting for strategy element ll-strategy-dashboard-mp-glass to be registered` persiste après 0.7.4.
 
-- **Rattrapage automatique** : si la stratégie est déclarée après l’abandon de Home Assistant (5 s), MP Glass remplace l’erreur par le dashboard à la mise à jour d’état suivante, sans recharger la page. Home Assistant interroge pour cela la stratégie à chaque mise à jour.
+- **Rattrapage automatique** : si la stratégie est déclarée après l’abandon de Home Assistant (5 s), MP Nexus remplace l’erreur par le dashboard à la mise à jour d’état suivante, sans recharger la page. Home Assistant interroge pour cela la stratégie à chaque mise à jour.
 - **Anciennes tablettes** : le bootstrap utilisait une syntaxe (`??=`) illisible par iOS 12 et 13 ou les vieilles WebView Android. La stratégie n’était alors jamais déclarée, d’où l’erreur de délai. Il est désormais compilé pour ES2017. Si l’interface elle-même ne peut pas s’exécuter (il faut au minimum Chrome 107, Safari 16 ou Firefox 104), le dashboard l’indique avec le nom du navigateur au lieu de l’erreur de délai.
 - **Page de diagnostic** : `/mp_glass_static/diagnostic.html`, à ouvrir sur l’appareil concerné, affiche sans console le navigateur, le téléchargement et la déclaration de la stratégie, et le chargement de l’interface ([dépannage](docs/TROUBLESHOOTING.md)).
 
@@ -246,11 +258,11 @@ Retour utilisateur : `Timeout waiting for strategy element ll-strategy-dashboard
 
 La stratégie était déjà déclarée par un bootstrap sans import, avant le chargement du bundle principal. L’erreur venait du moment où ce bootstrap est ajouté aux pages, et de la reprise après un échec réseau :
 
-- Home Assistant sert les pages avant d’avoir chargé les intégrations personnalisées et n’ajoute le bootstrap qu’aux pages servies ensuite. MP Glass l’ajoutait à la fin de son démarrage, après la lecture de son schéma et de son projet : il l’ajoute désormais en tout premier, ce qui réduit fortement la période pendant laquelle une page ouverte au démarrage de Home Assistant n’a pas la stratégie.
-- Changer les options de MP Glass recharge l’intégration : le bootstrap était retiré puis remis, et une page ouverte entre-temps affichait l’erreur. Il reste désormais en place ; il n’est retiré qu’à la suppression de l’intégration.
-- Un échec de téléchargement du bundle principal (réseau qui revient après la veille, connexion lente) laissait le dashboard en erreur jusqu’au rechargement de la page. MP Glass réessaie seul, sous une nouvelle adresse, pendant une quinzaine de secondes.
-- Pendant un démarrage ou un rechargement de l’intégration, le dashboard attend MP Glass (jusqu’à 20 s) au lieu d’échouer. Home Assistant garde son écran de chargement pendant ce temps.
-- Diagnostic dans la console JS : `[MP Glass x.y.z] stratégie du dashboard enregistrée (… ms après l’ouverture de la page)`, puis `dashboard demandé par Home Assistant`. Leur absence sur un appareil indique que la page a été ouverte avant le chargement de MP Glass ([dépannage](docs/TROUBLESHOOTING.md)).
+- Home Assistant sert les pages avant d’avoir chargé les intégrations personnalisées et n’ajoute le bootstrap qu’aux pages servies ensuite. MP Nexus l’ajoutait à la fin de son démarrage, après la lecture de son schéma et de son projet : il l’ajoute désormais en tout premier, ce qui réduit fortement la période pendant laquelle une page ouverte au démarrage de Home Assistant n’a pas la stratégie.
+- Changer les options de MP Nexus recharge l’intégration : le bootstrap était retiré puis remis, et une page ouverte entre-temps affichait l’erreur. Il reste désormais en place ; il n’est retiré qu’à la suppression de l’intégration.
+- Un échec de téléchargement du bundle principal (réseau qui revient après la veille, connexion lente) laissait le dashboard en erreur jusqu’au rechargement de la page. MP Nexus réessaie seul, sous une nouvelle adresse, pendant une quinzaine de secondes.
+- Pendant un démarrage ou un rechargement de l’intégration, le dashboard attend MP Nexus (jusqu’à 20 s) au lieu d’échouer. Home Assistant garde son écran de chargement pendant ce temps.
+- Diagnostic dans la console JS : `[MP Nexus x.y.z] stratégie du dashboard enregistrée (… ms après l’ouverture de la page)`, puis `dashboard demandé par Home Assistant`. Leur absence sur un appareil indique que la page a été ouverte avant le chargement de MP Nexus ([dépannage](docs/TROUBLESHOOTING.md)).
 
 ## 0.7.3 — pièces sous le plan
 
@@ -263,7 +275,7 @@ Demande utilisateur : toujours afficher les pièces sous le plan, sur une seule 
 
 Demande utilisateur : retirer la barre de navigation affichée en bas de l’écran.
 
-- Cette barre était celle des onglets de vues de Home Assistant (Accueil, Lumières, Pièces, une par pièce, Inventaire). Hormis l’accueil, toutes les vues du dashboard sont désormais des sous-vues : Home Assistant ne dessine plus sa barre d’onglets. On navigue avec l’en-tête MP Glass (Accueil, Lumières, Pièces). Sur une sous-vue, la flèche retour de Home Assistant ramène à la page précédente.
+- Cette barre était celle des onglets de vues de Home Assistant (Accueil, Lumières, Pièces, une par pièce, Inventaire). Hormis l’accueil, toutes les vues du dashboard sont désormais des sous-vues : Home Assistant ne dessine plus sa barre d’onglets. On navigue avec l’en-tête MP Nexus (Accueil, Lumières, Pièces). Sur une sous-vue, la flèche retour de Home Assistant ramène à la page précédente.
 - L’Inventaire, qui n’était accessible que par cette barre, s’ouvre depuis une tuile à la fin de la page Pièces.
 
 ## 0.7.1 — halo plus doux
@@ -352,7 +364,7 @@ Premier essai de la 0.3.0 : `HTTP 503 UNAVAILABLE This model is currently experi
 Les imports réels restaient approximatifs : Gemini devait écrire lui-même des coordonnées en mètres, ce que les modèles font mal.
 
 - **Détection** : Gemini repère chaque pièce sur l’image avec une boîte normalisée 0–1000 (son format de détection d’objets), un contour pour les seules pièces non rectangulaires, le texte de la pièce et ses cotes écrites converties en mètres.
-- **Géométrie calculée par MP Glass** : proportions tirées de la taille réelle de l’image (lue dans son en-tête), murs alignés, découpage sans chevauchement sur une grille (un placard dans une chambre la découpe en L), échelle tirée des cotes écrites (ordre largeur × profondeur vérifié) ou, à défaut, de la surface habituelle des pièces.
+- **Géométrie calculée par MP Nexus** : proportions tirées de la taille réelle de l’image (lue dans son en-tête), murs alignés, découpage sans chevauchement sur une grille (un placard dans une chambre la découpe en L), échelle tirée des cotes écrites (ordre largeur × profondeur vérifié) ou, à défaut, de la surface habituelle des pièces.
 - **Gemini 3.8 Flash par défaut**, nettement meilleur en lecture de plan ; Gemini 3.5 Flash-Lite reste disponible (option « Modèle d’analyse des plans »), les deux au palier gratuit.
 - **PDF dessiné dans le navigateur** (PDF.js, chargé à la demande) : seule la page choisie est envoyée, en image, sans métadonnées ; PDF protégé ou page absente signalés avant l’envoi.
 - **Fenêtre de résultat** : pièces détectées superposées en couleur au plan analysé, onglet 3D, pièces renommables ou à écarter avant de les utiliser.
@@ -383,9 +395,9 @@ Retour d’un premier import réel : plan coté en pieds rendu à 31 m² au lieu
 
 ## 0.2.4 — dashboard créé à l’installation
 
-- Le dashboard n’était pas créé après une installation par HACS : seul le Studio apparaissait. Le Studio ajoute désormais le dashboard **MP Glass** dans la barre latérale dès sa première ouverture (commandes WebSocket publiques de Home Assistant, administrateurs uniquement). Un dashboard MP Glass existant est réutilisé, quelle que soit son adresse ; en cas d’échec, le Studio indique la marche manuelle.
+- Le dashboard n’était pas créé après une installation par HACS : seul le Studio apparaissait. Le Studio ajoute désormais le dashboard **MP Nexus** dans la barre latérale dès sa première ouverture (commandes WebSocket publiques de Home Assistant, administrateurs uniquement). Un dashboard MP Nexus existant est réutilisé, quelle que soit son adresse ; en cas d’échec, le Studio indique la marche manuelle.
 - Le bouton **Voir le dashboard** du Studio pointe vers le dashboard réel au lieu d’une adresse fixe.
-- Le Studio s’appelle **MP Glass Studio** dans la barre latérale, pour ne plus se confondre avec le dashboard.
+- Le Studio s’appelle **MP Nexus Studio** dans la barre latérale, pour ne plus se confondre avec le dashboard.
 
 ## 0.2.3 — plan 3D pensé pour le téléphone, Gemini 3.5 et mises à jour HACS
 
@@ -406,7 +418,7 @@ Retour d’un premier import réel : plan coté en pieds rendu à 31 m² au lieu
 
 ## 0.2.1 — installation Gemini simplifiée
 
-- Mode Gemini direct par défaut : une clé API dans les options MP Glass, sans add-on, adresse serveur ni clé de liaison à configurer.
+- Mode Gemini direct par défaut : une clé API dans les options MP Nexus, sans add-on, adresse serveur ni clé de liaison à configurer.
 - Liens Configurer Gemini / Obtenir une clé API dans le Studio. Information explicite sur l’envoi du fichier complet.
 - PDF et images envoyés directement au fournisseur, avec limites de taille et validation du résultat ; aucun décodeur ajouté à HA Core.
 - Mode add-on conservé en configuration avancée, sélection existante préservée. Contrat Gemini partagé et testé entre les deux modes.
@@ -427,7 +439,7 @@ Retour d’un premier import réel : plan coté en pieds rendu à 31 m² au lieu
 - Backend Config Flow/Options Flow, projet validé, contrôle de concurrence, diagnostic minimal.
 - Carte lumière POWER/DIM, fallback, editor graphique, panneau intégrateur et six presets.
 - Navigation fonctionnelle Accueil, Lumières, Pièces et pages de pièce générées automatiquement.
-- MP Glass Studio avec personnalisation de l'identité, du verre, du fond, de la disposition, du contenu, de la navigation et des équipements, plus aperçu direct.
+- MP Nexus Studio avec personnalisation de l'identité, du verre, du fond, de la disposition, du contenu, de la navigation et des équipements, plus aperçu direct.
 - Migration explicite du schéma projet v1 vers v2 et conservation des overrides.
 - Compatibilité du custom panel Home Assistant renforcée contre le conflit de propriété `panel`.
 - Tests du core, fixture navigateur, screenshots multi-format et procédure HA isolée.

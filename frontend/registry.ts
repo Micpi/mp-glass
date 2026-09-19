@@ -1,7 +1,7 @@
 /*
  * A scoped custom element registry polyfill, loaded by some Home Assistant add-ons, replaces window.customElements
- * with a registry that ignores the elements defined before it: Home Assistant then waits in vain for the MP Glass
- * strategy, views and cards ("Timeout waiting for strategy element"). MP Glass elements are defined through
+ * with a registry that ignores the elements defined before it: Home Assistant then waits in vain for the MP Nexus
+ * strategy, views and cards ("Timeout waiting for strategy element"). MP Nexus elements are defined through
  * defineElement, and defined again on each registry that replaces the current one.
  */
 const elements = new Map<string, CustomElementConstructor>();
@@ -14,11 +14,11 @@ function follow() {
   registry = current;
   for (const [name, element] of elements) {
     if (current.get(name)) continue;
-    try { current.define(name, element); } catch { /* Defined meanwhile by another copy of MP Glass. */ }
+    try { current.define(name, element); } catch { /* Defined meanwhile by another copy of MP Nexus. */ }
   }
 }
 
-/** Defines the element unless another copy of MP Glass did, and keeps it on any later registry. */
+/** Defines the element unless another copy of MP Nexus did, and keeps it on any later registry. */
 export function defineElement(name: string, element: CustomElementConstructor) {
   follow();
   if (!watching) { watching = true; setInterval(follow, 250); }

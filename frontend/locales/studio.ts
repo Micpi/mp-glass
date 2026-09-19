@@ -1,16 +1,16 @@
 import type { Messages } from './types';
 
-/** MP Glass Studio: its sections, its live preview and its notices. */
+/** MP Nexus Studio: its sections, its live preview and its notices. */
 export const STUDIO = {
   'Personnalisation complète du dashboard': ['Full customization of the dashboard', 'Полная настройка панели'],
   'Créer le dashboard': ['Create the dashboard', 'Создать панель'],
   'Voir le dashboard': ['Open the dashboard', 'Открыть панель'],
   'Exporter': ['Export', 'Экспорт'],
   'Enregistrer': ['Save', 'Сохранить'],
-  'MP Glass {installed} est installé, mais cette page affiche encore la version {shown}. Rechargez-la pour utiliser la nouvelle interface.': ['MP Glass {installed} is installed, but this page still shows version {shown}. Reload it to use the new interface.', 'Установлен MP Glass {installed}, но эта страница всё ещё показывает версию {shown}. Перезагрузите её, чтобы открыть новый интерфейс.'],
+  'MP Nexus {installed} est installé, mais cette page affiche encore la version {shown}. Rechargez-la pour utiliser la nouvelle interface.': ['MP Nexus {installed} is installed, but this page still shows version {shown}. Reload it to use the new interface.', 'Установлен MP Nexus {installed}, но эта страница всё ещё показывает версию {shown}. Перезагрузите её, чтобы открыть новый интерфейс.'],
   'Recharger la page': ['Reload the page', 'Перезагрузить страницу'],
-  'Le dashboard n’a pas pu être ajouté automatiquement : Paramètres → Tableaux de bord → Ajouter un tableau de bord → MP Glass Dashboard.': ['The dashboard could not be added automatically: Settings → Dashboards → Add dashboard → MP Glass Dashboard.', 'Не удалось добавить панель автоматически: «Настройки → Панели → Добавить панель → MP Glass Dashboard».'],
-  'Dashboard « MP Glass » créé : il apparaît dans la barre latérale de Home Assistant.': ['“MP Glass” dashboard created: it appears in the Home Assistant sidebar.', 'Панель «MP Glass» создана: она появилась в боковом меню Home Assistant.'],
+  'Le dashboard n’a pas pu être ajouté automatiquement : Paramètres → Tableaux de bord → Ajouter un tableau de bord → MP Nexus Dashboard.': ['The dashboard could not be added automatically: Settings → Dashboards → Add dashboard → MP Nexus Dashboard.', 'Не удалось добавить панель автоматически: «Настройки → Панели → Добавить панель → MP Nexus Dashboard».'],
+  'Dashboard « MP Nexus » créé : il apparaît dans la barre latérale de Home Assistant.': ['“MP Nexus” dashboard created: it appears in the Home Assistant sidebar.', 'Панель «MP Nexus» создана: она появилась в боковом меню Home Assistant.'],
   'Impossible de charger ou sauvegarder la configuration.': ['Unable to load or save the configuration.', 'Не удалось загрузить или сохранить конфигурацию.'],
   'Recharger': ['Reload', 'Обновить'],
   'Aperçu en direct': ['Live preview', 'Предпросмотр'],
@@ -82,7 +82,7 @@ export const STUDIO = {
   'Résumé de la maison': ['Home summary', 'Сводка по дому'],
   'Horloge': ['Clock', 'Часы'],
   'Signature en bas de page': ['Footer signature', 'Подпись внизу страницы'],
-  'Bouton Personnaliser': ['Customize button', 'Кнопка «Настроить»'],
+  'Bouton Info': ['Info button', 'Кнопка «Информация»'],
   'Effets animés': ['Animations', 'Анимация'],
   'Affichez et ordonnez les destinations principales': ['Show and order the main destinations', 'Выберите и упорядочьте основные разделы'],
   'Afficher les libellés': ['Show labels', 'Показывать подписи'],

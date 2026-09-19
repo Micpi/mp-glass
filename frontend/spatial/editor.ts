@@ -61,7 +61,7 @@ function planError(error:unknown){
   const message=(error as Error)?.message??String(error),room=/^Géométrie invalide : (.*)$/s.exec(message);
   return room?tr('Géométrie invalide : {name}',{name:room[1]!}):trText(message);
 }
-/** Notes of Home Assistant on an analysis, written in French: those MP Glass knows in the interface language, Gemini's as they come. */
+/** Notes of Home Assistant on an analysis, written in French: those MP Nexus knows in the interface language, Gemini's as they come. */
 const WARNINGS:[RegExp,MessageKey][]=[
   [/^Échelle calculée à partir des cotes de (\d+) pièces du plan\.$/,'Échelle calculée à partir des cotes de {n} pièce du plan.|Échelle calculée à partir des cotes de {n} pièces du plan.'],
   [/^Surface moyenne de ([\d,.]+) m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue\.$/,'Surface moyenne de {n} m² par pièce : l’échelle est sans doute fausse, calibrez le plan avec une cote connue.'],
@@ -84,8 +84,8 @@ function quotaReset(now=new Date()){
   return reset.toDateString()===now.toDateString()?tr('aujourd’hui à {time}',{time}):tr('demain à {time}',{time});
 }
 const MESSAGES:Record<string,MessageKey>={
-  not_configured:'Ouvrez Configurer Gemini et collez votre clé API dans les options de MP Glass. Aucun add-on nécessaire en mode direct.',
-  not_installed:'Service d’import introuvable : mettez à jour l’intégration MP Glass, puis redémarrez Home Assistant.',
+  not_configured:'Ouvrez Configurer Gemini et collez votre clé API dans les options de MP Nexus. Aucun add-on nécessaire en mode direct.',
+  not_installed:'Service d’import introuvable : mettez à jour l’intégration MP Nexus, puis redémarrez Home Assistant.',
   unauthorized:'Seul un administrateur Home Assistant peut importer un plan.',
   network:'Connexion à Home Assistant interrompue pendant l’envoi. Réessayez.',
   quota:'Quota Gemini atteint. Réessayez plus tard ; aucun autre modèle n’a été appelé.',
@@ -95,17 +95,17 @@ const MESSAGES:Record<string,MessageKey>={
   invalid_geometry:'La réponse de Gemini n’a pas pu être convertie en plan. Réessayez avec une page plus lisible ou dessinez les pièces.',
   no_rooms:'Gemini n’a reconnu aucune pièce. Vérifiez le numéro de page, recadrez le plan ou utilisez une image plus nette.',
   truncated:'La réponse de Gemini a été coupée. Importez un seul niveau à la fois.',
-  provider_auth:'Clé API Gemini refusée. Vérifiez-la dans les options de MP Glass et que l’API Gemini est activée pour ce projet Google.',
+  provider_auth:'Clé API Gemini refusée. Vérifiez-la dans les options de MP Nexus et que l’API Gemini est activée pour ce projet Google.',
   provider_region:'Google refuse l’accès à Gemini pour ce projet (région ou facturation). Voir le détail ci-dessous.',
   provider_request:'Gemini a refusé la requête, même simplifiée : le document est sans doute en cause (PDF protégé, corrompu ou atypique). Essayez une capture PNG ou JPEG du plan. Voir le détail ci-dessous.',
   cancelled:'Analyse annulée. Le plan enregistré est conservé.',
-  provider_unavailable:'Gemini est momentanément surchargé ou indisponible ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes.',
+  provider_unavailable:'Gemini est momentanément surchargé ou indisponible ; MP Nexus a déjà réessayé deux fois. Réessayez dans quelques minutes.',
   provider_unreachable:'Home Assistant n’arrive pas à joindre Google Gemini. Vérifiez sa connexion Internet et son DNS.',
   provider_blocked:'Gemini a interrompu l’analyse de ce document. Essayez une autre page ou une image du plan.',
   worker_unavailable:'Add-on inaccessible. Vérifiez son démarrage, son adresse et la clé de liaison.',
-  model_unavailable:'Google refuse le modèle Gemini utilisé (retiré ou non ouvert à ce projet). Mettez à jour MP Glass puis redémarrez Home Assistant ; en mode add-on, corrigez l’option « model » du worker. Voir le détail ci-dessous.',
+  model_unavailable:'Google refuse le modèle Gemini utilisé (retiré ou non ouvert à ce projet). Mettez à jour MP Nexus puis redémarrez Home Assistant ; en mode add-on, corrigez l’option « model » du worker. Voir le détail ci-dessous.',
   timeout:'L’analyse a dépassé le délai. Réessayez avec une page plus simple.',
-  job_missing:'L’analyse a été interrompue (MP Glass rechargé ou Home Assistant redémarré). Relancez-la.',
+  job_missing:'L’analyse a été interrompue (MP Nexus rechargé ou Home Assistant redémarré). Relancez-la.',
   pdf_protected:'PDF protégé par un mot de passe : exportez la page du plan en image (PNG ou JPEG).',
   pdf_unreadable:'Le navigateur n’a pas pu lire ce PDF : exportez la page du plan en image (PNG ou JPEG).',
 };
@@ -195,7 +195,7 @@ export class MPSpatialEditor extends LitElement {
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
   `;
   plan?:SpatialPlan;fallback?:SpatialPlan;hass?:Hass;areas:HAArea[]=[];floors:HAFloor[]=[];
-  /** Entities as discovered, with the room chosen in MP Glass: rooms that follow an area show its equipment. */
+  /** Entities as discovered, with the room chosen in MP Nexus: rooms that follow an area show its equipment. */
   devices:LogicalDevice[]=[];
   private entitySearch='';
   private language=new LanguageController(this);
@@ -351,7 +351,7 @@ export class MPSpatialEditor extends LitElement {
     const code=error instanceof TypeError?'network':error instanceof Error?error.message:String((error as {code?:string})?.code??error);
     const pages=Number(/^page_missing:(\d+)$/.exec(code)?.[1]);
     this.errorCode=code;this.quotaInfo=code==='quota'?quota:undefined;
-    const overloaded=code==='provider_unavailable'&&this.alternative?tr('{model} est momentanément surchargé ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec {other}.',{model:this.modelLabel,other:this.alternative.label}):'';
+    const overloaded=code==='provider_unavailable'&&this.alternative?tr('{model} est momentanément surchargé ; MP Nexus a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec {other}.',{model:this.modelLabel,other:this.alternative.label}):'';
     const known=MESSAGES[code];
     this.message=pages?tr('La page {page} n’existe pas : ce PDF compte {n} page.|La page {page} n’existe pas : ce PDF compte {n} pages.',{page:this.page,n:pages}):overloaded||this.quotaMessage()||(known?tr(known):tr('Analyse impossible ({code}). Le plan enregistré est conservé.',{code}));this.detail=detail;this.finish('error');
     // A per-minute limit: "Réessayer" counts down the delay advised by Google.
@@ -472,7 +472,7 @@ export class MPSpatialEditor extends LitElement {
     if(kept.length)room.openings=kept;
     return (old.openings?.length??0)-kept.length;
   }
-  /** Room of an entity for the whole of MP Glass (dashboard pages and plan), stored with the project like the Équipements section does. */
+  /** Room of an entity for the whole of MP Nexus (dashboard pages and plan), stored with the project like the Équipements section does. */
   private assign(device:LogicalDevice,patch:Override){this.dispatchEvent(new CustomEvent('override-change',{detail:{entityKey:device.entityKey,patch},bubbles:true,composed:true}));}
   /** Linking a room makes it follow the area, unless equipment was already chosen for it. */
   private linkRoom(areaId:string){this.editRoom(r=>{if(areaId)r.areaId=areaId;else delete r.areaId;if(areaId&&!r.entityIds?.length)delete r.entityIds;});}
@@ -514,7 +514,7 @@ export class MPSpatialEditor extends LitElement {
     if(!this.plan)return;
     // `draft` is left to `willUpdate`, which swaps in the schematic plan once the Studio drops the saved one.
     this.selected='';this.entitySearch='';
-    this.message=tr('Plan supprimé. Cliquez sur Enregistrer dans le Studio pour le retirer pour de bon ; sans plan enregistré, MP Glass repart de vos pièces Home Assistant.');this.detail='';
+    this.message=tr('Plan supprimé. Cliquez sur Enregistrer dans le Studio pour le retirer pour de bon ; sans plan enregistré, MP Nexus repart de vos pièces Home Assistant.');this.detail='';
     this.dispatchEvent(new CustomEvent<SpatialPlan|undefined>('spatial-change',{detail:undefined,bubbles:true,composed:true}));
   };
   /** The level on screen goes away, never the last one: a plan always keeps a level. */
@@ -792,7 +792,7 @@ export class MPSpatialEditor extends LitElement {
       const wait=Math.ceil((this.retryAt-Date.now())/1000);
       body=html`<header class="job-head"><span class="job-orb fail">${mpIcon('close',24)}</span><div><small>${tr('Plan 3D')} · Gemini</small><h3 id="job-title">${tr('Analyse impossible')}</h3><p>${tr('Le plan enregistré est conservé.')}</p></div></header>
         <p role="status" class="job-status failure">${this.message}${this.detail?html`<small>${tr('Détail technique : {detail}',{detail:this.detail})}</small>`:nothing}</p>
-        ${quota?html`<p class="muted"><a href="https://ai.dev/rate-limit" target="_blank" rel="noopener noreferrer">${tr('Voir vos quotas Gemini')}</a> · ${tr('MP Glass ne relance jamais de lui-même une analyse refusée pour quota.')}</p>`:nothing}
+        ${quota?html`<p class="muted"><a href="https://ai.dev/rate-limit" target="_blank" rel="noopener noreferrer">${tr('Voir vos quotas Gemini')}</a> · ${tr('MP Nexus ne relance jamais de lui-même une analyse refusée pour quota.')}</p>`:nothing}
         <div class="job-actions"><button @click=${()=>{this.dialogOpen=false;}}>${tr('Fermer')}</button>${other?html`<button class=${daily?'primary':''} @click=${()=>{this.choose(other.quality);void this.analyze();}}>${tr('Réessayer avec {model}',{model:other.label})}</button>`:nothing}${this.file&&this.confirmed?html`<button class=${daily?'':'primary'} ?disabled=${wait>0} @click=${()=>this.analyze()}>${wait>0?tr('Réessayer dans {n} s',{n:wait}):tr('Réessayer')}</button>`:nothing}</div>`;
     }
     // Escape does not interrupt a running analysis: only "Annuler l’analyse" does.
@@ -973,7 +973,7 @@ export class MPSpatialEditor extends LitElement {
     return html`<h2>${tr('Plan 3D')}</h2><p>${tr('Votre maison en volume, reliée à vos équipements.')}</p>
     ${this.usingDefault?html`<div class="box default" role="note"><strong>${tr('Plan par défaut')}</strong><p>${tr('Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau ; chaque pièce affiche d’elle-même les équipements de sa zone. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le avec « Modifier le plan », ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.')}</p></div>`:nothing}
     <fieldset ?disabled=${!admin||this.busy}>
-      <div class="box"><strong>${tr('Générer depuis un plan · Gemini')}</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">${tr('Configurer Gemini')}</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">${tr('Obtenir une clé API')}</a></div><p>${tr('PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.')}</p><div class="row"><label>${tr('Plan à importer')}<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>${tr('Page du PDF')}<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label>${this.renderModelChoice()}</div>${this.info?.backend==='addon'?html`<p class="muted">${tr('Mode add-on : le modèle est celui de l’option « model » de l’add-on.')}</p>`:nothing}<label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>${tr('Envoyer ce plan à Google pour l’analyser')}</label><p class="note">${tr('En mode direct, une clé API dans MP Glass suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas ; chaque modèle a son propre quota : si l’un est épuisé, choisissez l’autre. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.')}</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>${tr('Générer le brouillon 3D')}</button></div>
+      <div class="box"><strong>${tr('Générer depuis un plan · Gemini')}</strong><div class="row"><a href="https://my.home-assistant.io/redirect/integration/?domain=mp_glass" target="_blank" rel="noopener noreferrer">${tr('Configurer Gemini')}</a><a href="https://aistudio.google.com/api-keys" target="_blank" rel="noopener noreferrer">${tr('Obtenir une clé API')}</a></div><p>${tr('PDF (8 Mo maximum), ou image PNG, JPEG, WebP ; les grandes images sont réduites avant l’envoi.')}</p><div class="row"><label>${tr('Plan à importer')}<input type="file" accept="application/pdf,image/*" @change=${(e:Event)=>{this.file=(e.target as HTMLInputElement).files?.[0];this.confirmed=false;}}></label><label>${tr('Page du PDF')}<input type="number" min="1" max="100" .value=${String(this.page)} @change=${(e:Event)=>{this.page=Math.max(1,Math.min(100,Number((e.target as HTMLInputElement).value)||1));}}></label>${this.renderModelChoice()}</div>${this.info?.backend==='addon'?html`<p class="muted">${tr('Mode add-on : le modèle est celui de l’option « model » de l’add-on.')}</p>`:nothing}<label class="check"><input type="checkbox" .checked=${this.confirmed} @change=${(e:Event)=>{this.confirmed=(e.target as HTMLInputElement).checked;}}>${tr('Envoyer ce plan à Google pour l’analyser')}</label><p class="note">${tr('En mode direct, une clé API dans MP Nexus suffit. Seule la page choisie est envoyée à Google, en image, sans les métadonnées du fichier : un PDF est dessiné dans votre navigateur. Utilisez un projet Google sans facturation pour rester sur le palier gratuit, soumis aux quotas ; chaque modèle a son propre quota : si l’un est épuisé, choisissez l’autre. Les données du palier gratuit peuvent servir à améliorer les produits Google. Aucun basculement automatique vers un autre modèle.')}</p><button class="primary" ?disabled=${!this.file||!this.confirmed||!this.hass?.fetchWithAuth} @click=${()=>this.analyze()}>${tr('Générer le brouillon 3D')}</button></div>
       <div class="row"><button @click=${this.addRoom}>${tr('Ajouter une pièce')}</button>${!this.draft?html`<button @click=${()=>this.commit(trPlan(examplePlan(),true))}>${tr('Charger un exemple')}</button>`:nothing}${this.plan&&this.fallback?html`<button @click=${()=>{this.commit(structuredClone(this.fallback!));this.floorIndex=0;this.selected='';}}>${tr('Repartir du plan par défaut')}</button>`:nothing}${this.plan?html`<button class="danger" @click=${()=>{this.asking='plan';}}>${tr('Supprimer le plan')}</button>`:nothing}</div>
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>${tr('Détail technique : {detail}',{detail:this.detail})}</small>`:nothing}</p>`:nothing}

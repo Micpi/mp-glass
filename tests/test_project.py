@@ -77,7 +77,7 @@ class RepositoryTest(unittest.IsolatedAsyncioTestCase):
     async def test_read_and_save_return_detached_objects(self):
         record = await self.repo.save(0, self.project)
         record["project"]["project"]["name"] = "Changed"
-        self.assertEqual(self.repo.read()["project"]["project"]["name"], "MP Glass")
+        self.assertEqual(self.repo.read()["project"]["project"]["name"], "MP Nexus")
 
 
 if __name__ == "__main__":

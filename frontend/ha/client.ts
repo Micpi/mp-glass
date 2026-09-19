@@ -2,7 +2,7 @@ import type { HAArea, HADevice, HAEntity, HAFloor, HAState, ProjectConfig, Snaps
 import { parseProject } from '../../shared/project';
 export interface Hass {
   states: Record<string, HAState>; language?: string; locale?: { language: string };
-  config?: { unit_system?: { temperature?: string } };
+  config?: { version?: string; unit_system?: { temperature?: string } };
   user?: { id: string; is_admin: boolean };
   connection: object;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
@@ -42,12 +42,12 @@ export async function saveProject(hass: Hass, response: ProjectResponse): Promis
 }
 export const DASHBOARD_STRATEGY = 'custom:mp-glass';
 /**
- * Dashboard running the MP Glass strategy, created in the sidebar when none exists, through the same
+ * Dashboard running the MP Nexus strategy, created in the sidebar when none exists, through the same
  * public WebSocket commands as Home Assistant's "Add dashboard" dialog. Administrators only.
  */
-export async function ensureDashboard(hass: Hass, title = 'MP Glass'): Promise<{ urlPath: string; created: boolean }> {
+export async function ensureDashboard(hass: Hass, title = 'MP Nexus'): Promise<{ urlPath: string; created: boolean }> {
   const dashboards = await hass.callWS<{ url_path: string }[]>({ type: 'lovelace/dashboards/list' });
-  // Overview (null) last: an MP Glass dashboard of its own is preferred when both exist.
+  // Overview (null) last: an MP Nexus dashboard of its own is preferred when both exist.
   const paths: (string | null)[] = [...dashboards.map(d => d.url_path).sort((a, b) => Number(b === 'mp-glass') - Number(a === 'mp-glass')), null];
   const configs = await Promise.all(paths.map(url_path => hass.callWS<{ strategy?: { type?: unknown } }>({ type: 'lovelace/config', url_path }).catch(() => undefined)));
   const found = configs.findIndex(config => config?.strategy?.type === DASHBOARD_STRATEGY);

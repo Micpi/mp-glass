@@ -1,4 +1,4 @@
-# MP Glass — architecture
+# MP Nexus — architecture
 
 Statut : architecture cible avec premier incrément lumière. La roadmap distingue les composants livrés et futurs.
 
@@ -23,7 +23,7 @@ HA registries / states / services
 
 ## Installation
 
-Un paquet HACS Integration contient le JS compilé. Le backend charge le module globalement ; la stratégie s'enregistre dans le sélecteur communautaire. L'utilisateur ajoute MP Glass Dashboard dans l'interface native. Pas d'écriture directe dans `.storage/lovelace*`. Cette frontière évite une API privée de création de dashboards.
+Un paquet HACS Integration contient le JS compilé. Le backend charge le module globalement ; la stratégie s'enregistre dans le sélecteur communautaire. L'utilisateur ajoute MP Nexus Dashboard dans l'interface native. Pas d'écriture directe dans `.storage/lovelace*`. Cette frontière évite une API privée de création de dashboards.
 
 ## Durabilité
 
@@ -31,7 +31,7 @@ Overrides, rôles et plans appartiennent au projet persistant, jamais à la sort
 
 ## Rendering et performance
 
-Lit et CSS tokens locaux, sans CDN. Custom view documentée : HA crée et maintient ses cartes, MP Glass les dispose. Cache structurel invalidable, aucun scan déclenché par une lumière qui change. Chaque carte compare sa propre référence d'état. Le premier incrément fournit lumière et fallback ; les autres domaines arrivent après validation du parcours lumière.
+Lit et CSS tokens locaux, sans CDN. Custom view documentée : HA crée et maintient ses cartes, MP Nexus les dispose. Cache structurel invalidable, aucun scan déclenché par une lumière qui change. Chaque carte compare sa propre référence d'état. Le premier incrément fournit lumière et fallback ; les autres domaines arrivent après validation du parcours lumière.
 
 ## Modes
 

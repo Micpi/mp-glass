@@ -2,7 +2,7 @@ import type { ReactiveController, ReactiveControllerHost } from 'lit';
 import { CATALOG, type MessageKey } from './locales';
 
 /**
- * Languages of the MP Glass interface. The French text is the key of every message: the code reads as the interface
+ * Languages of the MP Nexus interface. The French text is the key of every message: the code reads as the interface
  * does, and `tsc` refuses a text missing from the catalog. A key may end with `#context` when one French text has two
  * meanings («Annuler» cancels a window or undoes an edit). `a|b` gives the singular and plural forms, chosen by the
  * `n` parameter: two forms in French and English, three in Russian (1, 2-4, 5 and more).
@@ -13,7 +13,7 @@ export type LanguageChoice = Language | 'auto';
 export const LANGUAGES: Language[] = ['fr', 'en', 'ru'];
 /** Each language named in itself, as a language menu shows it. */
 export const LANGUAGE_NAMES: Record<Language, string> = { fr: 'Français', en: 'English', ru: 'Русский' };
-/** Fired on window when the interface changes language: every MP Glass element draws itself again. */
+/** Fired on window when the interface changes language: every MP Nexus element draws itself again. */
 export const LANGUAGE_EVENT = 'mp-glass-language';
 /** This browser's copy of the choice, read before Home Assistant answers. */
 const STORAGE_KEY = 'mp-glass.language';
@@ -40,7 +40,7 @@ let current: Language = resolve();
 /** Connection whose saved choice has been read. */
 let synced: object | undefined;
 
-/** The language MP Glass speaks for a Home Assistant language: French and Russian as they are, English for the others. */
+/** The language MP Nexus speaks for a Home Assistant language: French and Russian as they are, English for the others. */
 export function interfaceLanguage(tag?: string): Language {
   const value = (tag ?? '').toLowerCase();
   return !value || value.startsWith('fr') ? 'fr' : value.startsWith('ru') ? 'ru' : 'en';
@@ -114,14 +114,14 @@ function format(text: string, params?: Params) {
 export function tr(key: MessageKey, params?: Params): string {
   return format(current === 'fr' ? key.replace(CONTEXT, '') : CATALOG[key][current === 'en' ? 0 : 1], params);
 }
-/** A text that may be a message (a name MP Glass gave, a note of Home Assistant); any other text stays as it is. */
+/** A text that may be a message (a name MP Nexus gave, a note of Home Assistant); any other text stays as it is. */
 export function trText(text: string, params?: Params): string {
   return text in CATALOG ? tr(text as MessageKey, params) : format(text, params);
 }
 interface PlanNames { floors: { name: string; rooms: { name: string }[] }[] }
 /**
- * A plan MP Glass drew itself, in the interface language: every name of its example; in the plan of the Home Assistant
- * areas, only the names MP Glass gave (a main floor, a room without a name), the areas and floors keeping theirs.
+ * A plan MP Nexus drew itself, in the interface language: every name of its example; in the plan of the Home Assistant
+ * areas, only the names MP Nexus gave (a main floor, a room without a name), the areas and floors keeping theirs.
  */
 export function trPlan<P extends PlanNames>(plan: P, example = false): P {
   const name = (text: string, own: boolean) => example || own ? trText(text) : text;

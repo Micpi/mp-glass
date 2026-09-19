@@ -65,7 +65,7 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
   for(const card of cards) card.hass={...hass};
   view.hass={...hass};
 } };
-const dashboard = MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project);
+const dashboard = MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project, false, undefined, undefined, __MP_GLASS_VERSION__);
 // Room sensors only exist on the plan demo, after composition, so the dashboard cards stay the same.
 if(spatial) hass.states={...hass.states,
   'cover.salon':{entity_id:'cover.salon',state:'open',attributes:{friendly_name:'Salon · Volet baie',device_class:'shutter',current_position:65,supported_features:15}},
@@ -88,11 +88,12 @@ if(floors) hass.states={...hass.states,
   'light.suite':light('light.suite','Suite parentale · Plafonnier',true),'light.leo':light('light.leo','Chambre Léo · Veilleuse'),'light.palier':light('light.palier','Palier · Applique',true),
   'sensor.suite_temperature':temperature('sensor.suite_temperature','Suite parentale · Température','19.2'),'sensor.leo_temperature':temperature('sensor.leo_temperature','Chambre Léo · Température','22.6'),
 };
-for(const config of dashboard.views[0]!.cards) {
+const selectedView = dashboard.views.find(candidate => candidate.path === location.pathname.split('/').filter(Boolean).at(-1)) ?? dashboard.views[0]!;
+for(const config of selectedView.cards) {
   const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config);card.hass={...hass};cards.push(card);
 }
 const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
-view.setConfig(dashboard.views[0]!);
+view.setConfig(selectedView);
 view.cards=cards;
 view.hass=hass;
 Object.assign(window,{demo:{hass,cards,calls}});

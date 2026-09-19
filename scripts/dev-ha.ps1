@@ -14,10 +14,10 @@ try {
 default_config:
 input_boolean:
   mp_glass_light:
-    name: MP Glass test light state
+    name: MP Nexus test light state
 template:
   - light:
-      - name: MP Glass Test Light
+      - name: MP Nexus Test Light
         unique_id: mp_glass_test_light
         state: "{{ is_state('input_boolean.mp_glass_light', 'on') }}"
         turn_on:

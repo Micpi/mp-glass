@@ -88,7 +88,7 @@ describe('project contract',()=>{
   it('exports, imports and migrates v1 without mutating input',()=>{
     const project=defaultProject();project.roles.primary_light='logical:stable-0';
     expect(migrateProject(JSON.parse(JSON.stringify(project)))).toEqual(project);
-    const copy=parseProject(project);copy.project.name='Different';expect(project.project.name).toBe('MP Glass');
+    const copy=parseProject(project);copy.project.name='Different';expect(project.project.name).toBe('MP Nexus');
   });
   it.each([{...defaultProject(),schema_version:3},{...defaultProject(),token:'secret'},{...defaultProject(),appearance:{preset:'invalid'}},{...defaultProject(),overrides:{x:{pin:'1234'}}}])('rejects unsupported or secret-bearing data',value=>expect(()=>parseProject(value)).toThrow('invalid_project'));
   it('requires a fallback and rejects duplicate card registrations',()=>{
@@ -113,6 +113,6 @@ describe('structural performance budget',()=>{
   it.each([20,100,500,1000])('composes %i lights within 500ms',count=>{
     const snapshot=home(count);const start=performance.now();const graph=MPDiscoveryEngine.discover(snapshot,defaultProject());const dashboard=MPDashboardComposer.compose(graph,defaultProject());
     const duration=performance.now()-start;expect(dashboard.views[0]?.cards).toHaveLength(count);expect(duration).toBeLessThan(500);
-    console.info(`MP Glass ${count} entities: ${duration.toFixed(2)} ms`);
+    console.info(`MP Nexus ${count} entities: ${duration.toFixed(2)} ms`);
   });
 });

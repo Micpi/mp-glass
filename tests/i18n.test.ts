@@ -73,7 +73,7 @@ describe('language of the interface', () => {
     expect(tr('Les équipements de {name}', { name: 'Кухня' })).toBe('Устройства: Кухня');
     chooseLanguage('auto');
   });
-  it('translates the texts MP Glass wrote itself, never the user’s own', () => {
+  it('translates the texts MP Nexus wrote itself, never the user’s own', () => {
     chooseLanguage('en');
     expect(trText('Rez-de-chaussée')).toBe('Ground floor');
     expect(trText('Grenier de Mamie')).toBe('Grenier de Mamie');
@@ -83,7 +83,7 @@ describe('language of the interface', () => {
     expect(trDefault('', 'Une maison plus simple à vivre')).toBe('');
     const example = trPlan(examplePlan(), true);
     expect([example.floors[0]!.name, example.floors[0]!.rooms[0]!.name]).toEqual(['Ground floor', 'Living room']);
-    // The plan of the areas keeps the names of the areas and floors; only the names MP Glass gave are translated.
+    // The plan of the areas keeps the names of the areas and floors; only the names MP Nexus gave are translated.
     const areas = trPlan({ floors: [{ name: 'Niveau principal', rooms: [{ name: 'Salon' }, { name: 'Pièce' }] }, { name: 'Rez-de-chaussée', rooms: [] }] });
     expect(areas.floors.map(f => [f.name, ...f.rooms.map(r => r.name)])).toEqual([['Main floor', 'Salon', 'Room'], ['Rez-de-chaussée']]);
     chooseLanguage('auto');

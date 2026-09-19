@@ -10,7 +10,7 @@ interface MPGlassModule {
  * lowered to ES2017 at build time (vite.config.ts), so that it registers even on old tablets.
  */
 const TAG = 'll-strategy-dashboard-mp-glass';
-const log = (message: string) => console.info(`[MP Glass ${__MP_GLASS_VERSION__}] ${message} (${Math.round(performance.now())} ms après l’ouverture de la page)`);
+const log = (message: string) => console.info(`[MP Nexus ${__MP_GLASS_VERSION__}] ${message} (${Math.round(performance.now())} ms après l’ouverture de la page)`);
 type Language = 'fr' | 'en' | 'ru';
 /** The interface language as frontend/i18n.ts decides it (this file imports nothing), for the two messages shown from here. */
 function language(hass?: Hass): Language {
@@ -21,14 +21,14 @@ function language(hass?: Hass): Language {
   return !tag || tag.startsWith('fr') ? 'fr' : tag.startsWith('ru') ? 'ru' : 'en';
 }
 const TOO_OLD: Record<Language, (agent: string) => string> = {
-  fr: agent => `Ce navigateur est trop ancien pour l’interface MP Glass (au minimum Chrome 107, Safari 16 ou Firefox 104). Mettez à jour le navigateur, ou Android System WebView pour une application. Navigateur : ${agent}`,
-  en: agent => `This browser is too old for the MP Glass interface (Chrome 107, Safari 16 or Firefox 104 at least). Update the browser, or Android System WebView for an app. Browser: ${agent}`,
-  ru: agent => `Этот браузер слишком старый для интерфейса MP Glass (нужен как минимум Chrome 107, Safari 16 или Firefox 104). Обновите браузер или Android System WebView для приложения. Браузер: ${agent}`,
+  fr: agent => `Ce navigateur est trop ancien pour l’interface MP Nexus (au minimum Chrome 107, Safari 16 ou Firefox 104). Mettez à jour le navigateur, ou Android System WebView pour une application. Navigateur : ${agent}`,
+  en: agent => `This browser is too old for the MP Nexus interface (Chrome 107, Safari 16 or Firefox 104 at least). Update the browser, or Android System WebView for an app. Browser: ${agent}`,
+  ru: agent => `Этот браузер слишком старый для интерфейса MP Nexus (нужен как минимум Chrome 107, Safari 16 или Firefox 104). Обновите браузер или Android System WebView для приложения. Браузер: ${agent}`,
 };
 const UNREACHABLE: Record<Language, (error: string) => string> = {
-  fr: error => `MP Glass n’a pas pu charger son interface (${error}). Vérifiez la connexion à Home Assistant, puis rechargez la page.`,
-  en: error => `MP Glass could not load its interface (${error}). Check the connection to Home Assistant, then reload the page.`,
-  ru: error => `MP Glass не удалось загрузить интерфейс (${error}). Проверьте подключение к Home Assistant, затем перезагрузите страницу.`,
+  fr: error => `MP Nexus n’a pas pu charger son interface (${error}). Vérifiez la connexion à Home Assistant, puis rechargez la page.`,
+  en: error => `MP Nexus could not load its interface (${error}). Check the connection to Home Assistant, then reload the page.`,
+  ru: error => `MP Nexus не удалось загрузить интерфейс (${error}). Проверьте подключение к Home Assistant, затем перезагрузите страницу.`,
 };
 /** Waits before each new attempt at loading the engine. */
 const RETRIES = [1000, 2000, 4000, 8000];
@@ -59,7 +59,7 @@ async function loadEngine(lang: Language): Promise<MPGlassModule> {
 }
 
 class MPGlassDashboardBootstrap extends HTMLElement {
-  static getCreateSuggestions() { return { title: 'MP Glass', icon: 'mdi:view-dashboard' }; }
+  static getCreateSuggestions() { return { title: 'MP Nexus', icon: 'mdi:view-dashboard' }; }
   /**
    * Home Assistant asks this on each state update of a strategy dashboard on screen. Never asked for a dashboard
    * yet means it gave up before this strategy was registered and shows its timeout error: replace it, once.
@@ -103,5 +103,5 @@ if (!customElements.get(TAG)) {
 declare global { interface Window { customStrategies?: Record<string, unknown>[] } }
 const strategies = window.customStrategies || (window.customStrategies = []);
 if (!strategies.some(strategy => strategy.type === 'mp-glass')) {
-  strategies.push({ type: 'mp-glass', strategyType: 'dashboard', name: 'MP Glass Dashboard' });
+  strategies.push({ type: 'mp-glass', strategyType: 'dashboard', name: 'MP Nexus Dashboard' });
 }

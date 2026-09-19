@@ -1,10 +1,10 @@
-# MP Glass
+# MP Nexus
 
 **Install. Discover. Personalize. Deploy.**
 
 Framework de dashboards Home Assistant : configurer une installation, puis déduire son interface à partir des pièces, des appareils et de leurs capacités.
 
-**État : version de développement 0.9.4, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
+**État : version de développement 0.9.5, installable depuis HACS comme dépôt personnalisé.** Le parcours lumière et le Studio ont été validés sur HA 2026.9.1. Le plan 3D et l’import Gemini sont testés localement ; l’appel Gemini réel reste à valider.
 
 ![Aperçu de la fixture desktop](tests/browser/light.spec.ts-snapshots/desktop-win32.png)
 
@@ -14,18 +14,18 @@ Cette image montre une fixture de développement, pas une maison cliente. [Résu
 
 - Backend Home Assistant : Config Flow, Options Flow, stockage projet validé, API authentifiée et diagnostics limités aux compteurs.
 - Core TypeScript indépendant : normalisation, capacités lumière, classification explicable, overrides, registre de cartes et composition déterministe.
-- Frontend : stratégie MP Glass Dashboard, vue responsive, carte lumière marche/arrêt et luminosité, fallback, editor, panneau de découverte et apparence.
-- Français, anglais et russe : chaque utilisateur choisit sa langue avec le petit drapeau du dashboard (à côté de l’horloge sur grand écran, sur la ligne du nom de la maison sur téléphone). Le choix vaut pour le dashboard, le plan 3D et le Studio, sur tous ses appareils ; tant qu’il n’a rien choisi, MP Glass suit la langue de son profil Home Assistant.
+- Frontend : stratégie MP Nexus Dashboard, vue responsive, carte lumière marche/arrêt et luminosité, fallback, editor, panneau de découverte et apparence.
+- Français, anglais et russe : chaque utilisateur choisit sa langue avec le petit drapeau du dashboard (à côté de l’horloge sur grand écran, sur la ligne du nom de la maison sur téléphone). Le choix vaut pour le dashboard, le plan 3D et le Studio, sur tous ses appareils ; tant qu’il n’a rien choisi, MP Nexus suit la langue de son profil Home Assistant.
 - Six presets : Glass Blue, Warm, Dark, Light, OLED et Neutral. La direction photographique premium et le wizard complet restent au programme.
-- [MP Spatial](docs/FLOORPLAN.md) : plan 3D manipulable, pièces/niveaux, états et commandes. Chaque pièce du plan se relie d’un clic à sa pièce Home Assistant et en affiche les équipements ; un équipement déplacé l’est aussi sur le dashboard. Portes, fenêtres et portes-fenêtres se placent sur les murs, avec leurs volets roulants, stores, rideaux et capteurs d’ouverture ; téléviseurs et enceintes se placent dans les pièces : le plan les montre et les commande ([détails](docs/FLOORPLAN.md#portes-fenêtres-volets-et-audio-vidéo)). **Modifier le plan** corrige un niveau enregistré sur son plan d’architecte, gardé sous ses pièces, portes et appareils compris ([détails](docs/FLOORPLAN.md#modifier-le-plan-dun-niveau)). [Gemini direct, sans add-on](docs/GEMINI_QUICKSTART.md) : une clé API dans MP Glass suffit pour importer PDF/images en brouillons corrigibles. Le worker séparé reste une option avancée.
+- [MP Spatial](docs/FLOORPLAN.md) : plan 3D manipulable, pièces/niveaux, états et commandes. Chaque pièce du plan se relie d’un clic à sa pièce Home Assistant et en affiche les équipements ; un équipement déplacé l’est aussi sur le dashboard. Portes, fenêtres et portes-fenêtres se placent sur les murs, avec leurs volets roulants, stores, rideaux et capteurs d’ouverture ; téléviseurs et enceintes se placent dans les pièces : le plan les montre et les commande ([détails](docs/FLOORPLAN.md#portes-fenêtres-volets-et-audio-vidéo)). **Modifier le plan** corrige un niveau enregistré sur son plan d’architecte, gardé sous ses pièces, portes et appareils compris ([détails](docs/FLOORPLAN.md#modifier-le-plan-dun-niveau)). [Gemini direct, sans add-on](docs/GEMINI_QUICKSTART.md) : une clé API dans MP Nexus suffit pour importer PDF/images en brouillons corrigibles. Le worker séparé reste une option avancée.
 
 ## Installer et créer un premier dashboard
 
-**Avec HACS (recommandé, mises à jour depuis l’interface) :** HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/Micpi/mp-glass`, type **Intégration** → Ajouter. Rechercher **MP Glass**, **Télécharger**, puis redémarrer Home Assistant et ajouter l’intégration MP Glass. En ouvrant **MP Glass Studio**, le dashboard **MP Glass** est créé dans la barre latérale. Les versions suivantes apparaissent ensuite dans **Paramètres → Mises à jour**.
+**Avec HACS (recommandé, mises à jour depuis l’interface) :** HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/Micpi/mp-glass`, type **Intégration** → Ajouter. Rechercher **MP Nexus**, **Télécharger**, puis redémarrer Home Assistant et ajouter l’intégration MP Nexus. En ouvrant **MP Nexus Studio**, le dashboard **MP Nexus** est créé dans la barre latérale. Les versions suivantes apparaissent ensuite dans **Paramètres → Mises à jour**.
 
 Voir [INSTALL](docs/INSTALL.md) et [QUICKSTART](docs/QUICKSTART.md). Minimum cible HA 2026.6 ; instance de développement épinglée sur 2026.9.1. Il ne s'agit pas encore d'une compatibilité certifiée.
 
-Après installation et redémarrage HA : ajouter l'intégration MP Glass, ouvrir MP Glass Studio (qui crée le dashboard MP Glass), analyser, enregistrer. Le module est fourni avec l'intégration. Aucun YAML chantier n'est nécessaire pour ce parcours.
+Après installation et redémarrage HA : ajouter l'intégration MP Nexus, ouvrir MP Nexus Studio (qui crée le dashboard MP Nexus), analyser, enregistrer. Le module est fourni avec l'intégration. Aucun YAML chantier n'est nécessaire pour ce parcours.
 
 ## Développement
 

@@ -1,6 +1,6 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "MP Glass Project v2",
+  "title": "MP Nexus Project v2",
   "type": "object",
   "additionalProperties": false,
   "required": [

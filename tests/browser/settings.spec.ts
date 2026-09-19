@@ -10,7 +10,7 @@ test('custom view fills the Home Assistant flex container',async({page})=>{
   await expect(page.getByRole('link',{name:'Accueil'})).toHaveAttribute('href','/home');
   await expect(page.getByRole('link',{name:'Lumières'})).toHaveAttribute('href','/lights');
   await expect(page.getByRole('link',{name:'Pièces'})).toHaveAttribute('href','/rooms');
-  await expect(page.getByRole('link',{name:'Personnaliser'})).toHaveAttribute('href','/mp-glass-settings');
+  await expect(page.getByRole('link',{name:'Info',exact:true})).toHaveAttribute('href','/info');
 });
 test('strategy and settings use registry/project contracts and retain manual overrides',async({page})=>{
   await page.goto('/');
@@ -46,11 +46,11 @@ test('strategy and settings use registry/project contracts and retain manual ove
     panel.hass=hass;document.body.replaceChildren(panel);
     Object.assign(window,{settingsTest:{hass,requests}});
   });
-  await expect(page.getByText('Dashboard « MP Glass » créé')).toBeVisible();
+  await expect(page.getByText('Dashboard « MP Nexus » créé')).toBeVisible();
   await expect(page.getByRole('button',{name:'Recharger la page'})).toHaveCount(0);
   await expect(page.getByRole('link',{name:'Voir le dashboard'})).toHaveAttribute('href','/mp-glass/home');
   expect(await page.evaluate(()=>(window as unknown as {settingsTest:{requests:Record<string,unknown>[]}}).settingsTest.requests.filter(r=>String(r.type).startsWith('lovelace/dashboards/create')||r.type==='lovelace/config/save'))).toEqual([
-    {type:'lovelace/dashboards/create',url_path:'mp-glass',title:'MP Glass',icon:'mdi:view-dashboard',show_in_sidebar:true,require_admin:false},
+    {type:'lovelace/dashboards/create',url_path:'mp-glass',title:'MP Nexus',icon:'mdi:view-dashboard',show_in_sidebar:true,require_admin:false},
     {type:'lovelace/config/save',url_path:'mp-glass',config:{strategy:{type:'custom:mp-glass'}}},
   ]);
   await page.getByRole('button',{name:/Équipements/}).click();
@@ -63,7 +63,7 @@ test('strategy and settings use registry/project contracts and retain manual ove
     const strategy=customElements.get('ll-strategy-dashboard-mp-glass') as unknown as {generate:(config:object,hass:unknown)=>Promise<unknown>};
     return strategy.generate({},hass);
   });
-  expect(dashboard).toMatchObject({title:'Maison test',views:[{path:'home',cards:[{type:'custom:mp-glass-light-v4',name:'Éclairage principal'}]},{path:'lights'},{path:'rooms'},{title:'Salon'}]});
+  expect(dashboard).toMatchObject({title:'Maison test',views:[{path:'home',cards:[{type:'custom:mp-glass-light-v4',name:'Éclairage principal'}]},{path:'lights'},{path:'rooms'},{title:'Salon'},{path:'info',subview:true,mp_info:{deviceCount:1,lightCount:1,areaCount:1}}]});
   await page.getByRole('button',{name:'Analyser l’installation'}).click();
   await expect(page.getByRole('button',{name:'Enregistrer',exact:true})).toBeEnabled();
 });
@@ -128,7 +128,7 @@ test('an update installed while the page is open asks for a reload',async({page}
     const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
     panel.hass=hass;document.body.replaceChildren(panel);
   });
-  await expect(page.getByRole('alert')).toContainText('MP Glass 0.0.1 est installé, mais cette page affiche encore la version');
+  await expect(page.getByRole('alert')).toContainText('MP Nexus 0.0.1 est installé, mais cette page affiche encore la version');
   await expect(page.getByRole('button',{name:'Recharger la page'})).toBeVisible();
 });
 test('each user picks their language with the flag of the dashboard, and the Studio follows it',async({page})=>{

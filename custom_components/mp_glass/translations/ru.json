@@ -1,23 +1,23 @@
 {
-  "title": "MP Glass",
+  "title": "MP Nexus",
   "config": {
     "step": {
       "user": {
-        "title": "Добро пожаловать в MP Glass",
-        "description": "Назовите свой дом, затем откройте MP Glass в боковом меню, чтобы найти устройства вашей установки.",
+        "title": "Добро пожаловать в MP Nexus",
+        "description": "Назовите свой дом, затем откройте MP Nexus в боковом меню, чтобы найти устройства вашей установки.",
         "data": {
           "name": "Название дома"
         }
       }
     },
     "abort": {
-      "already_configured": "MP Glass уже настроен."
+      "already_configured": "MP Nexus уже настроен."
     }
   },
   "options": {
     "step": {
       "init": {
-        "title": "Параметры MP Glass",
+        "title": "Параметры MP Nexus",
         "data": {
           "show_settings": "Показывать панель настроек интегратора",
           "spatial_backend": "Анализ планов",

@@ -62,7 +62,7 @@ Validé localement : 39 tests Python (proportions, échelle depuis les cotes que
 
 Deuxième import réel (0.2.6) : 13 pièces nommées en français, échelle calculée à partir des cotes de 7 pièces (chambre 3 : 10,2 m², 3 × 3,4 m, conforme au 10X11 ft du plan), placards fusionnés ; mais message « Plan obtenu avec une requête simplifiée : Gemini a refusé le schéma de réponse », donc sans réflexion `medium`, et interface du Studio antérieure à 0.2.5 (page non rechargée après la mise à jour). Suspect principal du refus : limites de longueur de tableaux imbriqués dans le schéma (60 pièces × 40 sommets × 2 valeurs). Parade : schéma sans limites, repli gardant la réflexion, bandeau de rechargement.
 
-Validé localement : 38 tests Python (schéma sans minItems/maxItems, repli sans schéma avec réflexion puis requête la plus simple, trois refus détaillés, deux pour un modèle 2.x, chevauchement Buanderie / Salle d’eau signalé et pièces disjointes ignorées), 33 tests Vitest, 25 scénarios Playwright (bandeau « MP Glass 0.0.1 est installé, mais cette page affiche encore la version… » avec Recharger la page ; absent quand les versions concordent), build (`mp-glass.js?v=0.2.7` issu de `package.json`). Non validé : acceptation réelle du schéma allégé par Gemini ; le brouillon indiquera la forme de requête utilisée.
+Validé localement : 38 tests Python (schéma sans minItems/maxItems, repli sans schéma avec réflexion puis requête la plus simple, trois refus détaillés, deux pour un modèle 2.x, chevauchement Buanderie / Salle d’eau signalé et pièces disjointes ignorées), 33 tests Vitest, 25 scénarios Playwright (bandeau « MP Nexus 0.0.1 est installé, mais cette page affiche encore la version… » avec Recharger la page ; absent quand les versions concordent), build (`mp-glass.js?v=0.2.7` issu de `package.json`). Non validé : acceptation réelle du schéma allégé par Gemini ; le brouillon indiquera la forme de requête utilisée.
 
 ## Plans importés plus fidèles 0.2.6 — 14 septembre 2026
 
@@ -80,7 +80,7 @@ Validé localement : 33 tests Vitest, 24 scénarios Playwright (fenêtre de prog
 
 Signalement utilisateur : après installation par HACS sur une autre instance, seul le Studio apparaît, pas le dashboard. Cause : le dashboard devait être ajouté à la main (Paramètres → Tableaux de bord) et le lien du Studio visait une adresse fixe `/mp-glass/home` inexistante.
 
-Validé localement : 33 tests Vitest (dont réutilisation d’un dashboard MP Glass existant quelle que soit son adresse, création avec la strategy `custom:mp-glass`, adresse de repli si `mp-glass` est prise), 22 scénarios Playwright (installation neuve : création du dashboard par le Studio, message affiché, lien vers `/mp-glass/home`), 28 tests Python, build. Non validé : création réelle sur une instance Home Assistant.
+Validé localement : 33 tests Vitest (dont réutilisation d’un dashboard MP Nexus existant quelle que soit son adresse, création avec la strategy `custom:mp-glass`, adresse de repli si `mp-glass` est prise), 22 scénarios Playwright (installation neuve : création du dashboard par le Studio, message affiché, lien vers `/mp-glass/home`), 28 tests Python, build. Non validé : création réelle sur une instance Home Assistant.
 
 ## Plan 3D mobile, Gemini 3.5 et HACS 0.2.3 — 14 septembre 2026
 
@@ -100,7 +100,7 @@ Restent à valider : installation sur l’instance HA, appel Gemini réel avec l
 
 ## Simplification Gemini 0.2.1 — 14 septembre 2026
 
-Mode direct configuré depuis les options de MP Glass, avec clé conservée uniquement côté backend. Les installations utilisant déjà un worker restent sur le mode add-on. Contrat partagé entre les deux modes ; tests du PDF inline avec numéro de page, signatures/taille, origine Google fixe, clé en header, erreur 429 sans relance et compatibilité des réglages existants. Liens et information d’envoi complet vérifiés dans le navigateur.
+Mode direct configuré depuis les options de MP Nexus, avec clé conservée uniquement côté backend. Les installations utilisant déjà un worker restent sur le mode add-on. Contrat partagé entre les deux modes ; tests du PDF inline avec numéro de page, signatures/taille, origine Google fixe, clé en header, erreur 429 sans relance et compatibilité des réglages existants. Liens et information d’envoi complet vérifiés dans le navigateur.
 
 Ces validations sont locales avec réponse Gemini simulée. Aucune installation sur l’instance HA ni analyse avec une clé réelle dans cette session.
 
@@ -114,7 +114,7 @@ Limites : aucun appel réel Gemini ni mesure de précision, aucun build/installa
 
 La révision frontend r14 a été déployée sur l'instance Home Assistant 2026.9.1. Les routes `home`, `lights`, `rooms` et `area-<area_id>` ont été ouvertes depuis l'interface réelle. Les onglets Accueil, Lumières et Pièces changent bien de vue, la liste des pièces détectées est générée, et la page Cuisine affiche uniquement son équipement associé.
 
-Le raccourci Personnaliser ouvre désormais MP Glass Studio. Les rubriques Identité, Style & matière, Arrière-plan, Disposition, Contenu, Navigation et Équipements ont été chargées et parcourues sur l'instance réelle. Les presets, couleurs, transparence, flou, bordures, ombres, typographie, image, cadrage, densité, grille, espacements, dimensions, visibilité des sections et ordre de navigation sont exposés avec un aperçu direct. Aucun réglage du chantier n'a été modifié pendant cette vérification.
+Le raccourci Personnaliser ouvre désormais MP Nexus Studio. Les rubriques Identité, Style & matière, Arrière-plan, Disposition, Contenu, Navigation et Équipements ont été chargées et parcourues sur l'instance réelle. Les presets, couleurs, transparence, flou, bordures, ombres, typographie, image, cadrage, densité, grille, espacements, dimensions, visibilité des sections et ordre de navigation sont exposés avec un aperçu direct. Aucun réglage du chantier n'a été modifié pendant cette vérification.
 
 Le chargement réel a révélé un conflit avec la propriété `panel` que Home Assistant assigne aux custom panels. La méthode interne du Studio a été renommée `renderSectionPanel` et un test navigateur reproduit désormais ce contexte Home Assistant. La ressource Lovelace active pointe sur `/mp_glass_static/mp-glass-r14.js?v=0.1.0`. Après remplacement du bundle et fin de propagation, le dashboard et le Studio ont été rechargés avec succès ; le lien Personnaliser est visible dans la navigation du dashboard.
 
@@ -126,7 +126,7 @@ Session navigateur authentifiée accessible. Version constatée dans l'interface
 
 Archive initiale transférée via File editor, SHA-256 local/serveur identique : `feb53592ab6eb3954c0edd0ffa5ce85d6e3795d8e44874f3ac5e051f4e36d113`. Absence préalable de `custom_components/mp_glass` vérifiée, 12 fichiers extraits avec refus d'écrasement. `ha core check` a réussi, puis le redémarrage autorisé par l'utilisateur a réussi. Le Config Flow, le panneau administrateur, le stockage du projet et la lecture des registries ont ensuite fonctionné.
 
-Découverte réelle : 642 entités analysées, 9 lumières reconnues et 5 lumières sans pièce à vérifier. Les 633 entités génériques sont conservées dans une vue Inventaire repliée et paginée, sans encombrer la revue. Le dashboard `MP Glass Test` a été créé par le dialogue natif. Les vues Accueil, Cuisine, Entrée, Salle de bains et Inventaire ont été générées.
+Découverte réelle : 642 entités analysées, 9 lumières reconnues et 5 lumières sans pièce à vérifier. Les 633 entités génériques sont conservées dans une vue Inventaire repliée et paginée, sans encombrer la revue. Le dashboard `MP Nexus Test` a été créé par le dialogue natif. Les vues Accueil, Cuisine, Entrée, Salle de bains et Inventaire ont été générées.
 
 Le premier chargement direct a révélé deux défauts corrigés : largeur de custom view réduite par le conteneur flex HA, puis course entre le chargement du bundle et le délai de 5 secondes de la strategy. La vue occupe désormais le conteneur ; un bootstrap de 0,59 Ko enregistre immédiatement `ll-strategy-dashboard-mp-glass` et charge le bundle à la demande. Une ressource bootstrap a été ajoutée à Lovelace sur l'instance de test pour valider le correctif sans second redémarrage.
 
@@ -156,7 +156,7 @@ Benchmark local noyau Node (une exécution, pas un percentile ni du temps résea
 
 ## Porte du premier vertical slice lumière : PASSÉE
 
-Le chemin install → Config Flow → découverte → capability POWER/DIM → résolution MP Glass Light → génération du dashboard → commande → retour d'état a fonctionné sur Home Assistant 2026.9.1. Cette validation couvre le serveur et son état Home Assistant ; aucun constat physique visuel de l'ampoule n'a été revendiqué.
+Le chemin install → Config Flow → découverte → capability POWER/DIM → résolution MP Nexus Light → génération du dashboard → commande → retour d'état a fonctionné sur Home Assistant 2026.9.1. Cette validation couvre le serveur et son état Home Assistant ; aucun constat physique visuel de l'ampoule n'a été revendiqué.
 
 Restent à valider avant une release stable : refus non-admin, unload/reload après installation définitive du bootstrap, édition concurrente sur HA réel, version minimale 2026.6, Safari/iOS et orientations physiques.
 

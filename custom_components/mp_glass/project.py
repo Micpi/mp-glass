@@ -20,7 +20,7 @@ def load_validator():
     return Draft7Validator(schema)
 
 
-def default_project(name="MP Glass"):
+def default_project(name="MP Nexus"):
     return {
         "schema_version": 2,
         "project": {"name": name},
@@ -52,7 +52,7 @@ def migrate_project(value):
     """Migrate stored project configuration without discarding user choices."""
     source = deepcopy(value)
     if source.get("schema_version") == 1:
-        migrated = default_project(source.get("project", {}).get("name", "MP Glass"))
+        migrated = default_project(source.get("project", {}).get("name", "MP Nexus"))
         migrated.update(source)
         migrated["schema_version"] = 2
         migrated["appearance"] = {**default_project()["appearance"], **source.get("appearance", {})}

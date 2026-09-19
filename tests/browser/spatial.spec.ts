@@ -426,7 +426,7 @@ test('the room list stays on one line under the plan and scrolls with its arrows
 test('AI import needs consent and stays a draft until explicitly applied',async({page})=>{
   await mountEditor(page);
   await expect(page.getByRole('link',{name:'Configurer Gemini',exact:true})).toHaveAttribute('href','https://my.home-assistant.io/redirect/integration/?domain=mp_glass');
-  await expect(page.getByText(/une clé API dans MP Glass suffit/)).toBeVisible();
+  await expect(page.getByText(/une clé API dans MP Nexus suffit/)).toBeVisible();
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
   const generate=page.getByRole('button',{name:'Générer le brouillon 3D'});await expect(generate).toBeDisabled();
   await page.getByRole('checkbox',{name:'Envoyer ce plan à Google pour l’analyser'}).check();await generate.click();
@@ -506,7 +506,7 @@ test('an overloaded model can be swapped for the other one in a click',async({pa
   await page.getByLabel('Plan à importer').setInputFiles({name:'plan.png',mimeType:'image/png',buffer:Buffer.from('fixture')});
   await consentAndGenerate(page);
   const dialog=page.getByRole('dialog',{name:'Analyse impossible'});
-  await expect(dialog.getByRole('status')).toContainText('Gemini 3.8 Flash est momentanément surchargé ; MP Glass a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec Gemini 3.5 Flash-Lite.');
+  await expect(dialog.getByRole('status')).toContainText('Gemini 3.8 Flash est momentanément surchargé ; MP Nexus a déjà réessayé deux fois. Réessayez dans quelques minutes, ou tout de suite avec Gemini 3.5 Flash-Lite.');
   await expect(dialog.getByRole('status')).toContainText('high demand');
   await dialog.getByRole('button',{name:'Réessayer avec Gemini 3.5 Flash-Lite'}).click();
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {spatialTest:{uploads:{url:string}[]}}).spatialTest.uploads.map(u=>u.url)))
@@ -806,7 +806,7 @@ test('a plan chosen for a saved level is laid under its rooms by its walls, then
   await expect(image).toHaveJSProperty('naturalWidth',900);
   await expect(dialog.getByText('Plan 3D · modifications non appliquées')).toBeVisible();
   await dialog.getByRole('button',{name:'Appliquer au niveau'}).click();
-  await expect(page.getByRole('status')).toContainText('Plan du niveau « Rez-de-chaussée » modifié');
+  await expect(page.locator('[role="status"]').filter({hasText:'Plan du niveau « Rez-de-chaussée » modifié'})).toBeVisible();
   const kept=async()=>(await page.evaluate(()=>(window as unknown as {spatialTest:{changed:import('../../shared/spatial').SpatialPlan[]}}).spatialTest.changed.at(-1)!)).floors[0]!.backdrop!;
   const fitted=await kept();
   expect(fitted).toMatchObject({id:expect.stringMatching(/^[a-f0-9]{32}$/),width:900,height:600});

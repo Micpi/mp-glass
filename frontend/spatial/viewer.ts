@@ -41,7 +41,7 @@ const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'shutter',climate:'
 export const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
 export const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
 export const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
-/** A state Home Assistant gives, named in the interface language when MP Glass knows it. */
+/** A state Home Assistant gives, named in the interface language when MP Nexus knows it. */
 export const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
 /** Shutters of a floor, of the whole house or of a room: how the pair of commands names them. */
 const COVER_SCOPES={

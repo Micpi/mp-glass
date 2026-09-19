@@ -35,7 +35,7 @@ test('the bootstrap registers the strategy at once and retries an engine that fa
   });
   await blankPage(page);
   expect(await page.evaluate(async tag=>{const bootstrap='/frontend/bootstrap.ts';await import(bootstrap);return !!customElements.get(tag);},TAG)).toBe(true);
-  expect(logs.some(line=>/^\[MP Glass [\d.]+\] stratégie du dashboard enregistrée \(\d+ ms/.test(line))).toBe(true);
+  expect(logs.some(line=>/^\[MP Nexus [\d.]+\] stratégie du dashboard enregistrée \(\d+ ms/.test(line))).toBe(true);
   const dashboard=await page.evaluate(tag=>(customElements.get(tag) as unknown as {generate:(config:object,hass:object)=>Promise<unknown>}).generate({},{name:'ok'}),TAG);
   expect(dashboard).toEqual({views:[{title:'ok'}]});
   expect(engine).toHaveLength(2);
@@ -96,7 +96,7 @@ test('a browser that cannot read the engine is named, without retrying',async({p
     const bootstrap='/frontend/bootstrap.ts';await import(bootstrap);
     return (customElements.get(tag) as unknown as Strategy).generate({},{}).then(()=>'generated',(error:Error)=>error.message);
   },TAG);
-  expect(message).toContain('Ce navigateur est trop ancien pour l’interface MP Glass');
+  expect(message).toContain('Ce navigateur est trop ancien pour l’interface MP Nexus');
   expect(message).toContain('Navigateur : Mozilla/5.0');
   expect(engine).toHaveLength(1);
 });
@@ -113,8 +113,8 @@ test('the diagnostic page reports on the built bootstrap and interface',async({p
   await expect(results.getByText(/^Terminé/)).toBeVisible({timeout:15_000});
   await expect(results.locator('li.ko')).toHaveCount(0);
   await expect(results.locator('li',{hasText:'Téléchargement du bootstrap'})).toContainText('HTTP 200');
-  await expect(results.locator('li',{hasText:'Stratégie du dashboard'})).toContainText(/enregistrée en \d+ ms · \[MP Glass [\d.]+\] stratégie du dashboard enregistrée/);
-  await expect(results.locator('li',{hasText:'Interface MP Glass'})).toContainText(/chargée en \d+ ms/);
+  await expect(results.locator('li',{hasText:'Stratégie du dashboard'})).toContainText(/enregistrée en \d+ ms · \[MP Nexus [\d.]+\] stratégie du dashboard enregistrée/);
+  await expect(results.locator('li',{hasText:'Interface MP Nexus'})).toContainText(/chargée en \d+ ms/);
   await page.setViewportSize({width:390,height:844});await page.screenshot({path:'artifacts/diagnostic-phone.png',fullPage:true});
 });
 

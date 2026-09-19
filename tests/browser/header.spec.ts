@@ -42,7 +42,7 @@ async function barPixel(page:Page){
   },png);
 }
 
-test('on an MP Glass subview the Home Assistant bar is hidden but for its actions',async({page})=>{
+test('on an MP Nexus subview the Home Assistant bar is hidden but for its actions',async({page})=>{
   await subview(page);
   const actions=await page.evaluate(()=>document.querySelector('hui-root')!.shadowRoot!.querySelector('.action-items')!.getBoundingClientRect().right);
   expect(await bar(page)).toEqual({bar:'hidden',arrow:'hidden',title:'hidden',actions:'visible',shadow:'none'});
@@ -57,7 +57,7 @@ test('no band even when a theme paints the bar, its toolbar and a pseudo-element
   await subview(page,`.header{background:${red}!important}.toolbar{background:${red}!important}.header::after{content:'';position:absolute;inset:0;background:${red}}`);
   const [r,g,b]=await barPixel(page);
   expect(r!-Math.max(g!,b!)).toBeLessThan(100);
-  // The same theme without MP Glass: the band would be there.
+  // The same theme without MP Nexus: the band would be there.
   await page.evaluate(()=>document.querySelector('hui-root')!.removeAttribute('mp-glass'));
   expect(await barPixel(page)).toEqual([255,0,0]);
 });

@@ -98,7 +98,7 @@ class SpatialRuntime:
             self._fail(job, code if code in ERRORS or code == "worker_unavailable" else "invalid_geometry", getattr(err, "detail", ""), quota_info(getattr(err, "quota", None)))
         except Exception:
             # Do not log provider payloads, document contents or credentials.
-            _LOGGER.exception("MP Glass plan analysis failed unexpectedly")
+            _LOGGER.exception("MP Nexus plan analysis failed unexpectedly")
             job.update(status="error", error="analysis_failed")
         finally:
             self.lock.release()
@@ -106,7 +106,7 @@ class SpatialRuntime:
     @staticmethod
     def _fail(job, code, detail="", quota=None):
         # Codes and Google's error message only: never the document, the plan or the key.
-        _LOGGER.warning("MP Glass plan analysis failed: %s %s", code, detail)
+        _LOGGER.warning("MP Nexus plan analysis failed: %s %s", code, detail)
         job.update(status="error", error=code, **({"detail": detail} if detail else {}), **({"quota": quota} if quota and code == "quota" else {}))
 
     async def close(self):

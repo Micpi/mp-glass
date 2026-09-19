@@ -1,6 +1,6 @@
 import type { Messages } from './types';
 
-/** The dashboard: its pages, its light cards, its default texts, and the names of the plans MP Glass draws itself. */
+/** The dashboard: its pages, its light cards, its default texts, and the names of the plans MP Nexus draws itself. */
 export const DASHBOARD = {
   'Maison': ['Home', 'Дом'],
   'Bonjour': ['Good morning', 'Доброе утро'],
@@ -23,8 +23,19 @@ export const DASHBOARD = {
   '{n} espace organisé automatiquement|{n} espaces organisés automatiquement': ['{n} room organized automatically|{n} rooms organized automatically', '{n} комната упорядочена автоматически|{n} комнаты упорядочены автоматически|{n} комнат упорядочено автоматически'],
   'Les équipements de {name}': ['Devices of {name}', 'Устройства: {name}'],
   'Navigation': ['Navigation', 'Навигация'],
-  'Personnaliser MP Glass': ['Customize MP Glass', 'Настроить MP Glass'],
+  'Personnaliser MP Nexus': ['Customize MP Nexus', 'Настроить MP Nexus'],
   'Personnaliser': ['Customize', 'Настроить'],
+  'Info': ['Info', 'Информация'],
+  'Versions': ['Versions', 'Версии'],
+  'Version actuelle de MP Nexus': ['Current MP Nexus version', 'Текущая версия MP Nexus'],
+  'Version de l’interface': ['Interface version', 'Версия интерфейса'],
+  'Votre installation': ['Your setup', 'Ваша система'],
+  'Équipements du dashboard': ['Dashboard devices', 'Устройства панели'],
+  'Au quotidien': ['Everyday use', 'На каждый день'],
+  'Les informations utiles sur votre maison et votre interface.': ['Useful information about your home and interface.', 'Полезная информация о вашем доме и интерфейсе.'],
+  'Retrouvez vos équipements dans Lumières et Pièces. Touchez un équipement pour accéder à ses commandes.': ['Find your devices in Lights and Rooms. Tap a device to access its controls.', 'Найдите устройства в разделах «Свет» и «Комнаты». Нажмите на устройство, чтобы открыть управление.'],
+  'Le drapeau permet de choisir la langue de votre interface.': ['Use the flag to choose your interface language.', 'Нажмите на флаг, чтобы выбрать язык интерфейса.'],
+  'Personnalisez l’apparence, les équipements et le plan de votre maison.': ['Customize the appearance, devices and floor plan of your home.', 'Настройте внешний вид, устройства и план вашего дома.'],
   'Langue : {language}': ['Language: {language}', 'Язык: {language}'],
   'Langue de l’interface': ['Interface language', 'Язык интерфейса'],
   'Plan schématique créé à partir de vos pièces Home Assistant.': ['Schematic plan made from your Home Assistant areas.', 'Схематичный план, построенный по вашим пространствам Home Assistant.'],
@@ -48,7 +59,7 @@ export const DASHBOARD = {
   '{n} entité sans carte dédiée|{n} entités sans carte dédiée': ['{n} entity without a dedicated card|{n} entities without a dedicated card', '{n} объект без отдельной карточки|{n} объекта без отдельной карточки|{n} объектов без отдельной карточки'],
   'Contrôle rapide de tous les éclairages détectés': ['Quick control of every light detected', 'Быстрое управление всем найденным освещением'],
   'Votre maison, simplement': ['Your home, simply', 'Ваш дом — просто'],
-  'MP Glass n’est pas chargé dans Home Assistant. Vérifiez l’intégration dans Paramètres → Appareils et services, puis rechargez la page.': ['MP Glass is not loaded in Home Assistant. Check the integration in Settings → Devices & services, then reload the page.', 'MP Glass не загружен в Home Assistant. Проверьте интеграцию в разделе «Настройки → Устройства и службы», затем перезагрузите страницу.'],
+  'MP Nexus n’est pas chargé dans Home Assistant. Vérifiez l’intégration dans Paramètres → Appareils et services, puis rechargez la page.': ['MP Nexus is not loaded in Home Assistant. Check the integration in Settings → Devices & services, then reload the page.', 'MP Nexus не загружен в Home Assistant. Проверьте интеграцию в разделе «Настройки → Устройства и службы», затем перезагрузите страницу.'],
   // Light cards.
   'Éclairage variable': ['Dimmable light', 'Регулируемый свет'],
   'Éclairage': ['Light', 'Светильник'],
@@ -66,7 +77,7 @@ export const DASHBOARD = {
   'Action impossible. Vérifiez la connexion et vos droits.': ['Action failed. Check the connection and your permissions.', 'Действие не выполнено. Проверьте подключение и права доступа.'],
   'Pourquoi cette carte ?': ['Why this card?', 'Почему эта карточка?'],
   'Entité': ['Entity', 'Объект'],
-  // Names MP Glass gives to the plans it draws: the plan of the areas, and its example.
+  // Names MP Nexus gives to the plans it draws: the plan of the areas, and its example.
   'Niveau principal': ['Main floor', 'Основной этаж'],
   'Pièce': ['Room', 'Комната'],
   'Rez-de-chaussée': ['Ground floor', 'Первый этаж'],

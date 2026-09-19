@@ -1,4 +1,4 @@
-"""MP Glass project storage and authenticated WebSocket API."""
+"""MP Nexus project storage and authenticated WebSocket API."""
 import logging
 
 import voluptuous as vol
@@ -74,7 +74,7 @@ async def async_remove_entry(hass, entry):
 def websocket_get(hass, connection, msg):
     runtime = hass.data.get(DOMAIN)
     if runtime is None:
-        connection.send_error(msg["id"], "not_loaded", "MP Glass is not loaded")
+        connection.send_error(msg["id"], "not_loaded", "MP Nexus is not loaded")
         return
     connection.send_result(msg["id"], {**runtime.read(), "version": VERSION})
 
@@ -85,7 +85,7 @@ def websocket_get(hass, connection, msg):
 async def websocket_save(hass, connection, msg):
     runtime = hass.data.get(DOMAIN)
     if runtime is None:
-        connection.send_error(msg["id"], "not_loaded", "MP Glass is not loaded")
+        connection.send_error(msg["id"], "not_loaded", "MP Nexus is not loaded")
         return
     try:
         record = await runtime.save(msg["revision"], msg["project"])
@@ -100,4 +100,4 @@ async def websocket_save(hass, connection, msg):
     try:
         await hass.async_add_executor_job(prune, backdrop_folder(hass), referenced(record["project"]))
     except OSError as err:
-        _LOGGER.warning("MP Glass could not remove unused plans: %s", err)
+        _LOGGER.warning("MP Nexus could not remove unused plans: %s", err)

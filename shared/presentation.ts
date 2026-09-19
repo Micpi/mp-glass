@@ -28,7 +28,7 @@ export class MPPresentationResolver {
 
 export class MPDashboardComposer {
   /** `inventoryTitle` and `titles` name the views in the interface language, which the frontend knows. */
-  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory', titles = { lights: 'Lumières', rooms: 'Pièces' }) {
+  static compose(graph: MPHomeGraph, project: ProjectConfig, debug = false, inventoryTitle = 'Inventory', titles = { lights: 'Lumières', rooms: 'Pièces' }, installedVersion?: string) {
     const visible = graph.devices.filter(d => !d.hidden && !d.disabled);
     const devices = visible.filter(d => d.category !== 'generic');
     const lights = devices.filter(d => d.category === 'light');
@@ -59,11 +59,11 @@ export class MPDashboardComposer {
     // Rooms bound to an area show its equipment as it is now: moving a light to another area moves it on the plan too.
     const spatial = resolvePlan(project.spatial ?? generated ?? examplePlan(), graph.devices);
     const spatialOrigin = project.spatial ? 'project' as const : generated ? 'areas' as const : 'example' as const;
-    const view = (path: string, title: string, kind: 'home'|'lights'|'rooms'|'area'|'inventory', viewCards: ReturnType<typeof cards>, icon: string) => ({
+    const view = (path: string, title: string, kind: 'home'|'lights'|'rooms'|'area'|'inventory'|'info', viewCards: ReturnType<typeof cards>, icon: string) => ({
       title,
       path,
       icon,
-      // HA shows its view tab bar only above several top-level views: the others are subviews, reached from the MP Glass header.
+      // HA shows its view tab bar only above several top-level views: the others are subviews, reached from the MP Nexus header.
       ...(kind === 'home' ? {} : { subview: true }),
       type: 'custom:mp-glass-view-v5',
       mp_project_name: project.project.name,
@@ -73,6 +73,7 @@ export class MPDashboardComposer {
       mp_view_path: path,
       mp_view_title: title,
       mp_areas: areas,
+      ...(kind === 'info' ? { mp_info: { version: installedVersion, deviceCount: devices.length, lightCount: lights.length, areaCount: areas.length } } : {}),
       ...(kind === 'home' ? { mp_spatial: spatial, mp_spatial_origin: spatialOrigin, mp_entities: viewCards.map(c => c.entity) } : {}),
       ...(kind === 'rooms' && inventory.length ? { mp_inventory: { title: inventoryTitle, count: inventory.length } } : {}),
       cards: viewCards,
@@ -85,6 +86,7 @@ export class MPDashboardComposer {
         view('rooms', titles.rooms, 'rooms', [], 'mdi:floor-plan'),
         ...areas.map(a => view(`area-${a.id}`, a.name, 'area', cards(devices.filter(d => d.areaId === a.id)), a.icon ?? 'mdi:floor-plan')),
         ...(inventory.length ? [view('inventory', inventoryTitle, 'inventory', cards(inventory), 'mdi:archive-search')] : []),
+        view('info', 'Info', 'info', [], 'mdi:information-outline'),
       ],
     };
   }

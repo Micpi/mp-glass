@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { home } from './fixtures';
 import { MPDiscoveryEngine } from '../shared/discovery';
 import { MPCapabilityEngine, brightnessPercent } from '../shared/capabilities';
-import { defaultProject, migrateProject, parseProject } from '../shared/project';
+import { defaultProject, migrateProject, parseProject, projectChanges } from '../shared/project';
 import { MPCardRegistry, MPDashboardComposer } from '../shared/presentation';
 import { HARegistryReader, type Hass } from '../frontend/ha/client';
 
@@ -95,6 +95,16 @@ describe('project contract',()=>{
     const registry=new MPCardRegistry();const graph=MPDiscoveryEngine.discover(home(),defaultProject());
     expect(()=>registry.resolve(graph.devices[0]!)).toThrow('missing_fallback');
     const card={type:'custom:a',categories:['light' as const],requires:[],priority:1,variants:[]};registry.register(card);expect(()=>registry.register(card)).toThrow('duplicate_card');
+  });
+  it('summarizes what differs between two projects by user-facing area',()=>{
+    const before=defaultProject('Maison');const after=defaultProject('Maison');
+    expect(projectChanges(before,after)).toEqual([]);
+    after.project.name='Villa';after.appearance.preset='glass-warm';after.appearance.accent='#ff0000';after.navigation.showLabels=false;
+    after.overrides['stable-0']={areaId:'salon'};after.overrides['stable-1']={hidden:true};after.roles.primary_light='logical:stable-0';
+    expect(projectChanges(before,after)).toEqual([{field:'name'},{field:'appearance',count:2},{field:'navigation'},{field:'overrides',count:2},{field:'roles'}]);
+    // A removed override counts as a change too, and an absent plan compared to none is not one.
+    expect(projectChanges(after,{...after,overrides:{'stable-0':{areaId:'salon'}}})).toEqual([{field:'overrides',count:1}]);
+    expect(projectChanges({...before,spatial:undefined},before)).toEqual([]);
   });
 });
 describe('registry boundary',()=>{

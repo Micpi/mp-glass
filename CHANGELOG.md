@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.10.0 — Studio guidé : un seul chemin, deux profondeurs
+
+### Ajouté
+
+- **Mode essentiel** : le Studio s’ouvre désormais en trois étapes — **Analyser**, **Pièces**, **Style** — avec une progression visible et le bouton **Voir le dashboard** à chaque étape. Un néophyte obtient un dashboard fonctionnel sans connaître Home Assistant ni lire de documentation ; le plan 3D est présenté comme une option, jamais comme une étape obligatoire.
+- **Mode expert** : un bouton de la barre supérieure révèle les huit sections complètes (identité, style, arrière-plan, disposition, contenu, navigation, équipements, plan 3D). Le choix est mémorisé par utilisateur et par navigateur : le professionnel retrouve son Studio complet, le particulier son parcours simple.
+- **Sélection multiple des équipements** : « Tout sélectionner », cases par équipement, **Pièce pour la sélection** et **Masquer la sélection** ; au-delà de trois équipements, recherche et filtre par type. Cinquante équipements se rangent en quelques clics au lieu d’une liste déroulante par ligne.
+- **Annuler** (↶) : chaque modification non enregistrée peut être reprise, y compris une affectation en masse ; les curseurs regroupent leurs valeurs successives pour ne pas remplir l’historique.
+- **Importer un projet** (mode expert) : un fichier exporté remplace la configuration courante après validation du schéma (un projet de schéma 1 est migré) et un résumé lisible indique ce qui change — nom, réglages d’apparence, navigation, équipements, plan 3D, rôles — avant d’enregistrer. Un intégrateur reproduit une configuration d’une instance à l’autre.
+- **Conflit de sauvegarde sans perte** : si le projet a été modifié ailleurs depuis l’ouverture de la page, le Studio dit ce qui diffère et propose **Reprendre la version enregistrée** ou **Conserver mes modifications**, au lieu d’exiger un rechargement qui perdait le travail en cours.
+- **Indicateur d’analyse** : « Analyse en cours… » s’affiche pendant la lecture des registres.
+
+### Modifié
+
+- **Libellés humains** : « À vérifier » devient **Sans pièce** ; **Pourquoi cette carte ?** explique chaque décision en une phrase (« Home Assistant le déclare comme lumière », « Luminosité · Home Assistant annonce une luminosité réglable »…) ; les codes bruts restent disponibles sous **Données techniques**. Un équipement sans pièce n’est plus présenté comme une erreur.
+- **Doctrine produit** : l’[ADR 0006](docs/adr/0006-one-path-two-depths.md) fixe le principe « un seul chemin, deux profondeurs » et deux tests d’acceptation par incrément (néophyte en moins de cinq minutes, professionnel : cinquante équipements en moins de trois minutes, export/import identique). La roadmap insère l’incrément 1.5 correspondant avant l’extension du catalogue.
+
 ## 0.9.15 — fond de plan conservé et Studio plein écran
 
 - **Fond de plan** : l’application d’un plan déclenche maintenant automatiquement la sauvegarde du projet, afin que le fond reste présent après rechargement ou réouverture du Studio.

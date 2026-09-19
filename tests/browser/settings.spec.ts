@@ -53,6 +53,10 @@ test('strategy and settings use registry/project contracts and retain manual ove
     {type:'lovelace/dashboards/create',url_path:'mp-glass',title:'MP Nexus',icon:'mdi:view-dashboard',show_in_sidebar:true,require_admin:false},
     {type:'lovelace/config/save',url_path:'mp-glass',config:{strategy:{type:'custom:mp-glass'}}},
   ]);
+  // The Studio opens on the essential depth; the rail of sections belongs to the expert one, remembered for this user.
+  await expect(page.getByRole('button',{name:/Équipements/})).toHaveCount(0);
+  await page.getByRole('button',{name:'Mode expert'}).click();
+  expect(await page.evaluate(()=>localStorage.getItem('mp-glass.studio.expert:test'))).toBe('1');
   await page.getByRole('button',{name:/Équipements/}).click();
   await expect(page.getByText('Éclairage principal',{exact:true})).toBeVisible();
   await page.getByRole('combobox',{name:'Pièce',exact:true}).selectOption('salon');
@@ -94,6 +98,7 @@ test('one room change in the Studio moves the equipment on the plan and on the r
     panel.hass=hass;document.body.replaceChildren(panel);
     Object.assign(window,{settingsTest:{hass,record:()=>record}});
   });
+  await page.getByRole('button',{name:'Mode expert'}).click();
   await page.getByRole('button',{name:/Équipements/}).click();
   await expect(page.locator('.device').filter({hasText:'Bureau · Température'})).toBeVisible();
   await page.getByRole('button',{name:/Plan 3D/}).click();
@@ -112,6 +117,80 @@ test('one room change in the Studio moves the equipment on the plan and on the r
   expect(project.overrides['stable-1']).toEqual({areaId:'kitchen'});expect(project.spatial).toBeUndefined();
   expect(dashboard.views[0]!.mp_spatial!.floors[0]!.rooms.map(r=>[r.name,r.entityIds])).toEqual([['Salon',['light.circuit_0']],['Cuisine',['light.circuit_1']]]);
   expect(dashboard.views.find(v=>v.path==='area-kitchen')!.cards.map(c=>c.entity)).toEqual(['light.circuit_1']);
+});
+test('the guided path assigns rooms by selection, undoes, imports and resolves a conflict without losing edits',async({page})=>{
+  await page.goto('/');
+  await page.evaluate(async()=>{
+    const projectModule='/shared/project.ts';const fixturesModule='/tests/fixtures.ts';
+    const {defaultProject}=await import(projectModule);const {home}=await import(fixturesModule);
+    // Three lights, none placed by Home Assistant: the novice sees them under « Sans pièce », the professional selects them all.
+    const snapshot=home(3);snapshot.devices[0].area_id=null;
+    let record={revision:0,project:defaultProject('Maison test')};
+    const hass={connection:{},states:snapshot.states,language:'fr',user:{id:'pro',is_admin:true},callService:async()=>{},callWS:async(message:Record<string,unknown>)=>{
+      switch(message.type){
+        case 'mp_glass/project/get':return structuredClone(record);
+        case 'mp_glass/project/save':{if(message.revision!==record.revision)throw {code:'conflict',message:'Reload before saving'};record={revision:record.revision+1,project:message.project as typeof record.project};return structuredClone(record);}
+        case 'config/area_registry/list':return snapshot.areas;
+        case 'config/floor_registry/list':return snapshot.floors;
+        case 'config/device_registry/list':return snapshot.devices;
+        case 'config/entity_registry/list':return snapshot.entities;
+        case 'lovelace/dashboards/list':return [{url_path:'mp-glass',mode:'storage'}];
+        case 'lovelace/config':return {strategy:{type:'custom:mp-glass'}};
+        default:throw Error('unexpected command');
+      }
+    }};
+    const panel=document.createElement('mp-glass-settings') as HTMLElement&{hass:typeof hass};
+    panel.hass=hass;document.body.replaceChildren(panel);
+    Object.assign(window,{settingsTest:{record:()=>record,bump:()=>{record={revision:record.revision+1,project:{...record.project,project:{name:'Renommée ailleurs'}}};}}});
+  });
+  // Step 1: what was found, in plain words, and the dashboard link at hand.
+  await expect(page.getByText('Trois étapes pour votre dashboard')).toBeVisible();
+  await expect(page.getByRole('link',{name:'Voir le dashboard'})).toBeVisible();
+  const homeless=page.locator('.stats .surface').filter({hasText:'Sans pièce'});
+  await expect(homeless).toContainText('3');
+  await page.getByRole('button',{name:/Continuer/}).click();
+  // Step 2: select all three, one room for the selection.
+  await expect(page.locator('.device')).toHaveCount(3);
+  const undo=page.getByRole('button',{name:'Annuler la dernière modification'});
+  await expect(undo).toBeDisabled();
+  await page.getByRole('checkbox',{name:'Tout sélectionner'}).check();
+  await expect(page.getByText('3 sélectionnés')).toBeVisible();
+  await page.getByRole('combobox',{name:'Pièce pour la sélection'}).selectOption('kitchen');
+  await expect(page.getByText('Tout est en place : chaque équipement reconnu a sa pièce.')).toBeVisible();
+  // One undo brings the three back; redo the assignment.
+  await undo.click();
+  await expect(page.locator('.device')).toHaveCount(3);
+  await expect(undo).toBeDisabled();
+  await page.getByRole('checkbox',{name:'Tout sélectionner'}).check();
+  await page.getByRole('combobox',{name:'Pièce pour la sélection'}).selectOption('kitchen');
+  // Step 3: one preset is the whole style choice.
+  await page.getByRole('button',{name:/Continuer/}).click();
+  await page.getByRole('button',{name:'Glass Warm'}).click();
+  // Saved elsewhere meanwhile: the conflict says what differs and keeps the edits made here.
+  await page.evaluate(()=>(window as unknown as {settingsTest:{bump:()=>void}}).settingsTest.bump());
+  await page.getByRole('button',{name:'Enregistrer',exact:true}).first().click();
+  const conflict=page.getByRole('alert');
+  await expect(conflict).toContainText('Modifié ailleurs depuis l’ouverture de cette page : le nom de la maison, 1 réglage d’apparence, 3 équipements (pièce, nom ou visibilité).');
+  await conflict.getByRole('button',{name:'Conserver mes modifications'}).click();
+  await expect(page.getByRole('status').filter({hasText:'Configuration enregistrée'})).toBeVisible();
+  const saved=await page.evaluate(()=>(window as unknown as {settingsTest:{record:()=>{revision:number;project:import('../../shared/models').ProjectConfig}}}).settingsTest.record());
+  expect(saved.revision).toBe(2);
+  expect(saved.project.project.name).toBe('Maison test');
+  expect(saved.project.appearance.preset).toBe('glass-warm');
+  expect(saved.project.overrides).toEqual({'stable-0':{areaId:'kitchen'},'stable-1':{areaId:'kitchen'},'stable-2':{areaId:'kitchen'}});
+  // Expert depth: a project file can be imported with a summary of what it changes, and each device is explained in words.
+  await page.getByRole('button',{name:'Mode expert'}).click();
+  await page.getByRole('button',{name:/Équipements/}).click();
+  const imported=structuredClone(saved.project);imported.project.name='Villa importée';imported.overrides={'stable-0':{areaId:'salon'}};
+  await page.getByLabel('Importer un projet').setInputFiles({name:'projet.json',mimeType:'application/json',buffer:Buffer.from(JSON.stringify(imported))});
+  await expect(page.getByRole('status').filter({hasText:'Projet importé'})).toContainText('Projet importé : le nom de la maison, 3 équipements (pièce, nom ou visibilité). Vérifiez l’aperçu puis enregistrez.');
+  const circuit=page.locator('.device').filter({hasText:'Circuit 1'});
+  await expect(circuit).toBeVisible();
+  await circuit.getByText('Pourquoi cette carte ?').click();
+  await expect(circuit.locator('.why')).toContainText('Home Assistant le déclare comme lumière');
+  await expect(circuit.locator('.why')).toContainText('Allumer / éteindre');
+  await page.getByLabel('Importer un projet').setInputFiles({name:'casse.json',mimeType:'application/json',buffer:Buffer.from('{"schema_version":9}')});
+  await expect(page.getByRole('status').filter({hasText:'Fichier de projet invalide'})).toBeVisible();
 });
 test('an update installed while the page is open asks for a reload',async({page})=>{
   await page.goto('/');

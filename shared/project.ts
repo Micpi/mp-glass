@@ -20,3 +20,19 @@ export function migrateProject(value: unknown): ProjectConfig {
   }
   return parseProject(value);
 }
+/** What differs between two projects, by user-facing area: enough for a human summary, never a raw JSON diff. */
+export type ProjectChange = { field: 'name' | 'appearance' | 'navigation' | 'overrides' | 'spatial' | 'roles'; count?: number };
+export function projectChanges(before: ProjectConfig, after: ProjectConfig): ProjectChange[] {
+  const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
+  const differing = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(key => !same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])).length;
+  const changes: ProjectChange[] = [];
+  if (before.project.name !== after.project.name) changes.push({ field: 'name' });
+  const appearance = differing(before.appearance, after.appearance);
+  if (appearance) changes.push({ field: 'appearance', count: appearance });
+  if (!same(before.navigation, after.navigation)) changes.push({ field: 'navigation' });
+  const overrides = differing(before.overrides, after.overrides);
+  if (overrides) changes.push({ field: 'overrides', count: overrides });
+  if (!same(before.spatial, after.spatial)) changes.push({ field: 'spatial' });
+  if (!same(before.roles, after.roles)) changes.push({ field: 'roles' });
+  return changes;
+}

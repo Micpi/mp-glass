@@ -20,13 +20,15 @@ Porte : nouvelle instance HA → installer → configurer → détecter une lumi
 
 ## Incrément 1.5 — parcours guidé (avant l'extension du catalogue)
 
-1. Onboarding au premier lancement de Studio : trois étapes (analyser → pièces → style) avec progression, bouton « Voir mon dashboard » disponible à chaque étape, plan 3D présenté comme option.
-2. Libellés humains : « Sans pièce » remplace « À vérifier » ; codes d'évidence traduits en phrases ; JSON conservé en `details`.
-3. Retour visuel : indicateur d'analyse en cours, prévisualisation avant enregistrement, annulation de la dernière modification.
-4. Passage à l'échelle : sélection multiple des équipements, filtre par domaine/pièce, « appliquer à la sélection » (pièce, masqué) ; export/import du projet depuis Studio avec diff lisible en cas de conflit.
-5. Studio à deux profondeurs : entrée « Essentiel » (analyser, pièces, style, dashboard) et bascule « Mode expert » persistante par utilisateur révélant les huit sections actuelles.
+Livré en 0.10.0 :
 
-Porte : tests néophyte et professionnel de la doctrine passés sur instance réelle avec le parcours lumière.
+1. Mode essentiel au lancement de Studio : trois étapes (Analyser → Pièces → Style) avec progression, « Voir le dashboard » disponible à chaque étape, plan 3D présenté comme option.
+2. Libellés humains : « Sans pièce » remplace « À vérifier » ; « Pourquoi cette carte ? » en phrases ; JSON conservé sous « Données techniques ».
+3. Retour visuel : indicateur d'analyse en cours, aperçu avant enregistrement, annulation de la dernière modification.
+4. Passage à l'échelle : sélection multiple, filtre par type et recherche, « Pièce pour la sélection » et « Masquer la sélection » ; export/import du projet depuis Studio avec résumé des différences ; conflit de sauvegarde résolu sans perte (reprendre la version enregistrée ou conserver ses modifications).
+5. Bascule « Mode expert » persistante par utilisateur révélant les huit sections.
+
+Porte : les tests néophyte et professionnel sont automatisés sur doubles (`tests/browser/settings.spec.ts`) ; leur passage sur instance réelle reste à consigner dans VALIDATION.md avant de déclarer l'incrément clos.
 
 ## Incrément 2 — terminer MVP 1
 

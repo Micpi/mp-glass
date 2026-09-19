@@ -426,7 +426,7 @@ export class MPSpatialEditor extends LitElement {
     const matches=matchAreas(plan,this.areas,this.floors);let linked=0;
     for(const r of incoming.rooms){const areaId=matches.get(r.id);if(areaId){r.areaId=areaId;linked++;}}
     const links=this.linkFixtures(plan,incoming.rooms);
-    const before=this.draft;this.commit(plan);
+    const before=this.draft;this.commit(plan);this.dispatchEvent(new CustomEvent('spatial-persist',{bubbles:true,composed:true}));
     if(linked&&this.draft!==before)this.message=tr('Niveau importé · {n} pièce reliée à Home Assistant par son nom : vérifiez, puis cliquez sur Enregistrer dans le Studio.|Niveau importé · {n} pièces reliées à Home Assistant par leur nom : vérifiez, puis cliquez sur Enregistrer dans le Studio.',{n:linked});
     if(lost&&this.draft!==before)this.message=`${this.message} ${tr('Une porte ou une fenêtre ne tombe plus sur un mur de sa pièce : replacez-la.|{n} portes ou fenêtres ne tombent plus sur un mur de leur pièce : replacez-les.',{n:lost})}`;
     if(attached&&this.draft!==before){
@@ -722,7 +722,7 @@ export class MPSpatialEditor extends LitElement {
       floor.backdrop={id:id!,width:Math.round(b.image.width),height:Math.round(b.image.height),scale:[...b.image.scale],origin:[...b.image.origin]};
       try{parseSpatial(plan);}catch{refuse(tr('Ce plan ne peut pas être gardé sous le niveau : retirez-le, ou choisissez-en un autre.'));return;}
     }
-    this.commit(plan);
+    this.commit(plan);this.dispatchEvent(new CustomEvent('spatial-persist',{bubbles:true,composed:true}));
     this.endLevel();this.floorIndex=index;
     if(!rooms.some(r=>r.id===this.selected))this.selected='';
     this.message=tr('Plan du niveau « {name} » modifié. Cliquez sur Enregistrer dans le Studio.',{name:floor.name});

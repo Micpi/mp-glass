@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.15 — fond de plan conservé et Studio plein écran
+
+- **Fond de plan** : l’application d’un plan déclenche maintenant automatiquement la sauvegarde du projet, afin que le fond reste présent après rechargement ou réouverture du Studio.
+- **Studio** : l’interface utilise la hauteur réelle du viewport, même lorsque Home Assistant fournit un conteneur de hauteur limitée.
+
 ## 0.9.14 — fond de plan sauvegardé plus clairement
 
 - **Plan 3D** : les actions d’application du fond de plan restent visibles pendant le défilement, afin de ne pas manquer l’étape **Appliquer au niveau** avant l’enregistrement du projet.

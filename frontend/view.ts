@@ -216,8 +216,8 @@ export class MPGlassView extends LitElement {
       ${info?.version && info.version !== __MP_GLASS_VERSION__ ? html`<div class="info-update glass" role="alert">${tr('MP Nexus {installed} est installé, mais cette page affiche encore la version {shown}. Rechargez-la pour utiliser la nouvelle interface.', { installed: info.version, shown: __MP_GLASS_VERSION__ })}<button @click=${() => location.reload()}>${tr('Recharger la page')}</button></div>` : nothing}
       <main class="info-grid">
         <section class="info-card glass"><h2>${mpIcon('info',22)}${tr('Versions')}</h2><dl>
-          ${row(tr('Version actuelle de MP Nexus'), info?.version ?? unknown)}
-          ${row(tr('Version de l’interface'), __MP_GLASS_VERSION__)}
+          ${row(tr('Version de l’intégration MP Nexus'), info?.version ?? unknown)}
+          ${row(tr('Version du bundle chargé'), __MP_GLASS_VERSION__)}
           ${row('Home Assistant', this.hass?.config?.version ?? unknown)}
         </dl></section>
         <section class="info-card glass"><h2>${mpIcon('home',22)}${tr('Votre installation')}</h2><dl>

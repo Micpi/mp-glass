@@ -18,7 +18,7 @@ test('Info opens within the dashboard, shows versions, and reserves Customize fo
   await info.click();
   await expect(page.getByRole('heading', { name: 'Info', exact: true })).toBeVisible();
   await expect(info).toHaveAttribute('aria-current', 'page');
-  await expect(page.locator('dl > div').filter({ hasText: 'Version actuelle de MP Nexus' }).locator('dd')).toHaveText(version);
+  await expect(page.locator('dl > div').filter({ hasText: 'Version de l’intégration MP Nexus' }).locator('dd')).toHaveText(version);
   await user(page, true);
   await expect(page.locator('dl > div').filter({ hasText: 'Home Assistant' }).locator('dd')).toHaveText('2026.9.1');
   const customize = page.getByRole('link', { name: 'Personnaliser', exact: true });
@@ -40,7 +40,7 @@ test('Info reports an unavailable installed version honestly and flags a stale i
     view.setConfig({ mp_view_kind: 'info', mp_info: { version: installed, deviceCount: 3, lightCount: 3, areaCount: 1 } });
   }, installed);
   await setVersion();
-  await expect(page.locator('dl > div').filter({ hasText: 'Version actuelle de MP Nexus' }).locator('dd')).toHaveText('Indisponible');
+  await expect(page.locator('dl > div').filter({ hasText: 'Version de l’intégration MP Nexus' }).locator('dd')).toHaveText('Indisponible');
   await expect(page.getByRole('alert')).toHaveCount(0);
   await setVersion('99.0.0');
   await expect(page.getByRole('alert')).toContainText(`MP Nexus 99.0.0 est installé, mais cette page affiche encore la version ${version}`);

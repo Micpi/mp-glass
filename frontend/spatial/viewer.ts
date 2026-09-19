@@ -2,7 +2,7 @@ import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { alignRooms, nearestSide, openingPlacement, roomArea, roomOutline, roomSize, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { alignRooms, nearestSide, openingPlacement, roomOutline, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { LanguageController, locale, tr, trText } from '../i18n';
 import type { MessageKey } from '../locales';
@@ -867,8 +867,6 @@ export class MPSpatialViewer extends LitElement {
     const devices=[...new Set([...(room.entityIds??[]),...(room.media??[]).flatMap(m=>m.entityId?[m.entityId]:[])])].filter(id=>!linked.has(id)).map(id=>this.device(id,room));
     const openings=room.openings??[];
     const lights=devices.filter(d=>d.kind==='light'),on=lights.filter(d=>d.on);
-    // Dimensions along the room's own walls: a room drawn at an angle gives its real width and depth.
-    const surface=roomArea(room),{width,depth,rectangle}=roomSize(room);
     const temperature=this.temperature(room);
     const humidity=devices.find(d=>d.kind==='humidity'&&d.numeric!==undefined)?.numeric;
     const href=room.areaId?this.areaHref?.(room.areaId):undefined;
@@ -876,7 +874,6 @@ export class MPSpatialViewer extends LitElement {
     return html`<section class="card ${lit?'lit':''}" aria-labelledby="room-title">
       <header><span class="orb">${mpIcon(roomIcon(room.name),26)}</span><div class="title"><small>${floor.name}</small><h3 id="room-title">${room.name}</h3></div><button class="close" aria-label=${tr('Fermer la pièce')} title=${tr('Fermer')} @click=${this.close}>${mpIcon('close',18)}</button></header>
       <div class="stats">
-        <div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(surface)})}</strong>${rectangle?html`<span>${tr('{width} × {depth} m',{width:this.format(width),depth:this.format(depth)})}</span>`:nothing}</div>
         ${lights.length?this.lightsStat(lights.length,on.length):nothing}
         ${temperature===undefined?nothing:html`<div class="stat"><small>${tr('Température')}</small><strong title=${temperature.id}>${this.format(temperature.value)}${temperature.unit==='°C'?'°':temperature.unit}</strong></div>`}
         ${humidity===undefined?nothing:html`<div class="stat"><small>${tr('Humidité')}</small><strong>${tr('{n} %',{n:this.format(humidity,0)})}</strong></div>`}

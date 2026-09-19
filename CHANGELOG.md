@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.11 — informations simplifiées
+
+- **Plan 3D** : la fiche d’une pièce sélectionnée n’affiche plus sa surface ni ses dimensions en m².
+- **Page Info** : les libellés distinguent clairement la version de l’intégration Home Assistant et la version du bundle d’interface chargé dans le navigateur.
+
 ## 0.9.10 — accueil allégé
 
 - **Accueil** : les surfaces en m² ne sont plus affichées dans les résumés du plan 3D ; les informations de surface restent disponibles dans les outils de conception du plan.

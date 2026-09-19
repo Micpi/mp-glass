@@ -183,7 +183,7 @@ export class MPSpatialEditor extends LitElement {
     .bar{height:4px;overflow:hidden;border-radius:99px;background:#ffffff14}.bar span{display:block;width:35%;height:100%;border-radius:inherit;background:linear-gradient(90deg,transparent,#69b7ff,transparent);animation:slide 1.4s ease-in-out infinite}
     .job-status{margin:14px 0 0;color:#dbe9f5}.job-status.failure{color:#ffd9cf}.job-status small{display:block;margin-top:8px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.muted{margin:8px 0 0;font-size:12px;color:#9fb6ca}
     .warnings{margin:12px 0 0;padding:10px 14px 10px 30px;border-radius:12px;background:#ffd36a12;border:1px solid #ffd36a33;color:#ffe3a3;font-size:12px}
-    .job-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}.job mp-spatial-viewer{--mp-stage-height:min(42vh,360px);margin:16px 0 0}
+    .job-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:8px;margin-top:18px}.job.level .job-actions{position:sticky;bottom:-22px;z-index:2;margin:18px -20px -22px;padding:12px 20px 2px;background:linear-gradient(180deg,transparent,#071a2cf5 28%)}.job mp-spatial-viewer{--mp-stage-height:min(42vh,360px);margin:16px 0 0}
     .edit-plan{display:inline-flex;align-items:center;justify-content:center;gap:7px}
     .backdrop-tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:14px 0 0}.backdrop-tools>span{color:#9fb6ca;font-size:12px}
     .backdrop-tools button,.backdrop-tools .file{min-height:36px;padding:0 12px;border-radius:10px}.backdrop-tools button[aria-pressed=true]{background:#2a648e;border-color:#8acbff}.backdrop-tools .step{padding:0 9px;font-variant-numeric:tabular-nums}

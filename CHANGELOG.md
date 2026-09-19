@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.14 — fond de plan sauvegardé plus clairement
+
+- **Plan 3D** : les actions d’application du fond de plan restent visibles pendant le défilement, afin de ne pas manquer l’étape **Appliquer au niveau** avant l’enregistrement du projet.
+
 ## 0.9.13 — catégories visibles
 
 - **Fiches des pièces** : les titres « Lumières », « Climat » et « Audio-vidéo » disposent maintenant d’une séparation et d’un contraste renforcés pour distinguer immédiatement les groupes d’équipements.

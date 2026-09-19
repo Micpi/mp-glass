@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.9.7 — un plan 3D plus lisible
+
+- Le rendu fil de fer laisse place à une maquette bleu ardoise : sols et murs opaques, éclairage doux et contours supérieurs discrets. Les lignes cachées derrière les surfaces ne traversent plus les pièces.
+- La vue « Tous » simplifie les étages en plateaux avec des séparations basses ; les équipements et les cloisons détaillées réapparaissent en ouvrant un étage.
+- Les murs sont représentés en coupe à 90 cm maximum sur un étage, avec les équipements adaptés à cette hauteur d’affichage. Les dimensions et les formes enregistrées restent inchangées.
+- Le fond sous le plan est assombri et la sélection met en évidence la pièce sans rendre les autres murs transparents.
+
 ## 0.9.6 — Info et MP Nexus
 
 - Le bouton « Info » remplace « Personnaliser » dans la navigation. La nouvelle page présente les versions, le résumé de l’installation et des conseils d’utilisation pour tous ; les administrateurs y retrouvent « Personnaliser » vers le Studio.

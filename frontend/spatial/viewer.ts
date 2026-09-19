@@ -112,7 +112,7 @@ export class MPSpatialViewer extends LitElement {
     button:focus-visible,a:focus-visible,input:focus-visible{outline:2px solid #a2d7ff;outline-offset:2px}
     .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
     .layout{display:grid;gap:12px;align-items:start}.stage-col,.side{display:grid;gap:12px;min-width:0;align-content:start}
-    .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 60%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.14),rgba(3,16,29,.44));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18)}
+    .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 60%,color-mix(in srgb,var(--accent) 14%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.58),rgba(3,16,29,.82));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18)}
     /* Every floor at once needs more height on a phone. */
     :host([stacked]) .stage{height:var(--mp-stage-height,max(clamp(360px,min(62cqw,72vh),620px),min(calc(var(--floors,3) * 60px + 150px),80vh)))}
     .canvas{position:absolute;inset:0}.canvas canvas{display:block;width:100%;height:100%;touch-action:pan-y;outline-offset:-4px}

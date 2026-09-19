@@ -12,6 +12,9 @@ export class MPGlassLight extends LitElement {
   protected currentHass?: Hass;
   protected busy = false;
   protected failure = false;
+  /** Hides the failure notice once the next attempt has had time to happen. */
+  private failureTimer?: ReturnType<typeof setTimeout>;
+  disconnectedCallback() { clearTimeout(this.failureTimer); super.disconnectedCallback(); }
   private language = new LanguageController(this);
   set hass(value: Hass) {
     const old = this.currentHass; this.currentHass = value;
@@ -45,7 +48,7 @@ export class MPGlassLight extends LitElement {
     if ('brightness_pct' in data && !MPCapabilityEngine.detect(id, this.hass.states[id]).some(b => b.capability === 'DIM')) return;
     this.busy = true; this.failure = false;
     try { await this.hass.callService('light', service, { ...data, entity_id: id }); }
-    catch { this.failure = true; }
+    catch { this.failure = true; clearTimeout(this.failureTimer); this.failureTimer = setTimeout(() => { this.failure = false; }, 6000); }
     finally { this.busy = false; }
   }
   protected render() {

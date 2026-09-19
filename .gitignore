@@ -9,3 +9,6 @@ __pycache__/
 artifacts/
 .venv*/
 spatial-options.json
+
+.ai/
+.claude/

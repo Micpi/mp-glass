@@ -17,6 +17,12 @@ export const STUDIO = {
   'Prêtes à contrôler': ['Ready to control', 'Готовы к управлению'],
   'Chargement du Studio…': ['Loading the Studio…', 'Загрузка Studio…'],
   'Configuration enregistrée · le dashboard est à jour': ['Configuration saved · the dashboard is up to date', 'Конфигурация сохранена · панель обновлена'],
+  'Modifications non enregistrées': ['Unsaved changes', 'Несохранённые изменения'],
+  'Bienvenue dans MP Nexus Studio': ['Welcome to MP Nexus Studio', 'Добро пожаловать в MP Nexus Studio'],
+  'Trois étapes suffisent : analysez votre installation, rangez les équipements par pièce, choisissez un style. Votre dashboard fonctionne déjà à chaque étape.': ['Three steps are enough: scan your installation, assign devices to rooms, pick a style. Your dashboard already works at every step.', 'Достаточно трёх шагов: просканируйте установку, распределите устройства по комнатам, выберите стиль. Панель уже работает на каждом шаге.'],
+  'C’est parti': ['Let’s go', 'Начать'],
+  'La version enregistrée a été reprise : vos modifications locales ont été remplacées.': ['The saved version was restored: your local changes were replaced.', 'Восстановлена сохранённая версия: ваши локальные изменения заменены.'],
+  'Vos modifications ont été conservées et enregistrées.': ['Your changes were kept and saved.', 'Ваши изменения сохранены и записаны.'],
   // Sections.
   'Plan 3D': ['3D plan', '3D-план'],
   'Identité': ['Identity', 'Название'],

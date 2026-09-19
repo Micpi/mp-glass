@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.9 — bundle compilé avec le rendu restauré
+
+- Le bundle frontend livré avec l’intégration est maintenant recompilé avec le rendu de plan restauré, afin que la mise à jour HACS affiche réellement les surfaces translucides et les contours précédents.
+
 ## 0.9.8 — retour au rendu de plan
 
 - Retour au rendu de plan 3D précédent : surfaces translucides, murs filaires complets et contours lisibles, au lieu de la maquette opaque introduite en 0.9.7.

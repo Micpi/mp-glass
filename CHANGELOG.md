@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.11.0 — audit UX : rien ne se perd, tout s’explique
+
+### Ajouté
+
+- **Protection des modifications non enregistrées** : quitter ou recharger la page du Studio avec des réglages en cours demande désormais confirmation, et un badge **Modifications non enregistrées** reste visible dans la barre supérieure tant que tout n’est pas enregistré. Le travail en cours ne peut plus être perdu en silence.
+- **Bannière de bienvenue** : à la première ouverture, le mode essentiel explique le parcours en une phrase — analyser, ranger, choisir un style — avant de laisser la main. Le message est mémorisé par utilisateur et ne réapparaît pas.
+- **États vides guidés** : les pages Accueil, Lumières et Pièces sans équipement, ainsi qu’une pièce vide, expliquent la situation et proposent d’**ouvrir le Studio** (administrateurs) au lieu d’afficher une grille muette.
+- **Indicateur de connexion réel** : le point de l’horloge et le statut **Synchronisé avec Home Assistant** suivent les événements de connexion (prête, reconnectée, interrompue) et passent à **Connexion interrompue, reconnexion…** en orange, au lieu d’afficher un état toujours vert.
+- **Confirmation après conflit** : **Reprendre la version enregistrée** et **Conserver mes modifications** affichent désormais un message explicite du résultat, au lieu de refermer l’avertissement sans retour.
+
+### Modifié
+
+- **Échec d’action éphémère** : le message **Action impossible. Vérifiez la connexion et vos droits.** d’une carte lumière s’efface automatiquement après six secondes au lieu de rester affiché indéfiniment.
+- **Accessibilité des tuiles** : chaque tuile de la section ambiance porte un libellé explicite (**Détails de {nom}**) pour les lecteurs d’écran.
+- **Traductions** : quatorze nouveaux messages de l’interface sont disponibles en français, anglais et russe.
+
 ## 0.10.0 — Studio guidé : un seul chemin, deux profondeurs
 
 ### Ajouté

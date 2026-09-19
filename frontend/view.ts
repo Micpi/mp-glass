@@ -64,6 +64,10 @@ export class MPGlassView extends LitElement {
     .room-group{margin:4px 0 26px}
     .room-group>h3{display:flex;align-items:baseline;gap:10px;margin:0 3px 12px;font:20px/1 var(--mp-display-font,Georgia,serif);font-weight:400}
     .room-group>h3 .mp-icon{align-self:center;color:var(--mp-accent)}
+    .room-group-toggle{display:flex;align-items:center;gap:10px;width:100%;padding:0;border:0;background:none;color:inherit;font:inherit;text-align:left;cursor:pointer}
+    .room-group-toggle:hover{color:#fff}
+    .room-group-toggle .room-group-chevron{margin-left:auto;color:#a9bdd0;transition:transform .18s ease}
+    .room-group-toggle[aria-expanded=false] .room-group-chevron{transform:rotate(-90deg)}
     .room-group>h3 small{color:#93a8bb;font-size:10px;letter-spacing:.18em;text-transform:uppercase}
     .tile{width:100%;min-height:96px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--mp-radius);color:inherit;font:inherit;text-align:left;cursor:pointer}
     .tile:hover{border-color:color-mix(in srgb,var(--mp-accent) 65%,white)}
@@ -96,6 +100,7 @@ export class MPGlassView extends LitElement {
   /** The ambiance the plan shows and the floors it shows: the home section follows them. */
   private planMode: PlanMode = 'lights';
   private planFloors: string[] = [];
+  private collapsedGroups = new Set<string>();
   /** hui-root whose bar this view made transparent. */
   private header?: Element;
   /** The menu of languages under the flag, open or not. */
@@ -146,6 +151,11 @@ export class MPGlassView extends LitElement {
     this.languageOpen = false;
     chooseLanguage(value, this.hass);
     this.flagButton?.focus();
+  }
+  private toggleRoomGroup(key: string) {
+    if (this.collapsedGroups.has(key)) this.collapsedGroups.delete(key);
+    else this.collapsedGroups.add(key);
+    this.requestUpdate();
   }
   /** A small flag: the language shown, and the others on a click. */
   private languageMenu() {
@@ -279,13 +289,13 @@ export class MPGlassView extends LitElement {
     return html`${this.section(title,subtitle,meta.icon)}
       <main>
         ${groups.length||leftover.length?nothing:html`<p class="empty-ambiance">${tr('Aucun équipement de cette ambiance sur ce niveau.')}</p>`}
-        ${groups.map(g=>html`<section class="room-group">
-          <h3>${mpIcon(roomIcon(g.room.name),17)}<span>${g.room.name}</span>${several?html`<small>${g.floor.name}</small>`:nothing}</h3>
-          <div class="grid">${g.ids.map(id=>html`<div>${cardOf.get(id)??this.tile(id,g.room.name)}</div>`)}</div>
-        </section>`)}
+        ${groups.map(g=>{const key=`${g.floor.id}/${g.room.id}`,collapsed=this.collapsedGroups.has(key),label=collapsed?tr('Déplier la pièce {name}',{name:g.room.name}):tr('Replier la pièce {name}',{name:g.room.name});return html`<section class="room-group">
+          <h3><button class="room-group-toggle" type="button" aria-expanded=${!collapsed} aria-label=${label} title=${label} @click=${()=>this.toggleRoomGroup(key)}>${mpIcon(roomIcon(g.room.name),17)}<span>${g.room.name}</span>${several?html`<small>${g.floor.name}</small>`:nothing}${mpIcon('arrow',16)} </button></h3>
+          ${collapsed?nothing:html`<div class="grid">${g.ids.map(id=>html`<div>${cardOf.get(id)??this.tile(id,g.room.name)}</div>`)}</div>`}
+        </section>`})}
         ${leftover.length?html`<section class="room-group">
-          <h3>${mpIcon('bulb',17)}<span>${tr('Hors du plan')}</span></h3>
-          <div class="grid">${leftover.map(id=>html`<div>${cardOf.get(id)??this.tile(id,'')}</div>`)}</div>
+          <h3><button class="room-group-toggle" type="button" aria-expanded=${!this.collapsedGroups.has('outside-plan')} aria-label=${this.collapsedGroups.has('outside-plan')?tr('Déplier la pièce {name}',{name:tr('Hors du plan')}):tr('Replier la pièce {name}',{name:tr('Hors du plan')})} @click=${()=>this.toggleRoomGroup('outside-plan')}>${mpIcon('bulb',17)}<span>${tr('Hors du plan')}</span>${mpIcon('arrow',16)}</button></h3>
+          ${this.collapsedGroups.has('outside-plan')?nothing:html`<div class="grid">${leftover.map(id=>html`<div>${cardOf.get(id)??this.tile(id,'')}</div>`)}</div>`}
         </section>`:nothing}
       </main>`;
   }

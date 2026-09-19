@@ -119,6 +119,8 @@ export const PLAN = {
   'Éteindre toute la maison': ['Turn off the whole home', 'Выключить весь дом'],
   'Touchez un niveau sur le plan ou dans la liste pour l’ouvrir.': ['Touch a floor on the plan or in the list to open it.', 'Коснитесь этажа на плане или в списке, чтобы открыть его.'],
   'Fermer la pièce': ['Close the room', 'Закрыть комнату'],
+  'Replier la pièce {name}': ['Collapse {name}', 'Свернуть «{name}»'],
+  'Déplier la pièce {name}': ['Expand {name}', 'Развернуть «{name}»'],
   'Fermer': ['Close', 'Закрыть'],
   'Tout éteindre': ['Turn all off', 'Выключить всё'],
   'Tout allumer': ['Turn all on', 'Включить всё'],

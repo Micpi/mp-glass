@@ -237,6 +237,20 @@ test('room card groups the lights of a room and shows its climate',async({page})
   await page.screenshot({path:'artifacts/spatial-room-mobile.png',fullPage:true});
 });
 
+test('ambiance room groups can be collapsed and expanded',async({page})=>{
+  await page.goto('/?spatial');
+  const view=page.locator('mp-glass-view-v4'),group=view.locator('.room-group').filter({hasText:'Cuisine'}).last();
+  const toggle=group.locator('.room-group-toggle');
+  await expect(toggle).toHaveAttribute('aria-expanded','true');
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded','false');
+  await expect(toggle).toBeFocused();
+  await expect(group.locator('.grid')).toHaveCount(0);
+  await toggle.click();
+  await expect(toggle).toHaveAttribute('aria-expanded','true');
+  await expect(group.locator('.grid')).toBeVisible();
+});
+
 test('the floor overview turns off every light still on, in one call',async({page})=>{
   await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
   const viewer=page.locator('mp-spatial-viewer'),overview=viewer.getByRole('region',{name:'Vue d’ensemble du niveau'});

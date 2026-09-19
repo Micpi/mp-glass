@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.4 — groupes de pièces repliables
+
+- **Pièces repliables** : chaque groupe d’équipements sous le plan peut être réduit ou rouvert en un clic, au clavier ou sur écran tactile. L’état de chaque pièce est indépendant et son contenu reste accessible avec un contrôle correctement annoncé aux technologies d’assistance.
+
 ## 0.9.3 — la section sous le plan suit l’ambiance, pièce par pièce
 
 Demande utilisateur : « comme je suis en Audio-vidéo sur le plan, je devrais avoir tout l’audio-vidéo de l’étage rangé par pièce ; en Climat pareil, et en Lumières aussi : ça doit être rangé par pièce pour une lecture plus simple ».

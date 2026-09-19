@@ -91,7 +91,7 @@ export const STUDIO = {
   'Les pages Accueil, Lumières et Pièces sont générées automatiquement. Chaque pièce détectée dispose aussi de sa propre page.': ['The Home, Lights and Rooms pages are generated automatically. Each room detected also has a page of its own.', 'Страницы «Главная», «Свет» и «Комнаты» создаются автоматически. У каждой найденной комнаты есть и своя страница.'],
   'Détection, associations et visibilité': ['Detection, assignments and visibility', 'Обнаружение, привязки и видимость'],
   'Entités': ['Entities', 'Объекты'],
-  'À vérifier': ['To check', 'Проверить'],
+  'Sans pièce': ['No room', 'Без комнаты'],
   'Analyser l’installation': ['Scan the installation', 'Сканировать установку'],
   'Choisissez la pièce de chaque équipement : il rejoint la page de cette pièce et, sur le plan 3D, la pièce reliée à la même pièce Home Assistant.': ['Choose the room of each device: it joins the page of that room and, on the 3D plan, the room linked to the same Home Assistant area.', 'Выберите комнату для каждого устройства: оно появится на странице этой комнаты, а на 3D-плане — в комнате, связанной с тем же пространством Home Assistant.'],
   'Aucune pièce': ['No room', 'Без комнаты'],

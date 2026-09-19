@@ -12,11 +12,25 @@ Audit, recherche API datée, architecture, modèles, ADR, registre de cartes. Do
 
 Config Flow + Options Flow ; backend projet versionné ; registry reader ; graphe ; capabilities ; classification ; priorité overrides ; card registry ; strategy ; vue responsive ; Light Card POWER/DIM + fallback + editor ; réglages scan/audit ; tests unitaires/composants/build ; instance HA de développement et procédure de validation réelle.
 
-Porte : nouvelle instance HA → installer → configurer → détecter une lumière en Salon → générer → commande de service HA effective → état HA actualisé. Un test avec doubles frontend ne valide pas cette porte. Matériel physique et Safari/iOS sont des vérifications supplémentaires explicitement consignées.
+Porte : nouvelle instance HA → installer → configurer → détecter une lumière en Salon → générer → commande de service HA effective → état HA actualisé. Un test avec doubles frontend ne valide pas cette porte. Matériel physique et Safari/iOS sont des vérifications supplémentaires explicitement consignées. Porte passée le 11 septembre 2026 sur HA 2026.9.1.
+
+## Doctrine transversale — un seul chemin, deux profondeurs
+
+[ADR 0006](docs/adr/0006-one-path-two-depths.md) s'applique à tous les incréments suivants : parcours unique installer → analyser → regarder → ajuster, profondeur essentielle sans jargon par défaut, profondeur expert révélée à la demande, toute action unitaire dotée d'un équivalent en masse. Chaque incrément passe deux tests réels en plus de sa porte technique : **néophyte** (dashboard pilotant ses lumières en moins de cinq minutes sans documentation, sait où sont les équipements sans pièce) et **professionnel** (50 équipements sur 10 pièces assignés en moins de trois minutes, export puis import sur instance vierge identique). Un incrément est incomplet tant que l'un des deux tests échoue.
+
+## Incrément 1.5 — parcours guidé (avant l'extension du catalogue)
+
+1. Onboarding au premier lancement de Studio : trois étapes (analyser → pièces → style) avec progression, bouton « Voir mon dashboard » disponible à chaque étape, plan 3D présenté comme option.
+2. Libellés humains : « Sans pièce » remplace « À vérifier » ; codes d'évidence traduits en phrases ; JSON conservé en `details`.
+3. Retour visuel : indicateur d'analyse en cours, prévisualisation avant enregistrement, annulation de la dernière modification.
+4. Passage à l'échelle : sélection multiple des équipements, filtre par domaine/pièce, « appliquer à la sélection » (pièce, masqué) ; export/import du projet depuis Studio avec diff lisible en cas de conflit.
+5. Studio à deux profondeurs : entrée « Essentiel » (analyser, pièces, style, dashboard) et bascule « Mode expert » persistante par utilisateur révélant les huit sections actuelles.
+
+Porte : tests néophyte et professionnel de la doctrine passés sur instance réelle avec le parcours lumière.
 
 ## Incrément 2 — terminer MVP 1
 
-Climate, puis Cover, puis TV + Remote ; association avec preuves ; popup natif ; Home synthétique ; Alarm ; Camera lazy ; Floorplan de base ; wizard complet ; preview ; préférences personnelles. Aucun trackpad si l'adapter ne déclare pas les commandes/gestes réels.
+Climate, puis Cover, puis TV + Remote ; association avec preuves ; popup natif ; Home synthétique ; Alarm ; Camera lazy ; Floorplan de base ; wizard complet ; preview ; préférences personnelles. Aucun trackpad si l'adapter ne déclare pas les commandes/gestes réels. Chaque domaine livre le chemin complet de l'ADR 0006 (découverte, révision, explication, carte, fallback, locale) et repasse les deux tests UX avec des équipements mixtes.
 
 ## Phase 2
 

@@ -33,6 +33,10 @@ Overrides, rôles et plans appartiennent au projet persistant, jamais à la sort
 
 Lit et CSS tokens locaux, sans CDN. Custom view documentée : HA crée et maintient ses cartes, MP Nexus les dispose. Cache structurel invalidable, aucun scan déclenché par une lumière qui change. Chaque carte compare sa propre référence d'état. Le premier incrément fournit lumière et fallback ; les autres domaines arrivent après validation du parcours lumière.
 
+## Expérience
+
+Un seul parcours (installer → analyser → regarder → ajuster) à deux profondeurs : essentiel sans jargon par défaut, expert révélé à la demande, action unitaire toujours doublée d'une action en masse. Aucun incrément n'est terminé sans les tests néophyte et professionnel de l'[ADR 0006](docs/adr/0006-one-path-two-depths.md).
+
 ## Modes
 
 MANAGED est le premier mode. MANUAL utilise la même Light Card avec editor. HYBRID est réservé à un incrément ultérieur : zones personnalisées persistantes avec validation, sans réécriture du générateur. Les préférences individuelles seront isolées par utilisateur et appareil, hors Project Config.

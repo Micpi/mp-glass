@@ -6,4 +6,4 @@ Refus des registres principaux : erreur explicite, pas de résultat vide silenci
 
 Le premier classifier couvre light et conserve le reste en fallback. Il ne recherche aucun mot de marque ou de type dans entity_id. Les heuristiques couvrant climate/media/security arrivent avec leurs propres tests. Les services, labels enrichis et config entries sont des extensions prévues, non collectées inutilement au premier incrément.
 
-Les relations `via_device_id` sont conservées, mais pas utilisées pour fusionner. Les entités sans registry portent un ID provisoire signalé. Le rapport « À vérifier » comprend les catégories inconnues et les appareils sans pièce ; le prochain classifier réduira ce volume.
+Les relations `via_device_id` sont conservées, mais pas utilisées pour fusionner. Les entités sans registry portent un ID provisoire signalé. Le compteur « Sans pièce » comprend les catégories inconnues et les appareils sans pièce ; le prochain classifier réduira ce volume.

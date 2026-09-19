@@ -108,6 +108,14 @@ export const hasPlayers=(room:SpatialRoom,states:Record<string,HAState>)=>roomPl
 export function roomOpen(room:SpatialRoom,states:Record<string,HAState>){
   return [...roomContacts(room,states).filter(id=>states[id]!.state==='on'),...roomCovers(room,states).filter(id=>!groupCover(states[id])&&coverOpen(states[id]))];
 }
+const humiditySensor=(s:HAState)=>s.entity_id.startsWith('sensor.')&&s.attributes.device_class==='humidity';
+/** What a room shows in an ambiance: its lights, its thermostats and thermometers, its doors, windows and shutters, or its players. */
+export function ambianceEntities(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode):string[]{
+  if(mode==='climate')return roomEntityIds(room).filter(id=>{const s=states[id];return id.startsWith('climate.')||(!!s&&(temperatureSensor(s)||humiditySensor(s)));});
+  if(mode==='openings')return [...new Set([...roomContacts(room,states),...roomCovers(room,states)])];
+  if(mode==='media')return roomPlayers(room,states);
+  return roomEntityIds(room).filter(id=>id.startsWith('light.'));
+}
 /** Halo colours of the plan besides the lights and the temperature scale. */
 export const PLAN_COLORS={open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff'} as const;
 /** A fixed Celsius scale, shared by every room; a missing reading produces no thermal halo. */

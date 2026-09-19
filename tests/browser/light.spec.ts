@@ -6,10 +6,10 @@ const headerClash=(page:Page)=>page.evaluate(()=>{
   return {clipped:title.scrollWidth>title.clientWidth,overlap:name.right>nav.left&&name.left<nav.right&&name.bottom>nav.top&&name.top<nav.bottom};
 });
 test('commands the correct light; dimmer only where declared; more-info bubbles',async({page})=>{
-  await page.goto('/');const first=page.locator('mp-glass-light-v4').nth(0);
+  await page.goto('/');const first=page.locator('mp-glass-light-v4').filter({hasText:'Salon · Suspension'});
   await first.getByRole('button',{name:'Allumer',exact:true}).click();await expect(first.getByRole('button',{name:'Éteindre',exact:true})).toBeVisible();
   expect(await page.evaluate(()=> (window as unknown as {demo:{calls:unknown[]}}).demo.calls)).toEqual([{domain:'light',service:'turn_on',data:{entity_id:'light.circuit_0'}}]);
-  await expect(page.locator('mp-glass-light-v4').nth(1).getByRole('slider')).toHaveCount(0);
+  await expect(page.locator('mp-glass-light-v4').filter({hasText:'Circuit 1'}).getByRole('slider')).toHaveCount(0);
   await first.getByRole('slider').fill('75');await first.getByRole('slider').dispatchEvent('change');
   await expect(first.getByText('Luminosité 75 %')).toBeVisible();
   await page.evaluate(()=>document.addEventListener('hass-more-info',event=>Object.assign(window,{moreInfo:(event as CustomEvent).detail})));
@@ -18,7 +18,7 @@ test('commands the correct light; dimmer only where declared; more-info bubbles'
 test('displays unavailable and service errors without claiming success',async({page})=>{
   await page.goto('/');
   await page.evaluate(()=>{const demo=(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass;cards:import('../../frontend/cards/light').MPGlassLight[]}}).demo;demo.hass.callService=async()=>{throw new Error('denied');};demo.cards[0]!.hass={...demo.hass};});
-  const first=page.locator('mp-glass-light-v4').first();await first.getByRole('button',{name:'Allumer',exact:true}).click();await expect(first.getByRole('alert')).toContainText('Action impossible');await expect(first.getByRole('button',{name:'Allumer',exact:true})).toBeEnabled();
+  const first=page.locator('mp-glass-light-v4').filter({hasText:'Salon · Suspension'});await first.getByRole('button',{name:'Allumer',exact:true}).click();await expect(first.getByRole('alert')).toContainText('Action impossible');await expect(first.getByRole('button',{name:'Allumer',exact:true})).toBeEnabled();
   await page.evaluate(()=>{const demo=(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass;cards:import('../../frontend/cards/light').MPGlassLight[]}}).demo;demo.hass.states={...demo.hass.states,'light.circuit_0':{entity_id:'light.circuit_0',state:'unavailable',attributes:{}}};demo.cards[0]!.hass={...demo.hass};});
   await expect(first.getByText('Indisponible')).toBeVisible();await expect(first.getByRole('button',{name:'Allumer',exact:true})).toBeDisabled();
 });

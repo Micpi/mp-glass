@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasOpenings,hasPlayers,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,PLAN_COLORS,roomAmbient,roomEntityIds,roomOpen,roomTemperature,temperatureRange } from '../shared/spatial-state';
+import { ambianceEntities,canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasOpenings,hasPlayers,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,PLAN_COLORS,roomAmbient,roomEntityIds,roomOpen,roomTemperature,temperatureRange } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -54,6 +54,24 @@ describe('room runtime information',()=>{
     const simple=state('cover.a','open',{supported_features:3});
     expect(canCover(simple,'close_cover')).toBe(true);expect(canCover(simple,'set_cover_position')).toBe(false);expect(canCover(simple,'stop_cover')).toBe(false);
     expect(canCover(undefined,'open_cover')).toBe(false);
+  });
+  it('lists what a room shows in each ambiance: lights, thermometers, openings or players',()=>{
+    const r:SpatialRoom={id:'test',name:'Test',polygon:[[0,0],[3,0],[3,3],[0,3]],
+      entityIds:['light.a','climate.a','sensor.t','sensor.h','sensor.power','binary_sensor.door','media_player.own'],
+      openings:[{id:'w',kind:'window',side:0,at:.5,width:1.2,entityIds:['cover.shutter','binary_sensor.window']}],
+      media:[{id:'tv',kind:'tv',at:[1,1],entityId:'media_player.tv'}]};
+    const states={'light.a':state('light.a','on'),'climate.a':state('climate.a','heat',{current_temperature:20}),
+      'sensor.t':state('sensor.t','21',{device_class:'temperature',unit_of_measurement:'°C'}),'sensor.h':state('sensor.h','45',{device_class:'humidity',unit_of_measurement:'%'}),
+      'sensor.power':state('sensor.power','12',{device_class:'power',unit_of_measurement:'W'}),
+      'binary_sensor.door':state('binary_sensor.door','off',{device_class:'door'}),'binary_sensor.window':state('binary_sensor.window','on',{device_class:'window'}),
+      'cover.shutter':state('cover.shutter','open',{device_class:'shutter',current_position:80}),
+      'media_player.tv':state('media_player.tv','playing',{device_class:'tv'}),'media_player.own':state('media_player.own','off')};
+    expect(ambianceEntities(r,states,'lights')).toEqual(['light.a']);
+    expect(ambianceEntities(r,states,'climate')).toEqual(['climate.a','sensor.t','sensor.h']);
+    expect(ambianceEntities(r,states,'openings').sort()).toEqual(['binary_sensor.door','binary_sensor.window','cover.shutter']);
+    expect(ambianceEntities(r,states,'media').sort()).toEqual(['media_player.own','media_player.tv']);
+    // An entity Home Assistant no longer knows produces no tile.
+    expect(ambianceEntities(room(['media_player.gone']),states,'media')).toEqual([]);
   });
 });
 

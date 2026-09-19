@@ -1,11 +1,15 @@
 import { LitElement, html, css, nothing } from 'lit';
 import type { AppearanceConfig, NavigationConfig, NavigationItem } from '../shared/models';
 import { MP_GLASS_BACKGROUND } from './background';
-import { mpIcon } from './icons';
+import { mpIcon, type MPIconName } from './icons';
 import type { SpatialPlan } from '../shared/spatial';
+import { ambianceEntities, coverOpen, coverPosition, finite, mediaIsTv, mediaOn, nowPlaying, roomEntityIds, type PlanMode } from '../shared/spatial-state';
+import { available } from '../shared/capabilities';
 import type { Hass } from './ha/client';
 import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
+import { COVER_STATES, HVAC, MEDIA_STATES, roomIcon, stateName } from './spatial/viewer';
+import type { MessageKey } from './locales';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trDefault, trPlan, type Language } from './i18n';
 import { flag } from './flags';
 
@@ -22,10 +26,12 @@ interface ViewConfig {
   mp_view_title?: string;
   mp_areas?: AreaSummary[];
   mp_inventory?: { title:string; count:number };
+  /** Entity of each card of the view, in the order of `cards`: the home section groups them by room of the plan. */
+  mp_entities?: string[];
 }
 
 export class MPGlassView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true}, planMode:{state:true}, planFloors:{state:true} };
   static styles = css`
     :host{display:block;flex:1 1 100%;width:100%;min-width:0;min-height:100vh;container-type:inline-size;box-sizing:border-box;color:#f8fbff;font-family:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif);position:relative;isolation:isolate;overflow:hidden;background:#061421}
     *{box-sizing:border-box}.backdrop,.shade,.ambient{position:fixed;inset:0;pointer-events:none}.backdrop{z-index:-4;background-size:cover;background-repeat:no-repeat;transform:scale(1.035);filter:blur(var(--mp-bg-blur,0)) saturate(var(--mp-bg-saturation,1))}.shade{z-index:-3;background:linear-gradient(90deg,rgba(2,13,25,.8),rgba(3,18,31,.17) 58%,rgba(2,10,19,.38)),linear-gradient(0deg,rgba(2,11,21,.95),transparent 72%)}.ambient{z-index:-2;background:radial-gradient(circle at 18% 15%,color-mix(in srgb,var(--mp-accent,#69b7ff) 14%,transparent),transparent 34%),radial-gradient(circle at 85% 70%,color-mix(in srgb,var(--mp-secondary,#efbd8b) 10%,transparent),transparent 28%)}
@@ -54,6 +60,20 @@ export class MPGlassView extends LitElement {
     @container (max-width:540px){.shell{padding:9px 10px 36px}header{padding:10px;gap:9px}.brand{justify-content:flex-start}.mark{width:40px;height:40px;border-radius:13px;font-size:29px}.brand strong{font-size:21px}nav a{padding:0 8px;font-size:12px}nav.hide-labels a span:last-child{display:none}.hero{min-height:285px;padding:44px 10px 26px}.hero h1{font-size:43px}.overview-card{grid-template-columns:1fr 1fr;padding:11px}.overview-title{grid-column:1/-1}.overview-item{border-left:0;border-top:1px solid rgba(215,235,255,.11)}.overview-item:last-child{display:none}.section-action{display:none}.grid,.rooms-grid{grid-template-columns:1fr;gap:10px}.page-intro{padding:42px 5px 27px}.room{min-height:150px}}
     /* Names too long for a narrow phone (a language, the fonts of the phone): the page shown keeps its name, the others their icon. */
     nav.compact a:not(.active) span:last-child{display:none}
+    /* The home section follows the ambiance of the plan: its devices arranged room by room, easier to read. */
+    .room-group{margin:4px 0 26px}
+    .room-group>h3{display:flex;align-items:baseline;gap:10px;margin:0 3px 12px;font:20px/1 var(--mp-display-font,Georgia,serif);font-weight:400}
+    .room-group>h3 .mp-icon{align-self:center;color:var(--mp-accent)}
+    .room-group>h3 small{color:#93a8bb;font-size:10px;letter-spacing:.18em;text-transform:uppercase}
+    .tile{width:100%;min-height:96px;display:flex;align-items:center;gap:12px;padding:14px 16px;border-radius:var(--mp-radius);color:inherit;font:inherit;text-align:left;cursor:pointer}
+    .tile:hover{border-color:color-mix(in srgb,var(--mp-accent) 65%,white)}
+    .tile-icon{display:grid;place-items:center;width:42px;height:42px;flex:0 0 auto;border-radius:var(--mp-icon-radius,14px);color:#bcd7ec;background:rgba(255,255,255,.06);border:1px solid rgba(212,232,250,.16)}
+    .tile.on .tile-icon{color:#fff;background:color-mix(in srgb,var(--mp-accent) 26%,transparent);border-color:color-mix(in srgb,var(--mp-accent) 50%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--mp-accent) 25%,transparent)}
+    .tile-text{min-width:0;display:grid;gap:5px}
+    .tile-text strong{font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tile-text small{color:#a9bdd0;font-size:11px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .tile-value{margin-left:auto;flex:0 0 auto;font:18px/1 var(--mp-display-font,Georgia,serif);color:#eaf4ff}
+    .empty-ambiance{margin:6px 3px 22px;color:#9fb6ca;font-size:13px}
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
 
@@ -71,6 +91,11 @@ export class MPGlassView extends LitElement {
   private viewTitle = '';
   private areas: AreaSummary[] = [];
   private inventory?: ViewConfig['mp_inventory'];
+  /** Entity of each card of `cards`, in the same order. */
+  private entities: string[] = [];
+  /** The ambiance the plan shows and the floors it shows: the home section follows them. */
+  private planMode: PlanMode = 'lights';
+  private planFloors: string[] = [];
   /** hui-root whose bar this view made transparent. */
   private header?: Element;
   /** The menu of languages under the flag, open or not. */
@@ -141,6 +166,7 @@ export class MPGlassView extends LitElement {
     this.viewTitle = config?.mp_view_title ?? this.projectName;
     this.areas = config?.mp_areas ?? [];
     this.inventory = config?.mp_inventory;
+    this.entities = config?.mp_entities ?? [];
     this.toggleAttribute('motion', this.appearance.motion !== false);
     this.setAttribute('density', this.appearance.density ?? 'comfortable');
     this.setAttribute('card-style', this.appearance.cardStyle ?? 'standard');
@@ -165,8 +191,103 @@ export class MPGlassView extends LitElement {
     const active = this.viewKind === item || (item === 'rooms' && this.viewKind === 'area');
     return html`<a class=${active?'active':''} href=${this.route(item)} aria-current=${active?'page':nothing}>${mpIcon(meta.icon,item==='home'?20:19)}<span>${meta.label}</span></a>`;
   }
-  private section(title: string, subtitle: string) {
-    return html`<div class="section-head"><div class="section-label"><span class="section-icon">${mpIcon(this.viewKind==='rooms'?'rooms':'bulb',23)}</span><div><h2>${title}</h2><p>${subtitle}</p></div></div><span class="section-action"><i></i> ${tr('Synchronisé avec Home Assistant')}</span></div>`;
+  private section(title: string, subtitle: string, icon?: MPIconName) {
+    return html`<div class="section-head"><div class="section-label"><span class="section-icon">${mpIcon(icon ?? (this.viewKind==='rooms'?'rooms':'bulb'),23)}</span><div><h2>${title}</h2><p>${subtitle}</p></div></div><span class="section-action"><i></i> ${tr('Synchronisé avec Home Assistant')}</span></div>`;
+  }
+
+  /** Title, subtitle and icon of the home section for each ambiance of the plan. */
+  private static AMBIANCES: Record<PlanMode,{title:MessageKey;subtitle:MessageKey;icon:MPIconName}> = {
+    lights:{title:'Lumières',subtitle:'Contrôle rapide de tous les éclairages détectés',icon:'bulb'},
+    climate:{title:'Climat',subtitle:'Températures et chauffage, pièce par pièce',icon:'thermo'},
+    openings:{title:'Ouvrants',subtitle:'Portes, fenêtres et volets, pièce par pièce',icon:'window'},
+    media:{title:'Audio-vidéo',subtitle:'Téléviseurs et enceintes, pièce par pièce',icon:'tv'},
+  };
+  private planAmbiance = (e: CustomEvent<{mode:PlanMode;floorIds:string[]}>) => {
+    this.planMode = e.detail.mode;
+    this.planFloors = e.detail.floorIds;
+  };
+  private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
+  private format(value: number, digits = 1) { return new Intl.NumberFormat(locale(),{maximumFractionDigits:digits}).format(value); }
+  /** "Salon · Téléviseur" shown as "Téléviseur" inside its Salon group. */
+  private static shorten(name: string, room: string) {
+    const rest=name.slice(room.length);
+    if(!room||!/^[\s·:|/–—-]/.test(rest)||name.slice(0,room.length).localeCompare(room,undefined,{sensitivity:'base'})!==0)return name;
+    return rest.replace(/^[\s·:|/–—-]+/,'')||name;
+  }
+  /** A device the ambiance reads without a card of its own: its state at a glance, details on a touch. */
+  private tile(id: string, room: string) {
+    const state=this.hass?.states[id],ready=available(state);
+    const name=MPGlassView.shorten(String(state?.attributes.friendly_name??id),room);
+    const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??'');
+    let icon:MPIconName='gauge',detail=ready?String(state!.state):tr('Indisponible'),value='',on=false;
+    if(domain==='climate'){
+      icon='flame';
+      if(ready){
+        on=state!.state!=='off';
+        const current=finite(state!.attributes.current_temperature),target=finite(state!.attributes.temperature);
+        value=current===undefined?'':`${this.format(current)} °`;
+        detail=target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)});
+      }
+    } else if(domain==='media_player'){
+      icon=mediaIsTv(state)?'tv':'speaker';
+      if(ready){
+        on=mediaOn(state);
+        const playing=nowPlaying(state),label=stateName(MEDIA_STATES,state!.state);
+        detail=playing&&['playing','paused'].includes(state!.state)?`${label} · ${playing}`:label;
+      }
+    } else if(domain==='cover'){
+      icon=deviceClass==='curtain'?'curtain':'shutter';
+      if(ready){
+        on=coverOpen(state)===true;
+        const percent=coverPosition(state);
+        value=percent===undefined?'':tr('{n} %',{n:this.format(percent,0)});
+        detail=percent===undefined?tr('{state} · position inconnue',{state:stateName(COVER_STATES,state!.state)}):tr('{state} · {n} % ouvert',{state:stateName(COVER_STATES,state!.state),n:this.format(percent,0)});
+      }
+    } else if(domain==='binary_sensor'){
+      icon='window';
+      if(ready){on=state!.state==='on';detail=on?tr('Ouverte'):tr('Fermée');}
+    } else if(domain==='sensor'){
+      const humidity=deviceClass==='humidity';
+      icon=humidity?'drop':'thermo';
+      if(ready){
+        const reading=finite(state!.state),unit=String(state!.attributes.unit_of_measurement??'');
+        value=reading===undefined?String(state!.state):`${this.format(reading)}${unit?` ${unit}`:''}`;
+        detail=humidity?tr('Humidité'):tr('Température');
+      }
+    } else if(domain==='light'){
+      icon='bulb';
+      if(ready){on=state!.state==='on';detail=on?tr('Allumée'):tr('Éteinte');}
+    }
+    return html`<button class=${`tile glass ${on?'on':''}`} title=${tr('Détails')} @click=${()=>this.moreInfo(id)}>
+      <span class="tile-icon">${mpIcon(icon,20)}</span>
+      <span class="tile-text"><strong>${name}</strong><small>${detail}</small></span>
+      ${value?html`<span class="tile-value">${value}</span>`:nothing}
+    </button>`;
+  }
+  /** Below the plan, the devices of its ambiance on the floors it shows, arranged room by room. */
+  private ambianceSection(spatial: SpatialPlan) {
+    const a=this.appearance,mode=this.planMode,states=this.hass?.states??{},meta=MPGlassView.AMBIANCES[mode];
+    const floors=spatial.floors.filter(f=>!this.planFloors.length||this.planFloors.includes(f.id));
+    const several=floors.length>1;
+    const cardOf=new Map(this.entities.map((id,i)=>[id,this.cards[i]] as const));
+    const groups=floors.flatMap(f=>f.rooms.map(room=>({floor:f,room,ids:ambianceEntities(room,states,mode)}))).filter(g=>g.ids.length);
+    // Lights of the dashboard placed in no room of the plan stay reachable, in a group of their own.
+    const placed=new Set(spatial.floors.flatMap(f=>f.rooms.flatMap(r=>roomEntityIds(r))));
+    const leftover=mode==='lights'?this.entities.filter(id=>id&&!placed.has(id)):[];
+    const title=mode==='lights'?trDefault(a.sectionTitle,'Lumières'):tr(meta.title);
+    const subtitle=mode==='lights'?trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés'):tr(meta.subtitle);
+    return html`${this.section(title,subtitle,meta.icon)}
+      <main>
+        ${groups.length||leftover.length?nothing:html`<p class="empty-ambiance">${tr('Aucun équipement de cette ambiance sur ce niveau.')}</p>`}
+        ${groups.map(g=>html`<section class="room-group">
+          <h3>${mpIcon(roomIcon(g.room.name),17)}<span>${g.room.name}</span>${several?html`<small>${g.floor.name}</small>`:nothing}</h3>
+          <div class="grid">${g.ids.map(id=>html`<div>${cardOf.get(id)??this.tile(id,g.room.name)}</div>`)}</div>
+        </section>`)}
+        ${leftover.length?html`<section class="room-group">
+          <h3>${mpIcon('bulb',17)}<span>${tr('Hors du plan')}</span></h3>
+          <div class="grid">${leftover.map(id=>html`<div>${cardOf.get(id)??this.tile(id,'')}</div>`)}</div>
+        </section>`:nothing}
+      </main>`;
   }
 
   render() {
@@ -193,13 +314,13 @@ export class MPGlassView extends LitElement {
             ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(locale(),{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small><i></i>${new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Glass</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
         ${this.viewKind === 'home' && a.showOverview !== false ? html`<section class="overview"><div class="overview-card glass"><div class="overview-title"><span class="seal">${mpIcon('shield',25)}</span><div><strong>${tr('La maison')}</strong><small>${tr('Tout est prêt')}</small></div></div><div class="overview-item">${mpIcon('bulb',21)}<div><strong>${tr('{n} équipement|{n} équipements',{n:total})}</strong><small>${tr('Détectés')}</small></div></div><div class="overview-item">${mpIcon('rooms',21)}<div><strong>${tr('{n} pièce|{n} pièces',{n:this.areas.length})}</strong><small>${tr('Organisation automatique')}</small></div></div><div class="overview-item">${mpIcon('sliders',21)}<div><strong>${tr('Contrôles')}</strong><small>${tr('Disponibles en direct')}</small></div></div></div></section>` : nothing}
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'rooms' ? html`
           ${this.section(tr('Pièces'),tr('Ouvrez une pièce pour retrouver uniquement ses équipements'))}
           <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${tr('{n} équipement|{n} équipements',{n:area.deviceCount})} · ${tr('{n} lumière|{n} lumières',{n:area.lightCount})}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${tr('{n} entité sans carte dédiée|{n} entités sans carte dédiée',{n:this.inventory.count})}</p></div></a>` : nothing}</main>
-        ` : html`
+        ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(spatial) : html`
           ${this.section(this.viewKind === 'home' ? trDefault(a.sectionTitle,'Lumières') : title,this.viewKind === 'home' ? trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           <main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>
         `}

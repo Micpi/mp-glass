@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.9.3 — la section sous le plan suit l’ambiance, pièce par pièce
+
+Demande utilisateur : « comme je suis en Audio-vidéo sur le plan, je devrais avoir tout l’audio-vidéo de l’étage rangé par pièce ; en Climat pareil, et en Lumières aussi : ça doit être rangé par pièce pour une lecture plus simple ».
+
+- **La section suit le plan** : choisir **Lumières**, **Climat**, **Ouvrants** ou **Audio-vidéo** sur le plan 3D change la section en dessous — son titre, son icône et son contenu. Changer de niveau aussi : la section ne montre que le niveau affiché ; sur la vue empilée, toute la maison.
+- **Rangé pièce par pièce** : les équipements sont regroupés sous le nom de leur pièce, avec son icône, dans l’ordre des pièces du plan. Quand plusieurs niveaux sont affichés, chaque pièce dit son niveau. En Lumières, les lampes hors du plan restent visibles dans un groupe **Hors du plan**.
+- **Climat, Ouvrants et Audio-vidéo en un coup d’œil** : chaque appareil a sa tuile — le thermostat dit son mode et sa consigne à côté de la température mesurée, les sondes leur mesure, une porte **Ouverte** ou **Fermée**, un volet son pourcentage d’ouverture, un téléviseur ou une enceinte ce qui est lu. Un appui ouvre la fenêtre de détails de Home Assistant.
+- Si aucune pièce du niveau n’a d’équipement de l’ambiance choisie, la section le dit simplement au lieu de rester vide.
+
 ## 0.9.2 — affichage corrigé sur iPhone
 
 Retour utilisateur, captures d’un iPhone à l’appui : « l’affichage n’est pas correct sur certaines parties ».

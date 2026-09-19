@@ -73,7 +73,7 @@ export class MPDashboardComposer {
       mp_view_path: path,
       mp_view_title: title,
       mp_areas: areas,
-      ...(kind === 'home' ? { mp_spatial: spatial, mp_spatial_origin: spatialOrigin } : {}),
+      ...(kind === 'home' ? { mp_spatial: spatial, mp_spatial_origin: spatialOrigin, mp_entities: viewCards.map(c => c.entity) } : {}),
       ...(kind === 'rooms' && inventory.length ? { mp_inventory: { title: inventoryTitle, count: inventory.length } } : {}),
       cards: viewCards,
     });

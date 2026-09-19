@@ -36,12 +36,13 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
   [/jardin|terrasse|garden|terrace|balcon|balcony|piscine|pool|exterieur|outdoor|patio|veranda/,'leaf'],
 ];
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
+export { roomIcon };
 const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',media:'speaker',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
-const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
-const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
-const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
+export const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
+export const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
+export const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
 /** A state Home Assistant gives, named in the interface language when MP Glass knows it. */
-const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
+export const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
 /** Shutters of a floor, of the whole house or of a room: how the pair of commands names them. */
 const COVER_SCOPES={
   floor:['Volets du niveau','Ouvrir tous les volets du niveau','Fermer tous les volets du niveau'],
@@ -289,6 +290,8 @@ export class MPSpatialViewer extends LitElement {
   /** What the scene draws: its floors and their walls (a change frames the house again), and what stands in its walls and rooms. */
   private drawnGeometry = '';
   private drawnContent = '';
+  /** Ambiance and floors last told to the page, so the section below the plan follows them. */
+  private announced = '';
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   /** The ambiances the floors shown can offer: no climate without a room that measures its temperature, and so on. */
@@ -339,6 +342,12 @@ export class MPSpatialViewer extends LitElement {
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
     if(ask&&this.asking&&!ask.open)ask.showModal();else if(ask&&!this.asking&&ask.open)ask.close();
     if (!this.plan || !this.currentFloor) return;
+    // The ambiance chosen and the floors on screen, told to the page: the section below the plan arranges itself on them.
+    if(!this.preview){
+      const detail={mode:this.planMode(this.shownFloors),floorIds:this.shownFloors.map(f=>f.id)};
+      const key=JSON.stringify([detail.mode,detail.floorIds]);
+      if(key!==this.announced){this.announced=key;this.dispatchEvent(new CustomEvent('plan-ambiance',{detail}));}
+    }
     if (!this.scene && !this.loading && !this.error) {
       this.loading=true;
       try {

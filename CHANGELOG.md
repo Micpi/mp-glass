@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.13 — catégories visibles
+
+- **Fiches des pièces** : les titres « Lumières », « Climat » et « Audio-vidéo » disposent maintenant d’une séparation et d’un contraste renforcés pour distinguer immédiatement les groupes d’équipements.
+
 ## 0.9.12 — équipements rangés par catégorie
 
 - **Fiches des pièces** : les équipements sont maintenant regroupés dans les catégories « Lumières », « Climat » et « Audio-vidéo », tandis que les appareils non classés restent visibles dans « Équipements ».

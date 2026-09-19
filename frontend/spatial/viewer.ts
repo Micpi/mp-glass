@@ -219,7 +219,7 @@ export class MPSpatialViewer extends LitElement {
     input[type=range]::-moz-range-track{height:4px;border-radius:99px;background:rgba(206,226,246,.25)}input[type=range]::-moz-range-progress{height:4px;border-radius:99px;background:var(--warm)}
     input[type=range]::-moz-range-thumb{width:12px;height:12px;border-radius:50%;background:#fff;border:3px solid #ffc540}
     .lead{margin:14px 0 0;color:#aec3d6;font-size:12.5px}
-    .section-title{margin:16px 2px 0;font-size:10px;letter-spacing:.18em;text-transform:uppercase;color:#9fb6cb}.section-title+.devices{margin-top:8px}
+    .section-title{margin:18px 2px 0;padding:9px 4px 4px;border-top:1px solid rgba(157,205,240,.26);font-size:11px;font-weight:700;letter-spacing:.16em;line-height:1.2;text-transform:uppercase;color:#d7eaff}.section-title+.devices{margin-top:7px}
     .pair{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:10px}
     .pair button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:42px;border-radius:14px;border:1px solid rgba(202,228,255,.18);background:rgba(8,29,48,.45);font-weight:600;color:#dae7f3}.pair button:hover:not(:disabled){border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:rgba(20,53,77,.6)}
     /* A door or a window: open in green, its shutters, blinds and curtains below it, each with its commands. */

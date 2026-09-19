@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.9.8 — retour au rendu de plan
+
+- Retour au rendu de plan 3D précédent : surfaces translucides, murs filaires complets et contours lisibles, au lieu de la maquette opaque introduite en 0.9.7.
+- Conservation de la vue multi-étages, de la sélection des pièces et des commandes d’équipements validées en 0.9.7.
+
 ## 0.9.7 — un plan 3D plus lisible
 
 - Le rendu fil de fer laisse place à une maquette bleu ardoise : sols et murs opaques, éclairage doux et contours supérieurs discrets. Les lignes cachées derrière les surfaces ne traversent plus les pièces.

@@ -31,9 +31,7 @@ function wallGeometry(points:readonly Point[],thickness:number,height:number){
     if(first)quad(at(inner,0),at(outer,0),at(outer,height),at(inner,height));
     else quad(at(outer,0),at(inner,0),at(inner,height),at(outer,height));
   }
-  const geometry=new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(position,3));
-  geometry.computeVertexNormals();
-  return geometry;
+  return new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(position,3));
 }
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
@@ -54,7 +52,7 @@ export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[]; openin
 export interface OpeningState { open:boolean; covers:Record<string,number|undefined> }
 export interface MediaState { on:boolean; playing:boolean }
 interface RoomParts { floor:string; surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
-interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BufferGeometry,T.MeshLambertMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
+interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
 /** Leaves turn about their hinge: `sign` is the way that swings them into the room. */
 interface Leaf { pivot:T.Group; sign:number }
 interface CoverParts { group:T.Group; style:CoverStyle; fill:T.MeshBasicMaterial; lines:T.LineBasicMaterial }
@@ -151,9 +149,6 @@ export class SpatialScene {
     canvas.addEventListener('pointermove',this.hoverCursor);
     canvas.addEventListener('pointerleave',this.leave);
     this.scene.add(this.group);
-    // Soft modelling light: solid walls read as a small architectural model, without costly shadow maps.
-    this.scene.add(new T.HemisphereLight(0xe3f3ff,0x17293d,2));
-    const light=new T.DirectionalLight(0xffffff,2.2);light.position.set(-8,18,10);this.scene.add(light);
     this.observer=new ResizeObserver(()=>{const {width,height}=this.host.getBoundingClientRect();if(!width||!height)return;this.renderer.setSize(width,height,false);this.camera.aspect=width/height;this.shift();this.render();});
     this.observer.observe(this.host);
   }
@@ -462,7 +457,7 @@ export class SpatialScene {
     const walls=this.walls;
     for(const room of floor.rooms) {
       const shape=new T.Shape(room.polygon.map(p=>new T.Vector2(p[0],-p[1])));
-      const surface=new T.Mesh(new T.ShapeGeometry(shape),new T.MeshBasicMaterial({color:0x27475d,side:T.DoubleSide}));
+      const surface=new T.Mesh(new T.ShapeGeometry(shape),new T.MeshBasicMaterial({color:0x3496d1,transparent:true,opacity:.22,side:T.DoubleSide,depthWrite:false}));
       surface.rotation.x=-Math.PI/2;surface.position.y=floor.elevation;surface.userData.roomId=room.id;surface.userData.floorId=floor.id;group.add(surface);
       const bounds=new T.Box2().setFromPoints(room.polygon.map(p=>new T.Vector2(...p)));
       const center=bounds.getCenter(new T.Vector2());
@@ -510,29 +505,42 @@ export class SpatialScene {
       this.rooms.set(room.id,{floor:floor.id,surface,glow,anchor:new T.Vector3(center.x,floor.elevation+.2,center.y),radius:Math.max(size.length()/2,1)});
       this.surfaces.push(surface);this.solids.push(surface);
     }
-    // Cutaway walls keep the real footprint, including curved and concave rooms. Only the upper edge is drawn:
-    // no bright vertical corners or bottom rails visible through neighbouring rooms.
+    // Each wall once (a shared partition is not drawn twice), a pane of glass lit along its top and at its foot. No box outline:
+    // the pieces of a wall, and walls meeting at a corner, join without seams. A curved wall is one piece following its curve,
+    // so it has no facets either. Exterior walls are thicker and brighter, and the corners of the house stand out with a vertical line.
+    const ends=new Map<string,{lines:T.LineBasicMaterial;at:[number,number];direction:number}[]>();
     for(const {a,b,rooms,path} of segments){
-      const exterior=rooms.length===1,height=walls?Math.min(floor.height,this.stacked?(exterior?.28:.045):.9):.035,thickness=exterior?.14:.09;
+      const exterior=rooms.length===1,height=walls?floor.height:.035,thickness=exterior?.14:.07;
       const points=[a,...path??[],b],curved=points.length>2;
-      const material=new T.MeshLambertMaterial({color:exterior?0x4c7088:0x3b586f,polygonOffset:true,polygonOffsetFactor:1,polygonOffsetUnits:1});
-      const lines=new T.LineBasicMaterial({color:0x9ac6df,transparent:true,opacity:exterior?.36:.18,depthWrite:false});
-      let mesh:T.Mesh<T.BufferGeometry,T.MeshLambertMaterial>;
+      const material=new T.MeshBasicMaterial({color:exterior?0x7cc4ff:0x6abaff,transparent:true,opacity:walls?(exterior?.1:.06):(exterior?.35:.2),depthWrite:false});
+      const lines=new T.LineBasicMaterial({color:exterior?0xb5e2ff:0x94d5ff,transparent:true,opacity:exterior?.95:.6});
+      let mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>;
       if(curved){
         mesh=new T.Mesh(wallGeometry(points,thickness,height),material);
         mesh.position.y=floor.elevation;
-        // Follow the curve along its top, not its chord.
+        // Along the middle of the wall, at its top and at its foot: the curve is drawn, not its chord.
         const rail=(y:number)=>points.flatMap((p,i)=>i?[points[i-1]![0],y,points[i-1]![1],p[0],y,p[1]]:[]);
-        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(rail(height),3)),lines));
+        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[...rail(height),...rail(0)]:rail(height),3)),lines));
       }else{
         const length=Math.hypot(b[0]-a[0],b[1]-a[1]),direction=Math.atan2(b[1]-a[1],b[0]-a[0]),x=length/2,y=height/2;
         mesh=new T.Mesh(new T.BoxGeometry(length,height,thickness),material);
         mesh.position.set((a[0]+b[0])/2,floor.elevation+height/2,(a[1]+b[1])/2);mesh.rotation.y=-direction;
         // In the wall's frame (x from a to b, y up), along its middle.
-        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([-x,y,0,x,y,0],3)),lines));
+        mesh.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute(walls?[-x,y,0,x,y,0,-x,-y,0,x,-y,0]:[-x,y,0,x,y,0],3)),lines));
       }
       mesh.userData.floorId=floor.id;
       group.add(mesh);this.wallParts.push({floor:floor.id,rooms,mesh,lines,exterior});this.solids.push(mesh);
+      if(exterior&&walls)for(const [end,near] of [[a,points[1]!],[b,points.at(-2)!]] as const){
+        const key=`${Math.round(end[0]*1000)},${Math.round(end[1]*1000)}`;
+        // Where the wall leaves this end, so that a smooth join between two pieces gets no line.
+        ends.set(key,[...ends.get(key)??[],{lines,at:[end[0],end[1]],direction:Math.atan2(near[1]-end[1],near[0]-end[0])}]);
+      }
+    }
+    for(const meeting of ends.values()){
+      const corner=meeting.find(w=>meeting.some(o=>Math.abs(Math.sin(o.direction-w.direction))>.17));
+      if(!corner)continue;
+      const [x,z]=corner.at,y=floor.elevation;
+      group.add(new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([x,y,z,x,y+floor.height,z],3)),corner.lines));
     }
   }
   /** A floor of a stack: where it stands, to fly into it and to label it. */
@@ -548,16 +556,16 @@ export class SpatialScene {
     this.styled=key;
     for(const [id,{floor,surface,glow}] of this.rooms){
       const state=ambient.get(id),on=!!state?.strength,picked=id===selected,muted=!!selected&&!picked||!!level&&floor!==level;
-      surface.material.color.set(picked?'#3e6881':muted?'#1b3042':'#27475d');
-      if(on)surface.material.color.lerp(new T.Color(state!.color),muted?.1:.22);
+      surface.material.color.set(on?state!.color:picked?'#8fd8ff':'#3496d1');
+      surface.material.opacity=on?(picked?.16:muted?.07:.1):picked?.3:muted?.1:.18;
       glow.material.uniforms.tint!.value.set(state?.color??'#ffd080');
       glow.material.uniforms.strength!.value=(state?.strength??0)*(muted?.65:1);
     }
     for(const {floor,rooms,mesh,lines,exterior} of this.wallParts){
       const picked=rooms.includes(selected),muted=!!selected&&!picked||!!level&&floor!==level;
-      mesh.material.color.setHex(picked?0x628ba2:muted?0x293f52:exterior?0x4c7088:0x3b586f);
-      lines.color.setHex(picked?0xbbe8ff:0x9ac6df);
-      lines.opacity=picked?.85:muted?.08:exterior?.36:this.stacked?.1:.18;
+      mesh.material.opacity=this.walls?(picked?.16:muted?.04:exterior?.1:.06):(picked?.55:muted?.15:exterior?.35:.2);
+      lines.color.setHex(picked?0xf1fbff:exterior?0xb5e2ff:0x94d5ff);
+      lines.opacity=picked?1:muted?.35:exterior?.95:.6;
     }
     for(const {room,frame} of this.openingParts.values()){
       const floor=this.rooms.get(room)?.floor,muted=!!selected&&room!==selected||!!level&&floor!==level;

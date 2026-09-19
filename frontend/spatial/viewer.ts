@@ -829,12 +829,11 @@ export class MPSpatialViewer extends LitElement {
     </div>`;
   }
   private overviewCard(floor: SpatialFloor) {
-    const area=floor.rooms.reduce((sum,r)=>sum+roomArea(r),0);
     const lights=floor.rooms.flatMap(r=>(r.entityIds??[]).filter(id=>id.startsWith('light.')));
     const lit=lights.filter(id=>this.hass?.states[id]?.state==='on'),on=lit.length;
     return html`<section class="card ${on?'lit':''}" aria-label=${tr('Vue d’ensemble du niveau')}>
       <header><span class="orb">${mpIcon('home',24)}</span><div class="title"><small>${tr('Vue d’ensemble')}</small><h3>${floor.name}</h3></div></header>
-      <div class="stats"><div class="stat"><small>${tr('Pièces')}</small><strong>${floor.rooms.length}</strong></div><div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(area,0)})}</strong></div>${lights.length?this.lightsStat(lights.length,on):nothing}${this.coversStat(floor.rooms)}</div>
+      <div class="stats"><div class="stat"><small>${tr('Pièces')}</small><strong>${floor.rooms.length}</strong></div>${lights.length?this.lightsStat(lights.length,on):nothing}${this.coversStat(floor.rooms)}</div>
       ${lights.length?html`<button class="master ${on?'on':''}" ?disabled=${this.busy||!on} @click=${()=>this.lights(floor.rooms,'turn_off',lit)}>${mpIcon('power',16)}<span>${on?tr('Éteindre tout le niveau'):tr('Tout est éteint')}</span></button>`:nothing}
       ${this.coverPair(floor.rooms,'floor')}
       <p class="lead">${tr('Touchez une pièce sur le plan ou dans la liste pour afficher ses équipements.')}</p>
@@ -842,11 +841,11 @@ export class MPSpatialViewer extends LitElement {
   }
   /** Every floor at a glance: the house in figures, a command for all its lights, then each floor from the top one down. */
   private houseCard(floors: SpatialFloor[]) {
-    const rooms=floors.flatMap(f=>f.rooms),area=rooms.reduce((sum,r)=>sum+roomArea(r),0),{all,on}=this.lightsOf(rooms);
+    const rooms=floors.flatMap(f=>f.rooms),{all,on}=this.lightsOf(rooms);
     const order=floors.map((floor,index)=>({floor,index})).sort((a,b)=>b.floor.elevation-a.floor.elevation||b.index-a.index).map(({floor})=>floor);
     return html`<section class="card ${on.length?'lit':''}" aria-label=${tr('Vue d’ensemble de la maison')}>
       <header><span class="orb">${mpIcon('layers',24)}</span><div class="title"><small>${tr('Vue d’ensemble')}</small><h3>${tr('Toute la maison')}</h3></div></header>
-      <div class="stats"><div class="stat"><small>${tr('Niveaux')}</small><strong>${floors.length}</strong></div><div class="stat"><small>${tr('Pièces')}</small><strong>${rooms.length}</strong></div><div class="stat"><small>${tr('Surface')}</small><strong>${tr('{n} m²',{n:this.format(area,0)})}</strong></div>${all.length?this.lightsStat(all.length,on.length):nothing}${this.coversStat(rooms)}</div>
+      <div class="stats"><div class="stat"><small>${tr('Niveaux')}</small><strong>${floors.length}</strong></div><div class="stat"><small>${tr('Pièces')}</small><strong>${rooms.length}</strong></div>${all.length?this.lightsStat(all.length,on.length):nothing}${this.coversStat(rooms)}</div>
       ${all.length?html`<button class="master ${on.length?'on':''}" ?disabled=${this.busy||!on.length} @click=${()=>this.lights(rooms,'turn_off',on)}>${mpIcon('power',16)}<span>${on.length?tr('Éteindre toute la maison'):tr('Tout est éteint')}</span></button>`:nothing}
       ${this.coverPair(rooms,'house')}
       <ul class="levels" aria-label=${tr('Niveaux')}>${order.map(f=>this.levelRow(f))}</ul>

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.9.10 — accueil allégé
+
+- **Accueil** : les surfaces en m² ne sont plus affichées dans les résumés du plan 3D ; les informations de surface restent disponibles dans les outils de conception du plan.
+
 ## 0.9.9 — bundle compilé avec le rendu restauré
 
 - Le bundle frontend livré avec l’intégration est maintenant recompilé avec le rendu de plan restauré, afin que la mise à jour HACS affiche réellement les surfaces translucides et les contours précédents.

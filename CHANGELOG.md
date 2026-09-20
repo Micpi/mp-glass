@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.6 — Climat immédiatement lisible
+
+### Corrigé
+
+- **Carte Climat** : la ligne du thermostat utilise maintenant l’action réelle (`heating`, `cooling`, `fan` ou `drying`) pour choisir son apparence, au lieu du seul mode sélectionné.
+- **Légende du plan** : le mode Climat indique explicitement les couleurs de chauffage, climatisation, ventilation et déshumidification en cours.
+- **Pièce sur le plan** : le badge de la Cuisine de démonstration conserve la température tout en signalant la climatisation active.
+
 ## 0.11.5 — Halo HVAC dans la pièce
 
 ### Corrigé

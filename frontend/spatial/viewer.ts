@@ -23,7 +23,7 @@ const MODES:{mode:PlanMode;label:MessageKey;icon:MPIconName;offered?:(room:Spati
 ];
 /** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights (shown through `trText`). */
 const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
-  climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
+  climate:[['#ff816b','Chauffage en cours'],['#69b7ff','Climatisation en cours'],['#71d7c0','Ventilation en cours'],['#c3a6ff','Déshumidification en cours'],['#ffc574','Température mesurée']],
   openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
   media:[[PLAN_COLORS.media,'En lecture'],[`${PLAN_COLORS.media}66`,'Allumé']],
 };
@@ -641,7 +641,7 @@ export class MPSpatialViewer extends LitElement {
       }
       case 'climate': {
         const current=numeric(state!.attributes.current_temperature),target=numeric(state!.attributes.temperature);
-        return {...base,on:state!.state!=='off',mode:state!.state,numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)})};
+        return {...base,on:state!.state!=='off',mode:climateActionMode(state)??state!.state,numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)})};
       }
       case 'media': {
         const label=stateName(MEDIA_STATES,state!.state),playing=nowPlaying(state);

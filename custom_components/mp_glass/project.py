@@ -33,7 +33,7 @@ def default_project(name="MP Nexus"):
             "density": "comfortable", "fontStyle": "elegant", "iconStyle": "tile",
             "cardStyle": "standard", "cardColumns": 4, "cardGap": 12,
             "maxWidth": 1560, "heroHeight": 455, "motion": True,
-            "showHero": True, "showClock": True, "showOverview": True,
+            "showHero": True, "showClock": True, "showOverview": False,
             "showFooter": True, "showSettingsShortcut": True,
             "showCardDetails": True, "showBrightness": True,
             "eyebrow": "Une maison plus simple à vivre",

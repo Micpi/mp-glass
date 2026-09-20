@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.11.2 — Accueil allégé
+
+### Modifié
+
+- **Accueil** : suppression du résumé redondant de la maison, afin de laisser davantage de place aux équipements et aux actions utiles.
+
 ## 0.11.1 — Studio responsive et aligné
 
 ### Corrigé

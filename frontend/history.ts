@@ -95,19 +95,20 @@ const PERIODS = [12, 24, 24 * 7] as const;
 export class MPGlassHistory extends LitElement {
   static properties = { hass:{attribute:false}, entity:{attribute:false}, hours:{state:true}, rows:{state:true}, status:{state:true}, cursor:{state:true} };
   static styles = css`
-    :host{display:block;--line:rgba(206,230,255,.18)}
+    :host{display:block;--line:rgba(206,230,255,.12)}
     *{box-sizing:border-box}
-    .head{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-    .head p{margin:0;font-size:11px;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#bed4e8}
-    .periods{display:flex;gap:4px;margin-left:auto;padding:3px;border-radius:12px;border:1px solid var(--line);background:rgba(4,20,35,.4)}
-    .periods button{min-height:28px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:#bed4e8;font:inherit;font-size:11px;cursor:pointer;transition:background .18s ease,color .18s ease}
-    .periods button[aria-pressed=true]{color:#fff;background:color-mix(in srgb,var(--accent,#69b7ff) 32%,transparent)}
+    .head{display:flex;align-items:center;gap:10px;margin-bottom:14px}
+    .head p{margin:0;font-size:13px;font-weight:600;color:#dbe7f2}
+    .periods{display:flex;gap:2px;margin-left:auto;padding:3px;border-radius:10px;border:1px solid var(--line);background:rgba(0,8,18,.2)}
+    .periods button{min-height:30px;min-width:40px;padding:0 10px;border:0;border-radius:7px;background:transparent;color:#9eb1c3;font:inherit;font-size:11px;font-weight:500;cursor:pointer;transition:background .18s ease,color .18s ease}
+    .periods button[aria-pressed=true]{color:#eef6ff;background:rgba(206,230,255,.12);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+    .periods button:hover{color:#fff}
     .periods button:focus-visible{outline:2px solid var(--accent,#69b7ff);outline-offset:2px}
-    .plot{position:relative;height:118px;border-radius:16px;border:1px solid var(--line);background:linear-gradient(180deg,rgba(255,255,255,.05),rgba(255,255,255,.015));overflow:hidden;touch-action:pan-y}
-    .plot.band{height:64px}
+    .plot{position:relative;height:124px;border-radius:12px;border:1px solid var(--line);background:rgba(206,230,255,.02);overflow:hidden;touch-action:pan-y}
+    .plot.band{height:24px;border:0;border-radius:7px;background:rgba(206,230,255,.025)}
     svg{display:block;width:100%;height:100%}
     .grid{stroke:rgba(206,230,255,.12);stroke-width:1;vector-effect:non-scaling-stroke}
-    .curve{fill:none;stroke:var(--accent,#69b7ff);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke;filter:drop-shadow(0 0 6px color-mix(in srgb,var(--accent,#69b7ff) 45%,transparent))}
+    .curve{fill:none;stroke:var(--accent,#69b7ff);stroke-width:2;stroke-linecap:round;stroke-linejoin:round;vector-effect:non-scaling-stroke}
     .curve.target{stroke:#ffc540;stroke-dasharray:3 3;filter:none;opacity:.85}
     .area{fill:url(#mp-history-fill);stroke:none}
     .cursor-line{stroke:#ffffff88;stroke-width:1;vector-effect:non-scaling-stroke}
@@ -116,17 +117,17 @@ export class MPGlassHistory extends LitElement {
     .bounds b{display:block;color:#cfe0ef;font-weight:600}
     .read{position:absolute;top:8px;left:10px;font-size:11px;color:#eef6ff;text-shadow:0 1px 5px rgba(2,10,20,.95);pointer-events:none}
     .read small{display:block;color:#8fa5b9;font-size:10px}
-    .band-row{display:flex;height:100%;width:100%;padding:14px 10px}
+    .band-row{display:flex;height:100%;width:100%}
     .band-row>span{height:100%;min-width:1px}
     .band-row>span:first-child{border-radius:7px 0 0 7px}
     .band-row>span:last-child{border-radius:0 7px 7px 0}
     .band-row>span:only-child{border-radius:7px}
-    .axis{display:flex;justify-content:space-between;margin-top:6px;font-size:10px;color:#8fa5b9}
-    .legend{display:flex;flex-wrap:wrap;gap:6px 14px;margin-top:9px;font-size:11px;color:#cfe0ef}
+    .axis{display:flex;justify-content:space-between;gap:12px;margin-top:10px;font-size:10px;color:#8fa5b9;font-variant-numeric:tabular-nums}
+    .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:12px;font-size:11px;color:#c8d6e3}
     .legend span{display:inline-flex;align-items:center;gap:6px}
     .legend i{width:9px;height:9px;border-radius:3px;flex:0 0 auto}
     .legend small{color:#8fa5b9}
-    .note{margin:0;padding:18px 12px;text-align:center;font-size:12px;color:#8fa5b9}
+    .note{margin:0;padding:18px 16px;border-radius:12px;background:rgba(206,230,255,.025);text-align:center;font-size:12px;line-height:1.6;color:#9eb1c3}
     .note .mp-icon{display:block;margin:0 auto 8px;color:#6f8599}
     @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;

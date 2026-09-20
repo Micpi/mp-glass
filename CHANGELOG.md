@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.3 — Des fenêtres d’équipement plus harmonieuses
+
+### Modifié
+
+- **Présentation commune** : typographie sans empattement, titres et valeurs mieux hiérarchisés, marges régulières, bordures plus fines et couleurs plus sobres dans les fenêtres des lumières, thermostats, volets, lecteurs, capteurs et interrupteurs.
+- **Commandes regroupées** : luminosité horizontale plus compacte avec le bouton d’allumage à côté de son libellé ; température de couleur, palette et inclinaison des lames explicitement nommées. Le cadran, les boutons et les sélecteurs partagent les mêmes proportions et la même typographie.
+- **Couleurs par équipement** : l’icône et l’indicateur d’état suivent l’activité de l’appareil ; les commandes du volet et du lecteur reprennent leur accent, et le thermostat utilise la couleur de son mode. Un lecteur sans pochette affiche une icône d’équipement.
+- **Historique** : périodes présentées dans un sélecteur discret, bande d’états affinée et courbes sans halo. Les détails techniques disposent d’un chevron qui indique leur ouverture ; l’accès aux réglages Home Assistant devient un pied de fenêtre plus discret.
+- **Petits écrans** : seul le contenu central défile, avec le titre, la fermeture et l’accès aux réglages toujours visibles. Les noms et attributs longs passent à la ligne et les modes du thermostat restent accessibles par défilement horizontal.
+
+### Corrigé
+
+- **Luminosité sur mobile** : une règle des barres verticales rétablissait deux colonnes sous 430 px. Le contrôle des lumières utilise désormais sa propre disposition, toujours horizontale et sur toute la largeur disponible.
+
+### Vérifié
+
+- **Navigateur** : commandes des appareils, historique, réglage horizontal sur téléphone et maintien des actions accessibles sur un écran de 320 × 640 px, pour six familles d’équipements avec un nom long et les détails ouverts.
+
 ## 0.13.2 — Luminosité horizontale dans la fenêtre des lumières
 
 ### Modifié

@@ -78,24 +78,25 @@ abstract class MPGlassControl extends LitElement {
 export class MPGlassBar extends MPGlassControl {
   static properties = { value:{type:Number}, min:{type:Number}, max:{type:Number}, step:{type:Number}, label:{type:String}, unit:{type:String}, icon:{type:String}, tone:{type:String,reflect:true}, horizontal:{type:Boolean,reflect:true}, disabled:{type:Boolean,reflect:true}, draft:{state:true} };
   static styles = css`
-    :host{display:block;--tone:var(--mp-accent,#69b7ff);--face:#0a2338}
-    :host([tone=warm]){--tone:#ffc540}
+    :host{display:block;--tone:var(--mp-accent,#69b7ff);--face:#132338;font-family:var(--control-font,Inter,ui-sans-serif,system-ui,sans-serif)}
+    *{box-sizing:border-box}
+    :host([tone=warm]){--tone:var(--warm,#f5c66b)}
     :host([tone=cool]){--tone:var(--mp-accent,#69b7ff)}
     :host([disabled]){opacity:.5}
-    .bar{position:relative;display:block;width:100%;height:100%;min-height:180px;border-radius:26px;border:1px solid rgba(206,230,255,.18);background:rgba(4,20,35,.55);overflow:hidden;cursor:ns-resize;touch-action:none;user-select:none;-webkit-user-select:none}
-    :host([horizontal]) .bar{min-height:0;cursor:ew-resize}
+    .bar{position:relative;display:block;width:100%;height:100%;min-height:180px;border-radius:18px;border:1px solid rgba(206,230,255,.14);background:rgba(0,8,18,.24);overflow:hidden;cursor:ns-resize;touch-action:none;user-select:none;-webkit-user-select:none}
+    :host([horizontal]) .bar{min-height:0;border-radius:12px;cursor:ew-resize}
     :host([disabled]) .bar{cursor:default}
     .bar:focus-visible{outline:3px solid var(--tone);outline-offset:3px}
-    .fill{position:absolute;inset:auto 0 0;background:linear-gradient(180deg,color-mix(in srgb,var(--tone) 92%,white),var(--tone));box-shadow:0 -6px 26px color-mix(in srgb,var(--tone) 45%,transparent);transition:height .18s ease}
-    :host([horizontal]) .fill{inset:0 auto 0 0;background:linear-gradient(90deg,color-mix(in srgb,var(--tone) 92%,white),var(--tone));box-shadow:6px 0 26px color-mix(in srgb,var(--tone) 45%,transparent);transition:width .18s ease}
+    .fill{position:absolute;inset:auto 0 0;background:linear-gradient(180deg,color-mix(in srgb,var(--tone) 84%,white),var(--tone));transition:height .18s ease}
+    :host([horizontal]) .fill{inset:0 auto 0 0;background:linear-gradient(90deg,color-mix(in srgb,var(--tone) 78%,white),var(--tone));transition:width .18s ease}
     .face{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:16px 10px;pointer-events:none}
-    :host([horizontal]) .face{flex-direction:row;padding:10px 20px}
+    :host([horizontal]) .face{flex-direction:row;padding:10px 16px}
     .face .mp-icon{color:#eaf4ff;filter:drop-shadow(0 1px 3px rgba(0,8,18,.6))}
-    .face b{font:19px/1 var(--mp-display-font,Georgia,serif);font-weight:400;color:#fff;text-shadow:0 1px 6px rgba(0,8,18,.7)}
+    .face b{font-size:18px;line-height:1;font-weight:600;font-variant-numeric:tabular-nums;color:#fff;text-shadow:0 1px 6px rgba(0,8,18,.7)}
     /* Over the filled part, ink instead of white: the reading stays legible on a bright bar. */
     .face.ink b{color:var(--face);text-shadow:none}
     .face.ink-top .mp-icon{color:var(--face);filter:none}
-    @media (prefers-reduced-motion:reduce){.fill{transition:none}}
+    @media (prefers-reduced-motion:reduce){.fill,:host([horizontal]) .fill{transition:none}}
   `;
   unit = '%';
   icon: MPIconName = 'sun';
@@ -137,19 +138,20 @@ export class MPGlassBar extends MPGlassControl {
 export class MPGlassDial extends MPGlassControl {
   static properties = { value:{type:Number}, min:{type:Number}, max:{type:Number}, step:{type:Number}, label:{type:String}, unit:{type:String}, tone:{type:String}, caption:{type:String}, reading:{type:String}, disabled:{type:Boolean,reflect:true}, draft:{state:true} };
   static styles = css`
-    :host{display:block}
+    :host{display:block;font-family:var(--control-font,Inter,ui-sans-serif,system-ui,sans-serif)}
     :host([disabled]){opacity:.55}
-    .dial{position:relative;width:min(246px,100%);margin:0 auto;aspect-ratio:1;touch-action:none;user-select:none;-webkit-user-select:none}
+    .dial{position:relative;width:min(214px,100%);margin:0 auto;aspect-ratio:1;touch-action:none;user-select:none;-webkit-user-select:none}
     svg{display:block;width:100%;height:100%;overflow:visible;cursor:grab}
     :host([disabled]) svg{cursor:default}
     svg:focus-visible{outline:3px solid var(--tone,#69b7ff);outline-offset:6px;border-radius:50%}
-    .track{fill:none;stroke:rgba(206,230,255,.14);stroke-width:15;stroke-linecap:round}
-    .live{fill:none;stroke:var(--tone,#69b7ff);stroke-width:15;stroke-linecap:round;filter:drop-shadow(0 0 10px color-mix(in srgb,var(--tone,#69b7ff) 55%,transparent))}
-    .knob{fill:#fff;stroke:var(--tone,#69b7ff);stroke-width:5}
+    .track{fill:none;stroke:rgba(206,230,255,.1);stroke-width:10;stroke-linecap:round}
+    .live{fill:none;stroke:var(--tone,#69b7ff);stroke-width:10;stroke-linecap:round}
+    .knob{fill:#fff;stroke:var(--tone,#69b7ff);stroke-width:4}
     .middle{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;pointer-events:none;text-align:center}
-    .middle b{font:52px/1 var(--mp-display-font,Georgia,serif);font-weight:400;color:#fff}
-    .middle small{font-size:11px;letter-spacing:.14em;text-transform:uppercase;color:#a9bdd0}
-    .middle em{font-style:normal;font-size:12px;color:#cfe0ef}
+    .middle b{font-size:44px;line-height:1.1;font-weight:500;letter-spacing:-.045em;font-variant-numeric:tabular-nums;color:#f4f8fc}
+    .middle small{font-size:11px;letter-spacing:.04em;color:#9eb1c3}
+    .middle em{margin-top:3px;font-style:normal;font-size:11px;color:#c8d6e3}
+    @media (max-width:430px){.middle b{font-size:36px}.middle em{font-size:10px}}
     @media (prefers-reduced-motion:reduce){*{transition:none!important}}
   `;
   unit = '°';

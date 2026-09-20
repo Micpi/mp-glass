@@ -107,7 +107,48 @@ test('the bar sets the brightness where it is released, and the keyboard moves i
   await bar.press('Home');
   expect(await calls(page)).toHaveLength(3);
   expect(await calls(page)).toContainEqual({ domain: 'light', service: 'turn_off', data: { entity_id: 'light.circuit_0' } });
+  // A narrow phone keeps the full-width horizontal control and still maps a touch from left to right.
+  await page.setViewportSize({ width: 320, height: 640 });
+  const mobile = (await bar.boundingBox())!;
+  expect(mobile.width).toBeGreaterThan(mobile.height * 3);
+  await bar.click({ position: { x: mobile.width * .25, y: mobile.height / 2 } });
+  const mobileValue = Number(await bar.getAttribute('aria-valuenow'));
+  expect(mobileValue).toBeGreaterThan(20);
+  expect(mobileValue).toBeLessThan(30);
+  expect((await calls(page)).at(-1)).toEqual({ domain: 'light', service: 'turn_on', data: { entity_id: 'light.circuit_0', brightness_pct: mobileValue } });
 });
+
+for (const entity of ['light.circuit_0', 'climate.cuisine', 'cover.cuisine_store', 'media_player.salon_tv', 'sensor.salon_temperature', 'light.circuit_1']) {
+  test(`${entity}: a short mobile screen keeps close and settings reachable while details scroll`, async ({ page }) => {
+    await page.setViewportSize({ width: 320, height: 640 });
+    await page.goto('/?spatial');
+    await page.waitForFunction(() => 'demo' in window && customElements.get('mp-glass-detail'));
+    await page.evaluate(entity => {
+      const { hass } = (window as unknown as { demo: { hass: import('../../frontend/ha/client').Hass } }).demo;
+      const state = hass.states[entity]!;
+      const detail = document.createElement('mp-glass-detail') as import('../../frontend/detail').MPGlassDetail;
+      detail.hass = { ...hass, states: { ...hass.states, [entity]: { ...state, attributes: {
+        ...state.attributes, friendly_name: 'Sous-sol · Équipement de la grande pièce principale',
+        diagnostic_reference: 'reference_'.repeat(30),
+      } } } };
+      detail.entity = entity;
+      document.body.append(detail);
+    }, entity);
+    const dialog = page.getByRole('dialog');
+    const close = dialog.getByRole('button', { name: 'Fermer', exact: true });
+    const settings = dialog.getByRole('button', { name: 'Réglages Home Assistant' });
+    await expect(close).toBeInViewport({ ratio: 1 });
+    await expect(settings).toBeInViewport({ ratio: 1 });
+    await dialog.locator('summary').click();
+    await dialog.locator('dd').last().scrollIntoViewIfNeeded();
+    await expect(close).toBeInViewport({ ratio: 1 });
+    await expect(settings).toBeInViewport({ ratio: 1 });
+    const overflow = await dialog.locator('.body').evaluate(body => body.scrollWidth - body.clientWidth);
+    expect(overflow).toBeLessThanOrEqual(1);
+    await close.click();
+    await expect(dialog).not.toBeVisible();
+  });
+}
 
 test('the dial turns the setpoint of a thermostat', async ({ page }) => {
   await page.goto('/?spatial');

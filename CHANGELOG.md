@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.13.1 — Modes du climat, ventilation et programme
+
+### Modifié
+
+- **Modes du thermostat sur une seule ligne** : les cinq modes tiennent dans la largeur normale du panneau. Sur petit écran, la rangée défile horizontalement pour garder chaque commande accessible.
+
+### Ajouté
+
+- **Vitesse de ventilation** : un sélecteur affiche les vitesses déclarées par le thermostat dans `fan_modes` et appelle `climate.set_fan_mode` sur l’équipement affiché.
+- **Programme** : un bouton active le préréglage `schedule`, `program` ou `programme` lorsqu’il est proposé par le thermostat. Il reflète le préréglage actif et utilise `climate.set_preset_mode` ; les autres préréglages restent accessibles. Ce bouton active le programme existant et ne crée pas de planning horaire.
+- **Vérifications navigateur** : alignement des modes sur ordinateur et mobile, absence des commandes non prises en charge et vérification des services de ventilation et de programmation.
+- **Règle de livraison du projet** : toute modification doit se terminer par une release GitHub/HACS publiée et vérifiée, sauf demande explicite de travailler uniquement en local.
+
 ## 0.13.0 — L’historique, et des commandes qui se touchent
 
 ### Ajouté

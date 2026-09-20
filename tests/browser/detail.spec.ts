@@ -60,6 +60,8 @@ test('the plan opens the window of a device, with the commands that device decla
   const window_ = page.getByRole('dialog');
   await expect(window_.getByRole('heading', { name: 'Chambre · Radiateur' })).toBeVisible();
   await expect(window_.getByText('mesurée 19,5 ° · consigne 20 °')).toBeVisible();
+  await expect(window_.getByRole('combobox', { name: 'Vitesse de ventilation' })).toHaveCount(0);
+  await expect(window_.getByRole('button', { name: 'Programme' })).toHaveCount(0);
   await window_.getByRole('button', { name: 'Monter la consigne' }).click();
   await window_.getByRole('button', { name: 'Arrêt' }).click();
   expect(await calls(page)).toEqual([
@@ -117,6 +119,31 @@ test('the dial turns the setpoint of a thermostat', async ({ page }) => {
     { domain: 'climate', service: 'set_temperature', data: { entity_id: 'climate.chambre', temperature: 20.5 } },
     { domain: 'climate', service: 'set_temperature', data: { entity_id: 'climate.chambre', temperature: 21 } },
   ]);
+});
+
+test('climate modes stay on one row, and supported fan and schedule presets command the thermostat', async ({ page }) => {
+  await page.goto('/?spatial');
+  await page.locator('.strip .chip').filter({ hasText: 'Cuisine' }).click();
+  await page.getByRole('button', { name: 'Détails Climatisation' }).click();
+  const window_ = page.getByRole('dialog');
+  const modeButtons = window_.getByRole('group', { name: 'Mode' }).getByRole('button');
+  await expect(modeButtons).toHaveCount(5);
+  const desktopRows = await modeButtons.evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
+  expect(new Set(desktopRows).size).toBe(1);
+  const desktopOverflow = await window_.getByRole('group', { name: 'Mode' }).evaluate(group => group.scrollWidth - group.clientWidth);
+  expect(desktopOverflow).toBeLessThanOrEqual(1);
+
+  await window_.getByRole('combobox', { name: 'Vitesse de ventilation' }).selectOption('high');
+  await window_.getByRole('button', { name: 'Programme' }).click();
+  await expect(window_.getByRole('button', { name: 'Programme' })).toHaveAttribute('aria-pressed', 'true');
+  expect(await calls(page)).toEqual([
+    { domain: 'climate', service: 'set_fan_mode', data: { entity_id: 'climate.cuisine', fan_mode: 'high' } },
+    { domain: 'climate', service: 'set_preset_mode', data: { entity_id: 'climate.cuisine', preset_mode: 'schedule' } },
+  ]);
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  const mobileRows = await modeButtons.evaluateAll(buttons => buttons.map(button => Math.round(button.getBoundingClientRect().top)));
+  expect(new Set(mobileRows).size).toBe(1);
 });
 
 test('the history is drawn from what the recorder kept, over the period asked', async ({ page }) => {

@@ -54,6 +54,8 @@ export const DETAIL = {
   'Monter la consigne': ['Raise the setpoint', 'Повысить уставку'],
   'Mode': ['Mode', 'Режим'],
   'Préréglage': ['Preset', 'Предустановка'],
+  'Vitesse de ventilation': ['Fan speed', 'Скорость вентилятора'],
+  'Programme': ['Schedule', 'Расписание'],
   'Vitesse': ['Speed', 'Скорость'],
   'Volume': ['Volume', 'Громкость'],
   'Pause': ['Pause', 'Пауза'],

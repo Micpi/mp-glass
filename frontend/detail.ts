@@ -19,6 +19,8 @@ const COLORS: [key: 'Blanc chaud'|'Blanc froid'|'Ambre'|'Rouge'|'Vert'|'Bleu'|'V
 ];
 /** The colour of the arc of a thermostat: what it is doing, as the plan and the room cards show it. */
 const HVAC_TONES: Record<string,string> = { heat:'#ff9a5c', cool:'#5cd8ff', dry:'#b08cff', fan_only:'#71d7c0', heat_cool:'#ffd45c', auto:'#ffd45c' };
+/** A programmed schedule is an optional climate preset, never an invented HVAC mode. */
+const isProgramPreset = (value:string) => /^(schedule|program|programme)$/i.test(value.trim());
 const hex = ([r,g,b]:[number,number,number]) => `#${[r,g,b].map(v=>Math.max(0,Math.min(255,Math.round(v))).toString(16).padStart(2,'0')).join('')}`;
 const fromHex = (value:string):[number,number,number]|undefined => {
   const match=/^#?([0-9a-f]{6})$/i.exec(value.trim());
@@ -75,7 +77,11 @@ export class MPGlassDetail extends LitElement {
     .stack{display:grid;grid-template-rows:repeat(3,1fr);gap:8px;height:100%}
     .stack button{height:100%;font-size:13px}
     .stack button b{font:17px/1 system-ui,sans-serif}
-    .modes{display:flex;flex-wrap:wrap;gap:8px}
+    .modes{display:flex;flex-wrap:nowrap;gap:6px;overflow-x:auto;scrollbar-width:thin;scrollbar-color:rgba(206,230,255,.28) transparent}
+    .modes button{flex:1 0 auto;min-width:0;padding:0 6px;gap:4px;font-size:11.5px;white-space:nowrap}
+    .climate-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));align-items:end;gap:10px}
+    .program{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:14px;border:1px solid var(--line);background:rgba(8,29,48,.45);font-weight:600}
+    .program[aria-pressed=true]{color:#fff;background:color-mix(in srgb,var(--accent) 34%,transparent);border-color:color-mix(in srgb,var(--accent) 58%,white)}
     .modes button[aria-pressed=true]{color:#fff;background:color-mix(in srgb,var(--accent) 34%,transparent);border-color:color-mix(in srgb,var(--accent) 58%,white)}
     .modes button[aria-pressed=true][data-mode=heat]{background:color-mix(in srgb,#ff9a5c 34%,transparent);border-color:#ffb98c}
     .modes button[aria-pressed=true][data-mode=cool]{background:color-mix(in srgb,#5cd8ff 30%,transparent);border-color:#9be8ff}
@@ -224,7 +230,7 @@ export class MPGlassDetail extends LitElement {
     </div>${slats}`;
   }
 
-  /** The setpoint on the dial, the modes the thermostat declares, and its comfort presets. */
+  /** The setpoint, HVAC and fan modes, and presets the thermostat declares. */
   private climateControls(state:HAState) {
     const target=this.number(state.attributes.temperature),step=this.number(state.attributes.target_temp_step)??.5;
     const min=this.number(state.attributes.min_temp)??7,max=this.number(state.attributes.max_temp)??35;
@@ -232,6 +238,10 @@ export class MPGlassDetail extends LitElement {
     const modes=Array.isArray(state.attributes.hvac_modes)?state.attributes.hvac_modes.map(String):[];
     const presets=Array.isArray(state.attributes.preset_modes)?state.attributes.preset_modes.filter((p):p is string=>typeof p==='string'):[];
     const preset=String(state.attributes.preset_mode??'');
+    const fanModes=Array.isArray(state.attributes.fan_modes)?state.attributes.fan_modes.filter((mode):mode is string=>typeof mode==='string'):[];
+    const fanMode=String(state.attributes.fan_mode??'');
+    const program=presets.find(isProgramPreset);
+    const otherPresets=presets.filter(value=>value!==program);
     const tone=HVAC_TONES[climateActionMode(state)??state.state]??'var(--accent)';
     const set=(next:number)=>this.call('set_temperature',{temperature:Math.min(max,Math.max(min,next))});
     return html`
@@ -243,10 +253,17 @@ export class MPGlassDetail extends LitElement {
         <button aria-label=${tr('Monter la consigne')} ?disabled=${this.busy||target>=max} @click=${()=>set(target+step)}>${mpIcon('plus',20)}</button>
       </div>`}
       ${modes.length?html`<div class="modes" role="group" aria-label=${tr('Mode')}>${modes.map(mode=>html`<button data-mode=${mode} aria-pressed=${String(mode===state.state)} ?disabled=${this.busy} @click=${()=>this.call('set_hvac_mode',{hvac_mode:mode})}>${mpIcon(mode==='off'?'power':hvacIcon(mode),16)}${stateName(HVAC,mode)}</button>`)}</div>`:nothing}
-      ${presets.length?html`<label class="pick">${tr('Préréglage')}<select aria-label=${tr('Préréglage')} ?disabled=${this.busy} @change=${(e:Event)=>this.call('set_preset_mode',{preset_mode:(e.target as HTMLSelectElement).value})}>
-        ${presets.includes(preset)?nothing:html`<option value="" selected disabled>—</option>`}
-        ${presets.map(value=>html`<option value=${value} .selected=${value===preset}>${value}</option>`)}
-      </select></label>`:nothing}`;
+      ${fanModes.length||otherPresets.length||program?html`<div class="climate-options">
+        ${fanModes.length?html`<label class="pick">${tr('Vitesse de ventilation')}<select aria-label=${tr('Vitesse de ventilation')} ?disabled=${this.busy} @change=${(e:Event)=>this.call('set_fan_mode',{fan_mode:(e.target as HTMLSelectElement).value})}>
+          ${fanModes.includes(fanMode)?nothing:html`<option value="" selected disabled>—</option>`}
+          ${fanModes.map(value=>html`<option value=${value} .selected=${value===fanMode}>${value}</option>`)}
+        </select></label>`:nothing}
+        ${otherPresets.length?html`<label class="pick">${tr('Préréglage')}<select aria-label=${tr('Préréglage')} ?disabled=${this.busy} @change=${(e:Event)=>this.call('set_preset_mode',{preset_mode:(e.target as HTMLSelectElement).value})}>
+          ${otherPresets.includes(preset)?nothing:html`<option value="" selected disabled>—</option>`}
+          ${otherPresets.map(value=>html`<option value=${value} .selected=${value===preset}>${value}</option>`)}
+        </select></label>`:nothing}
+        ${program?html`<button class="program" aria-pressed=${String(preset===program)} ?disabled=${this.busy} @click=${()=>this.call('set_preset_mode',{preset_mode:program})}>${mpIcon('tune',16)}${tr('Programme')}</button>`:nothing}
+      </div>`:nothing}`;
   }
 
   /** What is playing, then previous, play or pause and next, the volume and its mute, and the source. */

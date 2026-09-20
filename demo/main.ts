@@ -63,6 +63,7 @@ function commanded(domain:string,service:string,data:Record<string,unknown>,old:
   if(domain==='climate'){
     if(service==='set_temperature')attributes.temperature=Number(data.temperature);
     if(service==='set_preset_mode')attributes.preset_mode=String(data.preset_mode);
+    if(service==='set_fan_mode')attributes.fan_mode=String(data.fan_mode);
     if(service==='set_hvac_mode')return {...old,state:String(data.hvac_mode),attributes:{...attributes,hvac_action:({heat:'heating',cool:'cooling',dry:'drying',fan_only:'fan'} as Record<string,string>)[String(data.hvac_mode)]??'idle'}};
     return {...old,attributes};
   }
@@ -110,7 +111,7 @@ if(spatial) hass.states={...hass.states,
   'sensor.salon_temperature':{entity_id:'sensor.salon_temperature',state:'21.5',last_changed:new Date(Date.now()-4*60_000).toISOString(),attributes:{friendly_name:'Salon · Température',device_class:'temperature',unit_of_measurement:'°C'}},
   'sensor.salon_humidity':{entity_id:'sensor.salon_humidity',state:'46',last_changed:new Date(Date.now()-18*60_000).toISOString(),attributes:{friendly_name:'Salon · Humidité',device_class:'humidity',unit_of_measurement:'%'}},
   'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20,hvac_action:'heating',hvac_modes:['off','heat','auto'],min_temp:7,max_temp:30,target_temp_step:.5,preset_modes:['comfort','eco'],preset_mode:'comfort'}},
-  'climate.cuisine':{entity_id:'climate.cuisine',state:'cool',attributes:{friendly_name:'Cuisine · Climatisation',current_temperature:26.8,temperature:24,hvac_action:'cooling',hvac_modes:['off','cool','dry','fan_only'],min_temp:16,max_temp:32,target_temp_step:1}},
+  'climate.cuisine':{entity_id:'climate.cuisine',state:'cool',attributes:{friendly_name:'Cuisine · Climatisation',current_temperature:26.8,temperature:24,hvac_action:'cooling',hvac_modes:['off','heat','cool','auto','fan_only'],fan_modes:['auto','low','medium','high'],fan_mode:'medium',preset_modes:['none','eco','schedule'],preset_mode:'none',min_temp:16,max_temp:32,target_temp_step:1}},
   'binary_sensor.chambre_fenetre':{entity_id:'binary_sensor.chambre_fenetre',state:'off',attributes:{friendly_name:'Chambre · Fenêtre',device_class:'window'}},
   'cover.salon_rideau':{entity_id:'cover.salon_rideau',state:'open',attributes:{friendly_name:'Salon · Rideau',device_class:'curtain',current_position:35,supported_features:15}},
   'cover.cuisine_store':{entity_id:'cover.cuisine_store',state:'open',attributes:{friendly_name:'Cuisine · Store',device_class:'blind',current_position:100,current_tilt_position:60,supported_features:15|128}},

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.4 — Action HVAC réelle
+
+### Corrigé
+
+- **État du climat dans les pièces** : le plan utilise désormais l’action réelle de Home Assistant (`heating`, `cooling`, `fan` ou `drying`) au lieu de confondre le mode sélectionné avec un équipement effectivement en fonctionnement.
+- **Fixture et validation** : le chauffage de démonstration expose son action réelle afin de vérifier le badge visible sur le plan.
+
 ## 0.11.3 — Climat visible d’un coup d’œil
 
 ### Ajouté

@@ -86,6 +86,10 @@ const writeViews=(views:Record<string,PlanView>)=>{
   catch{/* Storage blocked: the view holds for this page only. */}
 };
 const numeric=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
+const climateActionMode=(state?:HAState)=>{
+  const action=String(state?.attributes.hvac_action??'');
+  return ({heating:'heat',cooling:'cool',fan:'fan_only',drying:'dry'} as Record<string,string>)[action];
+};
 function kindOf(id:string,state?:HAState):Kind{
   const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??''),unit=String(state?.attributes.unit_of_measurement??'');
   if(domain==='light')return 'light';
@@ -663,7 +667,9 @@ export class MPSpatialViewer extends LitElement {
     const states=this.hass?.states??{};
     const id=roomEntityIds(room).find(entityId=>entityId.startsWith('climate.')&&available(states[entityId])&&states[entityId]!.state!=='off');
     if(!id)return undefined;
-    const mode=states[id]!.state;
+    const state=states[id]!,actionMode=climateActionMode(state);
+    if(state.attributes.hvac_action!==undefined&&!actionMode)return undefined;
+    const mode=actionMode??state.state;
     return {mode,label:stateName(HVAC,mode),id};
   }
   /** Only lights placed in the rooms given (one room, or every room of a floor) can be switched from the plan. */

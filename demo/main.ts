@@ -41,6 +41,8 @@ if(spatial) {
   }
 }
 const calls: unknown[] = [];
+/** History requests the window made, so the browser tests can check the period asked for. */
+const historyCalls: Record<string, unknown>[] = [];
 const cards: MPGlassLight[] = [];
 /** What Home Assistant would report once a command is done, roughly: enough for the fixture to follow its own commands. */
 function commanded(domain:string,service:string,data:Record<string,unknown>,old:HAState):HAState{
@@ -69,7 +71,32 @@ function commanded(domain:string,service:string,data:Record<string,unknown>,old:
   if('rgb_color' in data)attributes.rgb_color=data.rgb_color;
   return {...old,state:service==='turn_off'?'off':'on',attributes};
 }
-const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id:'demo',is_admin:true},callWS:async<T>()=>[] as T,callService:async(domain,service,data)=>{
+/** What a recorder would have kept over the period asked, compressed as Home Assistant compresses it (`s`, `a`, `lu`). */
+function history(entityId:string,start:number,end:number){
+  const state=hass.states[entityId];
+  if(!state)return [];
+  const span=Math.max(end-start,1),rows:Record<string,unknown>[]=[];
+  const reading=Number(state.state),domain=entityId.split('.')[0];
+  if(domain==='climate'){
+    const current=Number(state.attributes.current_temperature)||20,target=Number(state.attributes.temperature)||20;
+    for(let i=0;i<40;i++)rows.push({s:state.state,lu:(start+span*i/39)/1000,a:{current_temperature:Number((current+Math.sin(i/3)*.9).toFixed(1)),temperature:target}});
+    return rows;
+  }
+  if(Number.isFinite(reading)&&domain==='sensor'){
+    for(let i=0;i<48;i++)rows.push({s:(reading+Math.sin(i/4)*1.6+Math.cos(i/9)).toFixed(1),lu:(start+span*i/47)/1000});
+    return [...rows,{s:state.state,lu:end/1000}];
+  }
+  const held=domain==='cover'?['open','closed']:domain==='media_player'?['playing','paused','off']:['on','off'];
+  for(let i=0;i<9;i++)rows.push({s:held[i%held.length],lu:(start+span*i/9)/1000});
+  return [...rows,{s:state.state,lu:(end-span/12)/1000}];
+}
+const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id:'demo',is_admin:true},callWS:async<T>(message:Record<string,unknown>)=>{
+  if(message.type!=='history/history_during_period')return [] as T;
+  historyCalls.push(message);
+  const ids=Array.isArray(message.entity_ids)?message.entity_ids.map(entityId=>String(entityId)):[];
+  const start=Date.parse(String(message.start_time)),end=Date.parse(String(message.end_time??''))||Date.now();
+  return Object.fromEntries(ids.map(id=>[id,history(id,start,end)])) as T;
+},callService:async(domain,service,data)=>{
   calls.push({domain,service,data});const states={...hass.states};
   for(const entityId of ([] as unknown[]).concat(data.entity_id).map(String))states[entityId]=commanded(domain,service,data,states[entityId]!);
   hass.states=states;
@@ -108,4 +135,4 @@ const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
 view.setConfig(selectedView);
 view.cards=cards;
 view.hass=hass;
-Object.assign(window,{demo:{hass,cards,calls}});
+Object.assign(window,{demo:{hass,cards,calls,history:historyCalls}});

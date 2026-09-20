@@ -20,6 +20,8 @@ function follow() {
 
 /** Defines the element unless another copy of MP Nexus did, and keeps it on any later registry. */
 export function defineElement(name: string, element: CustomElementConstructor) {
+  // No window, no registry: the unit tests read the pure parts of the modules that define elements.
+  if (typeof window === 'undefined') return;
   follow();
   if (!watching) { watching = true; setInterval(follow, 250); }
   if (customElements.get(name)) return;

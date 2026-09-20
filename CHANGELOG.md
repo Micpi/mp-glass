@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.13.0 — L’historique, et des commandes qui se touchent
+
+### Ajouté
+
+- **Historique dans la fenêtre** : chaque équipement montre ce que Home Assistant a gardé de lui. Une **courbe** pour ce qui se mesure — un capteur, la température d’une pièce, avec la consigne du thermostat en pointillés — et une **bande d’états** colorée pour le reste, avec la durée de chaque état (allumée 11 h 20, éteinte 12 h 40). Trois périodes : 12 h, 24 h, 7 jours. Le survol lit la valeur du moment pointé. L’historique de Home Assistant n’est plus nécessaire pour savoir ce qui s’est passé.
+- **Barre tactile** : la luminosité d’une lumière, l’ouverture d’un volet et la vitesse d’un ventilateur se règlent sur une grande barre verticale que l’on glisse du doigt. Elle suit le doigt sans rien envoyer, commande au relâcher, et garde la valeur affichée jusqu’à la réponse de Home Assistant — plus de retour en arrière visuel entre les deux.
+- **Cadran du thermostat** : la consigne se tourne sur un cadran qui prend la couleur du mode en cours (orange en chauffage, cyan en climatisation), avec la température mesurée en son centre et les boutons − et + de part et d’autre.
+- **Pochette du lecteur** : un téléviseur ou une enceinte affiche ce qu’il joue, avec son image quand il en donne une.
+
+### Modifié
+
+- **Fenêtre plus large** : 600 px, des sections mieux séparées et une ouverture animée ; le clavier commande la barre comme le cadran (flèches, Page, Origine et Fin).
+- **Pied de fenêtre** : « Historique et réglages Home Assistant » devient « Réglages Home Assistant », l’historique étant désormais dans la fenêtre.
+
+### Corrigé
+
+- **Dessins invisibles** : les fragments SVG écrits dans un gabarit `html` de Lit n’étaient pas créés dans l’espace de noms SVG et ne s’affichaient jamais. La courbe, son ombre et l’arc du cadran sont maintenant écrits avec le gabarit `svg`.
+
 ## 0.12.0 — Les fenêtres de MP Nexus
 
 ### Ajouté

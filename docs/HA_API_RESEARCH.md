@@ -13,4 +13,10 @@ Sources primaires consultées avant architecture :
 - [Static paths](https://developers.home-assistant.io/blog/2024/06/18/async_register_static_paths/) : utiliser async_register_static_paths, ancien helper déprécié.
 - [HACS Integration](https://hacs.xyz/docs/publish/integration/) : racine custom_components et manifest ; release dans un dépôt produit.
 
+## Complément — 2026-09-20 : historique
+
+- [`history/websocket_api.py`](https://github.com/home-assistant/core/blob/dev/homeassistant/components/history/websocket_api.py) : commande `history/history_during_period` (`start_time`, `end_time`, `entity_ids`, `include_start_time_state`, `significant_changes_only`, `minimal_response`, `no_attributes`). Réponse : un dictionnaire par `entity_id` dont chaque élément est un état **compressé**. `history/stream` existe aussi, par abonnement ; MP Nexus lit une période bornée et n'a pas besoin du flux.
+- [`homeassistant/const.py`](https://github.com/home-assistant/core/blob/dev/homeassistant/const.py) : clés compressées `s` (state), `a` (attributes), `lc` (last_changed), `lu` (last_updated), `c` (context). Le lecteur MP Nexus accepte aussi les noms complets et les dates ISO : une version de Home Assistant qui les écrirait autrement ne casse pas la fenêtre, elle affiche moins.
+- L'absence d'enregistreur (recorder désactivé, entité exclue) remonte comme une erreur de commande WebSocket : elle est dite à l'écran, jamais convertie en historique vide.
+
 Décisions dérivées : minimum cible 2026.6 ; API publiques d'extension ; code frontend groupé avec backend ; helper d'enregistrement global isolé ; aucune garantie multi-version sans exécution de la matrice de tests.

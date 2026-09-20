@@ -11,7 +11,7 @@ import type { CameraView, LevelProjection, MediaState, OpeningState, SceneLevel,
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
 type Kind = 'light'|'cover'|'climate'|'media'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
-interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean }
+interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean; mode?:string }
 /** What a room holds besides its equipment list: doors and windows with their covers and sensors, televisions and speakers. */
 const OPENING_NAMES:Record<OpeningKind,MessageKey>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
 const OPENING_ICONS:Record<OpeningKind,MPIconName>={door:'door',window:'window',french_window:'french'};
@@ -137,6 +137,12 @@ export class MPSpatialViewer extends LitElement {
     .labels .name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}.labels .name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .readings{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:1px 8px;font-size:11.5px;font-weight:600;color:#cce3f2;font-variant-numeric:tabular-nums}
     .reading{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.reading.temp{color:var(--tone)}
+    .reading.hvac{padding:1px 6px;border-radius:99px;font-size:10px;letter-spacing:.02em}
+    .reading.hvac.heat{color:#ffb27d;background:rgba(255,146,92,.16);border:1px solid rgba(255,174,112,.38)}
+    .reading.hvac.cool{color:#8bcaff;background:rgba(105,183,255,.16);border:1px solid rgba(105,183,255,.38)}
+    .reading.hvac.fan_only{color:#8ce5d2;background:rgba(113,215,192,.15);border:1px solid rgba(113,215,192,.36)}
+    .reading.hvac.dry{color:#d0baff;background:rgba(195,166,255,.15);border:1px solid rgba(195,166,255,.36)}
+    .reading.hvac.heat_cool,.reading.hvac.auto{color:#ffd28e;background:rgba(255,197,116,.15);border:1px solid rgba(255,197,116,.36)}
     /* On the selected label's blue, every temperature colour keeps a dark ground. */
     .labels button[aria-pressed=true] .reading.temp{margin:0 -2px;padding:0 6px;border-radius:99px;background:rgba(3,16,29,.5)}
     .shutter{display:inline-block;position:relative;width:12px;height:13px;border:1px solid currentColor;border-radius:2px;background:transparent;overflow:hidden;flex:none}
@@ -193,6 +199,11 @@ export class MPSpatialViewer extends LitElement {
     .devices{list-style:none;margin:14px 0 0;padding:0;display:grid;grid-template-columns:minmax(0,1fr);gap:8px}
     .device{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;padding:4px 6px 4px 4px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(214,236,255,.08);transition:background .25s,border-color .25s}
     .device.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}.device.offline{opacity:.6}
+    .device[data-kind=climate][data-hvac=heat]{background:linear-gradient(145deg,rgba(255,146,92,.15),rgba(255,255,255,.03));border-color:rgba(255,174,112,.38)}
+    .device[data-kind=climate][data-hvac=cool]{background:linear-gradient(145deg,rgba(105,183,255,.16),rgba(255,255,255,.03));border-color:rgba(105,183,255,.4)}
+    .device[data-kind=climate][data-hvac=fan_only]{background:linear-gradient(145deg,rgba(113,215,192,.14),rgba(255,255,255,.03));border-color:rgba(113,215,192,.38)}
+    .device[data-kind=climate][data-hvac=dry]{background:linear-gradient(145deg,rgba(195,166,255,.14),rgba(255,255,255,.03));border-color:rgba(195,166,255,.38)}
+    .device[data-kind=climate][data-hvac=heat_cool],.device[data-kind=climate][data-hvac=auto]{background:linear-gradient(145deg,rgba(255,197,116,.13),rgba(255,255,255,.03));border-color:rgba(255,197,116,.38)}
     .main{display:flex;align-items:center;gap:11px;min-width:0;min-height:50px;padding:4px 6px;border:0;border-radius:12px;background:transparent;text-align:left}.main:hover{background:rgba(255,255,255,.045)}
     .dev-icon{display:grid;place-items:center;width:38px;height:38px;flex:0 0 auto;border-radius:12px;color:#cfe0f0;background:rgba(197,220,243,.08);border:1px solid rgba(220,237,255,.1);transition:.25s ease}
     /* One column as wide as the card: a long floor name or reading is cut short rather than widening the list past the card. */
@@ -204,6 +215,10 @@ export class MPSpatialViewer extends LitElement {
     .temps{display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;color:#cce3f2}.readings .temps{font-size:inherit}
     .device.on .dev-icon,.level.on .dev-icon{color:#ffe175;background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.08));border-color:rgba(255,225,138,.3);box-shadow:0 0 22px rgba(255,192,45,.26)}
     .device[data-kind=temperature] .dev-icon,.device[data-kind=climate] .dev-icon{color:#ffbf96}.device[data-kind=humidity] .dev-icon{color:#8fd3ff}
+    .device[data-kind=climate][data-hvac=cool] .dev-icon{color:#69b7ff;background:rgba(105,183,255,.14);border-color:rgba(105,183,255,.34);box-shadow:0 0 18px rgba(105,183,255,.2)}
+    .device[data-kind=climate][data-hvac=fan_only] .dev-icon{color:#71d7c0;background:rgba(113,215,192,.13);border-color:rgba(113,215,192,.34);box-shadow:0 0 18px rgba(113,215,192,.18)}
+    .device[data-kind=climate][data-hvac=dry] .dev-icon{color:#c3a6ff;background:rgba(195,166,255,.13);border-color:rgba(195,166,255,.34);box-shadow:0 0 18px rgba(195,166,255,.18)}
+    .device[data-kind=climate][data-hvac=heat_cool] .dev-icon,.device[data-kind=climate][data-hvac=auto] .dev-icon{color:#ffc574;background:rgba(255,197,116,.13);border-color:rgba(255,197,116,.34);box-shadow:0 0 18px rgba(255,197,116,.18)}
     .device[data-kind=opening].on .dev-icon,.device[data-kind=motion].on .dev-icon{color:#fff;background:color-mix(in srgb,var(--accent) 30%,transparent);border-color:color-mix(in srgb,var(--accent) 50%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--accent) 30%,transparent)}
     .text{min-width:0}.text strong{display:block;font-size:13.5px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
     .text small{display:block;margin-top:1px;font-size:11.5px;color:#a9bdd0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -622,7 +637,7 @@ export class MPSpatialViewer extends LitElement {
       }
       case 'climate': {
         const current=numeric(state!.attributes.current_temperature),target=numeric(state!.attributes.temperature);
-        return {...base,on:state!.state!=='off',numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)})};
+        return {...base,on:state!.state!=='off',mode:state!.state,numeric:current,value:current===undefined?undefined:`${this.format(current)} °`,detail:target===undefined?stateName(HVAC,state!.state):tr('{mode} · consigne {n} °',{mode:stateName(HVAC,state!.state),n:this.format(target)})};
       }
       case 'media': {
         const label=stateName(MEDIA_STATES,state!.state),playing=nowPlaying(state);
@@ -643,6 +658,13 @@ export class MPSpatialViewer extends LitElement {
     if(minutes<1) return tr('Mis à jour à l’instant');
     const relative=new Intl.RelativeTimeFormat(locale(),{numeric:'auto'});
     return tr('Mis à jour {when}',{when:minutes<60?relative.format(-minutes,'minute'):minutes<1440?relative.format(-Math.round(minutes/60),'hour'):relative.format(-Math.round(minutes/1440),'day')});
+  }
+  private activeClimate(room: SpatialRoom) {
+    const states=this.hass?.states??{};
+    const id=roomEntityIds(room).find(entityId=>entityId.startsWith('climate.')&&available(states[entityId])&&states[entityId]!.state!=='off');
+    if(!id)return undefined;
+    const mode=states[id]!.state;
+    return {mode,label:stateName(HVAC,mode),id};
   }
   /** Only lights placed in the rooms given (one room, or every room of a floor) can be switched from the plan. */
   private async lights(rooms: SpatialRoom[], service: 'turn_on'|'turn_off', ids: string[], data: Record<string,unknown> = {}) {
@@ -724,7 +746,9 @@ export class MPSpatialViewer extends LitElement {
   /** A room on the plan: its name, a warm dot while a light is on, and its readings. */
   private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
     const readings=this.preview?nothing:this.planReadings(room,mode);
-    return html`<button class=${readings===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}</button>`;
+    const climate=this.preview?undefined:this.activeClimate(room);
+    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${tr('{mode} actif',{mode:climate.label})}>${mpIcon('flame',12)}<span>${climate.label}</span></span>`:nothing;
+    return html`<button class=${readings===nothing&&climateReading===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${climateReading}${readings}</button>`;
   }
   /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */
   private lightsOf(rooms: SpatialRoom[]) {
@@ -950,7 +974,7 @@ export class MPSpatialViewer extends LitElement {
   private deviceRow(room: SpatialRoom, d: Device) {
     const action=d.on?tr('Éteindre {name}',{name:d.name}):tr('Allumer {name}',{name:d.name});
     const state=this.hass?.states[d.id],icon=d.kind==='media'?mediaIsTv(state)?'tv':'speaker':d.kind==='cover'?COVER_ICONS[coverStyle(state)]:KIND_ICONS[d.kind];
-    return html`<li class="device ${d.on?'on':''} ${d.ready?'':'offline'}" data-kind=${d.kind}>
+    return html`<li class="device ${d.on?'on':''} ${d.ready?'':'offline'}" data-kind=${d.kind} data-hvac=${d.mode??''}>
       <button class="main" aria-label=${tr('Détails {name}',{name:d.name})} @click=${()=>this.moreInfo(d.id)}><span class="dev-icon">${mpIcon(icon,20)}</span><span class="text"><strong>${d.name}</strong><small>${d.detail}</small></span></button>
       ${d.kind==='light'
         ? html`<button class="switch ${d.on?'on':''}" aria-label=${d.on?tr('Éteindre'):tr('Allumer')} title=${action} ?disabled=${this.busy||!d.switchable} @click=${()=>this.toggle(room,d.id)}><span></span></button>`

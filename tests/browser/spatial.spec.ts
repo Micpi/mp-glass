@@ -1357,7 +1357,8 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await expect(label('living').locator('.readings')).toHaveCount(0);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(label('bedroom').locator('.reading.temp')).toHaveText('19,5 °C');
-  await expect(label('bedroom').locator('.reading')).toHaveCount(1);
+  await expect(label('bedroom').locator('.reading.hvac.heat')).toHaveText('Chauffage');
+  await expect(label('bedroom').locator('.reading')).toHaveCount(2);
   // Only the rooms that measure their temperature read something.
   await expect(label('kitchen').locator('.reading.temp')).toHaveCount(0);
   for(const room of ['kitchen','dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);

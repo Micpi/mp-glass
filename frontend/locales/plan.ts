@@ -23,6 +23,7 @@ export const PLAN = {
   'Automatique': ['Automatic', 'Автоматически'],
   'Déshumidification': ['Drying', 'Осушение'],
   'Ventilation': ['Fan only', 'Вентиляция'],
+  '{mode} actif': ['{mode} active', '{mode} включен'],
   'Ouverture…': ['Opening…', 'Открывается…'],
   'Fermeture…': ['Closing…', 'Закрывается…'],
   'Fermé': ['Closed', 'Закрыто'],

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.3 — Climat visible d’un coup d’œil
+
+### Ajouté
+
+- **État HVAC sur le plan** : chaque pièce indique désormais directement si son chauffage, sa climatisation ou sa ventilation est active, sans ouvrir la carte de détail.
+- **Styles des modes climatiques** : les équipements de la section **Climat** adoptent une apparence distincte selon le mode chauffage, climatisation, ventilation, déshumidification ou automatique.
+
 ## 0.11.2 — Accueil allégé
 
 ### Modifié

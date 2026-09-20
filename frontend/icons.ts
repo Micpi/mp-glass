@@ -37,6 +37,8 @@ const icons = {
   motion: '<circle cx="13" cy="4.5" r="1.8"/><path d="m9 21 2.5-6.5L14 17v4M8.5 11l3-3 3 2 2.5 3M11.5 8l-1 6.5"/>',
   gauge: '<path d="M4.5 17a8.5 8.5 0 1 1 15 0"/><path d="m12 13 4-4"/><circle cx="12" cy="13" r="1.2"/>',
   flame: '<path d="M12 3c1 3.5 5 5.5 5 10a5 5 0 0 1-10 0c0-2.3 1.2-3.9 2.5-5 .2 1.8 1 2.8 2 3.2C11 8.8 11 6 12 3z"/>',
+  snow: '<path d="M12 2.5v19M3.77 7.25l16.46 9.5M20.23 7.25 3.77 16.75"/><path d="M9.58 3.9 12 2.5l2.42 1.4M9.58 20.1 12 21.5l2.42-1.4M3.77 10.05V7.25l2.42-1.4M20.23 13.95v2.8l-2.42 1.4M20.23 10.05V7.25l-2.42-1.4M3.77 13.95v2.8l2.42 1.4"/>',
+  fan: '<circle cx="12" cy="12" r="2"/><path d="M12 10c0-3.2.4-6.5 2.9-6.5 2.2 0 2.4 3.9-.2 5.1zM14 12c3.2 0 6.5.4 6.5 2.9 0 2.2-3.9 2.4-5.1-.2zM12 14c0 3.2-.4 6.5-2.9 6.5-2.2 0-2.4-3.9.2-5.1zM10 12c-3.2 0-6.5-.4-6.5-2.9 0-2.2 3.9-2.4 5.1.2z"/>',
   window: '<rect x="5" y="3" width="14" height="18" rx="1.2"/><path d="M12 3v18M5 12h14"/>',
   french: '<rect x="4.5" y="2.5" width="15" height="19" rx="1"/><path d="M12 2.5v19M3 21.5h18M9.6 11.5v2M14.4 11.5v2"/>',
   shutter: '<rect x="3.5" y="3" width="17" height="4" rx="1"/><path d="M5 7h14v12H5zM5 10h14M5 13h14M5 16h14"/>',
@@ -57,5 +59,5 @@ export const mpIcon = (name: MPIconName, size = 24) => {
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="black" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round">${icons[name]}</svg>`;
   const mask = `url("data:image/svg+xml,${encodeURIComponent(svg)}") center / contain no-repeat`;
   const style = `display:inline-block;width:${size}px;height:${size}px;flex:0 0 auto;background:currentColor;-webkit-mask:${mask};mask:${mask}`;
-  return html`<span class="mp-icon" aria-hidden="true" style=${style}></span>`;
+  return html`<span class="mp-icon" data-icon=${name} aria-hidden="true" style=${style}></span>`;
 };

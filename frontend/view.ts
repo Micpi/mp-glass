@@ -8,7 +8,7 @@ import { available } from '../shared/capabilities';
 import type { Hass } from './ha/client';
 import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
-import { COVER_STATES, HVAC, MEDIA_STATES, roomIcon, stateName } from './spatial/viewer';
+import { COVER_STATES, HVAC, MEDIA_STATES, hvacIcon, roomIcon, stateName } from './spatial/viewer';
 import type { MessageKey } from './locales';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trDefault, trPlan, type Language } from './i18n';
 import { flag } from './flags';
@@ -273,7 +273,7 @@ export class MPGlassView extends LitElement {
     const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??'');
     let icon:MPIconName='gauge',detail=ready?String(state!.state):tr('Indisponible'),value='',on=false;
     if(domain==='climate'){
-      icon='flame';
+      icon=hvacIcon(ready?state!.state:undefined);
       if(ready){
         on=state!.state!=='off';
         const current=finite(state!.attributes.current_temperature),target=finite(state!.attributes.temperature);

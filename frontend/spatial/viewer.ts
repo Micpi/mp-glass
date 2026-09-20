@@ -40,6 +40,9 @@ export { roomIcon };
 const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',media:'speaker',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
 export const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
 export const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
+/** What a thermostat is doing, at a glance: a flame heats, a snowflake cools, a fan airs, a drop dries. */
+const HVAC_ICONS:Record<string,MPIconName>={heat:'flame',cool:'snow',fan_only:'fan',dry:'drop',heat_cool:'thermo',auto:'thermo'};
+export const hvacIcon=(mode?:string)=>(mode?HVAC_ICONS[mode]:undefined)??KIND_ICONS.climate;
 export const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
 /** A state Home Assistant gives, named in the interface language when MP Nexus knows it. */
 export const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
@@ -143,7 +146,7 @@ export class MPSpatialViewer extends LitElement {
     .reading{display:inline-flex;align-items:center;gap:4px;white-space:nowrap}.reading.temp{color:var(--tone)}
     .reading.hvac{padding:1px 6px;border-radius:99px;font-size:10px;letter-spacing:.02em}
     .reading.hvac.heat{color:#ffb27d;background:rgba(255,146,92,.16);border:1px solid rgba(255,174,112,.38)}
-    .reading.hvac.cool{color:#8bcaff;background:rgba(105,183,255,.16);border:1px solid rgba(105,183,255,.38)}
+    .reading.hvac.cool{color:#9df1ff;background:rgba(56,208,240,.26);border:1px solid rgba(125,232,255,.55)}
     .reading.hvac.fan_only{color:#8ce5d2;background:rgba(113,215,192,.15);border:1px solid rgba(113,215,192,.36)}
     .reading.hvac.dry{color:#d0baff;background:rgba(195,166,255,.15);border:1px solid rgba(195,166,255,.36)}
     .reading.hvac.heat_cool,.reading.hvac.auto{color:#ffd28e;background:rgba(255,197,116,.15);border:1px solid rgba(255,197,116,.36)}
@@ -204,7 +207,7 @@ export class MPSpatialViewer extends LitElement {
     .device{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;padding:4px 6px 4px 4px;border-radius:16px;background:rgba(255,255,255,.035);border:1px solid rgba(214,236,255,.08);transition:background .25s,border-color .25s}
     .device.on{background:linear-gradient(145deg,rgba(255,205,80,.1),rgba(255,255,255,.03));border-color:rgba(255,220,130,.22)}.device.offline{opacity:.6}
     .device[data-kind=climate][data-hvac=heat]{background:linear-gradient(145deg,rgba(255,146,92,.15),rgba(255,255,255,.03));border-color:rgba(255,174,112,.38)}
-    .device[data-kind=climate][data-hvac=cool]{background:linear-gradient(145deg,rgba(105,183,255,.16),rgba(255,255,255,.03));border-color:rgba(105,183,255,.4)}
+    .device[data-kind=climate][data-hvac=cool]{background:linear-gradient(145deg,rgba(56,208,240,.22),rgba(255,255,255,.03));border-color:rgba(125,232,255,.5)}
     .device[data-kind=climate][data-hvac=fan_only]{background:linear-gradient(145deg,rgba(113,215,192,.14),rgba(255,255,255,.03));border-color:rgba(113,215,192,.38)}
     .device[data-kind=climate][data-hvac=dry]{background:linear-gradient(145deg,rgba(195,166,255,.14),rgba(255,255,255,.03));border-color:rgba(195,166,255,.38)}
     .device[data-kind=climate][data-hvac=heat_cool],.device[data-kind=climate][data-hvac=auto]{background:linear-gradient(145deg,rgba(255,197,116,.13),rgba(255,255,255,.03));border-color:rgba(255,197,116,.38)}
@@ -219,7 +222,7 @@ export class MPSpatialViewer extends LitElement {
     .temps{display:inline-flex;align-items:center;gap:3px;font-size:13px;font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums;color:#cce3f2}.readings .temps{font-size:inherit}
     .device.on .dev-icon,.level.on .dev-icon{color:#ffe175;background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.08));border-color:rgba(255,225,138,.3);box-shadow:0 0 22px rgba(255,192,45,.26)}
     .device[data-kind=temperature] .dev-icon,.device[data-kind=climate] .dev-icon{color:#ffbf96}.device[data-kind=humidity] .dev-icon{color:#8fd3ff}
-    .device[data-kind=climate][data-hvac=cool] .dev-icon{color:#69b7ff;background:rgba(105,183,255,.14);border-color:rgba(105,183,255,.34);box-shadow:0 0 18px rgba(105,183,255,.2)}
+    .device[data-kind=climate][data-hvac=cool] .dev-icon{color:#7ce8ff;background:rgba(56,208,240,.18);border-color:rgba(125,232,255,.45);box-shadow:0 0 18px rgba(56,208,240,.28)}
     .device[data-kind=climate][data-hvac=fan_only] .dev-icon{color:#71d7c0;background:rgba(113,215,192,.13);border-color:rgba(113,215,192,.34);box-shadow:0 0 18px rgba(113,215,192,.18)}
     .device[data-kind=climate][data-hvac=dry] .dev-icon{color:#c3a6ff;background:rgba(195,166,255,.13);border-color:rgba(195,166,255,.34);box-shadow:0 0 18px rgba(195,166,255,.18)}
     .device[data-kind=climate][data-hvac=heat_cool] .dev-icon,.device[data-kind=climate][data-hvac=auto] .dev-icon{color:#ffc574;background:rgba(255,197,116,.13);border-color:rgba(255,197,116,.34);box-shadow:0 0 18px rgba(255,197,116,.18)}
@@ -756,7 +759,7 @@ export class MPSpatialViewer extends LitElement {
   private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
     const readings=this.preview?nothing:this.planReadings(room,mode);
     const climate=this.preview||mode!=='climate'?undefined:this.activeClimate(room);
-    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${climate.target?tr('{mode} actif · consigne {n} °',{mode:climate.label,n:climate.target}):tr('{mode} actif',{mode:climate.label})}>${mpIcon('flame',12)}<span>${climate.target?`${climate.label} · ${climate.target} °`:climate.label}</span></span>`:nothing;
+    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${climate.target?tr('{mode} actif · consigne {n} °',{mode:climate.label,n:climate.target}):tr('{mode} actif',{mode:climate.label})}>${mpIcon(hvacIcon(climate.mode),12)}<span>${climate.target?`${climate.label} · ${climate.target} °`:climate.label}</span></span>`:nothing;
     return html`<button class=${readings===nothing&&climateReading===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${climateReading}${readings}</button>`;
   }
   /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */
@@ -982,7 +985,7 @@ export class MPSpatialViewer extends LitElement {
   }
   private deviceRow(room: SpatialRoom, d: Device) {
     const action=d.on?tr('Éteindre {name}',{name:d.name}):tr('Allumer {name}',{name:d.name});
-    const state=this.hass?.states[d.id],icon=d.kind==='media'?mediaIsTv(state)?'tv':'speaker':d.kind==='cover'?COVER_ICONS[coverStyle(state)]:KIND_ICONS[d.kind];
+    const state=this.hass?.states[d.id],icon=d.kind==='media'?mediaIsTv(state)?'tv':'speaker':d.kind==='cover'?COVER_ICONS[coverStyle(state)]:d.kind==='climate'?hvacIcon(d.mode):KIND_ICONS[d.kind];
     return html`<li class="device ${d.on?'on':''} ${d.ready?'':'offline'}" data-kind=${d.kind} data-hvac=${d.mode??''}>
       <button class="main" aria-label=${tr('Détails {name}',{name:d.name})} @click=${()=>this.moreInfo(d.id)}><span class="dev-icon">${mpIcon(icon,20)}</span><span class="text"><strong>${d.name}</strong><small>${d.detail}</small></span></button>
       ${d.kind==='light'

@@ -1366,6 +1366,9 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   // The kitchen's climate reports its temperature while cooling, without changing the thermal halo.
   await expect(label('kitchen').locator('.reading.temp')).toHaveText('26,8 °C');
   await expect(label('kitchen').locator('.reading.hvac.cool')).toHaveText('Climatisation · 24 °');
+  // Cooling wears a snowflake, heating a flame: the mode reads without reading the words.
+  await expect(label('kitchen').locator('.reading.hvac .mp-icon')).toHaveAttribute('data-icon','snow');
+  await expect(label('bedroom').locator('.reading.hvac .mp-icon')).toHaveAttribute('data-icon','flame');
   for(const room of ['dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(0);
   // An offline thermometer still says so.

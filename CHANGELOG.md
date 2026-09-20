@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.11 — Un flocon pour la climatisation
+
+### Modifié
+
+- **Badge climat** : chaque mode porte enfin son icône. Un flocon pour la **climatisation**, la flamme pour le **chauffage**, un ventilateur pour la **ventilation**, une goutte pour la **déshumidification**, un thermomètre en mode automatique. La flamme s’affichait jusqu’ici quel que soit le mode, sur le plan comme dans la fiche de la pièce et sur les tuiles du dashboard.
+- **Couleur de la climatisation** : le badge et la fiche passent d’un bleu proche de celui du plan à un cyan glacé plus soutenu, aussi lisible sur le plan que l’orange du chauffage.
+
 ## 0.11.10 — Badge climat réservé à l’ambiance Climat
 
 ### Modifié

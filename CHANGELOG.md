@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.2 — Luminosité horizontale dans la fenêtre des lumières
+
+### Modifié
+
+- **Luminosité** : la barre du popup lumière occupe désormais toute la largeur, se remplit de gauche à droite et se règle par glissement horizontal. L’icône et le pourcentage restent lisibles sur la partie éclairée.
+- **Disposition des commandes** : le bouton d’allumage et les réglages de couleur se placent sous la barre, ce qui supprime l’espace vide à côté du bouton lorsque la lumière est éteinte.
+- **Accessibilité** : le curseur annonce son orientation horizontale ; les flèches du clavier et l’extinction à 0 % continuent de fonctionner. Les barres des volets et ventilateurs restent verticales.
+
 ## 0.13.1 — Modes du climat, ventilation et programme
 
 ### Modifié

@@ -91,12 +91,14 @@ test('the bar sets the brightness where it is released, and the keyboard moves i
   await card.getByRole('button', { name: 'Détails', exact: true }).click();
   const bar = page.getByRole('dialog').getByRole('slider', { name: 'Luminosité' });
   const box = (await bar.boundingBox())!;
-  // Released a quarter down from the top of the bar: about three quarters of the brightness, and that exact value commanded.
-  await bar.click({ position: { x: box.width / 2, y: box.height * .25 } });
+  await expect(bar).toHaveAttribute('aria-orientation', 'horizontal');
+  expect(box.width).toBeGreaterThan(box.height * 3);
+  // Released three quarters across the bar: about three quarters of the brightness, and that exact value commanded.
+  await bar.click({ position: { x: box.width * .75, y: box.height / 2 } });
   const value = Number(await bar.getAttribute('aria-valuenow'));
   expect(value).toBeGreaterThan(70);
   expect(value).toBeLessThan(80);
-  await bar.press('ArrowUp');
+  await bar.press('ArrowRight');
   expect(await calls(page)).toEqual([
     { domain: 'light', service: 'turn_on', data: { entity_id: 'light.circuit_0', brightness_pct: value } },
     { domain: 'light', service: 'turn_on', data: { entity_id: 'light.circuit_0', brightness_pct: value + 1 } },

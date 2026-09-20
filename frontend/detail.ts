@@ -63,10 +63,12 @@ export class MPGlassDetail extends LitElement {
     .hero small{color:#a9bdd0;font-size:12px}
     .hero .when{margin-left:auto;color:#8fa5b9;font-size:11px}
     .group{display:grid;gap:12px}
-    /* A bar to drag, and beside it what the device offers besides its level. */
+    /* Vertical level bars keep their controls alongside; a light uses a full-width brightness bar. */
     .stage{display:grid;grid-template-columns:116px minmax(0,1fr);gap:12px;align-items:stretch;min-height:212px}
     .stage-side{display:grid;align-content:start;gap:10px}
     .stage mp-glass-bar{height:100%}
+    .light-stage{grid-template-columns:minmax(0,1fr);min-height:0}
+    .light-stage mp-glass-bar{height:86px}
     .power{display:flex;align-items:center;justify-content:center;gap:9px;min-height:52px;padding:0 18px;border-radius:16px;border:1px solid rgba(202,228,255,.18);background:rgba(8,29,48,.45);color:#dae7f3;font-weight:650}
     .power.on{color:#0a2338;background:linear-gradient(135deg,#ffe481,var(--warm));border-color:#ffea9d;box-shadow:0 8px 24px color-mix(in srgb,var(--warm) 24%,transparent),inset 0 1px rgba(255,255,255,.5)}
     .power.cool.on{color:#052033;background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 65%,white),var(--accent));border-color:color-mix(in srgb,var(--accent) 60%,white);box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 30%,transparent)}
@@ -209,8 +211,8 @@ export class MPGlassDetail extends LitElement {
       <input type="color" .value=${rgb?hex(rgb):'#ffffff'} aria-label=${tr('Autre couleur')} title=${tr('Autre couleur')} ?disabled=${this.busy} @change=${(e:Event)=>{const value=fromHex((e.target as HTMLInputElement).value);if(value)void this.call('turn_on',{rgb_color:value});}}>
     </div>`:nothing;
     if(!dimmable) return html`${power}${white}${colors}`;
-    return html`<div class="stage">
-      <mp-glass-bar tone="warm" icon="sun" label=${tr('Luminosité')} .value=${on?percent??0:0} ?disabled=${this.busy}
+    return html`<div class="stage light-stage">
+      <mp-glass-bar horizontal tone="warm" icon="sun" label=${tr('Luminosité')} .value=${on?percent??0:0} ?disabled=${this.busy}
         @mp-control-change=${(e:Event)=>{const value=released(e);void (value?this.call('turn_on',{brightness_pct:value}):this.call('turn_off'));}}></mp-glass-bar>
       <div class="stage-side">${power}${white}${colors}</div>
     </div>`;

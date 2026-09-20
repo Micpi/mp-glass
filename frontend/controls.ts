@@ -72,21 +72,24 @@ abstract class MPGlassControl extends LitElement {
 }
 
 /**
- * The tall bar of the detail window: the brightness of a light, how far a shutter is open. It fills from the bottom,
- * follows the finger over its whole height, and answers the keyboard like any slider.
+ * The bar of the detail window: horizontal for a light, vertical for a shutter or fan. It follows the finger over its
+ * full length and answers the keyboard like any slider.
  */
 export class MPGlassBar extends MPGlassControl {
-  static properties = { value:{type:Number}, min:{type:Number}, max:{type:Number}, step:{type:Number}, label:{type:String}, unit:{type:String}, icon:{type:String}, tone:{type:String,reflect:true}, disabled:{type:Boolean,reflect:true}, draft:{state:true} };
+  static properties = { value:{type:Number}, min:{type:Number}, max:{type:Number}, step:{type:Number}, label:{type:String}, unit:{type:String}, icon:{type:String}, tone:{type:String,reflect:true}, horizontal:{type:Boolean,reflect:true}, disabled:{type:Boolean,reflect:true}, draft:{state:true} };
   static styles = css`
     :host{display:block;--tone:var(--mp-accent,#69b7ff);--face:#0a2338}
     :host([tone=warm]){--tone:#ffc540}
     :host([tone=cool]){--tone:var(--mp-accent,#69b7ff)}
     :host([disabled]){opacity:.5}
     .bar{position:relative;display:block;width:100%;height:100%;min-height:180px;border-radius:26px;border:1px solid rgba(206,230,255,.18);background:rgba(4,20,35,.55);overflow:hidden;cursor:ns-resize;touch-action:none;user-select:none;-webkit-user-select:none}
+    :host([horizontal]) .bar{min-height:0;cursor:ew-resize}
     :host([disabled]) .bar{cursor:default}
     .bar:focus-visible{outline:3px solid var(--tone);outline-offset:3px}
     .fill{position:absolute;inset:auto 0 0;background:linear-gradient(180deg,color-mix(in srgb,var(--tone) 92%,white),var(--tone));box-shadow:0 -6px 26px color-mix(in srgb,var(--tone) 45%,transparent);transition:height .18s ease}
+    :host([horizontal]) .fill{inset:0 auto 0 0;background:linear-gradient(90deg,color-mix(in srgb,var(--tone) 92%,white),var(--tone));box-shadow:6px 0 26px color-mix(in srgb,var(--tone) 45%,transparent);transition:width .18s ease}
     .face{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:16px 10px;pointer-events:none}
+    :host([horizontal]) .face{flex-direction:row;padding:10px 20px}
     .face .mp-icon{color:#eaf4ff;filter:drop-shadow(0 1px 3px rgba(0,8,18,.6))}
     .face b{font:19px/1 var(--mp-display-font,Georgia,serif);font-weight:400;color:#fff;text-shadow:0 1px 6px rgba(0,8,18,.7)}
     /* Over the filled part, ink instead of white: the reading stays legible on a bright bar. */
@@ -97,8 +100,10 @@ export class MPGlassBar extends MPGlassControl {
   unit = '%';
   icon: MPIconName = 'sun';
   tone: 'warm'|'cool' = 'cool';
+  horizontal = false;
   private from = (event: PointerEvent) => {
     const box = (event.currentTarget as HTMLElement).getBoundingClientRect();
+    if (this.horizontal) return box.width ? this.min + clamp((event.clientX - box.left) / box.width, 0, 1) * (this.max - this.min) : this.shown;
     if (!box.height) return this.shown;
     return this.min + (1 - clamp((event.clientY - box.top) / box.height, 0, 1)) * (this.max - this.min);
   };
@@ -116,11 +121,11 @@ export class MPGlassBar extends MPGlassControl {
   };
   protected render() {
     const text = `${this.format(this.shown)}${this.unit ? ` ${this.unit}` : ''}`;
-    return html`<div class="bar" role="slider" tabindex=${this.disabled ? -1 : 0} aria-label=${this.label}
+    return html`<div class="bar" role="slider" tabindex=${this.disabled ? -1 : 0} aria-label=${this.label} aria-orientation=${this.horizontal?'horizontal':'vertical'}
       aria-valuemin=${this.min} aria-valuemax=${this.max} aria-valuenow=${this.shown} aria-valuetext=${text} aria-disabled=${String(this.disabled)}
       @pointerdown=${this.down} @pointermove=${this.move} @pointerup=${this.up} @pointercancel=${this.up} @keydown=${this.keys}>
-      <div class="fill" style=${`height:${(this.fraction * 100).toFixed(1)}%`}></div>
-      <div class=${`face ${this.fraction > .12 ? 'ink' : ''} ${this.fraction > .88 ? 'ink-top' : ''}`}>${mpIcon(this.icon, 20)}<b>${text}</b></div>
+      <div class="fill" style=${`${this.horizontal?'width':'height'}:${(this.fraction * 100).toFixed(1)}%`}></div>
+      <div class=${`face ${this.fraction > (this.horizontal ? .88 : .12) ? 'ink' : ''} ${this.fraction > (this.horizontal ? .12 : .88) ? 'ink-top' : ''}`}>${mpIcon(this.icon, 20)}<b>${text}</b></div>
     </div>`;
   }
 }

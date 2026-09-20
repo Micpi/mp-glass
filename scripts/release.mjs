@@ -16,7 +16,8 @@ const git = (...args) => run('git', args, process.env);
 const ghEnv = { ...process.env };
 delete ghEnv.GITHUB_TOKEN; delete ghEnv.GH_TOKEN;
 const gh = (...args) => run('gh', args, ghEnv);
-const ghFails = (...args) => { try { gh(...args); return false; } catch { return true; } };
+// A probe: whether the call succeeds, its own "404 Not Found" kept off the console.
+const ghWorks = (...args) => { try { execFileSync('gh', args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], env: ghEnv }); return true; } catch { return false; } };
 const quoted = value => value.replace(/\./g, '\\.');
 
 // 1. One version, everywhere: a mismatch means HACS, the bundle cache key and the tag disagree.
@@ -50,7 +51,7 @@ if (git('rev-parse', '--abbrev-ref', 'HEAD') !== 'main') fail('releases are cut 
 if (git('status', '--porcelain')) fail('the working tree has uncommitted changes — commit them first');
 const head = git('rev-parse', 'HEAD');
 if (git('tag', '-l', tag)) fail(`${tag} already exists locally`);
-if (!ghFails('api', `repos/{owner}/{repo}/git/ref/tags/${tag}`, '--silent')) fail(`${tag} already exists on GitHub`);
+if (ghWorks('api', `repos/{owner}/{repo}/git/ref/tags/${tag}`, '--silent')) fail(`${tag} already exists on GitHub`);
 ok(`main is clean at ${head.slice(0, 7)} and ${tag} is free`);
 
 if (dryRun) { console.log(`\n${tag} is ready to publish — rerun without --dry-run.`); process.exit(0); }

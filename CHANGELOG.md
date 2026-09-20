@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.8 — Mode et consigne dans les pièces
+
+### Modifié
+
+- **Label de pièce** : le mode HVAC actif affiche désormais aussi la consigne lorsqu’elle est disponible, par exemple **Climatisation · 24 °**.
+- **Accessibilité** : le titre du badge précise le mode et la consigne, sans modifier la couleur thermique du halo.
+
 ## 0.11.7 — Température et mode séparés
 
 ### Corrigé

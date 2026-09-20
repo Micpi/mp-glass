@@ -24,6 +24,7 @@ export const PLAN = {
   'Déshumidification': ['Drying', 'Осушение'],
   'Ventilation': ['Fan only', 'Вентиляция'],
   '{mode} actif': ['{mode} active', '{mode} включен'],
+  '{mode} actif · consigne {n} °': ['{mode} active · set to {n}°', '{mode} включен · уставка {n}°'],
   'Ouverture…': ['Opening…', 'Открывается…'],
   'Fermeture…': ['Closing…', 'Закрывается…'],
   'Fermé': ['Closed', 'Закрыто'],

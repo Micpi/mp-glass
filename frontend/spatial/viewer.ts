@@ -669,8 +669,8 @@ export class MPSpatialViewer extends LitElement {
     if(!id)return undefined;
     const state=states[id]!,actionMode=climateActionMode(state);
     if(state.attributes.hvac_action!==undefined&&!actionMode)return undefined;
-    const mode=actionMode??state.state;
-    return {mode,label:stateName(HVAC,mode),id};
+    const mode=actionMode??state.state,target=numeric(state.attributes.temperature);
+    return {mode,label:stateName(HVAC,mode),target:target===undefined?undefined:this.format(target),id};
   }
   /** Only lights placed in the rooms given (one room, or every room of a floor) can be switched from the plan. */
   private async lights(rooms: SpatialRoom[], service: 'turn_on'|'turn_off', ids: string[], data: Record<string,unknown> = {}) {
@@ -753,7 +753,7 @@ export class MPSpatialViewer extends LitElement {
   private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
     const readings=this.preview?nothing:this.planReadings(room,mode);
     const climate=this.preview?undefined:this.activeClimate(room);
-    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${tr('{mode} actif',{mode:climate.label})}>${mpIcon('flame',12)}<span>${climate.label}</span></span>`:nothing;
+    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${climate.target?tr('{mode} actif · consigne {n} °',{mode:climate.label,n:climate.target}):tr('{mode} actif',{mode:climate.label})}>${mpIcon('flame',12)}<span>${climate.target?`${climate.label} · ${climate.target} °`:climate.label}</span></span>`:nothing;
     return html`<button class=${readings===nothing&&climateReading===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${climateReading}${readings}</button>`;
   }
   /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */

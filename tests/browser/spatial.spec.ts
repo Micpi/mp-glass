@@ -1357,11 +1357,11 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await expect(label('living').locator('.readings')).toHaveCount(0);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(label('bedroom').locator('.reading.temp')).toHaveText('19,5 °C');
-  await expect(label('bedroom').locator('.reading.hvac.heat')).toHaveText('Chauffage');
+  await expect(label('bedroom').locator('.reading.hvac.heat')).toHaveText('Chauffage · 20 °');
   await expect(label('bedroom').locator('.reading')).toHaveCount(2);
   // The kitchen's climate reports its temperature while cooling, without changing the thermal halo.
   await expect(label('kitchen').locator('.reading.temp')).toHaveText('26,8 °C');
-  await expect(label('kitchen').locator('.reading.hvac.cool')).toHaveText('Climatisation');
+  await expect(label('kitchen').locator('.reading.hvac.cool')).toHaveText('Climatisation · 24 °');
   for(const room of ['dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(0);
   // An offline thermometer still says so.

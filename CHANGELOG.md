@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.1 — Studio responsive et aligné
+
+### Corrigé
+
+- **Fond du Studio** : le fond couvre désormais toute la hauteur réelle du contenu, y compris lorsque les sections expert dépassent la hauteur du viewport.
+- **Barre d’actions** : les actions du Studio restent regroupées et alignées aux largeurs intermédiaires, et le bouton **Importer** ne subit plus la marge des champs de formulaire.
+
 ## 0.11.0 — audit UX : rien ne se perd, tout s’explique
 
 ### Ajouté

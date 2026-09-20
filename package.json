@@ -1,6 +1,6 @@
 {
   "name": "mp-glass",
-  "version": "0.11.9",
+  "version": "0.11.10",
   "private": true,
   "type": "module",
   "scripts": {
@@ -10,7 +10,8 @@
     "test": "vitest run",
     "test:e2e": "playwright test",
     "lint": "eslint shared frontend tests --max-warnings 0",
-    "check": "npm run lint && npm run typecheck && npm test && npm run build"
+    "check": "npm run lint && npm run typecheck && npm test && npm run build",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "ajv": "^8.17.1",

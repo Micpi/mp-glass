@@ -749,10 +749,13 @@ export class MPSpatialViewer extends LitElement {
     }
     return nothing;
   }
-  /** A room on the plan: its name, a warm dot while a light is on, and its readings. */
+  /**
+   * A room on the plan: its name, a warm dot while a light is on, and its readings. The heating or the air conditioning
+   * running is part of the Climat ambiance alone: Lumières, Ouvrants and Audio-vidéo say nothing of it.
+   */
   private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
     const readings=this.preview?nothing:this.planReadings(room,mode);
-    const climate=this.preview?undefined:this.activeClimate(room);
+    const climate=this.preview||mode!=='climate'?undefined:this.activeClimate(room);
     const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${climate.target?tr('{mode} actif · consigne {n} °',{mode:climate.label,n:climate.target}):tr('{mode} actif',{mode:climate.label})}>${mpIcon('flame',12)}<span>${climate.target?`${climate.label} · ${climate.target} °`:climate.label}</span></span>`:nothing;
     return html`<button class=${readings===nothing&&climateReading===nothing?'':'rich'} style="visibility:hidden" data-room=${room.id} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${climateReading}${readings}</button>`;
   }

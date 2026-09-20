@@ -1,0 +1,39 @@
+name: MP Nexus release guard
+# A published tag is what HACS installs. 0.11.2 to 0.11.8 were all tagged on the 0.11.1 commit because `main` had not
+# been pushed, so Home Assistant showed 0.11.8 while running 0.11.1. This fails loudly the moment such a tag appears.
+on:
+  release:
+    types: [published, edited]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  tag-serves-its-own-version:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: The tagged commit declares the tagged version
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME#v}"
+          for file in package.json custom_components/mp_glass/manifest.json; do
+            found=$(jq -r .version "$file")
+            [ "$found" = "$tag" ] || { echo "::error file=$file::$file says $found, the tag says $tag — this tag points at the wrong commit"; exit 1; }
+          done
+          found=$(sed -n 's/^VERSION = "\(.*\)"$/\1/p' custom_components/mp_glass/const.py)
+          [ "$found" = "$tag" ] || { echo "::error file=custom_components/mp_glass/const.py::const.py says $found, the tag says $tag"; exit 1; }
+          grep -q "mp-glass.js?v=$tag" custom_components/mp_glass/www/mp-glass-bootstrap.js \
+            || { echo "::error::the committed www/ bundle was not rebuilt for $tag — HACS would serve an older frontend"; exit 1; }
+          grep -q "^## $tag\b" CHANGELOG.md || { echo "::error file=CHANGELOG.md::no \"## $tag\" section"; exit 1; }
+          echo "$GITHUB_REF_NAME serves $tag."
+      - name: The tagged commit is on main
+        run: |
+          set -euo pipefail
+          git fetch --quiet origin main
+          git merge-base --is-ancestor HEAD origin/main \
+            || { echo "::error::this tag is not on main — push main before creating a release (npm run release does it in the right order)"; exit 1; }
+          echo "$GITHUB_SHA is on main."

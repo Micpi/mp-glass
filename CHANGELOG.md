@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.11.10 — Badge climat réservé à l’ambiance Climat
+
+### Modifié
+
+- **Label de pièce** : le badge du mode HVAC et de sa consigne n’apparaît plus que dans l’ambiance **Climat**. Lumières, Ouvrants et Audio-vidéo retrouvent un plan sans indication de chauffage ou de climatisation.
+
+### Ajouté
+
+- **Publication verrouillée** : `npm run release` devient la seule façon supportée de publier. Le script pousse `main`, relit la tête distante, étiquette ce SHA exact puis vérifie le code réellement servi par le tag ; il refuse de publier si les versions divergent, si `www/` n’a pas été reconstruit ou si le CHANGELOG n’a pas sa section.
+- **Garde-fou CI** : le workflow `release-guard.yml` échoue si un tag publié ne déclare pas sa propre version ou n’est pas sur `main` — exactement le défaut qui avait livré le code de la 0.11.1 sous les numéros 0.11.2 à 0.11.8.
+
+### Corrigé
+
+- **Suite navigateur** : les 84 tests repassent au vert. Les six images de référence de l’accueil dataient d’avant la 0.11.2 et son résumé supprimé ; l’intervalle de température du rez-de-chaussée ignorait le thermostat de la cuisine ajouté en 0.11.5 ; le tracé d’une pièce en bas du plan échouait depuis que la fenêtre du Studio dépasse la hauteur de l’écran de test. Le CI était rouge à chaque release depuis la 0.11.1.
+
 ## 0.11.9 — Publication réparée
 
 ### Corrigé

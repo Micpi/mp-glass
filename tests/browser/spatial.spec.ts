@@ -288,7 +288,7 @@ test('a house of several floors opens on all of them with their state, and each 
   await expect(house.locator('.stat',{hasText:'Niveaux'})).toContainText('3');
   await expect(house.locator('.stat',{hasText:'Lumières'})).toContainText('3 / 8');
   // From the top floor down, each with its rooms, lights and temperatures.
-  await expect(house.getByRole('listitem')).toHaveText([/Étage.*5 pièces · 2 lumières allumées.*19,2–22,6 °C/s,/Rez-de-chaussée.*7 pièces · lumières éteintes.*19,5–21,5 °C/s,/Sous-sol.*3 pièces · 1 lumière allumée/s]);
+  await expect(house.getByRole('listitem')).toHaveText([/Étage.*5 pièces · 2 lumières allumées.*19,2–22,6 °C/s,/Rez-de-chaussée.*7 pièces · lumières éteintes.*19,5–26,8 °C/s,/Sous-sol.*3 pièces · 1 lumière allumée/s]);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(label('upstairs')).toHaveText(/Étage\s*19,2–22,6 °C/);
   await expect(label('basement')).toHaveText('Sous-sol');
@@ -710,8 +710,10 @@ test('a saved level is edited on its plan: sides drawn to their neighbours, room
   const moved=(await figure.locator('.mark').nth(1).boundingBox())!;
   expect(moved.y-mark.y).toBeCloseTo((await figure.boundingBox())!.height/13.2,-1);
   await expect(dialog.getByText('Plan 3D · modifications non appliquées')).toBeVisible();
-  // A storeroom drawn below the bedroom, then named.
+  // A storeroom drawn below the bedroom, then named. The dialog is taller than this window: the lower edge of the plan
+  // has to be scrolled into view, or the pointer events of the drag land outside the page and draw nothing.
   await zones.getByRole('button',{name:'Ajouter une pièce'}).click();
+  await figure.scrollIntoViewIfNeeded();
   await drag(await at(.3,8.6),await at(2.8,10.2));
   const name=zones.getByRole('textbox',{name:'Nom de la pièce 8'});
   await expect(name).toBeFocused();await name.fill('Cellier');await name.press('Enter');
@@ -1353,8 +1355,10 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   // Lights: a warm dot on the lit kitchen only, names alone where there is nothing to read.
   await expect(label('kitchen').locator('i')).toHaveCount(1);await expect(label('dining').locator('i')).toHaveCount(0);
   await expect(label('dining')).toHaveText('Séjour');await expect(label('dining').locator('.readings')).toHaveCount(0);
-  // The lights read nothing else: shutters and players have their own ambiances.
+  // The lights read nothing else: shutters and players have their own ambiances, the running air conditioning included.
   await expect(label('living').locator('.readings')).toHaveCount(0);
+  await expect(label('kitchen').locator('.reading.hvac')).toHaveCount(0);
+  await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
   await viewer.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(label('bedroom').locator('.reading.temp')).toHaveText('19,5 °C');
   await expect(label('bedroom').locator('.reading.hvac.heat')).toHaveText('Chauffage · 20 °');
@@ -1391,8 +1395,15 @@ test('the plan offers lights, climate, openings and audio-video ambiances, as fa
   // The bedroom window opens: its room turns green on the plan and says so.
   await page.evaluate(()=>(window as unknown as {demo:{hass:import('../../frontend/ha/client').Hass}}).demo.hass.callService('binary_sensor','turn_on',{entity_id:'binary_sensor.chambre_fenetre'}));
   await expect(viewer.locator('[data-room="bedroom"] .reading.ajar')).toHaveText('Ouverte');
+  // The heating and the air conditioning stay in the Climat ambiance, and come back with it.
+  await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
   await viewer.locator('.stage').screenshot({path:'artifacts/spatial-modes-openings-phone.png'});
   await modes.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
+  await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
+  await modes.getByRole('button',{name:'Climat',exact:true}).click();
+  await expect(viewer.locator('[data-room="kitchen"] .reading.hvac.cool')).toHaveText('Climatisation · 24 °');
+  await modes.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
+  await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
   await viewer.locator('.stage').screenshot({path:'artifacts/spatial-modes-media-phone.png'});
   // Without a player left, no audio-video ambiance: the plan goes back to the lights.
   await page.evaluate(()=>{

@@ -1361,7 +1361,8 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   await expect(label('bedroom').locator('.reading')).toHaveCount(2);
   // Only the rooms that measure their temperature read something.
   await expect(label('kitchen').locator('.reading.temp')).toHaveCount(0);
-  for(const room of ['kitchen','dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
+  await expect(label('kitchen').locator('.reading.hvac.cool')).toHaveText('Climatisation');
+  for(const room of ['dining','hall','office','bath'])await expect(label(room).locator('.readings')).toHaveCount(0);
   await expect(label('kitchen').locator('i')).toHaveCount(0);
   // An offline thermometer still says so.
   await setStates({'sensor.salon_temperature':{state:'unavailable'}});

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.5 — Halo HVAC dans la pièce
+
+### Corrigé
+
+- **Plan 3D** : le halo de chaque pièce reflète maintenant l’action HVAC réellement en cours : chauffage orange, climatisation bleue, ventilation turquoise ou déshumidification violette.
+- **Cuisine de démonstration** : la fixture contient désormais une climatisation active afin de rendre le comportement visible immédiatement.
+
 ## 0.11.4 — Action HVAC réelle
 
 ### Corrigé

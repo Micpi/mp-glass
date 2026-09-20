@@ -19,7 +19,7 @@ if(spatial) {
   const rooms=project.spatial.floors[0]!.rooms;
   rooms[0]!.areaId='salon';
   rooms[0]!.entityIds=['light.circuit_0','sensor.salon_temperature','sensor.salon_humidity','cover.salon'];
-  rooms[2]!.entityIds=['light.circuit_1','light.circuit_2'];
+  rooms[2]!.entityIds=['light.circuit_1','light.circuit_2','climate.cuisine'];
   rooms[3]!.entityIds=['climate.chambre','binary_sensor.chambre_fenetre'];
   // Doors and windows with their shutters, blinds, curtains and sensors; a television and a speaker.
   rooms[0]!.openings=[{id:'baie',kind:'french_window',name:'Baie vitrée',side:0,at:.5,width:2.4,entityIds:['cover.salon','cover.salon_rideau']}];
@@ -72,6 +72,7 @@ if(spatial) hass.states={...hass.states,
   'sensor.salon_temperature':{entity_id:'sensor.salon_temperature',state:'21.5',last_changed:new Date(Date.now()-4*60_000).toISOString(),attributes:{friendly_name:'Salon · Température',device_class:'temperature',unit_of_measurement:'°C'}},
   'sensor.salon_humidity':{entity_id:'sensor.salon_humidity',state:'46',last_changed:new Date(Date.now()-18*60_000).toISOString(),attributes:{friendly_name:'Salon · Humidité',device_class:'humidity',unit_of_measurement:'%'}},
   'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20,hvac_action:'heating'}},
+  'climate.cuisine':{entity_id:'climate.cuisine',state:'cool',attributes:{friendly_name:'Cuisine · Climatisation',current_temperature:26.8,temperature:24,hvac_action:'cooling'}},
   'binary_sensor.chambre_fenetre':{entity_id:'binary_sensor.chambre_fenetre',state:'off',attributes:{friendly_name:'Chambre · Fenêtre',device_class:'window'}},
   'cover.salon_rideau':{entity_id:'cover.salon_rideau',state:'open',attributes:{friendly_name:'Salon · Rideau',device_class:'curtain',current_position:35,supported_features:15}},
   'cover.cuisine_store':{entity_id:'cover.cuisine_store',state:'open',attributes:{friendly_name:'Cuisine · Store',device_class:'blind',current_position:100,current_tilt_position:60,supported_features:15|128}},

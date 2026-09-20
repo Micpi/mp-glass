@@ -23,6 +23,12 @@ describe('room runtime information',()=>{
     states['climate.a']=state('climate.a','unavailable',{current_temperature:25});
     expect(roomAmbient(r,states,'climate').strength).toBe(0);
   });
+  it('uses the active HVAC action for the room halo before temperature',()=>{
+    const r=room(['climate.a']),states={'climate.a':state('climate.a','cool',{current_temperature:26.8,hvac_action:'cooling'})};
+    expect(roomAmbient(r,states,'climate')).toEqual({color:'#69b7ff',strength:.8});
+    states['climate.a']=state('climate.a','cool',{current_temperature:26.8,hvac_action:'idle'});
+    expect(roomAmbient(r,states,'climate').color).toBe('#ff816b');
+  });
   it('knows which rooms measure their temperature, even while offline',()=>{
     const states={'light.a':state('light.a','on'),'sensor.power':state('sensor.power','12',{device_class:'power',unit_of_measurement:'W'}),
       'sensor.t':state('sensor.t','unavailable',{device_class:'temperature'}),'sensor.f':state('sensor.f','70',{unit_of_measurement:'°F'}),

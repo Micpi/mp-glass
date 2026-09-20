@@ -118,10 +118,16 @@ export function ambianceEntities(room:SpatialRoom,states:Record<string,HAState>,
 }
 /** Halo colours of the plan besides the lights and the temperature scale. */
 export const PLAN_COLORS={open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff'} as const;
+export const HVAC_ACTION_COLORS={heating:'#ff816b',cooling:'#69b7ff',fan:'#71d7c0',drying:'#c3a6ff'} as const;
+const hvacAction=(state?:HAState)=>String(state?.attributes.hvac_action??'');
 /** A fixed Celsius scale, shared by every room; a missing reading produces no thermal halo. */
 export function temperatureColor(celsius:number){return celsius<18?'#69b7ff':celsius<21?'#71d7c0':celsius<24?'#ffc574':'#ff816b';}
 export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C'):RoomAmbient{
-  if(mode==='climate'){const t=roomTemperature(room,states,unit);return {color:t?temperatureColor(t.celsius):'#3496d1',strength:t?.value===undefined?0:.55};}
+  if(mode==='climate'){
+    const action=roomEntityIds(room).map(id=>hvacAction(states[id])).find(value=>value in HVAC_ACTION_COLORS) as keyof typeof HVAC_ACTION_COLORS|undefined;
+    if(action)return {color:HVAC_ACTION_COLORS[action],strength:.8};
+    const t=roomTemperature(room,states,unit);return {color:t?temperatureColor(t.celsius):'#3496d1',strength:t?.value===undefined?0:.55};
+  }
   // A door or a window open stands out; otherwise the more its shutters let daylight in, the brighter the room.
   if(mode==='openings'){
     if(roomOpen(room,states).length)return {color:PLAN_COLORS.open,strength:.6};

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.13.4 — Badge climat sous la température
+
+### Modifié
+
+- **Étiquette des pièces dans le plan, ambiance Climat** : la température mesurée s’affiche désormais immédiatement sous le nom de la pièce, suivie du badge de chauffage ou de climatisation et de sa consigne. L’ordre est conservé sur ordinateur et sur téléphone.
+
 ## 0.13.3 — Des fenêtres d’équipement plus harmonieuses
 
 ### Modifié

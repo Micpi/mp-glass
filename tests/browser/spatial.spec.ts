@@ -1366,6 +1366,7 @@ test('plan labels show a temperature only in rooms that measure it, and no clima
   // The kitchen's climate reports its temperature while cooling, without changing the thermal halo.
   await expect(label('kitchen').locator('.reading.temp')).toHaveText('26,8 °C');
   await expect(label('kitchen').locator('.reading.hvac.cool')).toHaveText('Climatisation · 24 °');
+  expect(await label('kitchen').evaluate(room => room.querySelector('.reading.temp')!.getBoundingClientRect().bottom <= room.querySelector('.reading.hvac')!.getBoundingClientRect().top)).toBe(true);
   // Cooling wears a snowflake, heating a flame: the mode reads without reading the words.
   await expect(label('kitchen').locator('.reading.hvac .mp-icon')).toHaveAttribute('data-icon','snow');
   await expect(label('bedroom').locator('.reading.hvac .mp-icon')).toHaveAttribute('data-icon','flame');
@@ -1405,6 +1406,7 @@ test('the plan offers lights, climate, openings and audio-video ambiances, as fa
   await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
   await modes.getByRole('button',{name:'Climat',exact:true}).click();
   await expect(viewer.locator('[data-room="kitchen"] .reading.hvac.cool')).toHaveText('Climatisation · 24 °');
+  expect(await viewer.locator('[data-room="kitchen"]').evaluate(room => room.querySelector('.reading.temp')!.getBoundingClientRect().bottom <= room.querySelector('.reading.hvac')!.getBoundingClientRect().top)).toBe(true);
   await modes.getByRole('button',{name:'Audio-vidéo',exact:true}).click();
   await expect(viewer.locator('.reading.hvac')).toHaveCount(0);
   await viewer.locator('.stage').screenshot({path:'artifacts/spatial-modes-media-phone.png'});

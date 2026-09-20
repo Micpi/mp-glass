@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.11.9 — Publication réparée
+
+### Corrigé
+
+- **Livraison HACS** : les versions 0.11.2 à 0.11.8 étaient publiées sur GitHub avec le code de la 0.11.1, la branche `main` n’ayant jamais été poussée avant la création des étiquettes. Les installations HACS recevaient donc l’ancienne interface malgré le numéro de version affiché.
+- **Label de pièce** : le mode HVAC actif et sa consigne (par exemple **Climatisation · 24 °**) sont enfin réellement livrés, avec toutes les corrections climat de la 0.11.2 à la 0.11.8.
+
 ## 0.11.8 — Mode et consigne dans les pièces
 
 ### Modifié

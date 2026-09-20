@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.11.7 — Température et mode séparés
+
+### Corrigé
+
+- **Halo de pièce** : la couleur du halo redevient exclusivement celle de la température mesurée ; l’action HVAC ne la remplace plus.
+- **Mode HVAC** : la pièce conserve uniquement un badge discret indiquant le chauffage, la climatisation, la ventilation ou la déshumidification en cours.
+- **Carte Climat** : la ligne du thermostat garde son style selon l’action réelle sans modifier la légende thermique du plan.
+
 ## 0.11.6 — Climat immédiatement lisible
 
 ### Corrigé

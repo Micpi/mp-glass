@@ -23,7 +23,7 @@ const MODES:{mode:PlanMode;label:MessageKey;icon:MPIconName;offered?:(room:Spati
 ];
 /** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights (shown through `trText`). */
 const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
-  climate:[['#ff816b','Chauffage en cours'],['#69b7ff','Climatisation en cours'],['#71d7c0','Ventilation en cours'],['#c3a6ff','Déshumidification en cours'],['#ffc574','Température mesurée']],
+  climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
   openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
   media:[[PLAN_COLORS.media,'En lecture'],[`${PLAN_COLORS.media}66`,'Allumé']],
 };

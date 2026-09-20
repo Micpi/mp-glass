@@ -150,7 +150,7 @@ Travail démarré le 10 septembre 2026, vérifications le 11 septembre (Europe/P
 | Inspection visuelle | téléphone portrait et desktop inspectés ; correction du fond répété |
 | Bundle Vite | environ 222 Ko, 60 Ko gzip, sans dépendance CDN |
 
-Scénarios navigateur : cible du service light, état après retour de la fixture, slider conditionnel, more-info, erreur de permission simulée, unavailable, absence de débordement, réglages de pièce, sauvegarde avec override conservé, strategy depuis projet enregistré et editor config-changed. Les réponses réseau de ces tests sont des doubles de contrat explicitement identifiés.
+Scénarios navigateur : cible du service light, état après retour de la fixture, slider conditionnel, fenêtre Détails à la place du more-info natif, erreur de permission simulée, unavailable, absence de débordement, réglages de pièce, sauvegarde avec override conservé, strategy depuis projet enregistré et editor config-changed. Les réponses réseau de ces tests sont des doubles de contrat explicitement identifiés.
 
 Benchmark local noyau Node (une exécution, pas un percentile ni du temps réseau/rendu) : 20 entités 0,22 ms ; 100 0,96 ms ; 500 3,39 ms ; 1000 3,40 ms. Seuil de garde testé : 500 ms. Aucun budget de rendu mobile ni consommation mémoire n'est encore certifié.
 

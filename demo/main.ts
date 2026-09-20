@@ -9,6 +9,9 @@ import type { HAState } from '../shared/models';
 import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPGlassView } from '../frontend/view';
 const snapshot = home();
+// The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
+const suspension = snapshot.states['light.circuit_0']!;
+snapshot.states['light.circuit_0'] = { ...suspension, attributes: { ...suspension.attributes, supported_color_modes: ['color_temp', 'hs'], color_temp_kelvin: 2700, min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6500, rgb_color: [255, 190, 120] } };
 const project = defaultProject('Maison de démonstration');
 const params = new URLSearchParams(location.search);
 const spatial = params.has('spatial');
@@ -55,7 +58,15 @@ function commanded(domain:string,service:string,data:Record<string,unknown>,old:
     const state=({turn_off:'off',turn_on:'idle',media_play:'playing',media_pause:'paused'} as Record<string,string>)[service]??old.state;
     return {...old,state,attributes};
   }
+  if(domain==='climate'){
+    if(service==='set_temperature')attributes.temperature=Number(data.temperature);
+    if(service==='set_preset_mode')attributes.preset_mode=String(data.preset_mode);
+    if(service==='set_hvac_mode')return {...old,state:String(data.hvac_mode),attributes:{...attributes,hvac_action:({heat:'heating',cool:'cooling',dry:'drying',fan_only:'fan'} as Record<string,string>)[String(data.hvac_mode)]??'idle'}};
+    return {...old,attributes};
+  }
   if('brightness_pct' in data)attributes.brightness=Number(data.brightness_pct)*255/100;
+  if('color_temp_kelvin' in data)attributes.color_temp_kelvin=Number(data.color_temp_kelvin);
+  if('rgb_color' in data)attributes.rgb_color=data.rgb_color;
   return {...old,state:service==='turn_off'?'off':'on',attributes};
 }
 const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id:'demo',is_admin:true},callWS:async<T>()=>[] as T,callService:async(domain,service,data)=>{
@@ -71,8 +82,8 @@ if(spatial) hass.states={...hass.states,
   'cover.salon':{entity_id:'cover.salon',state:'open',attributes:{friendly_name:'Salon · Volet baie',device_class:'shutter',current_position:65,supported_features:15}},
   'sensor.salon_temperature':{entity_id:'sensor.salon_temperature',state:'21.5',last_changed:new Date(Date.now()-4*60_000).toISOString(),attributes:{friendly_name:'Salon · Température',device_class:'temperature',unit_of_measurement:'°C'}},
   'sensor.salon_humidity':{entity_id:'sensor.salon_humidity',state:'46',last_changed:new Date(Date.now()-18*60_000).toISOString(),attributes:{friendly_name:'Salon · Humidité',device_class:'humidity',unit_of_measurement:'%'}},
-  'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20,hvac_action:'heating'}},
-  'climate.cuisine':{entity_id:'climate.cuisine',state:'cool',attributes:{friendly_name:'Cuisine · Climatisation',current_temperature:26.8,temperature:24,hvac_action:'cooling'}},
+  'climate.chambre':{entity_id:'climate.chambre',state:'heat',attributes:{friendly_name:'Chambre · Radiateur',current_temperature:19.5,temperature:20,hvac_action:'heating',hvac_modes:['off','heat','auto'],min_temp:7,max_temp:30,target_temp_step:.5,preset_modes:['comfort','eco'],preset_mode:'comfort'}},
+  'climate.cuisine':{entity_id:'climate.cuisine',state:'cool',attributes:{friendly_name:'Cuisine · Climatisation',current_temperature:26.8,temperature:24,hvac_action:'cooling',hvac_modes:['off','cool','dry','fan_only'],min_temp:16,max_temp:32,target_temp_step:1}},
   'binary_sensor.chambre_fenetre':{entity_id:'binary_sensor.chambre_fenetre',state:'off',attributes:{friendly_name:'Chambre · Fenêtre',device_class:'window'}},
   'cover.salon_rideau':{entity_id:'cover.salon_rideau',state:'open',attributes:{friendly_name:'Salon · Rideau',device_class:'curtain',current_position:35,supported_features:15}},
   'cover.cuisine_store':{entity_id:'cover.cuisine_store',state:'open',attributes:{friendly_name:'Cuisine · Store',device_class:'blind',current_position:100,current_tilt_position:60,supported_features:15|128}},

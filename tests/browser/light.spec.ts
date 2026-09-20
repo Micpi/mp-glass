@@ -5,15 +5,15 @@ const headerClash=(page:Page)=>page.evaluate(()=>{
   const name=root.querySelector('.brand>div')!.getBoundingClientRect(),nav=root.querySelector('nav')!.getBoundingClientRect();
   return {clipped:title.scrollWidth>title.clientWidth,overlap:name.right>nav.left&&name.left<nav.right&&name.bottom>nav.top&&name.top<nav.bottom};
 });
-test('commands the correct light; dimmer only where declared; more-info bubbles',async({page})=>{
+test('commands the correct light; dimmer only where declared; details open the MP Nexus window',async({page})=>{
   await page.goto('/');const first=page.locator('mp-glass-light-v4').filter({hasText:'Salon · Suspension'});
   await first.getByRole('button',{name:'Allumer',exact:true}).click();await expect(first.getByRole('button',{name:'Éteindre',exact:true})).toBeVisible();
   expect(await page.evaluate(()=> (window as unknown as {demo:{calls:unknown[]}}).demo.calls)).toEqual([{domain:'light',service:'turn_on',data:{entity_id:'light.circuit_0'}}]);
   await expect(page.locator('mp-glass-light-v4').filter({hasText:'Circuit 1'}).getByRole('slider')).toHaveCount(0);
   await first.getByRole('slider').fill('75');await first.getByRole('slider').dispatchEvent('change');
   await expect(first.getByText('Luminosité 75 %')).toBeVisible();
-  await page.evaluate(()=>document.addEventListener('hass-more-info',event=>Object.assign(window,{moreInfo:(event as CustomEvent).detail})));
-  await first.getByRole('button',{name:'Détails'}).click();expect(await page.evaluate(()=>(window as unknown as {moreInfo:unknown}).moreInfo)).toEqual({entityId:'light.circuit_0'});
+  await first.getByRole('button',{name:'Détails',exact:true}).click();
+  await expect(page.getByRole('dialog').getByRole('heading',{name:'Salon · Suspension'})).toBeVisible();
 });
 test('displays unavailable and service errors without claiming success',async({page})=>{
   await page.goto('/');

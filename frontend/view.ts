@@ -8,7 +8,9 @@ import { available } from '../shared/capabilities';
 import type { Hass } from './ha/client';
 import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
-import { COVER_STATES, HVAC, MEDIA_STATES, hvacIcon, roomIcon, stateName } from './spatial/viewer';
+import { roomIcon } from './spatial/viewer';
+import { COVER_STATES, HVAC, MEDIA_STATES, hvacIcon, stateName } from './entities';
+import './detail';
 import type { MessageKey } from './locales';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trDefault, trPlan, type Language } from './i18n';
 import { flag } from './flags';
@@ -32,7 +34,7 @@ interface ViewConfig {
 }
 
 export class MPGlassView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true}, planMode:{state:true}, planFloors:{state:true}, online:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true}, planMode:{state:true}, planFloors:{state:true}, online:{state:true}, detail:{state:true} };
   static styles = css`
     :host{display:block;flex:1 1 100%;width:100%;min-width:0;min-height:100vh;container-type:inline-size;box-sizing:border-box;color:#f8fbff;font-family:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif);position:relative;isolation:isolate;overflow:hidden;background:#061421}
     *{box-sizing:border-box}.backdrop,.shade,.ambient{position:fixed;inset:0;pointer-events:none}.backdrop{z-index:-4;background-size:cover;background-repeat:no-repeat;transform:scale(1.035);filter:blur(var(--mp-bg-blur,0)) saturate(var(--mp-bg-saturation,1))}.shade{z-index:-3;background:linear-gradient(90deg,rgba(2,13,25,.8),rgba(3,18,31,.17) 58%,rgba(2,10,19,.38)),linear-gradient(0deg,rgba(2,11,21,.95),transparent 72%)}.ambient{z-index:-2;background:radial-gradient(circle at 18% 15%,color-mix(in srgb,var(--mp-accent,#69b7ff) 14%,transparent),transparent 34%),radial-gradient(circle at 85% 70%,color-mix(in srgb,var(--mp-secondary,#efbd8b) 10%,transparent),transparent 28%)}
@@ -109,11 +111,14 @@ export class MPGlassView extends LitElement {
   private header?: Element;
   /** The menu of languages under the flag, open or not. */
   private languageOpen = false;
+  /** Entity whose MP Nexus detail window is open, none when empty. */
+  private detail = '';
   private resize = new ResizeObserver(() => this.fitNavigation());
 
   connectedCallback() {
     super.connectedCallback();
     this.header = claimHeader(this);
+    this.addEventListener('hass-more-info', this.interceptMoreInfo);
     addEventListener('pointerdown', this.outside);
     addEventListener('keydown', this.escape);
     this.resize.observe(this);
@@ -123,6 +128,7 @@ export class MPGlassView extends LitElement {
     super.disconnectedCallback();
     if (this.header) releaseHeader(this.header, this);
     this.header = undefined;
+    this.removeEventListener('hass-more-info', this.interceptMoreInfo);
     removeEventListener('pointerdown', this.outside);
     removeEventListener('keydown', this.escape);
     this.resize.disconnect();
@@ -258,7 +264,25 @@ export class MPGlassView extends LitElement {
     this.planMode = e.detail.mode;
     this.planFloors = e.detail.floorIds;
   };
-  private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
+  private moreInfo(entityId: string) { this.detail = entityId; }
+  /**
+   * Everything on this page asking for the Home Assistant more-info dialog — a card of the dashboard, a badge, a card
+   * of another author — opens the MP Nexus window instead, on the same entity. Only the window itself is let through,
+   * for the history and the settings Home Assistant alone holds.
+   */
+  private interceptMoreInfo = (event: Event) => {
+    const detail = (event as CustomEvent<{ entityId?: unknown; mpNative?: unknown } | undefined>).detail;
+    if (detail?.mpNative === true) return;
+    const entityId = typeof detail?.entityId === 'string' ? detail.entityId : '';
+    if (!entityId.includes('.')) return;
+    event.stopPropagation();
+    this.detail = entityId;
+  };
+  /** The window of the device touched, drawn again on every state Home Assistant sends while it stays open. */
+  private detailWindow() {
+    if (!this.detail || !this.hass) return nothing;
+    return html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>`;
+  }
   private format(value: number, digits = 1) { return new Intl.NumberFormat(locale(),{maximumFractionDigits:digits}).format(value); }
   /** "Salon · Téléviseur" shown as "Téléviseur" inside its Salon group. */
   private static shorten(name: string, room: string) {
@@ -385,6 +409,7 @@ export class MPGlassView extends LitElement {
           ${this.cards.length ? html`<main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>` : this.emptyState()}
         `}
         ${a.showFooter === false ? nothing : html`<footer><span>≋</span> MP Nexus · ${tr('Votre maison, simplement')}</footer>`}
+        ${this.detailWindow()}
       </div>`;
   }
 }

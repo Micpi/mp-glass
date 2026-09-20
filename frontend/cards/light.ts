@@ -5,13 +5,16 @@ import type { Hass } from '../ha/client';
 import { LanguageController, locale, tr } from '../i18n';
 import { glassStyles } from '../styles';
 import { mpIcon } from '../icons';
+import '../detail';
 export class MPGlassLight extends LitElement {
   static styles = glassStyles;
-  static properties = { config: { state: true }, busy: { state: true }, failure: { state: true } };
+  static properties = { config: { state: true }, busy: { state: true }, failure: { state: true }, detail: { state: true } };
   protected config?: CardConfig;
   protected currentHass?: Hass;
   protected busy = false;
   protected failure = false;
+  /** Entity whose MP Nexus detail window is open, none when empty. */
+  protected detail = '';
   /** Hides the failure notice once the next attempt has had time to happen. */
   private failureTimer?: ReturnType<typeof setTimeout>;
   disconnectedCallback() { clearTimeout(this.failureTimer); super.disconnectedCallback(); }
@@ -41,7 +44,12 @@ export class MPGlassLight extends LitElement {
   static getStubConfig(hass: Hass) { return { entity: Object.keys(hass.states).find(id => id.startsWith('light.')) }; }
   getCardSize() { return 3; }
   getGridOptions() { return { columns: 6, min_columns: 6 }; }
-  protected moreInfo() { this.dispatchEvent(new CustomEvent('hass-more-info', { detail: { entityId: this.config?.entity }, bubbles: true, composed: true })); }
+  /** Details open the MP Nexus window, in the theme of the card, wherever the card is used. */
+  protected moreInfo() { this.detail = this.config?.entity ?? ''; }
+  private detailWindow() {
+    if (!this.detail || !this.currentHass) return nothing;
+    return html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>`;
+  }
   protected async act(service: string, data: Record<string, unknown> = {}) {
     const id = this.config?.entity;
     if (!id || !id.startsWith('light.') || this.busy || !available(this.hass?.states[id])) return;
@@ -77,7 +85,8 @@ export class MPGlassLight extends LitElement {
       ${dimmable && showBrightness ? html`<label class="dimmer"><span>${tr('Luminosité')} ${percent === undefined ? '—' : tr('{n} %',{n:new Intl.NumberFormat(locale()).format(percent)})}</span><input aria-label=${tr('Luminosité')} type="range" min="0" max="100" .value=${String(percent ?? 0)} ?disabled=${!enabled || this.busy} @change=${(event: Event) => this.act('turn_on', { brightness_pct: Number((event.target as HTMLInputElement).value) })}></label>` : html`<div class="no-dimmer" aria-hidden="true"></div>`}
       ${this.failure ? html`<p class="error" role="alert">${tr('Action impossible. Vérifiez la connexion et vos droits.')}</p>` : nothing}
       ${this.config.debug ? html`<details><summary>${tr('Pourquoi cette carte ?')}</summary><pre>${JSON.stringify({ entity: this.config.entity, evidence: light ? 'domain:light' : 'fallback', capabilities, presentation: this.config.type }, null, 2)}</pre></details>` : nothing}
-    </article>`;
+    </article>
+    ${this.detailWindow()}`;
   }
 }
 export class MPGlassGeneric extends MPGlassLight {}

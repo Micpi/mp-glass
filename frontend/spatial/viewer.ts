@@ -6,11 +6,12 @@ import { alignRooms, nearestSide, openingPlacement, roomOutline, stackFloors, wa
 import { mpIcon, type MPIconName } from '../icons';
 import { LanguageController, locale, tr, trText } from '../i18n';
 import type { MessageKey } from '../locales';
+import { climateActionMode, COVER_STATES, HVAC, hvacIcon, kindOf, KIND_ICONS, MEDIA_STATES, stateName, type Kind } from '../entities';
+import '../detail';
 import { defineElement } from '../registry';
 import type { CameraView, LevelProjection, MediaState, OpeningState, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
-type Kind = 'light'|'cover'|'climate'|'media'|'opening'|'motion'|'binary'|'temperature'|'humidity'|'sensor';
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean; mode?:string }
 /** What a room holds besides its equipment list: doors and windows with their covers and sensors, televisions and speakers. */
 const OPENING_NAMES:Record<OpeningKind,MessageKey>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
@@ -37,15 +38,6 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
 ];
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
 export { roomIcon };
-const KIND_ICONS:Record<Kind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',media:'speaker',opening:'window',motion:'motion',binary:'gauge',temperature:'thermo',humidity:'drop',sensor:'gauge'};
-export const MEDIA_STATES:Record<string,MessageKey>={playing:'Lecture',paused:'En pause',idle:'Allumé',on:'Allumé',off:'Éteint',standby:'En veille',buffering:'Chargement…'};
-export const HVAC:Record<string,MessageKey>={off:'Arrêt',heat:'Chauffage',cool:'Climatisation',heat_cool:'Automatique',auto:'Automatique',dry:'Déshumidification',fan_only:'Ventilation'};
-/** What a thermostat is doing, at a glance: a flame heats, a snowflake cools, a fan airs, a drop dries. */
-const HVAC_ICONS:Record<string,MPIconName>={heat:'flame',cool:'snow',fan_only:'fan',dry:'drop',heat_cool:'thermo',auto:'thermo'};
-export const hvacIcon=(mode?:string)=>(mode?HVAC_ICONS[mode]:undefined)??KIND_ICONS.climate;
-export const COVER_STATES:Record<string,MessageKey>={opening:'Ouverture…',closing:'Fermeture…',closed:'Fermé',open:'Ouvert'};
-/** A state Home Assistant gives, named in the interface language when MP Nexus knows it. */
-export const stateName=(names:Record<string,MessageKey>,state:string)=>{const key=names[state];return key?tr(key):state;};
 /** Shutters of a floor, of the whole house or of a room: how the pair of commands names them. */
 const COVER_SCOPES={
   floor:['Volets du niveau','Ouvrir tous les volets du niveau','Fermer tous les volets du niveau'],
@@ -89,21 +81,6 @@ const writeViews=(views:Record<string,PlanView>)=>{
   catch{/* Storage blocked: the view holds for this page only. */}
 };
 const numeric=(value:unknown)=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
-const climateActionMode=(state?:HAState)=>{
-  const action=String(state?.attributes.hvac_action??'');
-  return ({heating:'heat',cooling:'cool',fan:'fan_only',drying:'dry'} as Record<string,string>)[action];
-};
-function kindOf(id:string,state?:HAState):Kind{
-  const domain=id.split('.')[0],deviceClass=String(state?.attributes.device_class??''),unit=String(state?.attributes.unit_of_measurement??'');
-  if(domain==='light')return 'light';
-  if(domain==='cover')return 'cover';
-  if(domain==='climate')return 'climate';
-  if(domain==='media_player')return 'media';
-  if(domain==='binary_sensor')return ['door','window','opening','garage_door'].includes(deviceClass)?'opening':['motion','occupancy','presence'].includes(deviceClass)?'motion':'binary';
-  if(deviceClass==='temperature'||/°[CF]$/.test(unit))return 'temperature';
-  if(deviceClass==='humidity')return 'humidity';
-  return 'sensor';
-}
 /** "Salon · Suspension" shown as "Suspension" inside the Salon. */
 function shorten(name:string,room:string){
   const rest=name.slice(room.length);
@@ -112,7 +89,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -295,6 +272,8 @@ export class MPSpatialViewer extends LitElement {
   private flight = 0;
   private selected = '';
   private error = '';
+  /** Entity whose MP Nexus detail window is open, none when empty. */
+  private detail = '';
   private walls = true;
   private topView = false;
   private engaged = false;
@@ -688,7 +667,8 @@ export class MPSpatialViewer extends LitElement {
     const state=this.hass?.states[id]?.state;
     if(state==='on'||state==='off') void this.lights([room],state==='on'?'turn_off':'turn_on',[id]);
   }
-  private moreInfo(entityId: string) { this.dispatchEvent(new CustomEvent('hass-more-info',{detail:{entityId},bubbles:true,composed:true})); }
+  /** The MP Nexus window of the device, in place of the Home Assistant dialog; the plan keeps the room card open behind it. */
+  private moreInfo(entityId: string) { this.detail=entityId; }
   /** Everything a room lets the plan command: its equipment, what is linked to its doors and windows, its televisions and speakers. */
   private roomEntities(room: SpatialRoom) { return new Set(roomEntityIds(room)); }
   private async cover(room:SpatialRoom,id:string,action:CoverAction,position?:number){
@@ -842,7 +822,13 @@ export class MPSpatialViewer extends LitElement {
         ${stacked?this.houseCard(plan.floors):room?this.roomCard(room,floor,lit.has(room.id)):this.overviewCard(floor)}
       </div>
       ${this.preview?nothing:this.askDialog()}
-    </div>`;
+    </div>
+    ${this.detailWindow()}`;
+  }
+  /** The detail window of the device touched, drawn again on every state Home Assistant sends while it stays open. */
+  private detailWindow() {
+    if(!this.detail||!this.hass) return nothing;
+    return html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${()=>{this.detail='';}}></mp-glass-detail>`;
   }
   private lightsStat(total: number, on: number) {
     return html`<div class="stat ${on?'warm':''}"><small>${tr('Lumières')}</small><strong>${on}<em> / ${total}</em></strong><span>${tr('allumée|allumées',{n:on})}</span></div>`;

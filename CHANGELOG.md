@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.12.0 — Les fenêtres de MP Nexus
+
+### Ajouté
+
+- **Fenêtre d'équipement** : toucher « Détails », une tuile du dashboard ou une ligne d'une pièce du plan ouvre désormais une fenêtre MP Nexus — même verre, même accent, même langue que le dashboard — à la place du dialogue *more-info* de Home Assistant, dont la typographie et les couleurs juraient avec l'interface.
+- **Commandes réellement offertes** : la fenêtre n'affiche que ce que l'équipement déclare. Une lumière : allumage, luminosité, température de couleur et couleur (sept teintes et un sélecteur libre). Un volet : ouvrir, arrêter, fermer, position et inclinaison des lames. Un thermostat : consigne au demi-degré, modes et préréglages. Un lecteur : lecture, pistes, volume, sourdine et source. Également serrures, interrupteurs, ventilateurs, humidificateurs, scènes et scripts. Un capteur se lit, sans commande inventée.
+- **Détails techniques** : chaque fenêtre liste l'`entity_id` et les attributs restants de l'entité, repliés par défaut.
+- **Retour à Home Assistant** : « Historique et réglages Home Assistant », en pied de fenêtre, ouvre le dialogue natif — seul porteur de l'historique, du logbook et des réglages d'entité.
+
+### Modifié
+
+- **Cartes d'autres auteurs** : les badges et cartes Home Assistant posés dans une vue MP Nexus ouvrent eux aussi la fenêtre MP Nexus. Leur demande de dialogue est interceptée par la vue ; celle émise par la fenêtre elle-même passe.
+- **Carte Light hors dashboard** : utilisée dans un dashboard Home Assistant ordinaire, elle porte sa propre fenêtre, dans le thème réglé sur la carte.
+- **Vocabulaire commun** : `frontend/entities.ts` rassemble ce que MP Nexus lit dans une entité (nature, icône, état, attributs) ; le plan 3D, les tuiles et la fenêtre parlent la même langue à partir du même code.
+
 ## 0.11.11 — Un flocon pour la climatisation
 
 ### Modifié

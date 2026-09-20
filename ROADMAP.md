@@ -32,7 +32,7 @@ Porte : les tests néophyte et professionnel sont automatisés sur doubles (`tes
 
 ## Incrément 2 — terminer MVP 1
 
-Climate, puis Cover, puis TV + Remote ; association avec preuves ; popup natif ; Home synthétique ; Alarm ; Camera lazy ; Floorplan de base ; wizard complet ; preview ; préférences personnelles. Aucun trackpad si l'adapter ne déclare pas les commandes/gestes réels. Chaque domaine livre le chemin complet de l'ADR 0006 (découverte, révision, explication, carte, fallback, locale) et repasse les deux tests UX avec des équipements mixtes.
+Climate, puis Cover, puis TV + Remote ; association avec preuves ; fenêtre de détail — livrée en 0.12.0 dans le thème du dashboard, à la place du popup natif, qui reste accessible depuis son pied de page ; Home synthétique ; Alarm ; Camera lazy ; Floorplan de base ; wizard complet ; preview ; préférences personnelles. Aucun trackpad si l'adapter ne déclare pas les commandes/gestes réels. Chaque domaine livre le chemin complet de l'ADR 0006 (découverte, révision, explication, carte, fallback, locale) et repasse les deux tests UX avec des équipements mixtes.
 
 ## Phase 2
 

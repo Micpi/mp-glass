@@ -109,6 +109,8 @@ export class SpatialScene {
   picking?: (point:Point,room:string)=>void;
   equipment?: (key:string,entityId?:string)=>void;
   private fixtureAnchor?:T.Vector3;
+  /** Ambient equipment has no saved physical position; its bubble follows the room marker. */
+  anchorEquipment(room:string){this.fixtureAnchor=this.rooms.get(room)?.anchor.clone();this.render();}
   dismissEquipment(){this.fixtureAnchor=undefined;}
   private levels = new Map<string,LevelParts>();
   private ray = new T.Raycaster();

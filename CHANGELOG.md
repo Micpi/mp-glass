@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.10 — Infobulles utiles, lumières et climat
+
+- Les infobulles du plan 3D présentent un résumé adapté à l’équipement : état et luminosité d’une lumière allumée, mode du thermostat, température mesurée et consigne active, état des ouvrants, contenu en lecture et volume.
+- Les machines regroupent leurs capteurs en un résumé du cycle : phase lisible, programme, durée restante et progression pendant le fonctionnement. Une porte ouverte est signalée ; les valeurs de cycle périmées sont masquées après la fin.
+- Les dimensions, attributs techniques, consommation instantanée, versions et capteurs sans intérêt pour ce résumé ne sont plus affichés. Un bouton Détails ouvre la fiche complète séparément.
+- Dans les ambiances Lumières et Climat, chaque équipement lié à une pièce dispose d’un bouton avec nom et icône sur le plan. Les températures et humidités sont également consultables. Ces repères suivent la pièce pendant les déplacements de caméra sans inventer une position physique non configurée.
+- Les états indisponibles restent explicites et les résumés sont actualisés en direct. Les repères restent accessibles au clavier et respectent le placement du Studio et la gestion des collisions des étiquettes.
+- Vérifications : tests dédiés aux résumés, lint, TypeScript, suite frontend et reconstruction du bundle HACS.
+
 ## 0.13.9 — Infobulles des équipements sur le plan 3D
 
 ### Ajouté

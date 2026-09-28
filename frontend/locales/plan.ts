@@ -2,6 +2,19 @@ import type { Messages } from './types';
 
 /** The 3D plan: its ambiances, its room and floor cards, and the commands of lights, shutters and players. */
 export const PLAN = {
+  'État': ['Status', 'Состояние'],
+  'À vérifier': ['Needs attention', 'Требует внимания'],
+  'Aucune information disponible.': ['No information available.', 'Нет доступной информации.'],
+  'Programme du cycle': ['Program', 'Программа'],
+  'Lavage': ['Washing', 'Стирка'],
+  'Rinçage': ['Rinsing', 'Полоскание'],
+  'Essorage': ['Spinning', 'Отжим'],
+  'Séchage': ['Drying', 'Сушка'],
+  'Terminé': ['Finished', 'Завершено'],
+  'Activité': ['Activity', 'Активность'],
+  'Ouverture': ['Opening', 'Открытие'],
+  'À l’affiche': ['Now playing', 'Сейчас играет'],
+  'Son coupé': ['Muted', 'Звук отключён'],
   'Informations de {name}': ['Information about {name}', 'Информация: {name}'],
   'Aucune entité Home Assistant reliée.': ['No Home Assistant entity linked.', 'Нет связанной сущности Home Assistant.'],
   'État de l’équipement': ['Appliance state', 'Состояние устройства'],

@@ -35,6 +35,8 @@ function wallGeometry(points:readonly Point[],thickness:number,height:number){
 }
 
 type Projection = Map<string,{x:number;y:number;visible:boolean}>;
+/** The equipment information bubble follows the point selected on the model. */
+export interface FixtureProjection { x:number; y:number; visible:boolean }
 /** Where each floor of a stack stands on screen: the middle of the floor, and the left and right ends of its footprint. */
 export type LevelProjection = Map<string,{x:number;y:number;left:number;right:number;visible:boolean}>;
 /** A camera kept as the user left it, told relative to the house so a redrawn or edited plan keeps the same view. */
@@ -105,6 +107,9 @@ export class SpatialScene {
   private fixtureKey = '';
   /** While set, the next tap on the house gives the point touched on the plan, and the room under it, instead of selecting a room. */
   picking?: (point:Point,room:string)=>void;
+  equipment?: (key:string,entityId?:string)=>void;
+  private fixtureAnchor?:T.Vector3;
+  dismissEquipment(){this.fixtureAnchor=undefined;}
   private levels = new Map<string,LevelParts>();
   private ray = new T.Raycaster();
   private halo?: T.CanvasTexture;
@@ -133,7 +138,7 @@ export class SpatialScene {
    * `select` receives the room touched and its floor; `project` the rooms on screen, or the floors when several are drawn;
    * `point` the floor under the mouse when several are drawn ('' beside them).
    */
-  constructor(private host: HTMLElement, private select: (room:string,floor:string)=>void, private project: (rooms:Projection,levels:LevelProjection)=>void, private engage: ()=>void = ()=>{}, private point: (floor:string)=>void = ()=>{}) {
+  constructor(private host: HTMLElement, private select: (room:string,floor:string)=>void, private project: (rooms:Projection,levels:LevelProjection,fixture?:FixtureProjection)=>void, private engage: ()=>void = ()=>{}, private point: (floor:string)=>void = ()=>{}) {
     this.renderer=new T.WebGLRenderer({alpha:true,antialias:true,powerPreference:'low-power'});
     this.renderer.setPixelRatio(Math.min(devicePixelRatio,2));
     this.renderer.setClearColor(0x000000,0);
@@ -186,6 +191,7 @@ export class SpatialScene {
   private hit(x:number,y:number,slop:number,targets:T.Object3D[]) {
     const rect=this.renderer.domElement.getBoundingClientRect();
     if(!rect.width||!rect.height||!targets.length)return undefined;
+    targets=targets.filter(object=>{let current:T.Object3D|null=object;while(current){if(!current.visible)return false;current=current.parent;}return true;});
     const offsets:[number,number][]=slop?[[0,0],[slop,0],[-slop,0],[0,slop],[0,-slop]]:[[0,0]];
     for(const [dx,dy] of offsets){
       this.ray.setFromCamera(new T.Vector2((x+dx-rect.left)/rect.width*2-1,-(y+dy-rect.top)/rect.height*2+1),this.camera);
@@ -238,14 +244,16 @@ export class SpatialScene {
     const {clientX:x,clientY:y}=e;
     this.hover=requestAnimationFrame(()=>{
       this.hover=0;const hit=this.cast(x,y,0,this.solids);
-      this.renderer.domElement.style.cursor=hit?this.picking?'crosshair':'grab':'';
+      const surface=this.cast(x,y,0,this.surfaces);
+      this.renderer.domElement.style.cursor=hit?this.picking?'crosshair':surface?.userData.fixtureKey?'pointer':'grab':'';
       if(this.levels.size)this.point(String(hit?.userData.floorId??''));
     });
   };
   private leave=()=>{cancelAnimationFrame(this.hover);this.hover=0;if(this.levels.size)this.point('');};
   private key=(e:KeyboardEvent)=>{if(['+','=','-'].includes(e.key)){e.preventDefault();this.zoom(e.key==='-'?1.2:.8);}};
   private pointerDown=(e:PointerEvent)=>{this.down={x:e.clientX,y:e.clientY};};
-  private pointerUp=(e:PointerEvent)=>{
+  private pointerUp=(e:PointerEvent)=>this.pick(e);
+  private pick(e:PointerEvent){
     if(e.button!==0 || Math.hypot(e.clientX-this.down.x,e.clientY-this.down.y)>5)return;
     if(this.picking){
       // A wall or a floor: the point touched, as a point of the plan; the room is known on its floor only.
@@ -253,8 +261,15 @@ export class SpatialScene {
       if(hit)this.picking([hit.point.x,hit.point.z],String(hit.object.userData.roomId??''));
       return;
     }
-    const hit=this.cast(e.clientX,e.clientY,e.pointerType==='mouse'?0:SLOP,this.surfaces);if(hit)this.select(String(hit.userData.roomId),String(hit.userData.floorId));
-  };
+    const nearby=e.pointerType!=='mouse'?this.hit(e.clientX,e.clientY,SLOP,this.surfaces.filter(object=>object.userData.fixtureKey)):undefined;
+    const hit=nearby??this.hit(e.clientX,e.clientY,0,this.surfaces);
+    if(!hit){this.dismissEquipment();this.equipment?.('');return;}
+    const object=hit.object;
+    if(object.userData.fixtureKey&&this.equipment){
+      this.fixtureAnchor=hit.point.clone();this.equipment(String(object.userData.fixtureKey),object.userData.entityId as string|undefined);this.render();return;
+    }
+    this.dismissEquipment();this.equipment?.('');this.select(String(object.userData.roomId),String(object.userData.floorId));
+  }
   private stopTween=()=>{cancelAnimationFrame(this.tween);this.tween=0;const land=this.landing;this.landing=undefined;land?.();};
   /** Moves the orbit target and distance while keeping the current viewing angle; `done` once there, or once interrupted. */
   private fly(target:T.Vector3,distance:number,done?:()=>void) {
@@ -332,6 +347,11 @@ export class SpatialScene {
    * open, and each of its covers, drawn at their positions by `applyFixtures`. With the walls lowered, a mark on the floor
    * instead, and for a door the arc its leaf sweeps.
    */
+  /** A visible equipment surface carries its own identity rather than selecting the floor behind it. */
+  private fixture(mesh:T.Mesh,key:string,room:string,floor:string,entityId?:string){
+    Object.assign(mesh.userData,{fixtureKey:key,roomId:room,floorId:floor,entityId});
+    this.surfaces.push(mesh);this.solids.push(mesh);return mesh;
+  }
   private addOpening(group:T.Group,floor:SpatialFloor,opening:SceneOpening){
     const {center,tangent,inward,width,kind}=opening,half=width/2;
     const holder=new T.Group();holder.position.set(center[0],floor.elevation,center[1]);holder.rotation.y=-Math.atan2(tangent[1],tangent[0]);
@@ -346,7 +366,7 @@ export class SpatialScene {
     if(!this.walls){
       // Lowered walls: a bright mark across the wall, and the quarter circle each leaf of a door or a French window sweeps.
       const y=.045,mark=new T.Mesh(new T.BoxGeometry(width,.012,.16),new T.MeshBasicMaterial({color:kind==='door'?LEAF:GLASS,transparent:true,opacity:.75,depthWrite:false}));
-      mark.position.y=y;holder.add(mark);
+      mark.position.y=y;holder.add(mark);this.fixture(mark,opening.key,opening.room,floor.id);
       if(kind!=='window')for(const hinge of hinges){
         const toward=hinge<0?1:-1,swing:number[][]=[[hinge,y,0],[hinge,y,into*leafWidth]];
         for(let k=0;k<12;k++)for(const angle of [k,k+1].map(n=>n/12*Math.PI/2))swing.push([hinge+toward*leafWidth*Math.cos(angle),y,into*leafWidth*Math.sin(angle)]);
@@ -363,20 +383,22 @@ export class SpatialScene {
       const toward=hinge<0?1:-1,pivot=new T.Group();
       pivot.position.set(hinge,bottom,0);holder.add(pivot);
       const pane=new T.Mesh(new T.PlaneGeometry(leafWidth,height),new T.MeshBasicMaterial({color:kind==='door'?LEAF:GLASS,transparent:true,opacity:kind==='door'?.24:.15,side:T.DoubleSide,depthWrite:false}));
-      pane.position.set(toward*leafWidth/2,height/2,0);pivot.add(pane);
+      pane.position.set(toward*leafWidth/2,height/2,0);pivot.add(pane);this.fixture(pane,opening.key,opening.room,floor.id);
       const x=toward*leafWidth;
       pivot.add(strokes([[0,0,0],[x,0,0],[x,0,0],[x,height,0],[x,height,0],[0,height,0],[0,height,0],[0,0,0]],new T.LineBasicMaterial({color:FRAME,transparent:true,opacity:.45})));
       // Turning by `sign` times its swing brings the leaf into the room, whichever side its hinge is on.
       parts.leaves.push({pivot,sign:-into*toward});
     }
     for(const {id,style} of opening.covers){
-      const group=new T.Group();group.position.z=style==='outside'?-into*.1:style==='curtain'?into*.14:into*.1;holder.add(group);
+      const group=new T.Group();Object.assign(group.userData,{fixtureKey:opening.key,roomId:opening.room,floorId:floor.id,entityId:id});group.position.z=style==='outside'?-into*.1:style==='curtain'?into*.14:into*.1;holder.add(group);
       const color=style==='curtain'?CURTAIN:style==='inside'?BLIND:SHUTTER;
       parts.covers.set(id,{group,style,fill:new T.MeshBasicMaterial({color,transparent:true,opacity:style==='curtain'?.42:.4,side:T.DoubleSide,depthWrite:false}),lines:new T.LineBasicMaterial({color:style==='curtain'?0xfff1e0:0xf1f8ff,transparent:true,opacity:.55})});
     }
   }
   /** Redraws a cover hiding `closed` of its opening: a shutter or a blind comes down from the top, curtains close in from both sides. */
   private drawCover(parts:OpeningParts,cover:CoverParts,closed:number|undefined){
+    const old=new Set(cover.group.children);this.surfaces=this.surfaces.filter(object=>!old.has(object));this.solids=this.solids.filter(object=>!old.has(object));
+    const register=(mesh:T.Mesh)=>this.fixture(mesh,String(cover.group.userData.fixtureKey),String(cover.group.userData.roomId),String(cover.group.userData.floorId),cover.group.userData.entityId as string|undefined);
     for(const child of [...cover.group.children]){if(child instanceof T.Mesh||child instanceof T.LineSegments)child.geometry.dispose();cover.group.remove(child);}
     if(closed===undefined||!this.walls)return;
     const {width}=parts.opening,{top,bottom}=parts;
@@ -385,7 +407,7 @@ export class SpatialScene {
       const high=top+.08,low=Math.max(0,bottom-.15),each=.12+(width/2-.04)*closed,x0=width/2+.08;
       for(const side of [-1,1]){
         const panel=new T.Mesh(new T.PlaneGeometry(each,high-low),cover.fill);
-        panel.position.set(side*(x0-each/2),(high+low)/2,0);cover.group.add(panel);
+        panel.position.set(side*(x0-each/2),(high+low)/2,0);cover.group.add(panel);register(panel);
         const folds:number[][]=[];for(let x=.06;x<each;x+=.12)folds.push([side*(x0-x),low,0],[side*(x0-x),high,0]);
         if(folds.length)cover.group.add(strokes(folds,cover.lines));
       }
@@ -396,7 +418,7 @@ export class SpatialScene {
     const x=width/2+.03,drop=(top-bottom)*closed,low=top-drop;
     cover.group.add(strokes([[-x,top+.07,0],[x,top+.07,0],[-x,top+.07,0],[-x,top,0],[x,top+.07,0],[x,top,0]],cover.lines));
     if(drop<.01)return;
-    const apron=new T.Mesh(new T.PlaneGeometry(2*x,drop),cover.fill);apron.position.set(0,top-drop/2,0);cover.group.add(apron);
+    const apron=new T.Mesh(new T.PlaneGeometry(2*x,drop),cover.fill);apron.position.set(0,top-drop/2,0);cover.group.add(apron);register(apron);
     const slats:number[][]=[];for(let y=top-.09;y>low+.02;y-=.09)slats.push([-x,y,0],[x,y,0]);
     slats.push([-x,low,0],[x,low,0],[-x,low,0],[-x,top,0],[x,low,0],[x,top,0]);
     cover.group.add(strokes(slats,cover.lines));
@@ -407,7 +429,7 @@ export class SpatialScene {
     const screen=new T.MeshBasicMaterial({color:0x08131f,transparent:true,opacity:.9,side:T.DoubleSide,depthWrite:false});
     const frame=new T.LineBasicMaterial({color:FRAME,transparent:true,opacity:.7});
     const parts:MediaParts={room:media.room,kind:media.kind,screen,frame};
-    const body=(mesh:T.Mesh)=>{mesh.userData.roomId=media.room;mesh.userData.floorId=floor.id;this.surfaces.push(mesh);this.solids.push(mesh);return mesh;};
+    const body=(mesh:T.Mesh)=>this.fixture(mesh,media.key,media.room,floor.id);
     if(media.kind==='tv'){
       const [w,h,y]=[1.12,.64,1.12];
       const panel=body(new T.Mesh(new T.PlaneGeometry(w,h),screen));panel.position.set(0,y,0);holder.add(panel);
@@ -428,7 +450,7 @@ export class SpatialScene {
     const root=new T.Group();root.position.set(item.at[0],floor.elevation+item.elevation,item.at[1]);root.rotation.y=item.rotation*Math.PI/180;root.scale.set(item.width/.62,item.height/.85,item.depth/.57);root.visible=this.laundryMode;group.add(root);
     const enamel=new T.MeshBasicMaterial({color:item.kind==='dryer'?0xf0d8ac:0xd9e4e2,transparent:true,opacity:.98});
     const edge=new T.LineBasicMaterial({color:0xf0f7f4,transparent:true,opacity:.72});
-    const cabinet=new T.Mesh(new T.BoxGeometry(.62,.82,.54),enamel);cabinet.position.y=.42;root.add(cabinet);
+    const cabinet=new T.Mesh(new T.BoxGeometry(.62,.82,.54),enamel);cabinet.position.y=.42;root.add(cabinet);this.fixture(cabinet,item.key,item.room,floor.id);
     const outline=new T.LineSegments(new T.EdgesGeometry(cabinet.geometry),edge);outline.position.copy(cabinet.position);root.add(outline);
     const panel=new T.Mesh(new T.BoxGeometry(.49,.1,.018),new T.MeshBasicMaterial({color:0x45595a}));panel.position.set(0,.73,.281);root.add(panel);
     const knob=new T.Mesh(new T.CylinderGeometry(.035,.035,.025,20),new T.MeshBasicMaterial({color:0xe9efec}));knob.rotation.x=Math.PI/2;knob.position.set(.18,.73,.306);root.add(knob);
@@ -667,7 +689,8 @@ export class SpatialScene {
       levels.set(id,{x:(p.x+1)*w/2,y:(1-p.y)*h/2,left:Math.min(...xs),right:Math.max(...xs),visible:p.z>=-1&&p.z<=1});
     }
     else for(const [id,{anchor}] of this.rooms){const p=anchor.clone().project(this.camera);positions.set(id,{x:(p.x+1)*w/2,y:(1-p.y)*h/2,visible:p.z>=-1&&p.z<=1&&Math.abs(p.x)<.98&&Math.abs(p.y)<.95});}
-    this.project(positions,levels);
+    const anchor=this.fixtureAnchor?.clone().project(this.camera);
+    this.project(positions,levels,anchor?{x:(anchor.x+1)*w/2,y:(1-anchor.y)*h/2,visible:anchor.z>=-1&&anchor.z<=1&&Math.abs(anchor.x)<=1&&Math.abs(anchor.y)<=1}:undefined);
   };
   dispose(){
     this.stopTween();cancelAnimationFrame(this.hover);cancelAnimationFrame(this.laundryFrame);this.observer.disconnect();this.controls.dispose();

@@ -2,6 +2,15 @@ import type { Messages } from './types';
 
 /** The 3D plan: its ambiances, its room and floor cards, and the commands of lights, shutters and players. */
 export const PLAN = {
+  'Informations de {name}': ['Information about {name}', 'Информация: {name}'],
+  'Aucune entité Home Assistant reliée.': ['No Home Assistant entity linked.', 'Нет связанной сущности Home Assistant.'],
+  'État de l’équipement': ['Appliance state', 'Состояние устройства'],
+  'Énergie de l’équipement': ['Appliance energy', 'Энергия устройства'],
+  'Progression du cycle': ['Cycle progress', 'Ход цикла'],
+  'Temps restant du cycle': ['Cycle time remaining', 'Оставшееся время цикла'],
+  'Position de l’équipement': ['Appliance position', 'Положение устройства'],
+  'Batterie de l’équipement': ['Appliance battery', 'Батарея устройства'],
+  'Cliquer sur un équipement affiche ses états et informations.': ['Click an appliance to see its states and information.', 'Нажмите на устройство, чтобы увидеть его состояния и сведения.'],
   'Porte': ['Door', 'Дверь'],
   'Fenêtre': ['Window', 'Окно'],
   'Porte-fenêtre': ['French window', 'Французское окно'],

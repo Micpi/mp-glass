@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import * as T from 'three';
 import { SpatialScene, type SceneLevel } from '../frontend/spatial/scene';
 import { wallSegments, type SpatialFloor } from '../shared/spatial';
@@ -6,6 +6,10 @@ import { wallSegments, type SpatialFloor } from '../shared/spatial';
 interface OpeningProbe { leaves:{pivot:T.Group}[]; covers:Map<string,{group:T.Group}> }
 interface SceneProbe {
   group:T.Group;
+  surfaces:T.Object3D[];
+  solids:T.Object3D[];
+  pick(event:PointerEvent):void;
+  hit(x:number,y:number,slop:number,targets:T.Object3D[]):{object:T.Object3D;point:T.Vector3}|undefined;
   openingParts:Map<string,OpeningProbe>;
   addLevel(level:SceneLevel,stacked:boolean):void;
   drawCover(parts:OpeningProbe,cover:{group:T.Group},closed:number):void;
@@ -61,5 +65,43 @@ describe('world proportions of spatial fixtures',()=>{
     expect(mark.getWorldPosition(new T.Vector3()).y).toBeCloseTo(-2.4+.045);
     const speaker=meshes(scene.group).find(mesh=>mesh.geometry instanceof T.CylinderGeometry&&mesh.geometry.parameters.height===.95)!;
     expect(verticalSpan(speaker,.95)).toBeCloseTo(.95);
+  });
+});
+
+
+describe('equipment selection on the spatial plan',()=>{
+  it('registers doors, windows, media and both stacked laundry appliances individually',()=>{
+    const scene=levelScene(0,2.6);
+    const keys=new Set(scene.surfaces.map(object=>object.userData.fixtureKey).filter(Boolean));
+    expect([...keys].sort()).toEqual(['door','dryer','speaker','tv','washer','window']);
+    for(const object of scene.surfaces.filter(object=>object.userData.fixtureKey)){
+      expect(object.userData.roomId).toBe('room');expect(object.userData.floorId).toBe('floor');
+    }
+  });
+  it('keeps the covering entity identity and removes old panels from picking after state updates',()=>{
+    const scene=levelScene(0,2.6),opening=scene.openingParts.get('window')!,cover=opening.covers.get('shutter')!;
+    scene.drawCover(opening,cover,.5);const old=meshes(cover.group)[0]!,count=scene.surfaces.length;
+    expect(old.userData).toMatchObject({fixtureKey:'window',entityId:'shutter',roomId:'room',floorId:'floor'});
+    for(let i=0;i<10;i++)scene.drawCover(opening,cover,.6);
+    expect(scene.surfaces).not.toContain(old);expect(scene.solids).not.toContain(old);
+    expect(scene.surfaces).toHaveLength(count);
+  });
+  it('opens equipment information on a tap, while dragging and placement keep their own behavior',()=>{
+    const scene=levelScene(0,2.6),object=scene.surfaces.find(object=>object.userData.fixtureKey==='washer')!,point=new T.Vector3(1,.5,2);
+    const equipment=vi.fn(),select=vi.fn(),render=vi.fn(),picking=vi.fn();
+    Object.assign(scene,{down:{x:20,y:30},equipment,select,render,hit:()=>({object,point})});
+    scene.pick({button:0,clientX:20,clientY:30,pointerType:'mouse'} as PointerEvent);
+    expect(equipment).toHaveBeenCalledWith('washer',undefined);expect(select).not.toHaveBeenCalled();
+    equipment.mockClear();scene.pick({button:0,clientX:40,clientY:30,pointerType:'mouse'} as PointerEvent);
+    expect(equipment).not.toHaveBeenCalled();
+    Object.assign(scene,{picking});scene.pick({button:0,clientX:20,clientY:30,pointerType:'mouse'} as PointerEvent);
+    expect(picking).toHaveBeenCalledWith([1,2],'room');expect(equipment).not.toHaveBeenCalled();
+  });
+  it('excludes equipment hidden by its parent from the ray targets',()=>{
+    const scene=levelScene(0,2.6),object=scene.surfaces.find(object=>object.userData.fixtureKey==='washer')!;
+    object.parent!.visible=false;
+    const intersectObjects=vi.fn(()=>[]);
+    Object.assign(scene,{renderer:{domElement:{getBoundingClientRect:()=>({left:0,top:0,width:100,height:100})}},ray:{setFromCamera:vi.fn(),intersectObjects},camera:new T.PerspectiveCamera()});
+    expect(scene.hit(50,50,0,[object])).toBeUndefined();expect(intersectObjects).toHaveBeenCalledWith([],false);
   });
 });

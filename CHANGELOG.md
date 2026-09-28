@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.9 — Infobulles des équipements sur le plan 3D
+
+### Ajouté
+
+- **Clic direct sur les modèles 3D** : portes, fenêtres, portes-fenêtres, volets, stores, rideaux, téléviseurs, enceintes, lave-linge et sèche-linge ouvrent une infobulle avec leur nom, leur pièce, leurs dimensions disponibles et les états des entités Home Assistant associées. Chaque appareil superposé se sélectionne séparément.
+- **Informations en direct** : l’infobulle se met à jour avec les états Home Assistant. Les appareils de buanderie regroupent leurs capteurs de cycle, temps restant, programme, progression, puissance, énergie et hublot. Les lecteurs et ouvrants présentent leurs attributs utiles lorsqu’ils sont disponibles.
+- **Détails et navigation** : cliquer sur une ligne de l’infobulle ouvre la fiche de l’entité. La bulle suit le point cliqué pendant les mouvements de caméra, reste dans le cadre du plan et se ferme avec sa croix, Échap, un clic sur le sol ou un changement de niveau, d’ambiance ou de plan. Les équipements sans entité liée indiquent cette absence.
+- **Clic et gestes** : pointeur dédié au survol, sélection tactile facilitée des équipements, respect du glisser pour tourner la maison et du mode de placement dans le Studio. Les équipements invisibles et les anciens panneaux remplacés lors des mises à jour d’un volet ne restent pas cliquables.
+
 ## 0.13.8 — Proportions cohérentes de tous les équipements du plan 3D
 
 ### Corrigé

@@ -293,6 +293,7 @@ export const EDITOR = {
   'Non associée': ['Not linked', 'Не связана'],
   'Relier à « {name} »': ['Link to “{name}”', 'Связать с «{name}»'],
   'Modifier sa forme sur le plan': ['Edit its shape on the plan', 'Изменить форму на плане'],
+  'Changer l’échelle du niveau': ['Change the level scale', 'Изменить масштаб уровня'],
   'Corriger les sommets (X / Y en mètres) et les courbes': ['Correct the corners (X / Y in meters) and the curves', 'Исправить вершины (X / Y в метрах) и кривые'],
   'Courbure du côté qui part du sommet : 0 pour un mur droit, 1 pour un demi-cercle, négatif pour courber de l’autre côté.': ['Bend of the side leaving the corner: 0 for a straight wall, 1 for a half circle, negative to bend it the other way.', 'Изгиб стороны, выходящей из вершины: 0 — прямая стена, 1 — полукруг, отрицательное значение — изгиб в другую сторону.'],
   'Sommet {n} X': ['Corner {n} X', 'Вершина {n} X'],

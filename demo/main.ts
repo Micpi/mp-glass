@@ -161,7 +161,7 @@ if(spatial&&params.has('studio')){
   const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
   editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;
   editor.devices=MPDiscoveryEngine.discover({...snapshot,states:hass.states},project).devices;
-  editor.style.cssText='display:block;max-width:1200px;margin:auto;padding:24px';
+  editor.style.cssText='display:block;max-width:1500px;margin:auto;padding:24px';
   document.body.replaceChildren(editor);
 } else if (params.has('laundry')&&!spatial) {
   const shell=document.createElement('main');

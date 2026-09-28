@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.14 — Studio du plan 3D plus lisible
+
+- Le bloc « Générer depuis un plan · Gemini » est replié dès qu’un plan existe, pour ne plus occuper le haut de la page ; il reste ouvert tant qu’il n’y a pas de plan ou qu’un fichier est choisi.
+- Sur grand écran, le plan 3D reste visible à gauche pendant que l’édition de la pièce (nom, liaison Home Assistant, équipements, ouvertures) s’affiche à droite : plus besoin de faire défiler la page pour voir l’effet d’un réglage.
+- L’échelle du niveau, réglage rarement utile, est rangée dans une section « Changer l’échelle du niveau ».
+- Vérifications : lint, TypeScript, suite frontend et reconstruction du bundle.
+
 ## 0.13.13 — Couleurs des icônes selon le mode Climat actif
 
 - La petite icône Climat de chaque pièce indique le mode en fonctionnement : flamme orange pour le chauffage, flocon cyan pour le refroidissement, ventilateur vert pour la ventilation, goutte violette pour la déshumidification et thermomètre ambre pour l’automatique.

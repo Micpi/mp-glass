@@ -2,6 +2,7 @@ import type { Messages } from './types';
 
 /** The 3D plan: its ambiances, its room and floor cards, and the commands of lights, shutters and players. */
 export const PLAN = {
+  'Plusieurs modes actifs': ['Several active modes', 'Несколько активных режимов'],
   '{on} sur {total} allumées': ['{on} of {total} on', '{on} из {total} включены'],
   'Aucun équipement trouvé.': ['No device found.', 'Устройства не найдены.'],
   'État': ['Status', 'Состояние'],

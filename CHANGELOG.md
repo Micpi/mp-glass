@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.13.13 — Couleurs des icônes selon le mode Climat actif
+
+- La petite icône Climat de chaque pièce indique le mode en fonctionnement : flamme orange pour le chauffage, flocon cyan pour le refroidissement, ventilateur vert pour la ventilation, goutte violette pour la déshumidification et thermomètre ambre pour l’automatique.
+- La couleur et le symbole sont repris dans la liste de la pièce et dans le résumé individuel, avec une mise à jour en direct. La couleur reste visible au survol et au focus clavier.
+- L’action réelle rapportée par Home Assistant est prioritaire : un thermostat automatique qui chauffe devient orange, et devient cyan lorsqu’il refroidit. Les équipements arrêtés, indisponibles, en attente ou dont l’action est inconnue restent neutres. Sans information d’action, le mode activé fourni par l’intégration sert de référence.
+- Une pièce conserve une icône active même si son premier thermostat est au repos. Plusieurs modes différents actifs simultanément sont représentés par un thermomètre rose et un libellé explicite ; chaque appareil garde sa couleur dans la liste.
+- Vérifications visuelles du chauffage et de la climatisation, tests des modes actifs, états neutres et pièces avec plusieurs thermostats, lint, TypeScript, suite frontend et reconstruction du bundle HACS.
+
 ## 0.13.12 — Icônes discrètes pour toutes les catégories du plan
 
 - Les catégories Ouvrants, Audio-vidéo et Buanderie adoptent la même petite icône intégrée à l’étiquette de la pièce que les lumières et le climat. Une seule icône suffit, quel que soit le nombre d’équipements.

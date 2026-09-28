@@ -1,3 +1,4 @@
+import type { MPIconName } from '../icons';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent } from '../../shared/capabilities';
 import { laundryIsRunning, laundryRemaining } from '../../shared/laundry';
@@ -31,7 +32,7 @@ export function equipmentReadings(ids:string[],states:Record<string,HAState>,lau
     return rows;
   }
   for(const id of [...new Set(ids)]){
-    const state=states[id],detected=kindOf(id,state),kind=detected==='binary'&&/door|hublot|porte/i.test(id+' '+String(state?.attributes.friendly_name??''))?'opening':detected;
+    const state=states[id],detected=kindOf(id,state),kind=detected==='binary'&&/door|window|hublot|porte|fen[eê]tre/i.test(id+' '+String(state?.attributes.friendly_name??''))?'opening':detected;
     if(!['light','climate','temperature','humidity','media','cover','opening'].includes(kind))continue;
     const label:MessageKey=kind==='climate'?'Mode':kind==='temperature'?'Température':kind==='humidity'?'Humidité':'État';
     const name=ids.length>1?String(state?.attributes.friendly_name??tr(label)):tr(label);
@@ -56,9 +57,16 @@ export function equipmentReadings(ids:string[],states:Record<string,HAState>,lau
 
 /** One room marker resolves its whole equipment collection, regardless of how many devices it contains. */
 export function ambientEquipmentIds(ids:string[],states:Record<string,HAState>,mode:string){
-  return [...new Set(ids)].filter(id=>mode==='lights'?id.startsWith('light.'):mode==='climate'?['climate','temperature','humidity'].includes(kindOf(id,states[id])):false);
+  return [...new Set(ids)].filter(id=>mode==='lights'?id.startsWith('light.'):mode==='climate'?['climate','temperature','humidity'].includes(kindOf(id,states[id])):mode==='media'?id.startsWith('media_player.'):mode==='openings'?id.startsWith('cover.')||kindOf(id,states[id])==='opening'||id.startsWith('binary_sensor.')&&/door|window|porte|fen[eê]tre|hublot/i.test(id+' '+String(states[id]?.attributes.friendly_name??'')):false);
 }
 export function filterEquipmentIds(ids:string[],query:string,name:(id:string)=>string){
   const normalize=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLocaleLowerCase().trim();
   const search=normalize(query);return ids.filter(id=>normalize(name(id)).includes(search));
+}
+
+export interface EquipmentEntry { key:string;name:string;icon:MPIconName;entityIds:string[];laundry?:boolean }
+/** A placed appliance is one row even when several HA entities report it; unlinked models stay discoverable. */
+export function mergeEquipmentEntries(placed:EquipmentEntry[],entities:EquipmentEntry[]):EquipmentEntry[]{
+  const linked=new Set(placed.flatMap(item=>item.entityIds)),keys=new Set<string>();
+  return [...placed,...entities.filter(item=>!item.entityIds.some(id=>linked.has(id)))].filter(item=>{if(keys.has(item.key))return false;keys.add(item.key);return true;});
 }

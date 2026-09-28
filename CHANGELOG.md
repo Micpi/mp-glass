@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.12 — Icônes discrètes pour toutes les catégories du plan
+
+- Les catégories Ouvrants, Audio-vidéo et Buanderie adoptent la même petite icône intégrée à l’étiquette de la pièce que les lumières et le climat. Une seule icône suffit, quel que soit le nombre d’équipements.
+- Un clic ouvre la collection de la pièce : portes et fenêtres avec leurs capteurs et protections, téléviseurs et enceintes, lave-linge et sèche-linge. Chaque ligne présente les états utiles et ouvre le résumé individuel, avec retour à la catégorie et accès à la fiche détaillée.
+- Les capteurs d’un même équipement placé sont regroupés : une fenêtre avec ses volets ne produit pas de lignes en double, et chaque machine reste une seule entrée même lorsqu’elle dispose de plusieurs capteurs. Les machines superposées gardent des entrées distinctes.
+- Les ouvrants et appareils audio-vidéo placés sans entité liée restent accessibles ; leurs catégories sont proposées dès qu’un modèle est présent. Les équipements Home Assistant sans modèle placé sont également inclus dans la liste de leur catégorie.
+- Toutes les listes partagent la recherche à partir de sept équipements, le défilement limité et le retour avec conservation de la recherche. Les noms de pièces restent compacts, avec la température visible dans l’ambiance Climat ; les autres valeurs sont consultables dans les infobulles.
+- Le clic direct sur les modèles 3D reste disponible. Vérifications visuelles des trois catégories, tests de regroupement et de déduplication, lint, TypeScript, suite frontend et reconstruction du bundle HACS.
+
 ## 0.13.11 — Repères discrets des lumières et du climat
 
 - Les étiquettes des pièces intègrent une seule petite icône pour l’ambiance Lumières ou Climat, quelle que soit la quantité d’équipements. Les boutons individuels et leurs noms ne sont plus disposés sur le plan.

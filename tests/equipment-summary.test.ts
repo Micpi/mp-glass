@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { ambientEquipmentIds, equipmentReadings, filterEquipmentIds } from '../frontend/spatial/equipment';
+import { ambientEquipmentIds, equipmentReadings, filterEquipmentIds, mergeEquipmentEntries } from '../frontend/spatial/equipment';
 import type { HAState } from '../shared/models';
 const state=(entity_id:string,value:string,attributes:Record<string,unknown>={}):HAState=>({entity_id,state:value,attributes});
 const values=(states:Record<string,HAState>,laundry=false)=>equipmentReadings(Object.keys(states),states,laundry).map(row=>row.value);
@@ -51,5 +51,28 @@ describe('room equipment collections',()=>{
   expect(filterEquipmentIds(Object.keys(names),'  ECLAIRAGE  ',id=>names[id]!)).toEqual(['a']);
   expect(filterEquipmentIds(Object.keys(names),'absent',id=>names[id]!)).toEqual([]);
   expect(filterEquipmentIds(Object.keys(names),'',id=>names[id]!)).toEqual(['a','b','c']);
+ });
+});
+
+describe('other room categories',()=>{
+ it('reads a named window contact even when its integration omits the device class',()=>{
+  expect(values({'binary_sensor.window_contact':state('binary_sensor.window_contact','off')})).toEqual(['Fermée']);
+ });
+ it('collects media players, including unavailable equipment',()=>{
+  expect(ambientEquipmentIds(['media_player.tv','media_player.speaker','light.spot','sensor.energy'],{},'media')).toEqual(['media_player.tv','media_player.speaker']);
+ });
+ it('collects covers and door contacts while excluding motion and power sensors',()=>{
+  const states={'binary_sensor.contact':state('binary_sensor.contact','off',{device_class:'window'}),'binary_sensor.motion':state('binary_sensor.motion','on',{device_class:'motion'})};
+  expect(ambientEquipmentIds(['cover.shutter','binary_sensor.contact','binary_sensor.front_door','binary_sensor.motion','sensor.power'],states,'openings')).toEqual(['cover.shutter','binary_sensor.contact','binary_sensor.front_door']);
+ });
+ it('keeps a placed opening as one row, retains unlinked models and includes standalone covers',()=>{
+  const placed=[{key:'window',name:'Baie vitrée',icon:'window' as const,entityIds:['cover.shutter','binary_sensor.contact']},{key:'door',name:'Porte',icon:'door' as const,entityIds:[]}];
+  const entities=[{key:'shutter',name:'Volet',icon:'shutter' as const,entityIds:['cover.shutter']},{key:'other',name:'Store bureau',icon:'shutter' as const,entityIds:['cover.office']}];
+  expect(mergeEquipmentEntries(placed,entities).map(item=>item.key)).toEqual(['window','door','other']);
+ });
+ it('keeps both stacked machines individually while grouping each machine sensors',()=>{
+  const machines=[{key:'washer',name:'Lave-linge',icon:'washer' as const,entityIds:['sensor.washer_cycle','sensor.washer_remaining'],laundry:true},{key:'dryer',name:'Sèche-linge',icon:'washer' as const,entityIds:['sensor.dryer_cycle','sensor.dryer_remaining'],laundry:true}];
+  expect(mergeEquipmentEntries(machines,[])).toHaveLength(2);
+  expect(mergeEquipmentEntries([machines[0]!,machines[0]!],[])).toHaveLength(1);
  });
 });

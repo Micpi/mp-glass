@@ -497,10 +497,9 @@ export class SpatialScene {
     this.addWalls(group,floor,walls);
     // The house overview keeps only the floor plates and shallow walls. Fixtures return inside a floor.
     if(!stacked){
-      const fixtures=new T.Group();group.add(fixtures);
-      if(this.walls){const scale=Math.min(floor.height,.9)/floor.height;fixtures.scale.y=scale;fixtures.position.y=floor.elevation*(1-scale);}
-      for(const opening of openings)this.addOpening(fixtures,floor,opening);
-      for(const item of media)this.addMedia(fixtures,floor,item);
+      // Fixtures share the plan's metre scale and floor elevation; compressing their height distorts every proportion.
+      for(const opening of openings)this.addOpening(group,floor,opening);
+      for(const item of media)this.addMedia(group,floor,item);
       for(const item of laundry)this.addLaundry(group,floor,item);
     }
     if(stacked)this.addStack(group,floor);

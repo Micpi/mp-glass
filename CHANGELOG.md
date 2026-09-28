@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.8 — Proportions cohérentes de tous les équipements du plan 3D
+
+### Corrigé
+
+- **Portes, fenêtres et portes-fenêtres** : suppression de la compression verticale héritée du groupe des équipements. Les ouvrants respectent désormais leur largeur, hauteur et allège configurées, à la même échelle en mètres que les murs et les machines de buanderie, dans les limites de leur mur.
+- **Volets, stores et rideaux** : leurs panneaux, lames et déplacements suivent les dimensions de leur ouverture sans aplatissement supplémentaire.
+- **Téléviseurs et enceintes** : les écrans retrouvent leurs proportions, les pieds et enceintes leur hauteur, avec une position correcte sur le sol de chaque étage, y compris au sous-sol. La hauteur des murs n’affecte plus celle des équipements.
+- **Affichage des niveaux** : les ouvrants, appareils audio et vidéo et appareils de buanderie sont tous attachés directement au niveau, sans transformation verticale intermédiaire. La vue avec les murs abaissés conserve les repères des ouvrants sur le sol.
+
 ## 0.13.7 — Placement et superposition des appareils de buanderie
 
 ### Ajouté

@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.13.11 — Repères discrets des lumières et du climat
+
+- Les étiquettes des pièces intègrent une seule petite icône pour l’ambiance Lumières ou Climat, quelle que soit la quantité d’équipements. Les boutons individuels et leurs noms ne sont plus disposés sur le plan.
+- Un clic sur l’icône ouvre une liste compacte des équipements de la pièce, avec leurs valeurs utiles en direct. L’éclairage présente aussi le nombre de lumières allumées ; une teinte chaude du repère indique qu’au moins une lumière est active.
+- Les listes défilent dans une hauteur limitée. À partir de sept équipements, une recherche par nom, insensible à la casse et aux accents, permet de trouver rapidement un appareil. La hauteur de la liste reste stable pendant la recherche.
+- Un équipement de la liste ouvre son résumé individuel. Un bouton de retour permet de retrouver la collection de la pièce en conservant la recherche, et la fiche complète reste accessible avec Détails.
+- Dans l’ambiance Climat, les températures restent visibles sur les pièces tandis que les badges détaillés du mode et de la consigne sont remplacés par le repère discret. Les infobulles continuent de suivre la pièce pendant les mouvements de caméra.
+- Vérifications : navigation visuelle lumière/climat, tests de collections nombreuses (30 lumières), recherche et déduplication, suite frontend, lint, TypeScript et reconstruction du bundle HACS.
+
 ## 0.13.10 — Infobulles utiles, lumières et climat
 
 - Les infobulles du plan 3D présentent un résumé adapté à l’équipement : état et luminosité d’une lumière allumée, mode du thermostat, température mesurée et consigne active, état des ouvrants, contenu en lecture et volume.

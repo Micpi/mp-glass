@@ -1,5 +1,5 @@
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
-import { equipmentReadings } from './equipment';
+import { ambientEquipmentIds, equipmentReadings, filterEquipmentIds } from './equipment';
 import type { Hass } from '../ha/client';
 import { HARegistryReader } from '../ha/client';
 import { discoverLaundryUnits, laundryIsRunning, laundryRemaining, type LaundryUnit } from '../../shared/laundry';
@@ -15,7 +15,7 @@ import { defineElement } from '../registry';
 import type { CameraView, FixtureProjection, LaundryState, LevelProjection, MediaState, OpeningState, SceneLaundry, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
-interface EquipmentInfo { name:string;room:SpatialRoom;icon:MPIconName;entityIds:string[];laundry?:boolean }
+interface EquipmentInfo { name:string;room:SpatialRoom;icon:MPIconName;entityIds:string[];laundry?:boolean;group?:'lights'|'climate' }
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean; mode?:string }
 /** What a room holds besides its equipment list: doors and windows with their covers and sensors, televisions and speakers. */
 const OPENING_NAMES:Record<OpeningKind,MessageKey>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
@@ -95,7 +95,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -123,12 +123,19 @@ export class MPSpatialViewer extends LitElement {
     .labels{position:absolute;inset:0;z-index:1;pointer-events:none}
     /* A room's name on the plan: a one-line capsule, its readings on a second line when it has some. Its own width, even near the edge of the plan. */
     .labels button{position:absolute;transform:translate(-50%,-50%);pointer-events:auto;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;width:max-content;max-width:160px;min-height:26px;padding:3px 12px;border-radius:999px;border:1px solid rgba(206,230,255,.2);background:rgba(6,22,38,.62);box-shadow:inset 0 1px rgba(255,255,255,.08),0 6px 18px rgba(0,8,18,.36);backdrop-filter:blur(12px) saturate(140%);font-size:12px;font-weight:600;line-height:1.3;letter-spacing:.01em;color:#f2f8ff;text-shadow:0 1px 2px rgba(0,8,18,.45);transition:background .2s,border-color .2s,box-shadow .2s}
-    .labels .room-marker{position:absolute;transform:translate(-50%,-50%);width:max-content;max-width:180px;display:flex;flex-direction:column;align-items:center;gap:5px}
-    .labels .room-marker button{position:relative;transform:none}
-    .labels .equipment-targets{display:flex;flex-wrap:wrap;justify-content:center;gap:4px;max-width:180px}
-    .labels .equipment-targets button{flex-direction:row;gap:5px;min-height:32px;max-width:170px;padding:5px 8px;border-radius:10px;font-size:11px;border-color:#a8daff66;background:#092337ed}
-    .labels .equipment-targets span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .labels .equipment-targets button:hover{background:#1b4a68}
+    .labels .room-marker{position:absolute;transform:translate(-50%,-50%);width:max-content;max-width:190px;display:flex;align-items:center;gap:2px;padding:2px;border-radius:16px;border:1px solid #cee6ff26;background:#06162680;backdrop-filter:blur(12px)}
+    .labels .room-marker>button{position:relative;transform:none;border:0;background:transparent;box-shadow:none;backdrop-filter:none}
+    .labels .room-marker .ambient-peek{flex:none;width:32px;height:32px;min-height:32px;padding:0;border-radius:50%;color:#a9bfce;transition:background .15s,color .15s}
+    .labels .room-marker .ambient-peek[data-active=true]{color:#f1ca83}
+    .labels .room-marker .ambient-peek:hover,.labels .room-marker .ambient-peek:focus-visible{background:#b8d8ef20;color:#fff}
+    .equipment-popup .ambient-summary{margin:12px 0 8px;font-size:12px;color:#c8dbe9}
+    .equipment-popup .ambient-list{max-height:240px;overflow:auto;overscroll-behavior:contain;margin-top:8px}
+    .equipment-popup .ambient-list.many{height:240px}
+    .equipment-popup .ambient-item{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:8px;background:transparent;text-align:left;padding:9px 3px;min-height:46px}
+    .equipment-popup .ambient-item:hover,.equipment-popup .ambient-item:focus-visible{background:#d0e8ff12}
+    .equipment-popup .ambient-item>span{flex:1;min-width:0;display:grid;gap:3px}.equipment-popup .ambient-item strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}.equipment-popup .ambient-item small{font-size:11px;line-height:1.4}
+    .equipment-popup .equipment-search{width:100%;box-sizing:border-box;min-height:36px;padding:7px 10px;border:1px solid #c6e6ff30;border-radius:9px;background:#0002;color:inherit;font:inherit;font-size:12px}
+    .equipment-popup .equipment-search::placeholder{color:#afc5d6}.equipment-popup .equipment-back{display:flex;align-items:center;gap:6px;margin-top:10px;border:0;background:transparent;font-size:11px;color:#b9d3e4}.equipment-popup .equipment-back svg{transform:rotate(180deg)}
     .equipment-popup .equipment-summary{margin:14px 0;font-size:13px}.equipment-popup .equipment-summary>div{padding:5px 0;gap:16px}.equipment-popup .equipment-summary dd{font-weight:600;color:#edf7ff}.equipment-popup .equipment-details{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-size:12px}
     .labels button.rich{padding:4px 12px 5px;border-radius:14px}
     .labels .name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}.labels .name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -289,6 +296,7 @@ export class MPSpatialViewer extends LitElement {
   private error = '';
   /** Entity whose MP Nexus detail window is open, none when empty. */
   private detail = '';
+  private equipmentFilter='';
   private equipment?:{key:string;entityId?:string};
   private walls = true;
   private topView = false;
@@ -428,7 +436,7 @@ export class MPSpatialViewer extends LitElement {
       // Labels change size when sensor values or the mode changes, even if the camera stays still.
       const previous=changed.get('hass') as Hass|undefined;
       const readings=changed.has('hass')&&rooms.some(([,r])=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
-      if(styled||fixtures||readings||changed.has('mode')||changed.has('plan')||changed.has('floor')||changed.has('equipment')||changed.has('hass'))this.scene.render();
+      if(styled||fixtures||readings||changed.has('mode')||changed.has('plan')||changed.has('floor')||changed.has('equipment')||changed.has('equipmentFilter')||changed.has('hass'))this.scene.render();
     }
   }
   /**
@@ -811,10 +819,10 @@ export class MPSpatialViewer extends LitElement {
    */
   private planLabel(room:SpatialRoom,lit:boolean,mode:PlanMode){
     const readings=this.preview?nothing:this.planReadings(room,mode);
-    const climate=this.preview||mode!=='climate'?undefined:this.activeClimate(room);
-    const climateReading=climate?html`<span class=${`reading hvac ${climate.mode}`} title=${climate.target?tr('{mode} actif · consigne {n} °',{mode:climate.label,n:climate.target}):tr('{mode} actif',{mode:climate.label})}>${mpIcon(hvacIcon(climate.mode),12)}<span>${climate.target?`${climate.label} · ${climate.target} °`:climate.label}</span></span>`:nothing;
-    const ids=this.preview?[]:this.ambientEntities(room,mode);
-    return html`<div class="room-marker" style="visibility:hidden" data-room=${room.id}><button class=${readings===nothing&&climateReading===nothing?'':'rich'} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}${climateReading}</button>${ids.length?html`<div class="equipment-targets">${ids.map(id=>{const device=this.device(id,room),name=this.equipmentName(id,room);return html`<button title=${name} aria-label=${tr('Informations de {name}',{name})} @click=${()=>this.pickAmbient(room,id)}>${mpIcon(device.kind==='climate'?hvacIcon(device.mode):KIND_ICONS[device.kind],16)}<span>${name}</span></button>`;})}</div>`:nothing}</div>`;
+    const ids=this.preview?[]:this.ambientEntities(room,mode),active=mode==='lights'&&ids.some(id=>this.hass?.states[id]?.state==='on');
+    const name=mode==='lights'?tr('Lumières'):tr('Climat'),label=name+' · '+room.name+' · '+ids.length;
+    return html`<div class="room-marker" style="visibility:hidden" data-room=${room.id}><button class=${readings===nothing?'':'rich'} aria-pressed=${this.selected===room.id} @click=${()=>this.select(room.id)}><span class="name">${lit?html`<i></i>`:nothing}<span title=${room.name}>${room.name}</span></span>${readings}</button>${ids.length?html`<button class="ambient-peek" data-active=${active} aria-label=${label} title=${label} aria-haspopup="dialog" @click=${()=>this.pickRoomAmbient(room,mode)}>${mpIcon(mode==='lights'?'bulb':'thermo',15)}</button>`:nothing}</div>`;
+
   }
   /** The lights of `rooms` (a floor, or the whole house), each once, and those on. */
   private lightsOf(rooms: SpatialRoom[]) {
@@ -906,15 +914,18 @@ export class MPSpatialViewer extends LitElement {
     </div>
     ${this.detailWindow()}`;
   }
-  private closeEquipment=()=>{this.equipment=undefined;this.scene?.dismissEquipment();};
-  private equipmentPicked=(key:string,entityId?:string)=>{
+  private closeEquipment=()=>{this.equipment=undefined;this.equipmentFilter='';this.scene?.dismissEquipment();};
+  private equipmentPicked=(key:string,entityId?:string,keepFilter=false)=>{
     if(!key){this.closeEquipment();return;}
-    this.equipment={key,entityId};this.engaged=true;
+    this.equipment={key,entityId};if(!keepFilter)this.equipmentFilter='';this.engaged=true;
   };
   /** Resolve the clicked model against the saved plan and current HA discovery, never a cached state. */
   private equipmentInfo():EquipmentInfo|undefined{
     const picked=this.equipment;if(!picked)return undefined;
     for(const floor of this.shownFloors)for(const room of floor.rooms){
+      for(const group of ['lights','climate'] as const)if(picked.key===this.roomKey(floor,room)+'|ambient|'+group){
+        return {room,name:tr(group==='lights'?'Lumières':'Climat'),icon:group==='lights'?'bulb':'thermo',entityIds:this.ambientEntities(room,group),group};
+      }
       if(picked.entityId&&picked.key===this.roomKey(floor,room)+'|entity|'+picked.entityId&&roomEntityIds(room).includes(picked.entityId)){
         const device=this.device(picked.entityId,room);return {room,name:this.equipmentName(picked.entityId,room),icon:device.kind==='climate'?hvacIcon(device.mode):KIND_ICONS[device.kind],entityIds:[picked.entityId]};
       }
@@ -933,21 +944,39 @@ export class MPSpatialViewer extends LitElement {
   }
   private equipmentName(id:string,room:SpatialRoom){return this.hass?.states[id]?.attributes.friendly_name?this.device(id,room).name:entityLabel(id);}
   private ambientEntities(room:SpatialRoom,mode:PlanMode){
-    return roomEntityIds(room).filter(id=>mode==='lights'?id.startsWith('light.'):mode==='climate'?['climate','temperature','humidity'].includes(kindOf(id,this.hass?.states[id])):false);
+    return ambientEquipmentIds(roomEntityIds(room),this.hass?.states??{},mode);
+  }
+  private pickRoomAmbient(room:SpatialRoom,mode:PlanMode){
+    const floor=this.currentFloor;if(!floor||this.placing||!['lights','climate'].includes(mode))return;
+    this.equipmentPicked(this.roomKey(floor,room)+'|ambient|'+mode,undefined,!!this.equipment?.key.startsWith(this.roomKey(floor,room)+'|'));
+    this.scene?.anchorEquipment(this.roomKey(floor,room));
   }
   private pickAmbient(room:SpatialRoom,id:string){
     const floor=this.currentFloor;if(!floor||this.placing)return;
-    this.equipmentPicked(this.roomKey(floor,room)+'|entity|'+id,id);
+    this.equipmentPicked(this.roomKey(floor,room)+'|entity|'+id,id,true);
     this.scene?.anchorEquipment(this.roomKey(floor,room));
+  }
+  private ambientList(info:EquipmentInfo){
+    const ids=filterEquipmentIds(info.entityIds,this.equipmentFilter,id=>this.equipmentName(id,info.room));
+    const on=info.entityIds.filter(id=>this.hass?.states[id]?.state==='on').length;
+    return html`${info.group==='lights'?html`<p class="ambient-summary">${tr('{on} sur {total} allumées',{on,total:info.entityIds.length})}</p>`:nothing}
+      ${info.entityIds.length>6?html`<input class="equipment-search" type="search" .value=${this.equipmentFilter} aria-label=${tr('Rechercher un équipement')} placeholder=${tr('Rechercher')} @input=${(e:Event)=>{this.equipmentFilter=(e.target as HTMLInputElement).value;}}>`:nothing}
+      <div class=${info.entityIds.length>6?'ambient-list many':'ambient-list'}>${ids.map(id=>{
+        const device=this.device(id,info.room),readings=equipmentReadings([id],this.hass?.states??{},false,this.temperatureUnit);
+        const value=readings.map(row=>row.value).join(' · ');
+        return html`<button class="ambient-item" aria-label=${tr('Informations de {name}',{name:this.equipmentName(id,info.room)})} @click=${()=>this.pickAmbient(info.room,id)}>${mpIcon(device.kind==='climate'?hvacIcon(device.mode):KIND_ICONS[device.kind],17)}<span><strong>${this.equipmentName(id,info.room)}</strong><small>${value}</small></span>${mpIcon('arrow',12)}</button>`;
+      })}${ids.length?nothing:html`<p role="status">${tr('Aucun équipement trouvé.')}</p>`}</div>`;
   }
   private equipmentPopup(){
     const info=this.equipmentInfo();if(!info)return nothing;
-    const states=this.hass?.states??{},rows=equipmentReadings(info.entityIds,states,info.laundry,this.temperatureUnit);
+    const states=this.hass?.states??{},rows=info.group?[]:equipmentReadings(info.entityIds,states,info.laundry,this.temperatureUnit);
+    const ambient=this.equipment?.key.includes('|entity|')?this.planMode(this.shownFloors):undefined;
     const detailId=rows.find(row=>row.entityId)?.entityId??info.entityIds.find(id=>available(states[id]));
     return html`<section class="equipment-popup" style="visibility:hidden" role="dialog" aria-label=${tr('Informations de {name}',{name:info.name})}>
       <header>${mpIcon(info.icon,20)}<div><h3>${info.name}</h3><small>${info.room.name}</small></div><button aria-label=${tr('Fermer')} @click=${this.closeEquipment}>×</button></header>
-      ${rows.length?html`<dl class="equipment-summary">${rows.map(row=>html`<div><dt>${row.label}</dt><dd>${row.value}</dd></div>`)}</dl>`:html`<p>${tr('Aucune information disponible.')}</p>`}
-      ${detailId?html`<button class="equipment-details" @click=${()=>this.moreInfo(detailId)}>${tr('Détails')} ${mpIcon('arrow',12)}</button>`:nothing}
+      ${ambient?html`<button class="equipment-back" @click=${()=>this.pickRoomAmbient(info.room,ambient)}>${mpIcon('arrow',12)} ${tr(ambient==='lights'?'Lumières':'Climat')}</button>`:nothing}
+      ${info.group?this.ambientList(info):html`${rows.length?html`<dl class="equipment-summary">${rows.map(row=>html`<div><dt>${row.label}</dt><dd>${row.value}</dd></div>`)}</dl>`:html`<p>${tr('Aucune information disponible.')}</p>`}`}
+      ${!info.group&&detailId?html`<button class="equipment-details" @click=${()=>this.moreInfo(detailId)}>${tr('Détails')} ${mpIcon('arrow',12)}</button>`:nothing}
     </section>`;
   }
   /** The detail window of the device touched, drawn again on every state Home Assistant sends while it stays open. */

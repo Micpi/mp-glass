@@ -53,3 +53,12 @@ export function equipmentReadings(ids:string[],states:Record<string,HAState>,lau
   }
   return rows;
 }
+
+/** One room marker resolves its whole equipment collection, regardless of how many devices it contains. */
+export function ambientEquipmentIds(ids:string[],states:Record<string,HAState>,mode:string){
+  return [...new Set(ids)].filter(id=>mode==='lights'?id.startsWith('light.'):mode==='climate'?['climate','temperature','humidity'].includes(kindOf(id,states[id])):false);
+}
+export function filterEquipmentIds(ids:string[],query:string,name:(id:string)=>string){
+  const normalize=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLocaleLowerCase().trim();
+  const search=normalize(query);return ids.filter(id=>normalize(name(id)).includes(search));
+}

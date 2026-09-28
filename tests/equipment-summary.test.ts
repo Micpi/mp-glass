@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { equipmentReadings } from '../frontend/spatial/equipment';
+import { ambientEquipmentIds, equipmentReadings, filterEquipmentIds } from '../frontend/spatial/equipment';
 import type { HAState } from '../shared/models';
 const state=(entity_id:string,value:string,attributes:Record<string,unknown>={}):HAState=>({entity_id,state:value,attributes});
 const values=(states:Record<string,HAState>,laundry=false)=>equipmentReadings(Object.keys(states),states,laundry).map(row=>row.value);
@@ -34,5 +34,22 @@ describe('end user equipment summaries',()=>{
  });
  it('shows playback once, with volume but no source or duplicate title',()=>{
   expect(values({'media_player.tv':state('media_player.tv','playing',{media_title:'Le Grand Bleu',volume_level:.32,source:'Netflix',ip_address:'192.0.2.1'})})).toEqual(['Lecture','Le Grand Bleu','32 %']);
+ });
+});
+
+describe('room equipment collections',()=>{
+ it('keeps all thirty lights in one collection and removes duplicates',()=>{
+  const ids=Array.from({length:30},(_,i)=>'light.spot_'+i);
+  expect(ambientEquipmentIds([...ids,ids[0]!, 'climate.room'],{},'lights')).toEqual(ids);
+ });
+ it('groups thermostats, temperatures and humidity without unrelated equipment',()=>{
+  const states={'sensor.temp':state('sensor.temp','21',{device_class:'temperature'}),'sensor.humidity':state('sensor.humidity','45',{device_class:'humidity'})};
+  expect(ambientEquipmentIds(['climate.room','sensor.temp','sensor.humidity','light.spot','sensor.power'],states,'climate')).toEqual(['climate.room','sensor.temp','sensor.humidity']);
+ });
+ it('searches visible names without depending on accents or case',()=>{
+  const names:Record<string,string>={a:'Éclairage canapé',b:'Spot fenêtre',c:'Lampe de bureau'};
+  expect(filterEquipmentIds(Object.keys(names),'  ECLAIRAGE  ',id=>names[id]!)).toEqual(['a']);
+  expect(filterEquipmentIds(Object.keys(names),'absent',id=>names[id]!)).toEqual([]);
+  expect(filterEquipmentIds(Object.keys(names),'',id=>names[id]!)).toEqual(['a','b','c']);
  });
 });

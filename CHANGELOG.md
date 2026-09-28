@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.13.7 — Placement et superposition des appareils de buanderie
+
+### Ajouté
+
+- **Studio, section Buanderie de chaque pièce** : ajouter un lave-linge ou un sèche-linge, le relier à son appareil Home Assistant, le placer en touchant le sol du plan ou en saisissant ses coordonnées, puis régler son orientation, sa hauteur au-dessus du sol et ses dimensions. Les dimensions par défaut sont 60 × 85 × 65 cm.
+- **Superposition** : choisir « Superposer sur » pour installer un appareil au-dessus d’un autre de la même pièce. Il suit automatiquement la position et l’orientation du support, et sa hauteur se recalcule lorsque les dimensions du support changent. Les associations circulaires ou inexistantes sont rejetées côté navigateur et Home Assistant.
+- **Sèche-linge sur le plan 3D** : détection des noms français et internationaux, couleur distincte, tambour animé pendant un cycle et témoin lumineux d’activité. Les appareils placés explicitement remplacent leur représentation automatique.
+- **Conservation du placement** : positions reprises lors des déplacements et redimensionnements des pièces, des imports et du recalage des niveaux. Démo `/?spatial&floors&laundry` avec un sèche-linge superposé au lave-linge du sous-sol ; ajouter `&studio` pour essayer les réglages dans le Studio de démonstration (changements conservés dans la session uniquement).
+
+### Corrigé
+
+- **Proportions et lisibilité** : les appareils conservent leur hauteur réelle au lieu de subir la compression verticale des murs dans la vue 3D. Largeur, hauteur et profondeur sont réglables individuellement.
+- **Regroupement sans registre Home Assistant** : les capteurs de cycle et de temps restant sont rattachés au même appareil ; les suffixes ne tronquent plus le mot « washing ».
+
 ## 0.13.6 — Buanderie intégrée au plan 3D
 
 ### Ajouté

@@ -117,6 +117,17 @@ def valid_fixtures(room):
     """Doors and windows on sides the room has, doors, windows, televisions and speakers each with an ID used once."""
     openings = [opening["id"] for opening in room.get("openings", [])]
     media = [item["id"] for item in room.get("media", [])]
+    laundry = {item["id"]: item for item in room.get("laundry", [])}
+    if len(laundry) != len(room.get("laundry", [])):
+        return False
+    for item in laundry.values():
+        seen = {item["id"]}
+        parent = item.get("stackedOn")
+        while parent:
+            if parent in seen or parent not in laundry:
+                return False
+            seen.add(parent)
+            parent = laundry[parent].get("stackedOn")
     return (all(opening["side"] < len(room["polygon"]) for opening in room.get("openings", []))
             and len(set(openings)) == len(openings) and len(set(media)) == len(media))
 

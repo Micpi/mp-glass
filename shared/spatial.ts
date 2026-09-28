@@ -18,7 +18,15 @@ export interface SpatialMedia { id: string; kind: MediaKind; name?: string; at: 
  * `arcs`, one value per side (side i runs from corner i to corner i + 1): 0 for a straight wall, otherwise how far the wall
  * bends, as the height of its arc over half the side's length, towards (−dy, dx) when positive. ±1 is a half circle.
  */
-export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?: number[]; areaId?: string; entityIds?: string[]; openings?: SpatialOpening[]; media?: SpatialMedia[] }
+export type LaundryKind = 'washer' | 'dryer';
+/** Appliance dimensions and height in metres; a stacked appliance follows its support. */
+export interface SpatialLaundry { id:string; kind:LaundryKind; at:Point; name?:string; entityId?:string; rotation?:number; elevation?:number; width?:number; height?:number; depth?:number; stackedOn?:string }
+export function laundryPlacement(room:SpatialRoom,item:SpatialLaundry):{at:Point;rotation:number;elevation:number} {
+  const parent=room.laundry?.find(p=>p.id===item.stackedOn);
+  if(parent){const base=laundryPlacement(room,parent);return {...base,elevation:base.elevation+(parent.height??.85)};}
+  return {at:item.at,rotation:item.rotation??0,elevation:item.elevation??0};
+}
+export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?: number[]; areaId?: string; entityIds?: string[]; openings?: SpatialOpening[]; media?: SpatialMedia[]; laundry?: SpatialLaundry[] }
 /**
  * The plan a level was drawn from, kept in Home Assistant under `id` to be shown under its rooms in the Studio: its size in
  * pixels, and where it lies, pixel = metre / scale + origin.
@@ -224,6 +232,12 @@ function validFixtures(room: SpatialRoom): boolean {
     if (media.has(item.id)) return false;
     media.add(item.id);
   }
+  const laundry=new Map((room.laundry??[]).map(item=>[item.id,item]));
+  if(laundry.size!==(room.laundry??[]).length)return false;
+  for(const item of laundry.values()){
+    const seen=new Set([item.id]);let parent=item.stackedOn;
+    while(parent){if(seen.has(parent)||!laundry.has(parent))return false;seen.add(parent);parent=laundry.get(parent)!.stackedOn;}
+  }
   return true;
 }
 /**
@@ -386,7 +400,7 @@ export function stackFloors(floors: SpatialFloor[]): SpatialFloor[] {
     if (!dx && !dy) return floor;
     // Televisions and speakers move with their room.
     const move = ([x, y]: Point): Point => [x + dx, y + dy];
-    return { ...floor, rooms: floor.rooms.map(room => ({ ...room, polygon: room.polygon.map(move), ...(room.media ? { media: room.media.map(item => ({ ...item, at: move(item.at) })) } : {}) })) };
+    return { ...floor, rooms: floor.rooms.map(room => ({ ...room, polygon: room.polygon.map(move), ...(room.laundry ? {laundry:room.laundry.map(item=>({...item,at:move(item.at)}))} : {}), ...(room.media ? { media: room.media.map(item => ({ ...item, at: move(item.at) })) } : {}) })) };
   });
   // The house as it now stands, floors centred: what the stack takes up on screen, and so how far apart its floors sit.
   const points = centred.flatMap(f => f.rooms.flatMap(r => roomOutline(r))), xs = points.map(p => p[0]), ys = points.map(p => p[1]);

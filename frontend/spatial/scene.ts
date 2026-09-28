@@ -47,7 +47,7 @@ export interface SceneOpening { key:string; room:string; kind:OpeningKind; cente
 /** A television or a speaker standing at `at`, a television turned towards `facing`. */
 export interface SceneMedia { key:string; room:string; kind:MediaKind; at:Point; facing:Point }
 /** A washing machine, positioned automatically in its room and shown when the laundry ambiance is selected. */
-export interface SceneLaundry { key:string; room:string; at:Point; running:boolean }
+export interface SceneLaundry { key:string; room:string; at:Point; running:boolean; kind:'washer'|'dryer'; rotation:number; elevation:number; width:number; height:number; depth:number }
 /** A floor to draw at its elevation, with its walls, doors and windows, televisions, speakers and laundry appliances. Room ids must be unique across the floors drawn together. */
 export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[]; openings?:SceneOpening[]; media?:SceneMedia[]; laundry?:SceneLaundry[] }
 /** A door or window open (its contact sensor says so), and how much of it each cover hides, 0 open to 1 closed, undefined unknown. */
@@ -61,7 +61,7 @@ interface Leaf { pivot:T.Group; sign:number }
 interface CoverParts { group:T.Group; style:CoverStyle; fill:T.MeshBasicMaterial; lines:T.LineBasicMaterial }
 interface OpeningParts { room:string; opening:SceneOpening; frame:T.LineBasicMaterial; leaves:Leaf[]; covers:Map<string,CoverParts>; bottom:number; top:number; swing:number }
 interface MediaParts { room:string; kind:MediaKind; screen:T.MeshBasicMaterial; frame:T.LineBasicMaterial; glow?:T.Mesh<T.PlaneGeometry,T.MeshBasicMaterial>; rings?:T.Group }
-interface LaundryParts { room:string; root:T.Group; drum:T.Group; running:boolean }
+interface LaundryParts { room:string; root:T.Group; drum:T.Group; lamp:T.MeshBasicMaterial; running:boolean }
 /** Colours of what the walls hold: frames, glass, door leaves, and each kind of cover. */
 const FRAME=0xe3f3ff,OPEN_FRAME=0x8ff0c8,GLASS=0xaee2ff,LEAF=0x8fb8d8,SHUTTER=0xd4e6f6,BLIND=0xe8eef4,CURTAIN=0xf3dcc0,PLAYING=0x7fd0ff;
 /** How far each kind of leaf turns when its contact sensor says it is open. */
@@ -425,13 +425,15 @@ export class SpatialScene {
   }
   /** A compact front-loading washer: enamel cabinet, dark porthole and a fabric marker rotating inside its drum. */
   private addLaundry(group:T.Group,floor:SpatialFloor,item:SceneLaundry){
-    const root=new T.Group();root.position.set(item.at[0],floor.elevation,item.at[1]);root.visible=this.laundryMode;group.add(root);
-    const enamel=new T.MeshBasicMaterial({color:0xd9e4e2,transparent:true,opacity:.94});
+    const root=new T.Group();root.position.set(item.at[0],floor.elevation+item.elevation,item.at[1]);root.rotation.y=item.rotation*Math.PI/180;root.scale.set(item.width/.62,item.height/.85,item.depth/.57);root.visible=this.laundryMode;group.add(root);
+    const enamel=new T.MeshBasicMaterial({color:item.kind==='dryer'?0xf0d8ac:0xd9e4e2,transparent:true,opacity:.98});
     const edge=new T.LineBasicMaterial({color:0xf0f7f4,transparent:true,opacity:.72});
     const cabinet=new T.Mesh(new T.BoxGeometry(.62,.82,.54),enamel);cabinet.position.y=.42;root.add(cabinet);
     const outline=new T.LineSegments(new T.EdgesGeometry(cabinet.geometry),edge);outline.position.copy(cabinet.position);root.add(outline);
     const panel=new T.Mesh(new T.BoxGeometry(.49,.1,.018),new T.MeshBasicMaterial({color:0x45595a}));panel.position.set(0,.73,.281);root.add(panel);
     const knob=new T.Mesh(new T.CylinderGeometry(.035,.035,.025,20),new T.MeshBasicMaterial({color:0xe9efec}));knob.rotation.x=Math.PI/2;knob.position.set(.18,.73,.306);root.add(knob);
+    const lamp=new T.MeshBasicMaterial({color:item.running?0x7aefd0:0x8aa5a3});
+    const indicator=new T.Mesh(new T.BoxGeometry(.12,.035,.02),lamp);indicator.position.set(-.12,.73,.305);root.add(indicator);
     const doorY=.43,doorZ=.286;
     const ring=new T.Mesh(new T.TorusGeometry(.21,.033,9,32),new T.MeshBasicMaterial({color:0xf3f7f4}));ring.position.set(0,doorY,doorZ);root.add(ring);
     const glass=new T.Mesh(new T.CircleGeometry(.184,32),new T.MeshBasicMaterial({color:0x17353e,transparent:true,opacity:.94,side:T.DoubleSide}));glass.position.set(0,doorY,doorZ-.01);root.add(glass);
@@ -441,7 +443,7 @@ export class SpatialScene {
     const cloth2=new T.Mesh(new T.CircleGeometry(.055,20),new T.MeshBasicMaterial({color:0x9fcfc0,side:T.DoubleSide}));cloth2.position.set(-.065,-.045,.004);drum.add(cloth2);
     const spokes=new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([-.12,0,.005,.12,0,.005,0,-.12,.005,0,.12,.005],3)),edge);drum.add(spokes);
     for(const x of [-.2,.2]){const foot=new T.Mesh(new T.BoxGeometry(.08,.06,.1),new T.MeshBasicMaterial({color:0x607271}));foot.position.set(x,.02,0);root.add(foot);}
-    this.laundryParts.set(item.key,{room:item.room,root,drum,running:item.running});
+    this.laundryParts.set(item.key,{room:item.room,root,drum,lamp,running:item.running});
   }
   /** The drum is the only continuously animated part, and runs only while a visible machine is active. */
   private spinLaundry=(time:number)=>{
@@ -487,7 +489,7 @@ export class SpatialScene {
       if(parts.glow)parts.glow.material.opacity=playing?.4:0;
       if(parts.rings)parts.rings.visible=playing;
     }
-    for(const [key,parts] of this.laundryParts)parts.running=!!this.laundryStates.get(key)?.running;
+    for(const [key,parts] of this.laundryParts){parts.running=!!this.laundryStates.get(key)?.running;parts.lamp.color.setHex(parts.running?0x7aefd0:0x8aa5a3);}
     this.scheduleLaundry();
   }
   private addLevel({floor,segments:walls,openings=[],media=[],laundry=[]}:SceneLevel,stacked:boolean) {
@@ -499,7 +501,7 @@ export class SpatialScene {
       if(this.walls){const scale=Math.min(floor.height,.9)/floor.height;fixtures.scale.y=scale;fixtures.position.y=floor.elevation*(1-scale);}
       for(const opening of openings)this.addOpening(fixtures,floor,opening);
       for(const item of media)this.addMedia(fixtures,floor,item);
-      for(const item of laundry)this.addLaundry(fixtures,floor,item);
+      for(const item of laundry)this.addLaundry(group,floor,item);
     }
     if(stacked)this.addStack(group,floor);
   }

@@ -91,7 +91,7 @@ export function temperatureRange(rooms:SpatialRoom[],states:Record<string,HAStat
 }
 /** Everything a room holds: its equipment, what is linked to its doors and windows, its televisions and speakers. */
 export function roomEntityIds(room:SpatialRoom){
-  return [...new Set([...(room.entityIds??[]),...(room.openings??[]).flatMap(o=>o.entityIds??[]),...(room.media??[]).flatMap(m=>m.entityId?[m.entityId]:[])])];
+  return [...new Set([...(room.entityIds??[]),...(room.laundry??[]).flatMap(m=>m.entityId?[m.entityId]:[]),...(room.openings??[]).flatMap(o=>o.entityIds??[]),...(room.media??[]).flatMap(m=>m.entityId?[m.entityId]:[])])];
 }
 /** A contact sensor watching a door, a window or a garage door. */
 export const contactSensor=(state?:HAState)=>['door','window','opening','garage_door'].includes(String(state?.attributes.device_class??''));

@@ -507,6 +507,80 @@
                         }
                       }
                     },
+                    "laundry": {
+                      "type": "array",
+                      "maxItems": 12,
+                      "items": {
+                        "type": "object",
+                        "additionalProperties": false,
+                        "required": [
+                          "id",
+                          "kind",
+                          "at"
+                        ],
+                        "properties": {
+                          "id": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                          },
+                          "kind": {
+                            "enum": [
+                              "washer",
+                              "dryer"
+                            ]
+                          },
+                          "name": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 80
+                          },
+                          "at": {
+                            "type": "array",
+                            "minItems": 2,
+                            "maxItems": 2,
+                            "items": {
+                              "type": "number",
+                              "minimum": -200,
+                              "maximum": 200
+                            }
+                          },
+                          "entityId": {
+                            "type": "string",
+                            "pattern": "^[a-z_]+\\.[a-z0-9_]+$",
+                            "maxLength": 255
+                          },
+                          "rotation": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 360
+                          },
+                          "elevation": {
+                            "type": "number",
+                            "minimum": 0,
+                            "maximum": 3
+                          },
+                          "width": {
+                            "type": "number",
+                            "minimum": 0.3,
+                            "maximum": 1.5
+                          },
+                          "height": {
+                            "type": "number",
+                            "minimum": 0.3,
+                            "maximum": 1.5
+                          },
+                          "depth": {
+                            "type": "number",
+                            "minimum": 0.3,
+                            "maximum": 1.5
+                          },
+                          "stackedOn": {
+                            "type": "string",
+                            "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+                          }
+                        }
+                      }
+                    },
                     "media": {
                       "type": "array",
                       "maxItems": 12,

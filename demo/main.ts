@@ -7,6 +7,7 @@ import { defaultProject } from '../shared/project';
 import type { Hass } from '../frontend/ha/client';
 import type { CardConfig, HAState } from '../shared/models';
 import type { MPGlassLight } from '../frontend/cards/light';
+import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
 const snapshot = home();
@@ -36,6 +37,10 @@ if(spatial) {
   if(floors){
     const room=(id:string,name:string,x:number,z:number,w:number,d:number,entityIds?:string[])=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]] as [number,number][],...(entityIds?{entityIds}:{})});
     project.spatial.floors.unshift({id:'basement',name:'Sous-sol',elevation:-2.4,height:2.2,rooms:[room('garage','Garage',0,0,7,8,['light.garage']),room('cellar','Cave',7,0,6,4),room('laundry','Buanderie',7,4,6,4,['light.buanderie',...(params.has('laundry')?laundryDemoEntities:[])])]});
+    if(params.has('laundry'))project.spatial.floors[0]!.rooms[2]!.laundry=[
+      {id:'washer',kind:'washer',name:'Lave-linge',at:[8.2,6.3],entityId:'sensor.buanderie_washing_machine_cycle'},
+      {id:'dryer',kind:'dryer',name:'Sèche-linge',at:[8.2,6.3],stackedOn:'washer',entityId:'sensor.buanderie_dryer_cycle'},
+    ];
     project.spatial.floors.push({id:'upstairs',name:'Étage',elevation:2.6,height:2.5,rooms:[
       room('room-1','Suite parentale',0,0,6,4,['light.suite','sensor.suite_temperature']),room('room-2','Chambre Léo',6,0,4,4,['light.leo','sensor.leo_temperature']),
       room('room-3','Salle d’eau',10,0,3,4),room('room-4','Palier',0,4,6,4,['light.palier']),room('room-5','Bureau',6,4,7,4),
@@ -107,6 +112,7 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
   view.hass={...hass};
 } };
 if (params.has('laundry')) hass.states = { ...hass.states,
+  'sensor.buanderie_dryer_cycle':{entity_id:'sensor.buanderie_dryer_cycle',state:'idle',attributes:{friendly_name:'Buanderie · Sèche-linge · Cycle'}},
   'sensor.buanderie_washing_machine_cycle':{entity_id:'sensor.buanderie_washing_machine_cycle',state:'rinse',attributes:{friendly_name:'Buanderie · Lave-linge · Cycle'}},
   'sensor.buanderie_washing_machine_remaining_time':{entity_id:'sensor.buanderie_washing_machine_remaining_time',state:'00:38:00',attributes:{friendly_name:'Buanderie · Lave-linge · Temps restant',device_class:'duration',unit_of_measurement:'s'}},
   'sensor.buanderie_washing_machine_program':{entity_id:'sensor.buanderie_washing_machine_program',state:'Coton · couleurs',attributes:{friendly_name:'Buanderie · Lave-linge · Programme'}},
@@ -151,7 +157,13 @@ for(const config of viewCards) {
   }
 }
 const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
-if (params.has('laundry')&&!spatial) {
+if(spatial&&params.has('studio')){
+  const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
+  editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;
+  editor.devices=MPDiscoveryEngine.discover({...snapshot,states:hass.states},project).devices;
+  editor.style.cssText='display:block;max-width:1200px;margin:auto;padding:24px';
+  document.body.replaceChildren(editor);
+} else if (params.has('laundry')&&!spatial) {
   const shell=document.createElement('main');
   shell.style.cssText='min-height:100vh;padding:clamp(20px,5vw,64px);display:grid;align-content:center;justify-items:center;gap:22px;background:radial-gradient(ellipse at 15% 10%,#29483f88,transparent 48%),radial-gradient(ellipse at 88% 80%,#28526966,transparent 44%),#10191b;color:#f2f5f1;font-family:Inter,system-ui,sans-serif';
   const heading=document.createElement('header');heading.style.cssText='width:min(100%,1100px);display:flex;align-items:end;justify-content:space-between;gap:20px';

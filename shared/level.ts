@@ -231,10 +231,10 @@ function zoneShape(zone: LevelZone, frame: ImageFrame): { polygon: Point[]; arcs
   return zone.arcs?.some(bent) ? { polygon, arcs: zone.arcs.map(b => Math.round(Math.max(-1, Math.min(1, b)) * 1e4) / 1e4) } : { polygon };
 }
 /** Televisions and speakers of a room reshaped or moved: at the same place relative to its extent. */
-function follow(before: SpatialRoom, room: SpatialRoom): SpatialMedia[] {
+function follow<T extends {at:Point}>(before: SpatialRoom, room: SpatialRoom, items:T[]): T[] {
   const extent = (r: SpatialRoom) => { const ring = roomOutline(r), xs = ring.map(p => p[0]), ys = ring.map(p => p[1]); return { x: Math.min(...xs), y: Math.min(...ys), w: Math.max(...xs) - Math.min(...xs) || 1, h: Math.max(...ys) - Math.min(...ys) || 1 }; };
   const [from, to] = [extent(before), extent(room)];
-  return (before.media ?? []).map(m => ({ ...m, at: [millimetres(to.x + (m.at[0] - from.x) / from.w * to.w), millimetres(to.y + (m.at[1] - from.y) / from.h * to.h)] as Point }));
+  return items.map(m => ({ ...m, at: [millimetres(to.x + (m.at[0] - from.x) / from.w * to.w), millimetres(to.y + (m.at[1] - from.y) / from.h * to.h)] as Point }));
 }
 /**
  * The level after its rooms were edited on the plan. A room keeps its id, its Home Assistant room and its equipment; a room
@@ -265,7 +265,8 @@ export function rebuildLevel(draft: LevelDraft, zones: readonly LevelZone[], fre
       lost += before.openings.length - openings.length;
       if (openings.length) room.openings = openings;
     }
-    if (before?.media?.length) room.media = follow(before, room);
+    if (before?.media?.length) room.media = follow(before, room, before.media);
+    if (before?.laundry?.length) room.laundry=follow(before,room,before.laundry);
     next.push({ zone, room });
   }
   const result = next.map(n => n.room);

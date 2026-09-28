@@ -1,5 +1,14 @@
 /** The washing-machine card and its entity-free setup. */
 export const LAUNDRY = {
+  'Sèche-linge': ['Tumble dryer', 'Сушильная машина'],
+  'Placer les appareils, régler leurs dimensions et superposer le sèche-linge sur le lave-linge.': ['Place appliances, adjust their dimensions and stack the dryer on the washer.', 'Разместите технику, задайте размеры и установите сушильную машину на стиральную.'],
+  'Appareil Home Assistant': ['Home Assistant appliance', 'Устройство Home Assistant'],
+  'Superposer sur': ['Stack on', 'Установить сверху на'],
+  'Au sol': ['On the floor', 'На полу'],
+  'Orientation (°)': ['Orientation (°)', 'Поворот (°)'],
+  'Profondeur (m)': ['Depth (m)', 'Глубина (м)'],
+  'Hauteur au-dessus du sol (m)': ['Height above the floor (m)', 'Высота над полом (м)'],
+  'Suit la position et l’orientation de l’appareil du dessous.': ['Follows the position and orientation of the appliance underneath.', 'Следует положению и повороту нижнего устройства.'],
   'Lave-linge': ['Washing machines', 'Стиральные машины'],
   'Buanderie · équipements': ['Laundry · appliances', 'Прачечная · техника'],
   'machine': ['machine', 'машина'],

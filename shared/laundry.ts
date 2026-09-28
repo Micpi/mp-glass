@@ -1,10 +1,12 @@
+import type { LaundryKind } from './spatial';
 import type { HADevice, HAEntity, HAState } from './models';
 
-const APPLIANCE = /\b(washer|washing[ _-]?machine|lave[ _-]?linge|machine[ _-]?a[ _-]?laver|lavadora|lavatrice|waschmaschine|waschautomat)\b/i;
-const SUFFIX = /(?:[ _-]+)(?:remaining(?:[ _-]?time)?|time[ _-]?(?:remaining|left|to[ _-]?finish)|temps[ _-]?(?:restant|fin)|restzeit|restante|operation[ _-]?(?:state|status)|cycle[ _-]?(?:state|status|progress)|program(?:me)?|progress|duration|power|energy|consumption|door|status|state|état|etat|spin|rinse|wash|phase|stage|current[ _-]?program|active[ _-]?program).*$/i;
+const APPLIANCE = /\b(washer|washing[ _-]?machine|lave[ _-]?linge|machine[ _-]?a[ _-]?laver|lavadora|lavatrice|waschmaschine|waschautomat|dryer|tumble[ _-]?dryer|s[eé]che[ _-]?linge|secadora|asciugatrice|trockner)\b/i;
+const SUFFIX = /(?:[ _-]+)(?:remaining(?:[ _-]?time)?|time[ _-]?(?:remaining|left|to[ _-]?finish)|temps[ _-]?(?:restant|fin)|restzeit|restante|operation(?:[ _-]?(?:state|status))?|cycle(?:[ _-]?(?:state|status|progress))?|program(?:me)?|progress|duration|power|energy|consumption|door|status|state|état|etat|spin|rinse|wash|phase|stage|current[ _-]?program|active[ _-]?program)(?=$|[ _-]).*$/i;
 
 export interface LaundryUnit {
   key: string;
+  kind: LaundryKind;
   name: string;
   areaId?: string;
   entityIds: string[];
@@ -36,7 +38,7 @@ export function discoverLaundryUnits(states: Record<string, HAState>, entities: 
     let group = groups.get(key);
     if (!group) {
       const name = deviceName ?? String(states[id]?.attributes.friendly_name ?? id).split(/[·:]/)[0]?.trim() ?? id;
-      group = { key, name, ...(entity?.area_id ?? device?.area_id ? { areaId: entity?.area_id ?? device?.area_id ?? undefined } : {}), entityIds: [] };
+      group = { key, name, kind:/dryer|s[eé]che[ _-]?linge|secadora|asciugatrice|trockner/i.test(`${id} ${name} ${String(states[id]?.attributes.friendly_name??'')} ${device?.name??''} ${device?.model??''}`.replace(/[_.]+/g,' '))?'dryer':'washer', ...(entity?.area_id ?? device?.area_id ? { areaId: entity?.area_id ?? device?.area_id ?? undefined } : {}), entityIds: [] };
       groups.set(key, group);
     }
     if (recognizedDevice && entity?.device_id) {

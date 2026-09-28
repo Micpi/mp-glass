@@ -4,7 +4,7 @@ import { HARegistryReader } from '../ha/client';
 import { discoverLaundryUnits, laundryIsRunning, laundryRemaining, type LaundryUnit } from '../../shared/laundry';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
-import { alignRooms, nearestSide, openingPlacement, roomOutline, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { alignRooms, laundryPlacement, nearestSide, openingPlacement, roomOutline, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { mpIcon, type MPIconName } from '../icons';
 import { LanguageController, locale, tr, trText } from '../i18n';
 import type { MessageKey } from '../locales';
@@ -289,7 +289,7 @@ export class MPSpatialViewer extends LitElement {
   private hold = 0;
   private asked = 0;
   /** Studio: while set, the next tap on the plan places a door, a window, a television or a speaker in this room. */
-  placing?: {floorId:string;roomId:string;prompt:string};
+  placing?: {floorId:string;roomId:string;prompt:string;what?:string};
   /** Room to bring into view once the plan is drawn. */
   private focusAfter = '';
   /** What the scene draws: its floors and their walls (a change frames the house again), and what stands in its walls and rooms. */
@@ -316,9 +316,14 @@ export class MPSpatialViewer extends LitElement {
   }
   private laundryForRoom(room:SpatialRoom){
     const linked=new Set(roomEntityIds(room)),roomName=plain(room.name).replace(/[^a-z0-9]+/g,' ').trim();
-    return this.laundryUnits.filter(unit=>(!!room.areaId&&unit.areaId===room.areaId)||unit.entityIds.some(id=>linked.has(id))||(!unit.areaId&&unit.entityIds.some(id=>{
+    const saved=(this.plan?.floors??[]).flatMap(f=>f.rooms.flatMap(r=>r.laundry??[]));
+    const placed: LaundryUnit[]=(room.laundry??[]).map(item=>{
+      const unit=this.laundryUnits.find(u=>!!item.entityId&&u.entityIds.includes(item.entityId));
+      return {key:'placed:'+item.id,kind:item.kind,name:item.name??unit?.name??(item.kind==='dryer'?tr('Sèche-linge'):tr('Lave-linge')),entityIds:unit?.entityIds??(item.entityId?[item.entityId]:[])};
+    });
+    return [...placed,...this.laundryUnits.filter(unit=>!saved.some(item=>!!item.entityId&&unit.entityIds.includes(item.entityId))).filter(unit=>(!!room.areaId&&unit.areaId===room.areaId)||unit.entityIds.some(id=>linked.has(id))||(!unit.areaId&&unit.entityIds.some(id=>{
       const name=plain(String(this.hass?.states[id]?.attributes.friendly_name??''));return !!roomName&&name.includes(roomName);
-    })));
+    })))];
   }
   private laundryInfo(unit:LaundryUnit){
     const states=this.hass?.states??{},running=laundryIsRunning(states,unit.entityIds),remaining=laundryRemaining(states,unit.entityIds);
@@ -330,7 +335,7 @@ export class MPSpatialViewer extends LitElement {
     const machines=this.laundryForRoom(room);if(!machines.length)return [];
     const xs=room.polygon.map(point=>point[0]),zs=room.polygon.map(point=>point[1]),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...zs),bottom=Math.max(...zs);
     const width=Math.max(right-left,.9),depth=Math.max(bottom-top,.9),columns=Math.max(1,Math.floor(width/.88)),rows=Math.ceil(machines.length/columns);
-    return machines.map((machine,index)=>{const column=index%columns,row=Math.floor(index/columns);return {key:`${this.roomKey(floor,room)}|laundry|${machine.key}`,room:this.roomKey(floor,room),at:[left+width*(column+.5)/columns,top+depth*(row+.5)/rows] as [number,number],running:this.laundryInfo(machine).running};});
+    return machines.map((machine,index)=>{const column=index%columns,row=Math.floor(index/columns),item=room.laundry?.find(item=>'placed:'+item.id===machine.key),position=item?laundryPlacement(room,item):undefined;return {kind:machine.kind,elevation:position?.elevation??0,rotation:position?.rotation??0,width:item?.width??.6,height:item?.height??.85,depth:item?.depth??.65,key:`${this.roomKey(floor,room)}|laundry|${machine.key}`,room:this.roomKey(floor,room),at:position?.at??[left+width*(column+.5)/columns,top+depth*(row+.5)/rows] as [number,number],running:this.laundryInfo(machine).running};});
   }
   private scene?: SpatialScene;
   private loading = false;
@@ -350,6 +355,7 @@ export class MPSpatialViewer extends LitElement {
     const placing=this.placing;
     if(changed.has('placing')&&placing&&this.plan?.floors.find(f=>f.id===placing.floorId)?.rooms.some(r=>r.id===placing.roomId)){
       if(this.stacked||this.currentFloor?.id!==placing.floorId){this.flight++;this.floor=placing.floorId;this.opening='';this.pointed='';this.topView=false;}
+      if(placing.what==='laundry')this.mode='laundry';
       this.selected=placing.roomId;this.focusAfter=placing.roomId;this.engaged=true;
     }
     this.toggleAttribute('stacked', this.stacked);
@@ -370,7 +376,7 @@ export class MPSpatialViewer extends LitElement {
   /** Doors, windows and players of the floors on screen, and how their covers hang: a change draws them again, the camera staying put. */
   private content() {
     const states=this.hass?.states??{};
-    return JSON.stringify(this.shownFloors.map(f=>f.rooms.map(r=>[r.openings,r.media,this.laundryForRoom(r).map(unit=>unit.key),(r.openings??[]).flatMap(o=>o.entityIds??[]).map(id=>states[id]?.attributes.device_class)])));
+    return JSON.stringify(this.shownFloors.map(f=>f.rooms.map(r=>[r.openings,r.media,r.laundry,this.laundryForRoom(r).map(unit=>unit.key),(r.openings??[]).flatMap(o=>o.entityIds??[]).map(id=>states[id]?.attributes.device_class)])));
   }
   protected async updated(changed: PropertyValues) {
     this.edges();

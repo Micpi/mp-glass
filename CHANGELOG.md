@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.5 — Buanderie et lave-linge animés
+
+### Ajouté
+
+- **Carte MP Nexus Lave-linge** : nouvelle carte disponible dans le sélecteur de cartes Home Assistant. Elle regroupe automatiquement les machines et capteurs associés à partir des registres d’appareils et d’entités, sans identifiants ni nombre de machines prédéfinis. Le lave-linge apparaît dans une buanderie illustrée ; le tambour tourne pendant le cycle, et l’affichage présente le temps restant, le programme, la progression, la puissance, l’énergie et l’état du hublot lorsque Home Assistant fournit ces informations.
+- **Aperçu de la buanderie** : `npm run dev`, puis ouvrir `/?laundry` pour voir deux machines fictives, dont une en cycle. L’aperçu reste disponible sans connexion Home Assistant ; les machines réelles sont détectées sur le dashboard installé.
+
 ## 0.13.4 — Badge climat sous la température
 
 ### Modifié

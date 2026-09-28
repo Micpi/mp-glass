@@ -4,6 +4,9 @@
 | --- | --- | --- |
 | MP Nexus Light | Nom, état, luminosité déclarée | Allumer/éteindre, brightness_pct si DIM, fenêtre Détails |
 | MP Nexus Generic | Nom et état, fallback inconnu | Fenêtre Détails |
+| MP Nexus Lave-linge | Buanderie illustrée, cycle, temps restant, programme, progression, puissance, énergie et hublot si disponibles | Aucune commande ; découverte automatique de toutes les machines |
+
+La carte MP Nexus Lave-linge se choisit dans le sélecteur de cartes natif de Home Assistant. Elle regroupe les capteurs d’un appareil à partir des registres HA ; si les registres sont inaccessibles, elle utilise le nom des entités et appareils. Plusieurs machines sont affichées dans la même grille, quelle que soit leur quantité. Les identifiants et le nombre de capteurs ne sont pas configurés à l’avance. L’aperçu fictif est disponible en développement sur `/?laundry`.
 
 En mode MANUAL, ajouter MP Nexus Light dans le picker et sélectionner une lumière. Native selector si déjà disponible, liste HTML sinon. Le preset est transmis par le composer ; propriété `debug` montre les preuves et capacités dans les cartes générées lorsque l'utilisateur administrateur l'active dans la stratégie.
 

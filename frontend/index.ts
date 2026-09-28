@@ -1,5 +1,6 @@
 import { MPGlassLight, MPGlassGeneric } from './cards/light';
 import { MPGlassCardEditor } from './cards/editor';
+import { MPGlassLaundry, MPGlassLaundryEditor } from './cards/laundry';
 import { MPGlassView } from './view';
 import { MPGlassStrategy } from './strategy';
 import { MPGlassSettings } from './settings';
@@ -20,7 +21,7 @@ class MPGlassGenericV4 extends MPGlassGeneric {}
 class MPGlassViewV4 extends MPGlassView {}
 class MPGlassViewV5 extends MPGlassView {}
 defineElement('mp-glass-view-v5', MPGlassViewV5);
-for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 'mp-glass-light-v2':MPGlassLightV2, 'mp-glass-light-v3':MPGlassLightV3, 'mp-glass-light-v4':MPGlassLightV4, 'mp-glass-generic':MPGlassGeneric, 'mp-glass-generic-v2':MPGlassGenericV2, 'mp-glass-generic-v3':MPGlassGenericV3, 'mp-glass-generic-v4':MPGlassGenericV4, 'mp-glass-card-editor':MPGlassCardEditor, 'mp-glass-view':MPGlassView, 'mp-glass-view-v2':MPGlassViewV2, 'mp-glass-view-v3':MPGlassViewV3, 'mp-glass-view-v4':MPGlassViewV4, 'll-strategy-dashboard-mp-glass':MPGlassStrategy, 'mp-glass-settings':MPGlassSettings })) {
+for (const [name, component] of Object.entries({ 'mp-glass-light':MPGlassLight, 'mp-glass-light-v2':MPGlassLightV2, 'mp-glass-light-v3':MPGlassLightV3, 'mp-glass-light-v4':MPGlassLightV4, 'mp-glass-generic':MPGlassGeneric, 'mp-glass-generic-v2':MPGlassGenericV2, 'mp-glass-generic-v3':MPGlassGenericV3, 'mp-glass-generic-v4':MPGlassGenericV4, 'mp-glass-card-editor':MPGlassCardEditor, 'mp-glass-laundry':MPGlassLaundry, 'mp-glass-laundry-editor':MPGlassLaundryEditor, 'mp-glass-view':MPGlassView, 'mp-glass-view-v2':MPGlassViewV2, 'mp-glass-view-v3':MPGlassViewV3, 'mp-glass-view-v4':MPGlassViewV4, 'll-strategy-dashboard-mp-glass':MPGlassStrategy, 'mp-glass-settings':MPGlassSettings })) {
   defineElement(name, component);
 }
 const registeredStrategy = customElements.get('ll-strategy-dashboard-mp-glass') as typeof MPGlassStrategy | undefined;
@@ -46,3 +47,4 @@ window.customStrategies ??= [];
 if (!window.customStrategies.some(s=>s.type==='mp-glass')) window.customStrategies.push({ type:'mp-glass', strategyType:'dashboard', name:'MP Nexus Dashboard' });
 window.customCards ??= [];
 if (!window.customCards.some(c=>c.type==='mp-glass-light')) window.customCards.push({ type:'mp-glass-light',name:'MP Nexus Light',preview:true,getEntitySuggestion:(_hass:Hass,entityId:string)=>entityId.startsWith('light.') ? {config:{type:'custom:mp-glass-light',entity:entityId}} : null });
+if (!window.customCards.some(c=>c.type==='mp-glass-laundry')) window.customCards.push({ type:'mp-glass-laundry',name:'MP Nexus Lave-linge',description:'Buanderie animée et suivi automatique des machines',preview:true });

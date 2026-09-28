@@ -5,8 +5,9 @@ import { MPDiscoveryEngine } from '../shared/discovery';
 import { MPDashboardComposer } from '../shared/presentation';
 import { defaultProject } from '../shared/project';
 import type { Hass } from '../frontend/ha/client';
-import type { HAState } from '../shared/models';
+import type { CardConfig, HAState } from '../shared/models';
 import type { MPGlassLight } from '../frontend/cards/light';
+import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
 const snapshot = home();
 // The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
@@ -43,7 +44,7 @@ if(spatial) {
 const calls: unknown[] = [];
 /** History requests the window made, so the browser tests can check the period asked for. */
 const historyCalls: Record<string, unknown>[] = [];
-const cards: MPGlassLight[] = [];
+const cards: Array<MPGlassLight | MPGlassLaundry> = [];
 /** What Home Assistant would report once a command is done, roughly: enough for the fixture to follow its own commands. */
 function commanded(domain:string,service:string,data:Record<string,unknown>,old:HAState):HAState{
   const attributes={...old.attributes};
@@ -104,6 +105,17 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
   for(const card of cards) card.hass={...hass};
   view.hass={...hass};
 } };
+if (params.has('laundry')) hass.states = { ...hass.states,
+  'sensor.buanderie_washing_machine_cycle':{entity_id:'sensor.buanderie_washing_machine_cycle',state:'rinse',attributes:{friendly_name:'Buanderie · Lave-linge · Cycle'}},
+  'sensor.buanderie_washing_machine_remaining_time':{entity_id:'sensor.buanderie_washing_machine_remaining_time',state:'00:38:00',attributes:{friendly_name:'Buanderie · Lave-linge · Temps restant',device_class:'duration',unit_of_measurement:'s'}},
+  'sensor.buanderie_washing_machine_program':{entity_id:'sensor.buanderie_washing_machine_program',state:'Coton · couleurs',attributes:{friendly_name:'Buanderie · Lave-linge · Programme'}},
+  'sensor.buanderie_washing_machine_progress':{entity_id:'sensor.buanderie_washing_machine_progress',state:'62',attributes:{friendly_name:'Buanderie · Lave-linge · Progression',unit_of_measurement:'%'}},
+  'sensor.buanderie_washing_machine_power':{entity_id:'sensor.buanderie_washing_machine_power',state:'438',attributes:{friendly_name:'Buanderie · Lave-linge · Puissance',device_class:'power',unit_of_measurement:'W'}},
+  'sensor.buanderie_washing_machine_energy':{entity_id:'sensor.buanderie_washing_machine_energy',state:'0.74',attributes:{friendly_name:'Buanderie · Lave-linge · Énergie',device_class:'energy',unit_of_measurement:'kWh'}},
+  'binary_sensor.buanderie_washing_machine_door':{entity_id:'binary_sensor.buanderie_washing_machine_door',state:'off',attributes:{friendly_name:'Buanderie · Lave-linge · Hublot'}},
+  'sensor.cellier_washing_machine_cycle':{entity_id:'sensor.cellier_washing_machine_cycle',state:'idle',attributes:{friendly_name:'Cellier · Lave-linge · Cycle'}},
+  'sensor.cellier_washing_machine_program':{entity_id:'sensor.cellier_washing_machine_program',state:'Délicat',attributes:{friendly_name:'Cellier · Lave-linge · Programme'}},
+};
 const dashboard = MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project, false, undefined, undefined, __MP_GLASS_VERSION__);
 // Room sensors only exist on the plan demo, after composition, so the dashboard cards stay the same.
 if(spatial) hass.states={...hass.states,
@@ -129,11 +141,24 @@ if(floors) hass.states={...hass.states,
   'sensor.suite_temperature':temperature('sensor.suite_temperature','Suite parentale · Température','19.2'),'sensor.leo_temperature':temperature('sensor.leo_temperature','Chambre Léo · Température','22.6'),
 };
 const selectedView = dashboard.views.find(candidate => candidate.path === location.pathname.split('/').filter(Boolean).at(-1)) ?? dashboard.views[0]!;
-for(const config of selectedView.cards) {
-  const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config);card.hass={...hass};cards.push(card);
+const viewCards: Array<{ type:string; entity?:string; name?:string }> = params.has('laundry') ? [{ type:'custom:mp-glass-laundry', name:'Buanderie' }] : selectedView.cards;
+for(const config of viewCards) {
+  if (config.type === 'custom:mp-glass-laundry') {
+    const card=document.createElement('mp-glass-laundry') as MPGlassLaundry;card.setConfig(config);card.hass={...hass};cards.push(card);
+  } else {
+    const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config as CardConfig);card.hass={...hass};cards.push(card);
+  }
 }
 const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
-view.setConfig(selectedView);
-view.cards=cards;
-view.hass=hass;
+if (params.has('laundry')) {
+  const shell=document.createElement('main');
+  shell.style.cssText='min-height:100vh;padding:clamp(20px,5vw,64px);display:grid;align-content:center;justify-items:center;gap:22px;background:radial-gradient(ellipse at 15% 10%,#29483f88,transparent 48%),radial-gradient(ellipse at 88% 80%,#28526966,transparent 44%),#10191b;color:#f2f5f1;font-family:Inter,system-ui,sans-serif';
+  const heading=document.createElement('header');heading.style.cssText='width:min(100%,1100px);display:flex;align-items:end;justify-content:space-between;gap:20px';
+  const title=document.createElement('div');title.innerHTML='<div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#a9c0b6">MP NEXUS · DÉMONSTRATION</div><h1 style="margin:9px 0 0;font:clamp(32px,5vw,52px)/1 Georgia,serif;font-weight:400">Buanderie</h1><p style="margin:10px 0 0;color:#b7c5c0;font-size:14px">Deux machines fictives · un cycle en cours · détection automatique</p>';
+  heading.append(title);for(const card of cards) card.style.width='min(100%,1100px)';shell.append(heading,...cards);document.body.replaceChildren(shell);
+} else {
+  view.setConfig(selectedView);
+  view.cards=cards;
+  view.hass=hass;
+}
 Object.assign(window,{demo:{hass,cards,calls,history:historyCalls}});

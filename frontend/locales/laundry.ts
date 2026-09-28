@@ -1,0 +1,22 @@
+/** The washing-machine card and its entity-free setup. */
+export const LAUNDRY = {
+  'Lave-linge': ['Washing machines', 'Стиральные машины'],
+  'Buanderie · équipements': ['Laundry · appliances', 'Прачечная · техника'],
+  'machine': ['machine', 'машина'],
+  'machines': ['machines', 'машины'],
+  'en cours': ['running', 'работают'],
+  'restant': ['remaining', 'осталось'],
+  'terminé': ['finished', 'завершено'],
+  'Recherche des lave-linge…': ['Looking for washing machines…', 'Поиск стиральных машин…'],
+  'Aucun lave-linge détecté': ['No washing machines detected', 'Стиральные машины не найдены'],
+  'Lecture des équipements Home Assistant.': ['Reading Home Assistant appliances.', 'Чтение устройств Home Assistant.'],
+  'Les appareils et leurs capteurs apparaîtront ici dès que Home Assistant les aura identifiés.': ['Appliances and their sensors will appear here as soon as Home Assistant identifies them.', 'Устройства и их датчики появятся здесь, когда Home Assistant их обнаружит.'],
+  'Hublot ouvert': ['Door open', 'Люк открыт'],
+  'Hublot fermé': ['Door closed', 'Люк закрыт'],
+  'Programme': ['Schedule', 'Расписание'],
+  'Cycle': ['Cycle', 'Цикл'],
+  'Puissance': ['Power', 'Мощность'],
+  'PRÊT': ['READY', 'ГОТОВО'],
+  'Titre (facultatif)': ['Title (optional)', 'Заголовок (необязательно)'],
+  'Les machines et leurs capteurs sont repérés automatiquement dans Home Assistant.': ['Machines and their sensors are detected automatically in Home Assistant.', 'Машины и их датчики автоматически определяются в Home Assistant.'],
+} as const;

@@ -1,5 +1,7 @@
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import type { Hass } from '../ha/client';
+import { HARegistryReader } from '../ha/client';
+import { discoverLaundryUnits, laundryIsRunning, laundryRemaining, type LaundryUnit } from '../../shared/laundry';
 import type { HAState } from '../../shared/models';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
 import { alignRooms, nearestSide, openingPlacement, roomOutline, stackFloors, wallFrame, wallSegments, type OpeningKind, type Point, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
@@ -9,7 +11,7 @@ import type { MessageKey } from '../locales';
 import { climateActionMode, COVER_STATES, HVAC, hvacIcon, kindOf, KIND_ICONS, MEDIA_STATES, stateName, type Kind } from '../entities';
 import '../detail';
 import { defineElement } from '../registry';
-import type { CameraView, LevelProjection, MediaState, OpeningState, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
+import type { CameraView, LaundryState, LevelProjection, MediaState, OpeningState, SceneLaundry, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean; mode?:string }
@@ -22,11 +24,13 @@ const MODES:{mode:PlanMode;label:MessageKey;icon:MPIconName;offered?:(room:Spati
   {mode:'lights',label:'Lumières',icon:'bulb'},{mode:'climate',label:'Climat',icon:'thermo',offered:hasThermometer},
   {mode:'openings',label:'Ouvrants',icon:'window',offered:hasOpenings},{mode:'media',label:'Audio-vidéo',icon:'tv',offered:hasPlayers},
 ];
+const LAUNDRY_MODE:{mode:PlanMode;label:MessageKey;icon:MPIconName}={mode:'laundry',label:'Buanderie',icon:'washer'};
 /** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights (shown through `trText`). */
 const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
   climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
   openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
   media:[[PLAN_COLORS.media,'En lecture'],[`${PLAN_COLORS.media}66`,'Allumé']],
+  laundry:[[PLAN_COLORS.laundry,'Machine en cours'],['#557f79','Machine arrêtée']],
 };
 
 const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
@@ -293,11 +297,41 @@ export class MPSpatialViewer extends LitElement {
   private drawnContent = '';
   /** Ambiance and floors last told to the page, so the section below the plan follows them. */
   private announced = '';
+  private laundryUnits:LaundryUnit[]=[];
+  private laundrySignature='';
+  private laundryRequest=0;
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   /** The ambiances the floors shown can offer: no climate without a room that measures its temperature, and so on. */
-  private modes(floors:SpatialFloor[]){const states=this.hass?.states??{};return MODES.filter(m=>!m.offered||floors.some(f=>f.rooms.some(r=>m.offered!(r,states))));}
+  private modes(floors:SpatialFloor[]){const states=this.hass?.states??{},modes=MODES.filter(m=>!m.offered||floors.some(f=>f.rooms.some(r=>m.offered!(r,states))));if(floors.some(f=>f.rooms.some(r=>this.laundryForRoom(r).length)))modes.push(LAUNDRY_MODE);return modes;}
   private planMode(floors:SpatialFloor[]):PlanMode{return this.modes(floors).some(m=>m.mode===this.mode)?this.mode:'lights';}
+  private updateLaundry(hass=this.hass){
+    if(!hass)return;
+    const request=++this.laundryRequest;
+    void HARegistryReader.read(hass).catch(()=>({entities:[],devices:[],states:hass.states,floors:[],areas:[],warnings:[]})).then(snapshot=>{
+      if(request!==this.laundryRequest||hass!==this.hass)return;
+      const units=discoverLaundryUnits(hass.states,snapshot.entities,snapshot.devices),signature=JSON.stringify(units);
+      if(signature!==this.laundrySignature){this.laundrySignature=signature;this.laundryUnits=units;this.requestUpdate();}
+    });
+  }
+  private laundryForRoom(room:SpatialRoom){
+    const linked=new Set(roomEntityIds(room)),roomName=plain(room.name).replace(/[^a-z0-9]+/g,' ').trim();
+    return this.laundryUnits.filter(unit=>(!!room.areaId&&unit.areaId===room.areaId)||unit.entityIds.some(id=>linked.has(id))||(!unit.areaId&&unit.entityIds.some(id=>{
+      const name=plain(String(this.hass?.states[id]?.attributes.friendly_name??''));return !!roomName&&name.includes(roomName);
+    })));
+  }
+  private laundryInfo(unit:LaundryUnit){
+    const states=this.hass?.states??{},running=laundryIsRunning(states,unit.entityIds),remaining=laundryRemaining(states,unit.entityIds);
+    const programState=unit.entityIds.map(id=>states[id]).find(state=>state&&/program(?:me)?/i.test(`${state.entity_id} ${String(state.attributes.friendly_name??'')}`));
+    const program=programState?.state&& !['unknown','unavailable','none'].includes(programState.state.toLowerCase())?programState.state:undefined;
+    return {running,remaining,program};
+  }
+  private sceneLaundry(floor:SpatialFloor,room:SpatialRoom):SceneLaundry[]{
+    const machines=this.laundryForRoom(room);if(!machines.length)return [];
+    const xs=room.polygon.map(point=>point[0]),zs=room.polygon.map(point=>point[1]),left=Math.min(...xs),right=Math.max(...xs),top=Math.min(...zs),bottom=Math.max(...zs);
+    const width=Math.max(right-left,.9),depth=Math.max(bottom-top,.9),columns=Math.max(1,Math.floor(width/.88)),rows=Math.ceil(machines.length/columns);
+    return machines.map((machine,index)=>{const column=index%columns,row=Math.floor(index/columns);return {key:`${this.roomKey(floor,room)}|laundry|${machine.key}`,room:this.roomKey(floor,room),at:[left+width*(column+.5)/columns,top+depth*(row+.5)/rows] as [number,number],running:this.laundryInfo(machine).running};});
+  }
   private scene?: SpatialScene;
   private loading = false;
   private resize = new ResizeObserver(()=>this.edges());
@@ -336,10 +370,11 @@ export class MPSpatialViewer extends LitElement {
   /** Doors, windows and players of the floors on screen, and how their covers hang: a change draws them again, the camera staying put. */
   private content() {
     const states=this.hass?.states??{};
-    return JSON.stringify(this.shownFloors.map(f=>f.rooms.map(r=>[r.openings,r.media,(r.openings??[]).flatMap(o=>o.entityIds??[]).map(id=>states[id]?.attributes.device_class)])));
+    return JSON.stringify(this.shownFloors.map(f=>f.rooms.map(r=>[r.openings,r.media,this.laundryForRoom(r).map(unit=>unit.key),(r.openings??[]).flatMap(o=>o.entityIds??[]).map(id=>states[id]?.attributes.device_class)])));
   }
   protected async updated(changed: PropertyValues) {
     this.edges();
+    if(changed.has('hass')&&this.hass)this.updateLaundry(this.hass);
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
     if(ask&&this.asking&&!ask.open)ask.showModal();else if(ask&&!this.asking&&ask.open)ask.close();
     if (!this.plan || !this.currentFloor) return;
@@ -368,7 +403,8 @@ export class MPSpatialViewer extends LitElement {
     if(this.scene&&this.currentFloor){
       const floors=this.shownFloors,mode=this.planMode(floors),states=this.hass?.states??{};
       const rooms=floors.flatMap(f=>f.rooms.map(r=>[this.roomKey(f,r),r] as const));
-      const styled=this.scene.highlight(this.room?.id??'',new Map(rooms.map(([key,r])=>[key,roomAmbient(r,states,mode,this.temperatureUnit)])),this.stacked?this.opening||this.pointed:'');
+      const styled=this.scene.highlight(this.room?.id??'',new Map(rooms.map(([key,r])=>{const laundry=this.laundryForRoom(r);return [key,roomAmbient(r,states,mode,this.temperatureUnit,laundry.length?laundry.some(unit=>this.laundryInfo(unit).running):undefined)];})),this.stacked?this.opening||this.pointed:'');
+      this.scene.setLaundryMode(mode==='laundry');
       const fixtures=this.scene.fixtures(...this.fixtureStates(floors));
       // Labels change size when sensor values or the mode changes, even if the camera stays still.
       const previous=changed.get('hass') as Hass|undefined;
@@ -388,7 +424,8 @@ export class MPSpatialViewer extends LitElement {
       // Doors and windows are placed on the room as saved, then onto its wall as drawn.
       const openings=floor.rooms.flatMap((room,i)=>this.sceneOpenings(floor,room,roomOutline(aligned[i]!)));
       const media=floor.rooms.flatMap(room=>this.sceneMedia(floor,room));
-      return {floor:{...floor,rooms:drawn},segments:wallSegments(rooms),openings,media};
+      const laundry=floor.rooms.flatMap(room=>this.sceneLaundry(floor,room));
+      return {floor:{...floor,rooms:drawn},segments:wallSegments(rooms),openings,media,laundry};
     };
     if(!this.scene||!this.currentFloor) return;
     this.drawnGeometry=this.geometry();this.drawnContent=this.content();
@@ -420,8 +457,8 @@ export class MPSpatialViewer extends LitElement {
     });
   }
   /** How the doors, windows and players of `floors` are now: open or closed, covers up or down, players off, on or playing. */
-  private fixtureStates(floors: SpatialFloor[]): [Map<string,OpeningState>,Map<string,MediaState>] {
-    const states=this.hass?.states??{},openings=new Map<string,OpeningState>(),media=new Map<string,MediaState>();
+  private fixtureStates(floors: SpatialFloor[]): [Map<string,OpeningState>,Map<string,MediaState>,Map<string,LaundryState>] {
+    const states=this.hass?.states??{},openings=new Map<string,OpeningState>(),media=new Map<string,MediaState>(),laundry=new Map<string,LaundryState>();
     for(const floor of floors)for(const room of floor.rooms){
       for(const opening of room.openings??[]){
         const ids=opening.entityIds??[];
@@ -431,8 +468,9 @@ export class MPSpatialViewer extends LitElement {
         const state=item.entityId?states[item.entityId]:undefined;
         media.set(this.mediaKey(floor,room,item.id),{on:mediaOn(state),playing:mediaPlaying(state)});
       }
+      for(const unit of this.laundryForRoom(room))laundry.set(`${this.roomKey(floor,room)}|laundry|${unit.key}`,{running:this.laundryInfo(unit).running});
     }
-    return [openings,media];
+    return [openings,media,laundry];
   }
   /** A door or a window is open when one of its contact sensors says so. */
   private isOpen(opening: SpatialOpening) {
@@ -730,6 +768,13 @@ export class MPSpatialViewer extends LitElement {
       const state=states[player]!,playing=mediaPlaying(state),what=nowPlaying(state),text=playing?what??tr('Lecture'):stateName(MEDIA_STATES,state.state);
       return html`<span class="readings"><span class=${`reading ${playing?'media':'player'}`} title=${`${String(state.attributes.friendly_name??player)} · ${playing?text:what?`${text} · ${what}`:text}`}>${mpIcon(mediaIsTv(state)?'tv':'speaker',12)}<span>${text}</span></span></span>`;
     }
+    if(mode==='laundry'){
+      const units=this.laundryForRoom(room);if(!units.length)return nothing;
+      const active=units.map(unit=>({unit,...this.laundryInfo(unit)})).filter(item=>item.running),times=active.map(item=>item.remaining).filter((value):value is string=>!!value);
+      const summary=active.length?`${tr('{n} en cours',{n:active.length})}${times.length?` · ${times.join(' · ')}`:''}`:tr('Machine arrêtée');
+      const title=units.map(unit=>`${unit.name}${this.laundryInfo(unit).program?` · ${this.laundryInfo(unit).program}`:''}`).join(', ');
+      return html`<span class="readings"><span class="reading laundry" title=${title}>${mpIcon('washer',13)}<span>${summary}</span></span></span>`;
+    }
     return nothing;
   }
   /**
@@ -769,10 +814,16 @@ export class MPSpatialViewer extends LitElement {
     const playing=players.filter(mediaPlaying).length,on=players.filter(mediaOn).length;
     return html`<span class=${`reading ${playing?'media':''}`}>${playing?html`${mpIcon('play',12)}<span>${tr('{n} en lecture',{n:playing})}</span>`:on?tr('{n} allumé|{n} allumés',{n:on}):tr('Tout est éteint')}</span>`;
   }
+  private levelLaundry(floor:SpatialFloor){
+    const units=[...new Map(floor.rooms.flatMap(room=>this.laundryForRoom(room)).map(unit=>[unit.key,unit])).values()];
+    if(!units.length)return nothing;
+    const active=units.filter(unit=>this.laundryInfo(unit).running),time=active.map(unit=>this.laundryInfo(unit).remaining).find(Boolean);
+    return html`<span class=${`reading ${active.length?'laundry':''}`}>${mpIcon('washer',12)}<span>${active.length?`${tr('{n} en cours',{n:active.length})}${time?` · ${time}`:''}`:tr('{n} machines détectées',{n:units.length})}</span></span>`;
+  }
   /** A floor of the whole house on the plan: its name, a warm dot while a light is on, and what its ambiance reads. */
   private levelLabel(floor: SpatialFloor, mode: PlanMode) {
     const {all,on}=this.lightsOf(floor.rooms);
-    const readings=mode==='climate'?this.temperatures(floor):mode==='openings'?this.levelOpenings(floor):mode==='media'?this.levelMedia(floor)
+    const readings=mode==='climate'?this.temperatures(floor):mode==='openings'?this.levelOpenings(floor):mode==='media'?this.levelMedia(floor):mode==='laundry'?this.levelLaundry(floor)
       :all.length?html`<span class="reading">${on.length?tr('{n} lumière allumée|{n} lumières allumées',{n:on.length}):tr('Tout est éteint')}</span>`:nothing;
     return html`<button class="${readings===nothing?'':'rich'} ${this.pointed===floor.id||this.opening===floor.id?'pointed':''}" style="visibility:hidden" data-floor=${floor.id} title=${tr('Ouvrir ce niveau')}
       @click=${()=>this.openFloor(floor.id)} @pointerenter=${()=>{this.pointed=floor.id;}} @pointerleave=${()=>{if(this.pointed===floor.id)this.pointed='';}}>

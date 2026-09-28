@@ -1,42 +1,50 @@
 import type { HAArea, HAFloor, HAState, LogicalDevice } from './models';
 import type { SpatialPlan, SpatialRoom } from './spatial';
+import { isLaundryEntity, laundryEntityKey } from './laundry';
 
 /** Equipment worth showing in a room of the plan; energy, diagnostics and settings stay off it. */
-export type PlanKind = 'light' | 'cover' | 'climate' | 'temperature' | 'humidity' | 'media' | 'opening' | 'motion';
+export type PlanKind = 'light' | 'cover' | 'climate' | 'temperature' | 'humidity' | 'media' | 'laundry' | 'opening' | 'motion';
 /** Order of the room card: the first temperature sensor gives the room its temperature. */
-const ORDER: PlanKind[] = ['light', 'cover', 'climate', 'temperature', 'humidity', 'media', 'opening', 'motion'];
+const ORDER: PlanKind[] = ['light', 'laundry', 'cover', 'climate', 'temperature', 'humidity', 'media', 'opening', 'motion'];
 /** Same limit as a list chosen by hand. */
 export const ROOM_ENTITY_LIMIT = 12;
 
-export function planKind(entityId: string, state?: HAState, entityCategory?: string | null): PlanKind | undefined {
+export function planKind(entityId: string, state?: HAState, entityCategory?: string | null, deviceName = ''): PlanKind | undefined {
   if (entityCategory) return undefined;
   const domain = entityId.split('.')[0], deviceClass = String(state?.attributes.device_class ?? ''), unit = String(state?.attributes.unit_of_measurement ?? '');
   if (domain === 'light' || domain === 'cover' || domain === 'climate') return domain;
   // Televisions, speakers and amplifiers alike: whatever plays sound or pictures in the room.
   if (domain === 'media_player') return 'media';
+  if (isLaundryEntity(entityId, state, deviceName)) return 'laundry';
   if (domain === 'binary_sensor') return ['door', 'window', 'opening', 'garage_door'].includes(deviceClass) ? 'opening' : ['motion', 'occupancy', 'presence'].includes(deviceClass) ? 'motion' : undefined;
   if (domain === 'sensor') return deviceClass === 'temperature' || /^°[CF]$/.test(unit) ? 'temperature' : deviceClass === 'humidity' ? 'humidity' : undefined;
   return undefined;
 }
 
-type Equipment = Pick<LogicalDevice, 'entityId' | 'name' | 'areaId' | 'planKind' | 'hidden' | 'disabled'>;
+type Equipment = Pick<LogicalDevice, 'entityId' | 'name' | 'areaId' | 'planKind' | 'hidden' | 'disabled' | 'sourceDeviceIds'>;
 const shown = (d: Equipment) => !!d.planKind && !d.hidden && !d.disabled;
 const byKind = (a: Equipment, b: Equipment) => ORDER.indexOf(a.planKind!) - ORDER.indexOf(b.planKind!) || a.name.localeCompare(b.name, undefined, { numeric: true }) || (a.entityId < b.entityId ? -1 : 1);
 
 /** Equipment of an area, in the order of the room card. */
 export function areaEquipment<T extends Equipment>(areaId: string, devices: readonly T[]): T[] {
-  return devices.filter(d => d.areaId === areaId && shown(d)).sort(byKind);
+  const equipment = devices.filter(d => d.areaId === areaId && shown(d)).sort(byKind), seen = new Set<string>();
+  return equipment.filter(device => {
+    if (device.planKind !== 'laundry') return true;
+    const key = device.sourceDeviceIds[0] ? `device:${device.sourceDeviceIds[0]}` : `entity:${laundryEntityKey(device.entityId)}`;
+    if (seen.has(key)) return false;
+    seen.add(key); return true;
+  });
 }
 /** A room bound to an area without a list of its own follows the area: its equipment is resolved, never stored. */
 export const followsArea = (room: SpatialRoom) => !!room.areaId && !room.entityIds;
 
 /** Plan as displayed: rooms that follow their area receive its current equipment. */
 export function resolvePlan(plan: SpatialPlan, devices: readonly Equipment[]): SpatialPlan {
-  const areas = new Map<string, Equipment[]>();
-  for (const d of devices) if (d.areaId && shown(d)) { const list = areas.get(d.areaId); if (list) list.push(d); else areas.set(d.areaId, [d]); }
+  const areas = new Set<string>();
+  for (const d of devices) if (d.areaId && shown(d)) areas.add(d.areaId);
   return { ...plan, floors: plan.floors.map(floor => ({ ...floor, rooms: floor.rooms.map(room => {
     if (!followsArea(room)) return room;
-    const entityIds = [...areas.get(room.areaId!) ?? []].sort(byKind).slice(0, ROOM_ENTITY_LIMIT).map(d => d.entityId);
+    const entityIds = (areas.has(room.areaId!) ? areaEquipment(room.areaId!, devices) : []).slice(0, ROOM_ENTITY_LIMIT).map(d => d.entityId);
     return entityIds.length ? { ...room, entityIds } : room;
   }) })) };
 }

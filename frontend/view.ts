@@ -259,6 +259,7 @@ export class MPGlassView extends LitElement {
     climate:{title:'Climat',subtitle:'Températures et chauffage, pièce par pièce',icon:'thermo'},
     openings:{title:'Ouvrants',subtitle:'Portes, fenêtres et volets, pièce par pièce',icon:'window'},
     media:{title:'Audio-vidéo',subtitle:'Téléviseurs et enceintes, pièce par pièce',icon:'tv'},
+    laundry:{title:'Buanderie',subtitle:'Machines et cycles de lavage, pièce par pièce',icon:'washer'},
   };
   private planAmbiance = (e: CustomEvent<{mode:PlanMode;floorIds:string[]}>) => {
     this.planMode = e.detail.mode;

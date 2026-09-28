@@ -46,11 +46,14 @@ export interface CameraView { target:[number,number,number]; offset:[number,numb
 export interface SceneOpening { key:string; room:string; kind:OpeningKind; center:Point; tangent:Point; inward:Point; width:number; height:number; sill:number; covers:{id:string;style:CoverStyle}[] }
 /** A television or a speaker standing at `at`, a television turned towards `facing`. */
 export interface SceneMedia { key:string; room:string; kind:MediaKind; at:Point; facing:Point }
-/** A floor to draw at its elevation, with its walls, doors and windows, televisions and speakers. Room ids must be unique across the floors drawn together. */
-export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[]; openings?:SceneOpening[]; media?:SceneMedia[] }
+/** A washing machine, positioned automatically in its room and shown when the laundry ambiance is selected. */
+export interface SceneLaundry { key:string; room:string; at:Point; running:boolean }
+/** A floor to draw at its elevation, with its walls, doors and windows, televisions, speakers and laundry appliances. Room ids must be unique across the floors drawn together. */
+export interface SceneLevel { floor:SpatialFloor; segments:WallSegment[]; openings?:SceneOpening[]; media?:SceneMedia[]; laundry?:SceneLaundry[] }
 /** A door or window open (its contact sensor says so), and how much of it each cover hides, 0 open to 1 closed, undefined unknown. */
 export interface OpeningState { open:boolean; covers:Record<string,number|undefined> }
 export interface MediaState { on:boolean; playing:boolean }
+export interface LaundryState { running:boolean }
 interface RoomParts { floor:string; surface:T.Mesh<T.ShapeGeometry,T.MeshBasicMaterial>; glow:T.Mesh<T.ShapeGeometry,T.ShaderMaterial>; anchor:T.Vector3; radius:number }
 interface WallParts { floor:string; rooms:string[]; mesh:T.Mesh<T.BufferGeometry,T.MeshBasicMaterial>; lines:T.LineBasicMaterial; exterior:boolean }
 /** Leaves turn about their hinge: `sign` is the way that swings them into the room. */
@@ -58,6 +61,7 @@ interface Leaf { pivot:T.Group; sign:number }
 interface CoverParts { group:T.Group; style:CoverStyle; fill:T.MeshBasicMaterial; lines:T.LineBasicMaterial }
 interface OpeningParts { room:string; opening:SceneOpening; frame:T.LineBasicMaterial; leaves:Leaf[]; covers:Map<string,CoverParts>; bottom:number; top:number; swing:number }
 interface MediaParts { room:string; kind:MediaKind; screen:T.MeshBasicMaterial; frame:T.LineBasicMaterial; glow?:T.Mesh<T.PlaneGeometry,T.MeshBasicMaterial>; rings?:T.Group }
+interface LaundryParts { room:string; root:T.Group; drum:T.Group; running:boolean }
 /** Colours of what the walls hold: frames, glass, door leaves, and each kind of cover. */
 const FRAME=0xe3f3ff,OPEN_FRAME=0x8ff0c8,GLASS=0xaee2ff,LEAF=0x8fb8d8,SHUTTER=0xd4e6f6,BLIND=0xe8eef4,CURTAIN=0xf3dcc0,PLAYING=0x7fd0ff;
 /** How far each kind of leaf turns when its contact sensor says it is open. */
@@ -90,9 +94,14 @@ export class SpatialScene {
   private wallParts: WallParts[] = [];
   private openingParts = new Map<string,OpeningParts>();
   private mediaParts = new Map<string,MediaParts>();
+  private laundryParts = new Map<string,LaundryParts>();
   /** States last drawn on doors, windows and players, kept to draw them again on a plan drawn anew. */
   private openingStates: ReadonlyMap<string,OpeningState> = new Map();
   private mediaStates: ReadonlyMap<string,MediaState> = new Map();
+  private laundryStates: ReadonlyMap<string,LaundryState> = new Map();
+  private laundryMode=false;
+  private laundryFrame=0;
+  private laundryAt=0;
   private fixtureKey = '';
   /** While set, the next tap on the house gives the point touched on the plan, and the room under it, instead of selecting a room. */
   picking?: (point:Point,room:string)=>void;
@@ -278,8 +287,9 @@ export class SpatialScene {
   private span(radius:number){return radius*3/Math.min(this.camera.aspect,1)*this.reach;}
   private fit(){return this.span(this.radius)*this.depth;}
   private clear() {
+    cancelAnimationFrame(this.laundryFrame);this.laundryFrame=0;
     this.group.traverse(object=>{if(object instanceof T.Mesh || object instanceof T.LineSegments){object.geometry.dispose();for(const material of Array.isArray(object.material)?object.material:[object.material])material.dispose();}});
-    this.group.clear();this.rooms.clear();this.levels.clear();this.openingParts.clear();this.mediaParts.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';this.fixtureKey='';
+    this.group.clear();this.rooms.clear();this.levels.clear();this.openingParts.clear();this.mediaParts.clear();this.laundryParts.clear();this.surfaces=[];this.solids=[];this.wallParts=[];this.styled='';this.fixtureKey='';
   }
   /** Soft light pool under the house so it does not float over the background. */
   /** A white spot fading to nothing, tinted by each material that uses it. */
@@ -413,19 +423,56 @@ export class SpatialScene {
     }
     this.mediaParts.set(media.key,parts);
   }
+  /** A compact front-loading washer: enamel cabinet, dark porthole and a fabric marker rotating inside its drum. */
+  private addLaundry(group:T.Group,floor:SpatialFloor,item:SceneLaundry){
+    const root=new T.Group();root.position.set(item.at[0],floor.elevation,item.at[1]);root.visible=this.laundryMode;group.add(root);
+    const enamel=new T.MeshBasicMaterial({color:0xd9e4e2,transparent:true,opacity:.94});
+    const edge=new T.LineBasicMaterial({color:0xf0f7f4,transparent:true,opacity:.72});
+    const cabinet=new T.Mesh(new T.BoxGeometry(.62,.82,.54),enamel);cabinet.position.y=.42;root.add(cabinet);
+    const outline=new T.LineSegments(new T.EdgesGeometry(cabinet.geometry),edge);outline.position.copy(cabinet.position);root.add(outline);
+    const panel=new T.Mesh(new T.BoxGeometry(.49,.1,.018),new T.MeshBasicMaterial({color:0x45595a}));panel.position.set(0,.73,.281);root.add(panel);
+    const knob=new T.Mesh(new T.CylinderGeometry(.035,.035,.025,20),new T.MeshBasicMaterial({color:0xe9efec}));knob.rotation.x=Math.PI/2;knob.position.set(.18,.73,.306);root.add(knob);
+    const doorY=.43,doorZ=.286;
+    const ring=new T.Mesh(new T.TorusGeometry(.21,.033,9,32),new T.MeshBasicMaterial({color:0xf3f7f4}));ring.position.set(0,doorY,doorZ);root.add(ring);
+    const glass=new T.Mesh(new T.CircleGeometry(.184,32),new T.MeshBasicMaterial({color:0x17353e,transparent:true,opacity:.94,side:T.DoubleSide}));glass.position.set(0,doorY,doorZ-.01);root.add(glass);
+    const drum=new T.Group();drum.position.set(0,doorY,doorZ+.006);root.add(drum);
+    const disk=new T.Mesh(new T.CircleGeometry(.145,28),new T.MeshBasicMaterial({color:0x316d72,transparent:true,opacity:.82,side:T.DoubleSide}));drum.add(disk);
+    const cloth=new T.Mesh(new T.CircleGeometry(.078,20),new T.MeshBasicMaterial({color:0xe7e1d1,side:T.DoubleSide}));cloth.position.set(.035,.035,.003);drum.add(cloth);
+    const cloth2=new T.Mesh(new T.CircleGeometry(.055,20),new T.MeshBasicMaterial({color:0x9fcfc0,side:T.DoubleSide}));cloth2.position.set(-.065,-.045,.004);drum.add(cloth2);
+    const spokes=new T.LineSegments(new T.BufferGeometry().setAttribute('position',new T.Float32BufferAttribute([-.12,0,.005,.12,0,.005,0,-.12,.005,0,.12,.005],3)),edge);drum.add(spokes);
+    for(const x of [-.2,.2]){const foot=new T.Mesh(new T.BoxGeometry(.08,.06,.1),new T.MeshBasicMaterial({color:0x607271}));foot.position.set(x,.02,0);root.add(foot);}
+    this.laundryParts.set(item.key,{room:item.room,root,drum,running:item.running});
+  }
+  /** The drum is the only continuously animated part, and runs only while a visible machine is active. */
+  private spinLaundry=(time:number)=>{
+    this.laundryFrame=0;
+    if(!this.laundryMode||![...this.laundryParts.values()].some(part=>part.running))return;
+    const delta=this.laundryAt?Math.min(48,time-this.laundryAt):16;this.laundryAt=time;
+    for(const part of this.laundryParts.values())if(part.running)part.drum.rotation.z-=delta*.0022;
+    this.renderer.render(this.scene,this.camera);
+    this.laundryFrame=requestAnimationFrame(this.spinLaundry);
+  };
+  private scheduleLaundry(){
+    if(this.laundryMode&&[...this.laundryParts.values()].some(part=>part.running)&&!this.laundryFrame)this.laundryFrame=requestAnimationFrame(this.spinLaundry);
+    if((!this.laundryMode||![...this.laundryParts.values()].some(part=>part.running))&&this.laundryFrame){cancelAnimationFrame(this.laundryFrame);this.laundryFrame=0;this.laundryAt=0;}
+  }
+  setLaundryMode(enabled:boolean){
+    if(this.laundryMode===enabled)return false;
+    this.laundryMode=enabled;for(const part of this.laundryParts.values())part.root.visible=enabled;this.scheduleLaundry();this.render();return true;
+  }
   /**
    * Doors and windows opened or closed and their covers drawn at their positions, players off, on or playing; whether that
    * changed anything (the plan is then drawn again).
    */
-  fixtures(openings:ReadonlyMap<string,OpeningState>,media:ReadonlyMap<string,MediaState>){
-    this.openingStates=openings;this.mediaStates=media;
-    const key=JSON.stringify([[...openings],[...media]]);
+  fixtures(openings:ReadonlyMap<string,OpeningState>,media:ReadonlyMap<string,MediaState>,laundry:ReadonlyMap<string,LaundryState>=new Map()){
+    this.openingStates=openings;this.mediaStates=media;this.laundryStates=laundry;
+    const key=JSON.stringify([[...openings],[...media],[...laundry]]);
     if(key===this.fixtureKey)return false;
     this.applyFixtures();
     return true;
   }
   private applyFixtures(){
-    this.fixtureKey=JSON.stringify([[...this.openingStates],[...this.mediaStates]]);
+    this.fixtureKey=JSON.stringify([[...this.openingStates],[...this.mediaStates],[...this.laundryStates]]);
     for(const [key,parts] of this.openingParts){
       const state=this.openingStates.get(key),open=!!state?.open;
       parts.frame.color.setHex(open?OPEN_FRAME:FRAME);
@@ -440,8 +487,10 @@ export class SpatialScene {
       if(parts.glow)parts.glow.material.opacity=playing?.4:0;
       if(parts.rings)parts.rings.visible=playing;
     }
+    for(const [key,parts] of this.laundryParts)parts.running=!!this.laundryStates.get(key)?.running;
+    this.scheduleLaundry();
   }
-  private addLevel({floor,segments:walls,openings=[],media=[]}:SceneLevel,stacked:boolean) {
+  private addLevel({floor,segments:walls,openings=[],media=[],laundry=[]}:SceneLevel,stacked:boolean) {
     const group=new T.Group();this.group.add(group);
     this.addWalls(group,floor,walls);
     // The house overview keeps only the floor plates and shallow walls. Fixtures return inside a floor.
@@ -450,6 +499,7 @@ export class SpatialScene {
       if(this.walls){const scale=Math.min(floor.height,.9)/floor.height;fixtures.scale.y=scale;fixtures.position.y=floor.elevation*(1-scale);}
       for(const opening of openings)this.addOpening(fixtures,floor,opening);
       for(const item of media)this.addMedia(fixtures,floor,item);
+      for(const item of laundry)this.addLaundry(fixtures,floor,item);
     }
     if(stacked)this.addStack(group,floor);
   }
@@ -619,7 +669,7 @@ export class SpatialScene {
     this.project(positions,levels);
   };
   dispose(){
-    this.stopTween();cancelAnimationFrame(this.hover);this.observer.disconnect();this.controls.dispose();
+    this.stopTween();cancelAnimationFrame(this.hover);cancelAnimationFrame(this.laundryFrame);this.observer.disconnect();this.controls.dispose();
     const canvas=this.renderer.domElement;
     for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])this.host.removeEventListener(type,this.gate as EventListener,true);
     this.host.removeEventListener('wheel',this.wheelGate,true);

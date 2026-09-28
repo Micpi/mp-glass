@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.6 — Buanderie intégrée au plan 3D
+
+### Ajouté
+
+- **Ambiance Buanderie** : le sélecteur du plan 3D propose les lave-linge détectés dans Home Assistant. Chaque machine apparaît dans sa pièce au niveau choisi ; son tambour tourne pendant un cycle. Les pièces et niveaux indiquent les cycles en cours, et l’étiquette de la pièce donne le temps restant et le programme lorsqu’ils sont disponibles.
+- **Démo du plan** : `npm run dev`, puis ouvrir `/?spatial&floors&laundry`, choisir « Sous-sol », puis l’ambiance « Buanderie ». L’aperçu autonome de la carte reste disponible sur `/?laundry`.
+
 ## 0.13.5 — Buanderie et lave-linge animés
 
 ### Ajouté

@@ -37,7 +37,7 @@ npm run build
 npm run test:e2e
 ```
 
-`npm run dev` ouvre une fixture locale ; ajouter `/?laundry` à l’adresse pour voir la buanderie et ses deux lave-linge fictifs. Pour un vrai serveur HA isolé : `pwsh -File scripts/dev-ha.ps1` avec Docker Engine actif. Ne pas confondre ces deux environnements.
+`npm run dev` ouvre une fixture locale : `/?laundry` montre la carte buanderie, et `/?spatial&floors&laundry` ouvre le plan 3D avec les lave-linge fictifs. Sur ce dernier, choisissez « Sous-sol », puis l’ambiance « Buanderie ». Pour un vrai serveur HA isolé : `pwsh -File scripts/dev-ha.ps1` avec Docker Engine actif. Ne pas confondre ces deux environnements.
 
 ## Documentation
 

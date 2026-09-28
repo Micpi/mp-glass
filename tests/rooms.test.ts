@@ -35,6 +35,7 @@ describe('equipment of a room',()=>{
     expect(planKind('sensor.a',state('sensor.a',{device_class:'temperature'}))).toBe('temperature');
     expect(planKind('sensor.a',state('sensor.a',{unit_of_measurement:'°F'}))).toBe('temperature');
     expect(planKind('sensor.a',state('sensor.a',{device_class:'humidity'}))).toBe('humidity');
+    expect(planKind('sensor.washer_cycle',state('sensor.washer_cycle'))).toBe('laundry');
     expect(planKind('binary_sensor.a',state('binary_sensor.a',{device_class:'door'}))).toBe('opening');
     expect(planKind('binary_sensor.a',state('binary_sensor.a',{device_class:'motion'}))).toBe('motion');
     // Televisions, speakers and amplifiers, whatever Home Assistant calls them.

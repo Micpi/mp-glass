@@ -16,6 +16,7 @@ snapshot.states['light.circuit_0'] = { ...suspension, attributes: { ...suspensio
 const project = defaultProject('Maison de démonstration');
 const params = new URLSearchParams(location.search);
 const spatial = params.has('spatial');
+const laundryDemoEntities=['sensor.buanderie_washing_machine_cycle','sensor.buanderie_washing_machine_remaining_time','sensor.buanderie_washing_machine_program','sensor.buanderie_washing_machine_progress','sensor.buanderie_washing_machine_power','sensor.buanderie_washing_machine_energy','binary_sensor.buanderie_washing_machine_door'];
 /** With ?spatial&floors, a house of three floors: a basement below the example floor and an upstairs above it. */
 const floors = spatial && params.has('floors');
 if(spatial) {
@@ -34,7 +35,7 @@ if(spatial) {
   rooms[4]!.openings=[{id:'porte',kind:'door',name:'Porte d’entrée',side:2,at:.5,width:1,entityIds:['binary_sensor.entree_porte']}];
   if(floors){
     const room=(id:string,name:string,x:number,z:number,w:number,d:number,entityIds?:string[])=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]] as [number,number][],...(entityIds?{entityIds}:{})});
-    project.spatial.floors.unshift({id:'basement',name:'Sous-sol',elevation:-2.4,height:2.2,rooms:[room('garage','Garage',0,0,7,8,['light.garage']),room('cellar','Cave',7,0,6,4),room('laundry','Buanderie',7,4,6,4,['light.buanderie'])]});
+    project.spatial.floors.unshift({id:'basement',name:'Sous-sol',elevation:-2.4,height:2.2,rooms:[room('garage','Garage',0,0,7,8,['light.garage']),room('cellar','Cave',7,0,6,4),room('laundry','Buanderie',7,4,6,4,['light.buanderie',...(params.has('laundry')?laundryDemoEntities:[])])]});
     project.spatial.floors.push({id:'upstairs',name:'Étage',elevation:2.6,height:2.5,rooms:[
       room('room-1','Suite parentale',0,0,6,4,['light.suite','sensor.suite_temperature']),room('room-2','Chambre Léo',6,0,4,4,['light.leo','sensor.leo_temperature']),
       room('room-3','Salle d’eau',10,0,3,4),room('room-4','Palier',0,4,6,4,['light.palier']),room('room-5','Bureau',6,4,7,4),
@@ -141,7 +142,7 @@ if(floors) hass.states={...hass.states,
   'sensor.suite_temperature':temperature('sensor.suite_temperature','Suite parentale · Température','19.2'),'sensor.leo_temperature':temperature('sensor.leo_temperature','Chambre Léo · Température','22.6'),
 };
 const selectedView = dashboard.views.find(candidate => candidate.path === location.pathname.split('/').filter(Boolean).at(-1)) ?? dashboard.views[0]!;
-const viewCards: Array<{ type:string; entity?:string; name?:string }> = params.has('laundry') ? [{ type:'custom:mp-glass-laundry', name:'Buanderie' }] : selectedView.cards;
+const viewCards: Array<{ type:string; entity?:string; name?:string }> = params.has('laundry')&&!spatial ? [{ type:'custom:mp-glass-laundry', name:'Buanderie' }] : selectedView.cards;
 for(const config of viewCards) {
   if (config.type === 'custom:mp-glass-laundry') {
     const card=document.createElement('mp-glass-laundry') as MPGlassLaundry;card.setConfig(config);card.hass={...hass};cards.push(card);
@@ -150,7 +151,7 @@ for(const config of viewCards) {
   }
 }
 const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
-if (params.has('laundry')) {
+if (params.has('laundry')&&!spatial) {
   const shell=document.createElement('main');
   shell.style.cssText='min-height:100vh;padding:clamp(20px,5vw,64px);display:grid;align-content:center;justify-items:center;gap:22px;background:radial-gradient(ellipse at 15% 10%,#29483f88,transparent 48%),radial-gradient(ellipse at 88% 80%,#28526966,transparent 44%),#10191b;color:#f2f5f1;font-family:Inter,system-ui,sans-serif';
   const heading=document.createElement('header');heading.style.cssText='width:min(100%,1100px);display:flex;align-items:end;justify-content:space-between;gap:20px';

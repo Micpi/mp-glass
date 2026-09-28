@@ -22,7 +22,8 @@ export class MPDiscoveryEngine {
       if (!entity.id) evidence.push('identity:provisional');
       let presentation = override?.presentation;
       if (presentation === 'light' && category !== 'light') { warnings.push(`incompatible_override:${entityKey}`); presentation = undefined; }
-      const kind = planKind(entity.entity_id, state, entity.entity_category);
+      const deviceName = [device?.name_by_user, device?.name, device?.manufacturer, device?.model].filter(Boolean).join(' ');
+      const kind = planKind(entity.entity_id, state, entity.entity_category, deviceName);
       return {
         id: `logical:${entityKey}`, entityKey, entityId: entity.entity_id,
         name: override?.name ?? entity.name ?? (typeof state?.attributes.friendly_name === 'string' ? state.attributes.friendly_name : entity.original_name) ?? entity.entity_id,

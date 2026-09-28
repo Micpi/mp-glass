@@ -28,6 +28,7 @@ const icons = {
   bed: '<path d="M3 6v14M3 16h18M21 20v-7a3 3 0 0 0-3-3h-8v6"/><circle cx="6.5" cy="12.2" r="1.7"/>',
   kitchen: '<path d="M4 10h16v6.5a3.5 3.5 0 0 1-3.5 3.5h-9A3.5 3.5 0 0 1 4 16.5zM2 10h20M9 7c0-1.2.9-1.6.9-3M13.5 7c0-1.2.9-1.6.9-3"/>',
   bath: '<path d="M3 12h18v3a5 5 0 0 1-5 5H8a5 5 0 0 1-5-5zM6 12V5.5A2.5 2.5 0 0 1 8.5 3c1.2 0 2.1.8 2.4 1.9M7 20l-1 2M17 20l1 2"/>',
+  washer: '<rect x="4" y="3" width="16" height="18" rx="2"/><path d="M4 7h16M7 5h.5m2 0H10"/><circle cx="12" cy="14" r="4.5"/><path d="M9 13c1.2-1.5 4.8-1.5 6 0m-6 2c1.5 1 4.5 1 6 0"/>',
   desk: '<rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M8 20h8M12 16v4"/>',
   door: '<path d="M6 21V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v17M3 21h18"/><circle cx="14.5" cy="12" r=".9"/>',
   car: '<path d="M4 17v-5l2.2-5.2A1.2 1.2 0 0 1 7.3 6h9.4a1.2 1.2 0 0 1 1.1.8L20 12v5M3 12h18v5H3zM6 17v2M18 17v2"/><circle cx="7.5" cy="14.5" r=".8"/><circle cx="16.5" cy="14.5" r=".8"/>',

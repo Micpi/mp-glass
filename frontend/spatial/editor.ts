@@ -27,7 +27,7 @@ interface ModelInfo { backend:'gemini'|'addon'; configured:boolean; model:string
 const QUALITY_KEY='mp-glass.spatial.quality';
 /** Eight random hex digits. Not `crypto.randomUUID`: it only exists over HTTPS, and Home Assistant is often opened at http://IP:8123. */
 const shortId=()=>Array.from(crypto.getRandomValues(new Uint8Array(4)),byte=>byte.toString(16).padStart(2,'0')).join('');
-const KIND_ICONS:Record<PlanKind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',temperature:'thermo',humidity:'drop',media:'speaker',opening:'window',motion:'motion'};
+const KIND_ICONS:Record<PlanKind,MPIconName>={light:'bulb',cover:'shutter',climate:'flame',temperature:'thermo',humidity:'drop',media:'speaker',laundry:'washer',opening:'window',motion:'motion'};
 const OPENING_NAMES:Record<OpeningKind,MessageKey>={door:'Porte',window:'Fenêtre',french_window:'Porte-fenêtre'};
 const OPENING_ICONS:Record<OpeningKind,MPIconName>={door:'door',window:'window',french_window:'french'};
 const MEDIA_NAMES:Record<MediaKind,MessageKey>={tv:'Téléviseur',speaker:'Enceinte'};

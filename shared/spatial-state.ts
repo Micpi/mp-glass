@@ -1,9 +1,10 @@
 import type { HAState } from './models';
 import type { SpatialRoom } from './spatial';
 import { available, brightnessPercent } from './capabilities';
+import { isLaundryEntity, laundryIsRunning } from './laundry';
 
 /** What the plan shows in its rooms: lights on, temperature, doors, windows and shutters open, televisions and speakers playing. */
-export type PlanMode='lights'|'climate'|'openings'|'media';
+export type PlanMode='lights'|'climate'|'openings'|'media'|'laundry';
 export interface RoomAmbient { color:string; strength:number }
 export const finite=(value:unknown):number|undefined=>typeof value==='number'&&Number.isFinite(value)?value:typeof value==='string'&&value.trim()!==''&&Number.isFinite(Number(value))?Number(value):undefined;
 export const coverFeatures={open_cover:1,close_cover:2,set_cover_position:4,stop_cover:8,set_cover_tilt_position:128} as const;
@@ -104,6 +105,8 @@ export const roomPlayers=(room:SpatialRoom,states:Record<string,HAState>)=>roomE
 /** Whether the room has a door or a window that tells it is open, or a cover: without one, the plan has no openings mode to offer. */
 export const hasOpenings=(room:SpatialRoom,states:Record<string,HAState>)=>roomContacts(room,states).length>0||roomCovers(room,states).length>0;
 export const hasPlayers=(room:SpatialRoom,states:Record<string,HAState>)=>roomPlayers(room,states).length>0;
+export const roomLaundry=(room:SpatialRoom,states:Record<string,HAState>)=>roomEntityIds(room).filter(id=>isLaundryEntity(id,states[id]));
+export const hasLaundry=(room:SpatialRoom,states:Record<string,HAState>)=>roomLaundry(room,states).length>0;
 /** Doors, windows, garage doors and gates of the room standing open: a shutter letting daylight in does not count. */
 export function roomOpen(room:SpatialRoom,states:Record<string,HAState>){
   return [...roomContacts(room,states).filter(id=>states[id]!.state==='on'),...roomCovers(room,states).filter(id=>!groupCover(states[id])&&coverOpen(states[id]))];
@@ -114,13 +117,14 @@ export function ambianceEntities(room:SpatialRoom,states:Record<string,HAState>,
   if(mode==='climate')return roomEntityIds(room).filter(id=>{const s=states[id];return id.startsWith('climate.')||(!!s&&(temperatureSensor(s)||humiditySensor(s)));});
   if(mode==='openings')return [...new Set([...roomContacts(room,states),...roomCovers(room,states)])];
   if(mode==='media')return roomPlayers(room,states);
+  if(mode==='laundry')return roomLaundry(room,states);
   return roomEntityIds(room).filter(id=>id.startsWith('light.'));
 }
 /** Halo colours of the plan besides the lights and the temperature scale. */
-export const PLAN_COLORS={open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff'} as const;
+export const PLAN_COLORS={open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff',laundry:'#72dfc5'} as const;
 /** A fixed Celsius scale, shared by every room; a missing reading produces no thermal halo. */
 export function temperatureColor(celsius:number){return celsius<18?'#69b7ff':celsius<21?'#71d7c0':celsius<24?'#ffc574':'#ff816b';}
-export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C'):RoomAmbient{
+export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C',laundryActive?:boolean):RoomAmbient{
   if(mode==='climate'){const t=roomTemperature(room,states,unit);return {color:t?temperatureColor(t.celsius):'#3496d1',strength:t?.value===undefined?0:.55};}
   // A door or a window open stands out; otherwise the more its shutters let daylight in, the brighter the room.
   if(mode==='openings'){
@@ -132,6 +136,10 @@ export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:
   if(mode==='media'){
     const players=roomPlayers(room,states).map(id=>states[id]);
     return {color:PLAN_COLORS.media,strength:players.some(mediaPlaying)?.6:players.some(mediaOn)?.22:0};
+  }
+  if(mode==='laundry'){
+    const ids=roomLaundry(room,states),running=laundryActive??laundryIsRunning(states,ids);
+    return {color:PLAN_COLORS.laundry,strength:laundryActive===undefined?ids.length?(running?.62:.18):0:running?.62:.18};
   }
   const lights=(room.entityIds??[]).filter(id=>id.startsWith('light.')).map(id=>states[id]).filter(s=>s?.state==='on');
   const strength=lights.length?Math.max(...lights.map(s=>.2+.6*(brightnessPercent(s?.attributes.brightness)??100)/100)):0;

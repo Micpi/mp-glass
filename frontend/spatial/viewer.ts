@@ -136,6 +136,7 @@ export class MPSpatialViewer extends LitElement {
     .equipment-popup .ambient-item{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:8px;background:transparent;text-align:left;padding:9px 3px;min-height:46px}
     .equipment-popup .ambient-item:hover,.equipment-popup .ambient-item:focus-visible{background:#d0e8ff12}
     .equipment-popup .ambient-item>span:not(.equipment-hvac-icon){flex:1;min-width:0;display:grid;gap:3px}.equipment-popup .ambient-item strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}.equipment-popup .ambient-item small{font-size:11px;line-height:1.4}
+    .equipment-popup header .close{display:grid;place-items:center;align-self:start;width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border:0;border-radius:50%;background:transparent;color:#a9c2d6;transition:background .15s,color .15s}.equipment-popup header .close:hover,.equipment-popup header .close:focus-visible{background:#ffffff17;color:#fff}
     .equipment-popup .equipment-search{width:100%;box-sizing:border-box;min-height:36px;padding:7px 10px;border:1px solid #c6e6ff30;border-radius:9px;background:#0002;color:inherit;font:inherit;font-size:12px}
     .equipment-popup .equipment-search::placeholder{color:#afc5d6}.equipment-popup .equipment-back{display:flex;align-items:center;gap:6px;margin-top:10px;border:0;background:transparent;font-size:11px;color:#b9d3e4}.equipment-popup .equipment-back svg{transform:rotate(180deg)}
     .equipment-popup .equipment-summary{margin:14px 0;font-size:13px}.equipment-popup .equipment-summary>div{padding:5px 0;gap:16px}.equipment-popup .equipment-summary dd{font-weight:600;color:#edf7ff}.equipment-popup .equipment-details{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-size:12px}
@@ -915,8 +916,24 @@ export class MPSpatialViewer extends LitElement {
   private closeEquipment=()=>{this.equipment=undefined;this.equipmentReturn=undefined;this.equipmentFilter='';this.scene?.dismissEquipment();};
   private equipmentPicked=(key:string,entityId?:string,keepFilter=false)=>{
     if(!key){this.closeEquipment();return;}
-    this.equipment={key,entityId};if(!keepFilter){this.equipmentFilter='';this.equipmentReturn=undefined;}this.engaged=true;
+    const previous=this.equipment;
+    this.equipment={key,entityId};this.engaged=true;
+    // A single device opens its detail window at once, rather than a bubble of one summary and a Détails button: a list
+    // it was picked from stays open behind the window, a device touched on the plan leaves no bubble.
+    const direct=this.directDetail();
+    if(direct){this.moreInfo(direct);if(keepFilter)this.equipment=previous;else this.closeEquipment();return;}
+    if(!keepFilter){this.equipmentFilter='';this.equipmentReturn=undefined;}
   };
+  /**
+   * The entity whose detail window a single device opens directly: the one its readings come from, else its first available
+   * one. None for a list of a room's equipment, and none for a washer or dryer, whose bubble follows its cycle.
+   */
+  private directDetail(){
+    const info=this.equipmentInfo();
+    if(!info||info.group||info.laundry)return undefined;
+    const states=this.hass?.states??{};
+    return equipmentReadings(info.entityIds,states,info.laundry,this.temperatureUnit).find(row=>row.entityId)?.entityId??info.entityIds.find(id=>available(states[id]));
+  }
   /** Resolve the clicked model against the saved plan and current HA discovery, never a cached state. */
   private equipmentInfo():EquipmentInfo|undefined{
     const picked=this.equipment;if(!picked)return undefined;
@@ -979,7 +996,7 @@ export class MPSpatialViewer extends LitElement {
     const ambient=info.group?undefined:this.equipmentReturn;
     const detailId=rows.find(row=>row.entityId)?.entityId??info.entityIds.find(id=>available(states[id]));
     return html`<section class="equipment-popup" style="visibility:hidden" role="dialog" aria-label=${tr('Informations de {name}',{name:info.name})}>
-      <header>${info.group==='climate'||info.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-hvac-icon" style=${'--equipment-tone:'+(info.climate?.color??'#a9bfce')}>${mpIcon(info.climate?.icon??info.icon,20)}</span>`:mpIcon(info.icon,20)}<div><h3>${info.name}</h3><small>${info.room.name}</small></div><button aria-label=${tr('Fermer')} @click=${this.closeEquipment}>×</button></header>
+      <header>${info.group==='climate'||info.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-hvac-icon" style=${'--equipment-tone:'+(info.climate?.color??'#a9bfce')}>${mpIcon(info.climate?.icon??info.icon,20)}</span>`:mpIcon(info.icon,20)}<div><h3>${info.name}</h3><small>${info.room.name}</small></div><button class="close" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeEquipment}>${mpIcon('close',15)}</button></header>
       ${ambient?html`<button class="equipment-back" @click=${()=>this.pickRoomAmbient(info.room,ambient)}>${mpIcon('arrow',12)} ${tr(this.equipmentCategory(ambient).label)}</button>`:nothing}
       ${info.group?this.ambientList(info):html`${rows.length?html`<dl class="equipment-summary">${rows.map(row=>html`<div><dt>${row.label}</dt><dd>${row.value}</dd></div>`)}</dl>`:html`<p>${tr('Aucune information disponible.')}</p>`}`}
       ${!info.group&&detailId?html`<button class="equipment-details" @click=${()=>this.moreInfo(detailId)}>${tr('Détails')} ${mpIcon('arrow',12)}</button>`:nothing}

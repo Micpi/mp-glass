@@ -184,4 +184,12 @@ export const PLAN = {
   'Éteindre {name}': ['Turn off {name}', 'Выключить: {name}'],
   'Allumer {name}': ['Turn on {name}', 'Включить: {name}'],
   'Luminosité {name}': ['Brightness of {name}', 'Яркость: {name}'],
+  'Domaine': ['Estate', 'Участок'],
+  'Plan de masse du domaine': ['Site plan of the estate', 'Генплан участка'],
+  'Ouvrir {name}': ['Open {name}', 'Открыть: {name}'],
+  'Zoomer': ['Zoom in', 'Приблизить'],
+  'Dézoomer': ['Zoom out', 'Отдалить'],
+  'Voir tout le domaine': ['Show the whole estate', 'Показать весь участок'],
+  'Touchez l’emplacement de la maison sur le plan de masse': ['Tap where the house stands on the site plan', 'Коснитесь места дома на генплане'],
+  'Glissez pour déplacer · pincez ou Ctrl + molette pour zoomer': ['Drag to move · pinch or Ctrl + wheel to zoom', 'Перетащите для перемещения · сведите пальцы или Ctrl + колесо для масштаба'],
 } satisfies Messages;

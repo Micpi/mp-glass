@@ -3,12 +3,14 @@ import { keyed } from 'lit/directives/keyed.js';
 import type { AppearanceConfig, NavigationConfig, NavigationItem } from '../shared/models';
 import { MP_GLASS_BACKGROUND } from './background';
 import { mpIcon, type MPIconName } from './icons';
-import { buildingPlan, planBuildings, type SpatialPlan } from '../shared/spatial';
+import { buildingPlan, planBuildings, type SpatialFloor, type SpatialPlan } from '../shared/spatial';
 import { ambianceEntities, coverOpen, coverPosition, finite, mediaIsTv, mediaOn, nowPlaying, roomEntityIds, type PlanMode } from '../shared/spatial-state';
 import { available } from '../shared/capabilities';
 import type { Hass } from './ha/client';
 import { claimHeader, releaseHeader } from './ha/header';
 import './spatial/viewer';
+import './spatial/site';
+import type { SiteHouse } from './spatial/site';
 import { roomIcon } from './spatial/viewer';
 import { COVER_STATES, HVAC, MEDIA_STATES, hvacIcon, stateName } from './entities';
 import './detail';
@@ -19,7 +21,10 @@ import { projectLogoMark } from '../shared/project';
 
 /** The house of the domain last shown on the plan, kept in this browser. */
 const BUILDING_KEY = 'mp-glass.building';
-function readBuilding() { try { return localStorage.getItem(BUILDING_KEY) ?? ''; } catch { return ''; } }
+/** The whole domain on its site plan, rather than one of its houses: never a house id, which only has letters, digits, _ and -. */
+const SITE = '@site';
+/** The choice kept in this browser, none when nothing is kept: the domain then opens on its site plan, if it has one. */
+function readBuilding(): string | null { try { return localStorage.getItem(BUILDING_KEY); } catch { return null; } }
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
 interface ViewConfig {
   mp_spatial?: SpatialPlan;
@@ -56,7 +61,7 @@ export class MPGlassView extends LitElement {
     .hero{min-height:var(--mp-hero-height,455px);display:grid;grid-template-columns:minmax(0,1.35fr) minmax(230px,.65fr);align-items:center;padding:clamp(42px,7vw,94px) 24px clamp(28px,4vw,52px);gap:50px}.hero-copy{max-width:780px}.eyebrow{font-size:10px;letter-spacing:.32em;text-transform:uppercase;margin-bottom:18px;display:flex;align-items:center;gap:11px;font-weight:650}.eyebrow::after{content:'';width:44px;height:1px;background:linear-gradient(90deg,var(--mp-accent),transparent)}.eyebrow .mp-icon{color:var(--mp-accent);filter:drop-shadow(0 0 9px var(--mp-accent))}.hero h1{font:clamp(43px,5.5vw,82px)/.98 var(--mp-display-font,Georgia,serif);font-weight:400;letter-spacing:-.035em;margin:0;max-width:860px;text-wrap:balance;text-shadow:0 4px 22px rgba(0,5,15,.6)}.hero p{font-size:clamp(15px,1.45vw,21px);color:#d3dfea;margin:18px 0 0;max-width:620px}.hero-meta{display:flex;gap:9px;flex-wrap:wrap;margin-top:20px}.chip{display:inline-flex;align-items:center;gap:8px;min-height:32px;padding:0 11px;border-radius:999px;background:rgba(3,21,37,.38);border:1px solid rgba(211,233,255,.17);color:#dce9f5;font-size:11px;backdrop-filter:blur(12px)}.chip .mp-icon{color:#ffd56c}.quote{justify-self:end;max-width:335px;border-left:1px solid rgba(255,255,255,.38);padding:15px 0 15px clamp(24px,3vw,42px);font:italic clamp(18px,1.8vw,27px)/1.45 var(--mp-display-font,Georgia,serif);color:#f5eee7;text-shadow:0 2px 13px rgba(0,6,14,.75)}.quote::after{content:'';display:block;width:34px;height:2px;margin-top:20px;background:var(--mp-accent);border-radius:99px;box-shadow:0 0 12px color-mix(in srgb,var(--mp-accent) 45%,transparent)}
     .page-intro{padding:clamp(46px,7vw,90px) 10px clamp(28px,4vw,48px)}.page-intro .eyebrow{margin-bottom:13px}.page-intro h1{font:clamp(42px,5vw,72px)/1 var(--mp-display-font,Georgia,serif);font-weight:400;margin:0}.page-intro p{color:#b9cad9;font-size:16px;margin:13px 0 0}
     .overview{padding:0 0 16px}.overview-card{min-height:94px;border-radius:var(--mp-radius);padding:13px 16px;display:grid;grid-template-columns:minmax(190px,1fr) repeat(3,minmax(120px,.58fr));align-items:stretch;gap:8px}.overview-title{display:flex;align-items:center;gap:12px;padding:5px 8px;min-width:0}.seal{display:grid;place-items:center;width:48px;height:48px;flex:0 0 auto;border-radius:16px;color:#6be6a4;background:radial-gradient(circle,rgba(70,220,143,.24),rgba(39,153,103,.07));border:1px solid rgba(111,237,170,.21);box-shadow:0 0 25px rgba(62,215,135,.13)}.overview-title strong{display:block;font:20px/1.1 var(--mp-display-font,Georgia,serif);font-weight:400}.overview-title small{color:#7de5ab;font-size:11px}.overview-item{display:flex;align-items:center;gap:10px;padding:9px 13px;border-left:1px solid rgba(215,235,255,.12);color:#d9e6f2}.overview-item .mp-icon{color:#a9c6df}.overview-item strong{display:block;font-size:13px}.overview-item small{display:block;margin-top:3px;color:#9eb1c3;font-size:10px}
-    mp-spatial-viewer{margin:clamp(14px,2vw,24px) 0 16px}
+    mp-spatial-viewer,mp-site-plan{display:block;margin:clamp(14px,2vw,24px) 0 16px}
     /* The houses of a domain, above the plan: one tab each, the one shown lit. */
     .houses{display:flex;gap:4px;margin:clamp(14px,2vw,24px) 0 -4px;padding:4px;border-radius:18px;overflow-x:auto;scrollbar-width:none}.houses::-webkit-scrollbar{display:none}
     .houses button{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 15px;border:1px solid transparent;border-radius:14px;background:transparent;color:#d4e1ed;font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}.houses button:hover{background:rgba(255,255,255,.07)}
@@ -355,20 +360,31 @@ export class MPGlassView extends LitElement {
       ${value?html`<span class="tile-value">${value}</span>`:nothing}
     </button>`;
   }
+  /** Whether the plan shows the whole domain on its site plan: chosen, or nothing chosen yet. */
+  private siteShown(spatial?: SpatialPlan) { return !!spatial?.site && (this.building === SITE || this.building === null); }
   /** The house the plan shows: the one chosen when it still has a floor, else the first that has one. */
   private shownHouse(spatial?: SpatialPlan) {
     if (!spatial) return { building: '', plan: undefined as unknown as SpatialPlan };
-    const plan = buildingPlan(spatial, this.building);
+    const plan = buildingPlan(spatial, this.building ?? '');
     return { building: spatial.buildings?.length ? planBuildings(spatial).find(h => h.floors[0] === plan.floors[0])?.building.id ?? '' : '', plan };
   }
-  /** Tabs of the houses of a domain above the plan, each with its lights on; nothing for a single house. */
+  /** Lights on in `floors`, each once. */
+  private lightsOn(floors: SpatialFloor[]) {
+    const states = this.hass?.states ?? {};
+    return new Set(floors.flatMap(f => f.rooms.flatMap(r => roomEntityIds(r).filter(id => id.startsWith('light.') && states[id]?.state === 'on')))).size;
+  }
+  /** The houses placed on the site plan, with their lights on. */
+  private siteHouses(spatial: SpatialPlan): SiteHouse[] {
+    return planBuildings(spatial).flatMap(({ building, floors }) => building.site && floors.length ? [{ id: building.id, name: building.name, at: building.site.at, ...(building.site.outline ? { outline: building.site.outline } : {}), lights: this.lightsOn(floors) }] : []);
+  }
+  /** Tabs above the plan: the domain on its site plan, then each house with its lights on; nothing for a single house alone. */
   private houses(spatial: SpatialPlan) {
     const houses = planBuildings(spatial).filter(h => h.floors.length);
-    if (houses.length < 2) return nothing;
-    const current = this.shownHouse(spatial).building, states = this.hass?.states ?? {};
-    return html`<nav class="houses glass" aria-label=${tr('Maisons du domaine')}>${houses.map(({ building, floors }) => {
-      const lights = new Set(floors.flatMap(f => f.rooms.flatMap(r => roomEntityIds(r).filter(id => id.startsWith('light.') && states[id]?.state === 'on'))));
-      return html`<button type="button" aria-pressed=${building.id === current} @click=${() => this.chooseBuilding(building.id)}>${mpIcon('home',16)}<span>${building.name}</span>${lights.size ? html`<small title=${tr('{n} lumière allumée|{n} lumières allumées',{n:lights.size})}>${mpIcon('bulb',12)}${lights.size}</small>` : nothing}</button>`;
+    if (houses.length < 2 && !spatial.site) return nothing;
+    const current = this.siteShown(spatial) ? SITE : this.shownHouse(spatial).building;
+    return html`<nav class="houses glass" aria-label=${tr('Maisons du domaine')}>${spatial.site ? html`<button type="button" aria-pressed=${current === SITE} @click=${() => this.chooseBuilding(SITE)}>${mpIcon('plan',16)}<span>${tr('Domaine')}</span></button>` : nothing}${houses.map(({ building, floors }) => {
+      const lights = this.lightsOn(floors);
+      return html`<button type="button" aria-pressed=${building.id === current} @click=${() => this.chooseBuilding(building.id)}>${mpIcon('home',16)}<span>${building.name || tr('Maison')}</span>${lights ? html`<small title=${tr('{n} lumière allumée|{n} lumières allumées',{n:lights})}>${mpIcon('bulb',12)}${lights}</small>` : nothing}</button>`;
     })}</nav>`;
   }
   private chooseBuilding(id: string) {
@@ -423,7 +439,7 @@ export class MPGlassView extends LitElement {
     // A plan MP Nexus drew itself (from the areas, or its example) names its own rooms and floors in the interface language.
     const spatial = this.spatial && this.spatialOrigin !== 'project' ? trPlan(this.spatial, this.spatialOrigin === 'example') : this.spatial;
     // On a domain, the plan and the section below it show one house at a time.
-    const house = this.shownHouse(spatial);
+    const house = this.shownHouse(spatial), domain = this.siteShown(spatial);
     return html`
       <div class="backdrop" style=${`background-image:url(${bg});background-position:${a.backgroundPosition ?? 'right'} center`}></div>
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
@@ -436,13 +452,13 @@ export class MPGlassView extends LitElement {
             ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(locale(),{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small title=${this.online?tr('Connecté à Home Assistant'):tr('Connexion interrompue, reconnexion…')}><i class=${this.online?'':'off'}></i>${new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && spatial?.enabled ? html`${this.houses(spatial)}${keyed(house.building, html`<mp-spatial-viewer .plan=${house.plan} .scope=${house.building} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>`)}${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Nexus</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && spatial?.enabled ? html`${this.houses(spatial)}${domain ? html`<mp-site-plan .site=${spatial.site} .houses=${this.siteHouses(spatial)} @house-select=${(e: CustomEvent<{id:string}>) => this.chooseBuilding(e.detail.id)}></mp-site-plan>` : keyed(house.building, html`<mp-spatial-viewer .plan=${house.plan} .scope=${house.building} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>`)}${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Nexus</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'info' ? this.renderInfo() : this.viewKind === 'rooms' ? html`
           ${this.section(tr('Pièces'),tr('Ouvrez une pièce pour retrouver uniquement ses équipements'))}
           ${this.areas.length || this.inventory ? nothing : html`<p class="empty glass" role="status">${mpIcon('rooms',22)}<span>${tr('Aucune pièce détectée. Créez des zones dans Home Assistant, puis ouvrez le Studio pour analyser votre installation.')}</span>${this.hass?.user?.is_admin ? html`<a class="settings-link" href="/mp-glass-settings">${mpIcon('tune',16)} ${tr('Ouvrir le Studio')}</a>` : nothing}</p>`}
           <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${tr('{n} équipement|{n} équipements',{n:area.deviceCount})} · ${tr('{n} lumière|{n} lumières',{n:area.lightCount})}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${tr('{n} entité sans carte dédiée|{n} entités sans carte dédiée',{n:this.inventory.count})}</p></div></a>` : nothing}</main>
-        ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(house.plan) : html`
+        ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(domain ? spatial : house.plan) : html`
           ${this.section(this.viewKind === 'home' ? trDefault(a.sectionTitle,'Lumières') : title,this.viewKind === 'home' ? trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           ${this.cards.length ? html`<main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>` : this.emptyState()}
         `}

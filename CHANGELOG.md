@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.0 — Plan de masse du domaine importé d’un DXF
+
+- Studio → Plan 3D : nouveau bloc « Plan de masse du domaine » pour importer un fichier DXF (AutoCAD, BricsCAD…). Le fichier est lu dans le navigateur, sans service externe : calques, lignes, polylignes avec arcs, cercles, splines, hachures et textes de l’espace objet.
+- Une fenêtre liste les calques du dessin avec leur nombre d’éléments et propose d’office ceux qui décrivent le site : limites et clôtures, allées et voiries, bâtiments, piscines, terrains de sport, ruisseaux, pelouses, murs. La végétation, les cotes, les points topographiques et les équipements (éclairage, audio, caméras, arrosage, réseaux) restent décochés, pour un import ultérieur. Chaque calque peut être coché ou décoché et son type changé, avec un aperçu immédiat.
+- L’unité du dessin est vérifiée (un DXF déclaré en millimètres mais dessiné en mètres est reconnu) et peut être corrigée. Les éléments perdus loin du domaine sont ignorés, et le plan est simplifié pour rester léger (40 000 points au plus ; environ 12 500 points et 144 Ko pour le domaine de Saint-Jaume).
+- Chaque maison se place sur le plan de masse d’un simple toucher. Si un contour de bâtiment entoure ce point, il est repris et mis en surbrillance.
+- Accueil : un onglet « Domaine » montre le plan de masse, nord en haut, avec un repère par maison et ses lumières allumées ; toucher un repère ouvre le plan 3D de la maison. Le plan se déplace au doigt ou à la souris, et se zoome au pincement, avec Ctrl + molette ou avec les boutons.
+- Le plan de masse et l’emplacement des maisons sont validés par le navigateur et par Home Assistant avant enregistrement ; les plans sans plan de masse ne changent pas.
+- Vérifications : tests du lecteur DXF (arcs de polylignes, hachures, splines, textes, encodages, DXF binaire refusé), de la construction du plan de masse (unité, éléments éloignés, simplification, contour des bâtiments) et de sa validation côté navigateur et côté Home Assistant ; lint, TypeScript, suites frontend et Python, reconstruction du bundle HACS ; import du DXF réel du domaine dans le Studio, placement de deux maisons et affichage de l’onglet Domaine sur ordinateur et sur mobile.
+
 ## 0.14.0 — Plusieurs maisons sur un même domaine
 
 - Le plan 3D gère désormais un domaine de plusieurs maisons (maison principale, maison d’amis, pool house…). Chaque maison a ses propres niveaux et pièces ; une seule instance Home Assistant pilote l’ensemble.

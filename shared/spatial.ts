@@ -34,12 +34,40 @@ export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?
 export interface SpatialBackdrop { id: string; width: number; height: number; scale: number[]; origin: number[] }
 /** `buildingId`: the house of the domain the floor belongs to; without one (or one that no longer exists), the first house. */
 export interface SpatialFloor { id: string; name: string; elevation: number; height: number; buildingId?: string; backdrop?: SpatialBackdrop; rooms: SpatialRoom[] }
-/** A house of the domain (main house, guest house, pool house…), holding its own floors. */
-export interface SpatialBuilding { id: string; name: string }
-/** `buildings`: the houses of a domain, in the order they are offered; without them, the plan is a single house. */
-export interface SpatialPlan { version: 1; enabled: boolean; buildings?: SpatialBuilding[]; floors: SpatialFloor[] }
+/**
+ * A house of the domain (main house, guest house, pool house…), holding its own floors. `site`: where it stands on the
+ * site plan, in metres like the site, and the outline of its walls there when the plan draws them.
+ */
+export interface SpatialBuilding { id: string; name: string; site?: { at: Point; outline?: Point[] } }
+/** What a layer of the site plan shows, which gives its colours. */
+export type SiteKind = 'boundary' | 'path' | 'water' | 'pool' | 'building' | 'sport' | 'green' | 'wall' | 'other';
+export const SITE_KINDS: SiteKind[] = ['boundary', 'path', 'water', 'pool', 'building', 'sport', 'green', 'wall', 'other'];
+/**
+ * A layer of the site plan, named as in the drawing it comes from: its lines (`paths`) and its filled shapes (`fills`),
+ * each as a flat list x0, y0, x1, y1… in metres, x towards the east and y towards the south of its north-west corner.
+ */
+export interface SiteLayer { name: string; kind: SiteKind; paths?: number[][]; fills?: number[][] }
+export interface SiteLabel { text: string; at: Point }
+/** The plan of the whole domain, drawn from a CAD drawing: `width` × `height` metres, its layers and its written names. */
+export interface SpatialSite { width: number; height: number; layers: SiteLayer[]; labels?: SiteLabel[] }
+/**
+ * `buildings`: the houses of a domain, in the order they are offered; without them, the plan is a single house.
+ * `site`: the plan of the whole domain, the houses placed on it.
+ */
+export interface SpatialPlan { version: 1; enabled: boolean; site?: SpatialSite; buildings?: SpatialBuilding[]; floors: SpatialFloor[] }
 /** Floors a single house may hold, and the whole domain. */
 export const MAX_FLOORS = 8, MAX_SITE_FLOORS = 32, MAX_BUILDINGS = 12;
+/** Points the site plan may hold in all: enough for the lines of a domain, light enough to load with every dashboard. */
+export const SITE_POINTS = 40000;
+/** Points of a site plan, and whether each of its lines has whole points (x and y) and at least two of them. */
+export function sitePoints(site: SpatialSite): number {
+  let count = 0;
+  for (const layer of site.layers) for (const path of [...layer.paths ?? [], ...layer.fills ?? []]) {
+    if (path.length % 2 || path.length < 4) return Infinity;
+    count += path.length / 2;
+  }
+  return count;
+}
 const validate = new Ajv({ strict: true }).compile<SpatialPlan>(schema);
 /** Positive when the corners turn from x towards y: the inside of the ring is then on the left of each side. */
 function signedArea(points: Point[]): number {
@@ -443,6 +471,7 @@ export function buildingPlan(plan: SpatialPlan, id: string): SpatialPlan {
 const housePlans = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 export function parseSpatial(value: unknown): SpatialPlan {
   if (!validate(value)) throw new Error('Plan invalide : vérifiez les pièces et les coordonnées.');
+  if (value.site && sitePoints(value.site) > SITE_POINTS) throw new Error('Plan de masse trop détaillé.');
   const buildings = new Set<string>();
   for (const building of value.buildings ?? []) {
     if (buildings.has(building.id)) throw new Error('Identifiants de maisons dupliqués.');

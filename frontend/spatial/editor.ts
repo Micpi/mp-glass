@@ -5,8 +5,10 @@ import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
 import { discoverLaundryUnits } from '../../shared/laundry';
-import { bent, buildingPlan, floorBuilding, MAX_BUILDINGS, MAX_FLOORS, MAX_SITE_FLOORS, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { bent, buildingPlan, floorBuilding, MAX_BUILDINGS, SITE_KINDS, type SiteKind, MAX_FLOORS, MAX_SITE_FLOORS, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { groupCover, roomTemperature } from '../../shared/spatial-state';
+import { decodeDxf, parseDxf, type DxfDrawing } from '../../shared/dxf';
+import { buildSite, guessKind, guessScale, outlineAt, SITE_UNITS, type SiteDraft } from '../../shared/site';
 import { attachFixtures, type DraftFixture, type ImageFrame } from '../../shared/fixtures';
 import { backdropRect, backdropWalls, fitBackdrop, levelPlan, levelWalls, openLevel, placeMarks, rebuildLevel, reframeLevel, shiftBackdrop, zoomBackdrop, type LevelDraft, type LevelZone, type PlanWalls } from '../../shared/level';
 import type { Hass } from '../ha/client';
@@ -15,6 +17,7 @@ import { language, LanguageController, locale, tr, trPlan, trText } from '../i18
 import type { MessageKey } from '../locales';
 import { defineElement } from '../registry';
 import './viewer';
+import './site';
 import { detectWalls, snapBox, snapOutline, type DetectionRoom, type Source, type Walls } from './zones';
 
 /** Exhausted Gemini quota, as read by Home Assistant in Google's answer. */
@@ -63,6 +66,10 @@ function planError(error:unknown){
   const message=(error as Error)?.message??String(error),room=/^Géométrie invalide : (.*)$/s.exec(message),house=/^Maison inconnue : (.*)$/s.exec(message);
   return room?tr('Géométrie invalide : {name}',{name:room[1]!}):house?tr('Maison inconnue : {name}',{name:house[1]!}):trText(message);
 }
+/** What each kind of layer of a site plan shows, as the Studio names it. */
+const SITE_KIND_NAMES:Record<SiteKind,MessageKey>={boundary:'Limites et clôtures',path:'Allées et voiries',water:'Ruisseaux et fossés',pool:'Piscines et bassins',building:'Bâtiments',sport:'Terrains de sport',green:'Pelouses',wall:'Murs et murets',other:'Autre'};
+/** Units of a drawing, by metres per unit. */
+const UNIT_NAMES:Record<number,MessageKey>={1:'Mètres',.01:'Centimètres',.001:'Millimètres',.3048:'Pieds',.0254:'Pouces'};
 /** Notes of Home Assistant on an analysis, written in French: those MP Nexus knows in the interface language, Gemini's as they come. */
 const WARNINGS:[RegExp,MessageKey][]=[
   [/^Échelle calculée à partir des cotes de (\d+) pièces du plan\.$/,'Échelle calculée à partir des cotes de {n} pièce du plan.|Échelle calculée à partir des cotes de {n} pièces du plan.'],
@@ -156,7 +163,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},applying:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},applying:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true},siteImport:{state:true},siteBusy:{state:true},siting:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
@@ -198,6 +205,17 @@ export class MPSpatialEditor extends LitElement {
     .tabs{display:inline-flex;gap:2px;margin:16px 0 0;padding:3px;border-radius:12px;background:#ffffff0d;border:1px solid #d6ecff1f}.tabs button{min-height:34px;padding:0 14px;border:0;border-radius:9px;background:transparent;color:#b9cfe2}.tabs button[aria-selected=true]{background:#2a648e;color:#fff}
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
+    /* The site plan of the domain, and the choice of the layers of a drawing. */
+    .site mp-site-plan{--mp-stage-height:min(56vh,460px);margin:12px 0}
+    .file-button{flex:none;flex-direction:row;align-items:center;gap:8px;min-width:0;min-height:42px;padding:0 14px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;cursor:pointer}.file-button input{display:none}.file-button:focus-within{outline:2px solid #a2d7ff}
+    dialog.site-import{width:min(1400px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
+    dialog.site-import::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}dialog.site-import h3{margin:0 0 6px;font:22px Georgia,serif}
+    .site-grid{display:grid;gap:16px;grid-template-columns:minmax(260px,.75fr) minmax(0,1.5fr);margin-top:12px}.site-grid input[type=search]{width:100%}
+    .site-grid mp-site-plan{--mp-stage-height:min(60vh,560px)}
+    .layer-list{max-height:min(56vh,560px);overflow:auto;display:grid;gap:3px;margin-top:8px;padding-right:4px}
+    .layer-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 8px;align-items:center;padding:5px 8px;border-radius:10px;background:#ffffff08}.layer-row small{color:#9fb6ca}
+    .layer-row .check{min-width:0;gap:8px}.layer-row .check span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.layer-row select{grid-column:1/-1;min-height:34px;padding:4px 8px}
+    @media (max-width:760px){.site-grid{grid-template-columns:1fr}}
   `;
   plan?:SpatialPlan;fallback?:SpatialPlan;hass?:Hass;areas:HAArea[]=[];floors:HAFloor[]=[];
   /** Entities as discovered, with the room chosen in MP Nexus: rooms that follow an area show its equipment. */
@@ -211,7 +229,12 @@ export class MPSpatialEditor extends LitElement {
   /** Door, window, television or speaker waiting for a tap on the plan. */
   private placing?:Placing;
   /** What the confirmation window is about to remove, nothing while it is closed. */
-  private asking:''|'plan'|'floor'|'building'='';
+  private asking:''|'plan'|'floor'|'building'|'site'='';
+  /** A site plan being read from a DXF drawing: its layers, the kind of each one drawn, and the plan they give. */
+  private siteImport?:{file:string;drawing:DxfDrawing;scale:number;kinds:Map<string,SiteKind>;filter:string;draft?:SiteDraft;error?:string};
+  private siteBusy=false;
+  /** The house edited waits for a tap on the site plan to stand there. */
+  private siting=false;
   /** A level being edited on its plan, « Modifier le plan ». */
   private level?:LevelEdit;private levelCache?:{draft:LevelDraft;backdrop?:LevelBackdrop;zones:SpatialPlan;preview:SpatialPlan;walls:Walls};
   /** Images shown while a level is edited on its plan, let go when it ends. */
@@ -259,6 +282,8 @@ export class MPSpatialEditor extends LitElement {
     const level=this.renderRoot.querySelector<HTMLDialogElement>('dialog.level');
     if(level&&!level.open)level.showModal();
     // Closing the confirmation takes its window off the page, so it only ever has to be opened.
+    const site=this.renderRoot.querySelector<HTMLDialogElement>('dialog.site-import');
+    if(site&&!site.open)site.showModal();
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
     if(ask&&!ask.open)ask.showModal();
   }
@@ -334,6 +359,92 @@ export class MPSpatialEditor extends LitElement {
     this.floorIndex=0;this.selected='';this.entitySearch='';this.placing=undefined;
     this.message=tr('Maison « {name} » supprimée. Cliquez sur Enregistrer dans le Studio.',{name});
   };
+  /** Reads a DXF drawing and opens the choice of its layers, those that look like a site plan already ticked. */
+  private readSite=async(e:Event)=>{
+    const input=e.target as HTMLInputElement,file=input.files?.[0];
+    input.value='';
+    if(!file)return;
+    this.siteBusy=true;this.message=tr('Lecture du plan de masse…');this.detail='';
+    try{
+      // A large drawing takes a second or two: the message shows first.
+      await new Promise(resolve=>setTimeout(resolve,30));
+      const drawing=parseDxf(decodeDxf(await file.arrayBuffer())),kinds=new Map<string,SiteKind>();
+      for(const layer of drawing.layers){const kind=guessKind(layer.name);if(kind)kinds.set(layer.name,kind);}
+      this.siteImport={file:file.name,drawing,scale:guessScale(drawing,kinds.keys()),kinds,filter:''};
+      this.buildSiteDraft();this.message='';
+    }catch(error){this.message=planError(error);}
+    finally{this.siteBusy=false;}
+  };
+  private buildSiteDraft(){
+    const s=this.siteImport;
+    if(!s)return;
+    try{this.siteImport={...s,draft:buildSite(s.drawing,{layers:s.kinds,scale:s.scale}),error:undefined};}
+    catch(error){this.siteImport={...s,draft:undefined,error:planError(error)};}
+  }
+  /** A layer drawn as `kind`, or left out with ''. */
+  private siteLayer(name:string,kind:SiteKind|''){
+    const s=this.siteImport;
+    if(!s)return;
+    const kinds=new Map(s.kinds);
+    if(kind)kinds.set(name,kind);else kinds.delete(name);
+    this.siteImport={...s,kinds};this.buildSiteDraft();
+  }
+  private applySite=()=>{
+    const draft=this.siteImport?.draft;
+    if(!draft)return;
+    this.mutate(p=>{p.site=draft.site;});
+    this.siteImport=undefined;
+    this.message=tr('Plan de masse prêt. Placez chaque maison dessus, puis cliquez sur Enregistrer dans le Studio.');
+  };
+  private removeSite=()=>{
+    this.asking='';this.siting=false;
+    this.mutate(p=>{delete p.site;for(const b of p.buildings??[])delete b.site;});
+    this.message=tr('Plan de masse supprimé. Cliquez sur Enregistrer dans le Studio.');
+  };
+  /** The house edited stands where the site plan was touched, with the outline of the building drawn there if any. */
+  private sitePicked=(e:CustomEvent<{at:Point}>)=>{
+    const site=this.draft?.site,house=this.house;
+    if(!this.siting||!site||!house)return;
+    const at=e.detail.at,outline=outlineAt(site,at);
+    this.siting=false;
+    this.mutate(p=>{const b=p.buildings?.find(x=>x.id===house);if(b)b.site={at,...(outline?{outline}:{})};});
+    this.message=outline?tr('Maison placée avec le contour de ses murs. Cliquez sur Enregistrer dans le Studio.'):tr('Maison placée. Aucun contour de bâtiment n’entoure ce point : seul son repère est affiché. Cliquez sur Enregistrer dans le Studio.');
+  };
+  /** The site plan of the domain: imported from a DXF drawing, the house edited placed on it. */
+  private siteEditor(plan:SpatialPlan){
+    const site=plan.site,houses=plan.buildings??[],current=houses.find(b=>b.id===this.house),whole=new Intl.NumberFormat(locale(),{maximumFractionDigits:0});
+    const input=(label:MessageKey)=>html`<label class="file-button">${mpIcon('plan',16)}<span>${tr(label)}</span><input type="file" accept=".dxf" ?disabled=${this.siteBusy} @change=${this.readSite}></label>`;
+    if(!site)return html`<div class="box site"><strong>${tr('Plan de masse du domaine')}</strong><p class="muted">${tr('Importez le plan de masse depuis un fichier DXF (AutoCAD, BricsCAD…) : ses limites, allées, bâtiments et piscines deviennent le plan du domaine, sur lequel chaque maison est placée. Les équipements (éclairage, audio, caméras, arrosage) pourront être importés plus tard.')}</p><div class="row">${input('Importer un DXF')}</div></div>`;
+    const placed=houses.flatMap(b=>b.site?[{id:b.id,name:b.name,at:b.site.at,...(b.site.outline?{outline:b.site.outline}:{})}]:[]);
+    return html`<div class="box site"><strong>${tr('Plan de masse du domaine')}</strong>
+      <p class="muted">${tr('{w} × {h} m · {n} calque|{w} × {h} m · {n} calques',{w:whole.format(site.width),h:whole.format(site.height),n:site.layers.length})}</p>
+      ${current?html`<div class="row"><button class=${this.siting?'primary':''} @click=${()=>{this.siting=!this.siting;}}>${mpIcon('pin',16)}${this.siting?tr('Annuler le placement'):current.site?tr('Déplacer « {name} » sur le plan',{name:current.name}):tr('Placer « {name} » sur le plan',{name:current.name})}</button>${current.site?html`<button @click=${()=>this.mutate(p=>{const b=p.buildings?.find(x=>x.id===current.id);if(b)delete b.site;})}>${tr('Retirer du plan de masse')}</button>`:nothing}</div>`:html`<p class="muted">${tr('Ajoutez des maisons au domaine pour les placer sur le plan de masse.')}</p>`}
+      <mp-site-plan .site=${site} .houses=${placed} .selected=${this.house} ?picking=${this.siting} @site-pick=${this.sitePicked} @house-select=${(e:CustomEvent<{id:string}>)=>this.chooseHouse(e.detail.id)}></mp-site-plan>
+      <div class="row">${input('Remplacer par un autre DXF')}<button class="danger" @click=${()=>{this.asking='site';}}>${tr('Supprimer le plan de masse')}</button></div></div>`;
+  }
+  /** The layers of the drawing to tick, what each one shows, the unit of the drawing and the plan they give. */
+  private siteDialog(){
+    const s=this.siteImport;
+    if(!s)return nothing;
+    const filter=s.filter.trim().toLowerCase(),d=s.draft,whole=new Intl.NumberFormat(locale(),{maximumFractionDigits:0});
+    const layers=s.drawing.layers.filter(l=>!filter||l.name.toLowerCase().includes(filter)).sort((a,b)=>Number(s.kinds.has(b.name))-Number(s.kinds.has(a.name)));
+    const units:number[]=SITE_UNITS.includes(s.scale as typeof SITE_UNITS[number])?[...SITE_UNITS]:[...SITE_UNITS,s.scale];
+    return html`<dialog class="site-import" aria-labelledby="site-title" @close=${()=>{this.siteImport=undefined;}}>
+      <h3 id="site-title">${tr('Plan de masse · {file}',{file:s.file})}</h3>
+      <p class="muted">${tr('Cochez les calques à dessiner et indiquez ce qu’ils représentent. La végétation, les cotes, les points topographiques et les équipements sont décochés : les équipements pourront être importés plus tard.')}</p>
+      <div class="site-grid">
+        <div><input type="search" aria-label=${tr('Filtrer les calques')} placeholder=${tr('Filtrer les calques')} .value=${s.filter} @input=${(e:Event)=>{this.siteImport={...s,filter:(e.target as HTMLInputElement).value};}}>
+          <p class="muted">${tr('{n} calque dessiné|{n} calques dessinés',{n:s.kinds.size})} · ${tr('{n} calque dans le dessin|{n} calques dans le dessin',{n:s.drawing.layers.length})}</p>
+          <div class="layer-list">${repeat(layers,l=>l.name,l=>{const kind=s.kinds.get(l.name);return html`<div class="layer-row"><label class="check"><input type="checkbox" .checked=${!!kind} @change=${(e:Event)=>this.siteLayer(l.name,(e.target as HTMLInputElement).checked?guessKind(l.name)??'other':'')}><span title=${l.name}>${l.name}</span></label><small>${l.count}${l.hidden?` · ${tr('masqué')}`:''}</small>${kind?html`<select aria-label=${tr('Ce que montre le calque {name}',{name:l.name})} @change=${(e:Event)=>this.siteLayer(l.name,(e.target as HTMLSelectElement).value as SiteKind)}>${SITE_KINDS.map(k=>html`<option value=${k} .selected=${k===kind}>${tr(SITE_KIND_NAMES[k])}</option>`)}</select>`:nothing}</div>`;})}</div>
+        </div>
+        <div>${d?html`<mp-site-plan .site=${d.site}></mp-site-plan>`:html`<p class="warning">${s.error??''}</p>`}
+          <div class="row"><label>${tr('Unité du dessin')}<select @change=${(e:Event)=>{this.siteImport={...s,scale:Number((e.target as HTMLSelectElement).value)};this.buildSiteDraft();}}>${units.map(k=>html`<option value=${k} .selected=${k===s.scale}>${UNIT_NAMES[k]?tr(UNIT_NAMES[k]):tr('{n} m par unité',{n:String(k)})}</option>`)}</select></label></div>
+          ${d?html`<p class="muted">${tr('{w} × {h} m · {n} points',{w:whole.format(d.site.width),h:whole.format(d.site.height),n:whole.format(d.points)})}${d.strays?` · ${tr('{n} élément éloigné ignoré|{n} éléments éloignés ignorés',{n:d.strays})}`:''}</p>`:nothing}
+        </div>
+      </div>
+      <div class="job-actions"><button @click=${()=>{this.siteImport=undefined;}}>${tr('Annuler')}</button><button class="primary" ?disabled=${!d} @click=${this.applySite}>${tr('Utiliser ce plan de masse')}</button></div>
+    </dialog>`;
+  }
   /** The houses of the domain: the one of the level edited, its name, and houses added, moved or removed. */
   private housesEditor(plan:SpatialPlan){
     const houses=plan.buildings??[],full=houses.length>=MAX_BUILDINGS||plan.floors.length>=MAX_SITE_FLOORS;
@@ -598,6 +709,12 @@ export class MPSpatialEditor extends LitElement {
   /** Asks before a level or the whole saved plan goes away; both come back by leaving the Studio without saving. */
   private askDialog(){
     if(!this.asking)return nothing;
+    if(this.asking==='site')return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking='';}}>
+      <h3 id="ask-title">${tr('Supprimer le plan de masse ?')}</h3>
+      <p>${tr('Le plan du domaine et l’emplacement des maisons sont retirés. Les maisons, leurs niveaux et leurs pièces ne changent pas.')}</p>
+      <p>${tr('Rien n’est retiré tant que vous n’avez pas cliqué sur Enregistrer dans le Studio.')}</p>
+      <div class="ask-actions"><button autofocus @click=${()=>{this.asking='';}}>${tr('Annuler')}</button><button class="danger" @click=${this.removeSite}>${tr('Supprimer')}</button></div>
+    </dialog>`;
     const plan=this.asking==='plan',building=this.asking==='building';
     const house=this.draft?.buildings?.find(b=>b.id===this.house)?.name??'',levels=this.draft?this.houseFloors(this.draft,this.house).length:0;
     return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking='';}}>
@@ -1082,11 +1199,11 @@ export class MPSpatialEditor extends LitElement {
     </fieldset>
     ${this.message&&!this.dialogOpen?html`<p role="status" class="note">${this.message}${this.detail?html`<small>${tr('Détail technique : {detail}',{detail:this.detail})}</small>`:nothing}</p>`:nothing}
     ${this.renderJob(floor?.name)}
-    ${this.askDialog()}
+    ${this.askDialog()}${this.siteDialog()}
     ${this.renderLevel()}
     ${this.level&&!this.level.open?html`<div class="box pending-level"><strong>${tr('Plan de « {name} » · modifications non appliquées',{name:this.levelFloor?.name??''})}</strong><p>${tr('Appliquer remplace les pièces de ce niveau par celles modifiées sur le plan, avec leurs associations.')}</p><div class="row"><button class="edit-plan" ?disabled=${!admin} @click=${()=>{this.level={...this.level!,open:true};}}>${mpIcon('plan',16)}${tr('Reprendre')}</button><button class="primary" ?disabled=${!admin} @click=${this.applyLevel}>${tr('Appliquer au niveau')}</button><button @click=${this.dropLevel}>${tr('Abandonner')}</button></div></div>`:nothing}
     ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>${tr('Brouillon IA · non enregistré')}</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?tr('Modifier le brouillon'):tr('Revoir le brouillon')}</button><button class="primary" ?disabled=${!admin||this.applying} @click=${this.applyCandidate}>${tr('Utiliser pour ce niveau')}</button><button @click=${this.discard}>${tr('Ignorer')}</button><p>${this.editable?`${tr('Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse.')} `:''}${tr('Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.')}</p></div>`:nothing}
-    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label>${this.housesEditor(this.draft)}<div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${levels.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label>${houses.length>1?html`<label>${tr('Maison du niveau')}<select @change=${(e:Event)=>this.moveFloor((e.target as HTMLSelectElement).value)}>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===this.house}>${b.name}</option>`)}</select></label>`:nothing}<button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${levels.length>=MAX_FLOORS||this.draft.floors.length>=MAX_SITE_FLOORS} @click=${()=>this.mutate(p=>{const top=levels.reduce((best,f)=>f.elevation>best.elevation?f:best,floor);p.floors.push(this.newFloor(this.house,tr('Niveau {n}',{n:levels.length}),top.elevation+top.height));this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
+    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label>${this.housesEditor(this.draft)}${this.siteEditor(this.draft)}<div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${levels.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label>${houses.length>1?html`<label>${tr('Maison du niveau')}<select @change=${(e:Event)=>this.moveFloor((e.target as HTMLSelectElement).value)}>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===this.house}>${b.name}</option>`)}</select></label>`:nothing}<button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${levels.length>=MAX_FLOORS||this.draft.floors.length>=MAX_SITE_FLOORS} @click=${()=>this.mutate(p=>{const top=levels.reduce((best,f)=>f.elevation>best.elevation?f:best,floor);p.floors.push(this.newFloor(this.house,tr('Niveau {n}',{n:levels.length}),top.elevation+top.height));this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <details class="scale-tools"><summary>${tr('Changer l’échelle du niveau')}</summary><div class="row"><label>${tr('Multiplier l’échelle du niveau')}<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{const f=p.floors[this.floorIndex]!;for(const r of f.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.laundry)r.laundry=r.laundry.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}if(f.backdrop)f.backdrop={...f.backdrop,scale:f.backdrop.scale.map(k=>k*factor)};});}}>${tr('Appliquer l’échelle')}</button></div></details>
       ${this.renderLinks(suggestions)}</fieldset>
       <div class="workspace">${keyed(this.house,html`<mp-spatial-viewer .plan=${this.shown?buildingPlan(this.shown,this.house):undefined} .scope=${this.house} .hass=${this.hass} .placing=${this.placing} @room-select=${this.roomSelected} @floor-select=${this.floorSelected} @plan-pick=${this.picked} @plan-pick-cancel=${this.stopPlacing}></mp-spatial-viewer>`)}

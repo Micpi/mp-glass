@@ -134,10 +134,25 @@ def valid_fixtures(room):
 
 # Floors a single house of the domain may hold.
 MAX_FLOORS = 8
+# Points the site plan may hold in all, as in the browser.
+SITE_POINTS = 40000
+
+
+def site_points(site):
+    """Points of a site plan; infinite when a line has an odd count of numbers or fewer than two points."""
+    count = 0
+    for layer in site["layers"]:
+        for path in layer.get("paths", []) + layer.get("fills", []):
+            if len(path) % 2 or len(path) < 4:
+                return math.inf
+            count += len(path) // 2
+    return count
 
 
 def validate_geometry(plan):
     """Call after JSON Schema validation. Reject duplicate IDs, floors of unknown or overfull houses, invalid rings and openings on sides that do not exist."""
+    if "site" in plan and site_points(plan["site"]) > SITE_POINTS:
+        raise ValueError("invalid_geometry")
     buildings = [building["id"] for building in plan.get("buildings", [])]
     if len(set(buildings)) != len(buildings):
         raise ValueError("invalid_geometry")

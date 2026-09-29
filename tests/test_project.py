@@ -44,6 +44,25 @@ class ProjectContractTest(unittest.TestCase):
             with self.assertRaises(ValueError):
                 module.validate_project(self.validator, bad)
 
+    def test_site_plan_of_a_domain(self):
+        room = {"id": "r", "name": "Salon", "polygon": [[0, 0], [4, 0], [4, 4], [0, 4]]}
+
+        def project(site, placed=None):
+            house = {"id": "main", "name": "Maison principale", **({"site": placed} if placed else {})}
+            spatial = {"version": 1, "enabled": True, "site": site, "buildings": [house], "floors": [{"id": "f", "name": "RDC", "elevation": 0, "height": 2.6, "rooms": [room]}]}
+            return module.default_project() | {"spatial": spatial}
+
+        site = {"width": 300, "height": 430, "layers": [{"name": "batiment", "kind": "building", "fills": [[10, 10, 30, 10, 30, 30, 10, 10]], "paths": [[0, 0, 300, 0]]}],
+                "labels": [{"text": "SAINT-JAUME 1", "at": [20, 20]}]}
+        module.validate_project(self.validator, project(site, {"at": [20, 20], "outline": [[10, 10], [30, 10], [30, 30]]}))
+        # Beyond the points a dashboard can carry, or a line with half a point.
+        heavy = {"width": 100, "height": 100, "layers": [{"name": f"l{i}", "kind": "other", "paths": [[k % 100 for k in range(8000)]]} for i in range(11)]}
+        for bad in (heavy, {**site, "layers": [{"name": "odd", "kind": "path", "paths": [[1, 2, 3, 4, 5]]}]}):
+            with self.assertRaises(ValueError):
+                module.validate_project(self.validator, project(bad))
+        with self.assertRaises(ValidationError):
+            module.validate_project(self.validator, project({**site, "layers": [{"name": "x", "kind": "lamp", "paths": []}]}))
+
     def test_migrates_v1_and_preserves_user_choices(self):
         old = module.default_project("Maison")
         old["schema_version"] = 1

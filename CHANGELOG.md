@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.17 — Logo de l’intégration dans HACS et Home Assistant
+
+- Ajoute le logo MP Nexus dans `custom_components/mp_glass/brand/` : HACS le détecte comme icône de l’intégration, et Home Assistant l’affiche dans ses écrans d’intégration.
+- Vérifications : cohérence des versions, TypeScript et reconstruction du bundle HACS.
+
 ## 0.13.16 — Icônes des pièces mieux centrées
 
 - Centre les icônes d’équipement dans leur bouton circulaire du plan, avec un alignement indépendant des styles génériques de boutons et de ligne de Home Assistant.

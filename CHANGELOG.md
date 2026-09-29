@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.13.16 — Icônes des pièces mieux centrées
+
+- Centre les icônes d’équipement dans leur bouton circulaire du plan, avec un alignement indépendant des styles génériques de boutons et de ligne de Home Assistant.
+- Vérifications : lint, TypeScript, suite frontend et reconstruction du bundle HACS.
+
 ## 0.13.15 — Monogramme de site personnalisable
 
 - Le logo du dashboard reprend automatiquement les initiales du nom de la maison ; « Saint Jaume II » affiche « SJ ».

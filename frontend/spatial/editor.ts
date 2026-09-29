@@ -1,10 +1,11 @@
 import { repeat } from 'lit/directives/repeat.js';
+import { keyed } from 'lit/directives/keyed.js';
 import { LitElement, css, html, nothing, type PropertyValues } from 'lit';
 import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
 import { discoverLaundryUnits } from '../../shared/laundry';
-import { bent, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { bent, buildingPlan, floorBuilding, MAX_BUILDINGS, MAX_FLOORS, MAX_SITE_FLOORS, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { groupCover, roomTemperature } from '../../shared/spatial-state';
 import { attachFixtures, type DraftFixture, type ImageFrame } from '../../shared/fixtures';
 import { backdropRect, backdropWalls, fitBackdrop, levelPlan, levelWalls, openLevel, placeMarks, rebuildLevel, reframeLevel, shiftBackdrop, zoomBackdrop, type LevelDraft, type LevelZone, type PlanWalls } from '../../shared/level';
@@ -59,8 +60,8 @@ const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').t
 const round=(value:number)=>Math.round(value*100)/100;
 /** The errors of `parseSpatial` (shared code, which writes them in French), in the interface language. */
 function planError(error:unknown){
-  const message=(error as Error)?.message??String(error),room=/^Géométrie invalide : (.*)$/s.exec(message);
-  return room?tr('Géométrie invalide : {name}',{name:room[1]!}):trText(message);
+  const message=(error as Error)?.message??String(error),room=/^Géométrie invalide : (.*)$/s.exec(message),house=/^Maison inconnue : (.*)$/s.exec(message);
+  return room?tr('Géométrie invalide : {name}',{name:room[1]!}):house?tr('Maison inconnue : {name}',{name:house[1]!}):trText(message);
 }
 /** Notes of Home Assistant on an analysis, written in French: those MP Nexus knows in the interface language, Gemini's as they come. */
 const WARNINGS:[RegExp,MessageKey][]=[
@@ -210,7 +211,7 @@ export class MPSpatialEditor extends LitElement {
   /** Door, window, television or speaker waiting for a tap on the plan. */
   private placing?:Placing;
   /** What the confirmation window is about to remove, nothing while it is closed. */
-  private asking:''|'plan'|'floor'='';
+  private asking:''|'plan'|'floor'|'building'='';
   /** A level being edited on its plan, « Modifier le plan ». */
   private level?:LevelEdit;private levelCache?:{draft:LevelDraft;backdrop?:LevelBackdrop;zones:SpatialPlan;preview:SpatialPlan;walls:Walls};
   /** Images shown while a level is edited on its plan, let go when it ends. */
@@ -283,6 +284,69 @@ export class MPSpatialEditor extends LitElement {
   }
   private get floor(){return this.draft?.floors[this.floorIndex]??this.draft?.floors[0];}
   private get room(){return this.floor?.rooms.find(r=>r.id===this.selected)??this.floor?.rooms[0];}
+  /** The house of the level edited, '' on a plan of a single house. */
+  private get house(){return this.draft&&this.floor?floorBuilding(this.draft,this.floor):'';}
+  /** Levels of a house, in the order of the plan. */
+  private houseFloors(plan:SpatialPlan,house:string){return plan.floors.filter(f=>floorBuilding(plan,f)===house);}
+  /** A level for `house`, with a room to start from. */
+  private newFloor(house:string,name=tr('Rez-de-chaussée'),elevation=0):SpatialFloor{return {id:`floor-${shortId()}`,name,elevation,height:2.6,...(house?{buildingId:house}:{}),rooms:[{id:'room-1',name:tr('Nouvelle pièce'),polygon:[[0,0],[4,0],[4,4],[0,4]]}]};}
+  /**
+   * A new house of the domain, with a first level to draw. The first one added turns the plan into a domain: the levels it
+   * already has become its main house.
+   */
+  private addHouse=()=>{
+    const plan=this.draft;
+    if(!plan||(plan.buildings?.length??0)>=MAX_BUILDINGS||plan.floors.length>=MAX_SITE_FLOORS)return;
+    const id=`house-${shortId()}`;let index=0;
+    this.mutate(p=>{
+      if(!p.buildings?.length){const main=`house-${shortId()}`;p.buildings=[{id:main,name:tr('Maison principale')}];for(const f of p.floors)f.buildingId=main;}
+      p.buildings.push({id,name:tr('Maison {n}',{n:p.buildings.length+1})});
+      p.floors.push(this.newFloor(id));index=p.floors.length-1;
+    });
+    if(this.draft!==plan){this.floorIndex=index;this.selected='';this.entitySearch='';this.placing=undefined;this.message=tr('Maison ajoutée avec un premier niveau. Dessinez-le ou importez son plan, puis cliquez sur Enregistrer dans le Studio.');}
+  };
+  /** The house chosen opens on its first level. */
+  private chooseHouse(id:string){
+    const index=this.draft?.floors.findIndex(f=>floorBuilding(this.draft!,f)===id)??-1;
+    if(index<0||index===this.floorIndex)return;
+    this.floorIndex=index;this.selected='';this.entitySearch='';this.placing=undefined;
+  }
+  /** Houses are offered in the order of the plan: the house edited moves up or down one place. */
+  private moveHouse(step:-1|1){
+    const house=this.house;
+    this.mutate(p=>{const list=p.buildings!,i=list.findIndex(b=>b.id===house),j=i+step;if(i<0||j<0||j>=list.length)return;[list[i],list[j]]=[list[j]!,list[i]!];});
+  }
+  /** The level edited goes to another house, never beyond the levels a house may hold. */
+  private moveFloor(id:string){
+    const plan=this.draft,floor=this.floor;
+    if(!plan||!floor||id===this.house)return;
+    if(this.houseFloors(plan,id).length>=MAX_FLOORS){this.message=tr('Cette maison a déjà {n} niveaux, le maximum.',{n:MAX_FLOORS});this.requestUpdate();return;}
+    const index=this.floorIndex;
+    this.mutate(p=>{p.floors[index]!.buildingId=id;});
+  }
+  /** The house edited goes away with its levels; another house with a level always remains. */
+  private removeHouse=()=>{
+    this.asking='';
+    const plan=this.draft,house=this.house,name=plan?.buildings?.find(b=>b.id===house)?.name??'';
+    if(!plan||(plan.buildings?.length??0)<=1||plan.floors.every(f=>floorBuilding(plan,f)===house))return;
+    this.mutate(p=>{p.floors=p.floors.filter(f=>floorBuilding(p,f)!==house);p.buildings=p.buildings!.filter(b=>b.id!==house);});
+    if(this.draft===plan)return;
+    this.floorIndex=0;this.selected='';this.entitySearch='';this.placing=undefined;
+    this.message=tr('Maison « {name} » supprimée. Cliquez sur Enregistrer dans le Studio.',{name});
+  };
+  /** The houses of the domain: the one of the level edited, its name, and houses added, moved or removed. */
+  private housesEditor(plan:SpatialPlan){
+    const houses=plan.buildings??[],full=houses.length>=MAX_BUILDINGS||plan.floors.length>=MAX_SITE_FLOORS;
+    const add=html`<button ?disabled=${full} @click=${this.addHouse}>${mpIcon('home',16)}${tr('Ajouter une maison')}</button>`;
+    if(!houses.length)return html`<div class="box houses"><strong>${tr('Maisons du domaine')}</strong><p class="muted">${tr('Le plan décrit une seule maison. Ajoutez une maison pour gérer plusieurs bâtiments d’un même domaine : chacune a ses niveaux et ses pièces, et l’accueil les propose l’une après l’autre.')}</p><div class="row">${add}</div></div>`;
+    const current=this.house,index=houses.findIndex(b=>b.id===current),house=houses[index];
+    if(!house)return nothing;
+    const alone=plan.floors.every(f=>floorBuilding(plan,f)===current);
+    return html`<div class="box houses"><strong>${tr('Maisons du domaine')}</strong>
+      <div class="row"><label>${tr('Maison à modifier')}<select @change=${(e:Event)=>this.chooseHouse((e.target as HTMLSelectElement).value)}>${houses.map(b=>{const n=this.houseFloors(plan,b.id).length;return html`<option value=${b.id} ?disabled=${!n} .selected=${b.id===current}>${b.name} · ${tr('{n} niveau|{n} niveaux',{n})}</option>`;})}</select></label><label>${tr('Nom de cette maison')}<input maxlength="80" .value=${house.name} @change=${(e:Event)=>{const name=(e.target as HTMLInputElement).value.trim();if(name)this.mutate(p=>{p.buildings!.find(b=>b.id===current)!.name=name;});}}></label></div>
+      <div class="row">${add}<button aria-label=${tr('Monter la maison')} title=${tr('Monter la maison')} ?disabled=${index<=0} @click=${()=>this.moveHouse(-1)}>↑</button><button aria-label=${tr('Descendre la maison')} title=${tr('Descendre la maison')} ?disabled=${index>=houses.length-1} @click=${()=>this.moveHouse(1)}>↓</button><button class="danger" ?disabled=${houses.length<=1||alone} @click=${()=>{this.asking='building';}}>${tr('Supprimer cette maison')}</button></div>
+      <p class="muted">${tr('Chaque niveau appartient à une maison : changez-la avec « Maison du niveau », à côté du niveau à modifier.')}</p></div>`;
+  }
   private commit(plan:SpatialPlan){
     try{this.draft=parseSpatial(plan);this.usingDefault=false;this.message=tr('Modifications prêtes. Cliquez sur Enregistrer dans le Studio.');this.detail='';this.dispatchEvent(new CustomEvent('spatial-change',{detail:this.draft,bubbles:true,composed:true}));}
     catch(error){this.message=planError(error);}
@@ -423,7 +487,7 @@ export class MPSpatialEditor extends LitElement {
     for(const r of incoming.rooms)r.id=`room-${shortId()}`;
     if(backdrop)incoming.backdrop=backdrop;
     let lost=0;
-    if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;lost+=this.carryFixtures(old,r);}}}
+    if(this.floor){incoming.id=this.floor.id;incoming.name=this.floor.name;if(this.floor.buildingId)incoming.buildingId=this.floor.buildingId;incoming.elevation=this.floor.elevation;incoming.height=this.floor.height;const used=new Set<string>();for(const r of incoming.rooms){const matches=this.floor.rooms.filter(o=>o.name.trim().toLocaleLowerCase()===r.name.trim().toLocaleLowerCase());const old=matches.length===1?matches[0]:undefined;if(old&&!used.has(old.id)){used.add(old.id);r.id=old.id;r.areaId=old.areaId;r.entityIds=old.entityIds;lost+=this.carryFixtures(old,r);}}}
     const plan=this.draft?structuredClone(this.draft):{version:1 as const,enabled:true,floors:[]};
     if(plan.floors.length)plan.floors[this.floorIndex]=incoming;else plan.floors.push(incoming);
     // The other imported rooms are linked by their name ("SDB" to "Salle de bain") when that is unambiguous: they then follow their area.
@@ -534,14 +598,16 @@ export class MPSpatialEditor extends LitElement {
   /** Asks before a level or the whole saved plan goes away; both come back by leaving the Studio without saving. */
   private askDialog(){
     if(!this.asking)return nothing;
-    const plan=this.asking==='plan';
+    const plan=this.asking==='plan',building=this.asking==='building';
+    const house=this.draft?.buildings?.find(b=>b.id===this.house)?.name??'',levels=this.draft?this.houseFloors(this.draft,this.house).length:0;
     return html`<dialog class="ask" aria-labelledby="ask-title" @close=${()=>{this.asking='';}}>
-      <h3 id="ask-title">${plan?tr('Supprimer le plan enregistré ?'):tr('Supprimer le niveau « {name} » ?',{name:this.floor?.name??''})}</h3>
+      <h3 id="ask-title">${plan?tr('Supprimer le plan enregistré ?'):building?tr('Supprimer la maison « {name} » ?',{name:house}):tr('Supprimer le niveau « {name} » ?',{name:this.floor?.name??''})}</h3>
       <p>${plan
         ?tr('Ses niveaux, ses pièces et leurs associations aux pièces de Home Assistant sont perdus. Le dashboard repart alors du plan déduit de vos pièces Home Assistant.')
+        :building?tr('Son niveau, ses pièces et leurs associations sont perdus. Les autres maisons ne changent pas.|Ses {n} niveaux, leurs pièces et leurs associations sont perdus. Les autres maisons ne changent pas.',{n:levels})
         :tr('Ses pièces et leurs associations sont perdues. Les autres niveaux ne changent pas.')}</p>
       <p>${tr('Rien n’est retiré tant que vous n’avez pas cliqué sur Enregistrer dans le Studio.')}</p>
-      <div class="ask-actions"><button autofocus @click=${()=>{this.asking='';}}>${tr('Annuler')}</button><button class="danger" @click=${plan?this.removePlan:this.removeFloor}>${tr('Supprimer')}</button></div>
+      <div class="ask-actions"><button autofocus @click=${()=>{this.asking='';}}>${tr('Annuler')}</button><button class="danger" @click=${plan?this.removePlan:building?this.removeHouse:this.removeFloor}>${tr('Supprimer')}</button></div>
     </dialog>`;
   }
   /** Can the draft still be corrected? Only with the analysed image and its rooms at hand. */
@@ -1006,7 +1072,7 @@ export class MPSpatialEditor extends LitElement {
     return html`<div class="box links"><div class="equipment-head"><strong>${tr('Pièces Home Assistant · {linked} / {total} reliées',{linked,total:rooms.length})}</strong>${proposal?html`<button class="primary" @click=${()=>this.linkAll(suggestions)}>${tr('Associer automatiquement')}</button>`:nothing}</div>
       <p class="muted">${tr('Une pièce reliée affiche d’elle-même les lumières, volets, thermostats, capteurs, téléviseurs et enceintes de sa pièce Home Assistant, sur le plan comme sur le dashboard.')}${proposal?` ${tr('Proposition : {proposal}.',{proposal})}`:linked<rooms.length?` ${tr('Reliez les pièces restantes avec le menu « Pièce Home Assistant ».')}`:''}</p></div>`;
   }
-  render(){const floor=this.floor,room=this.room;const admin=!!this.hass?.user?.is_admin;
+  render(){const floor=this.floor,room=this.room;const admin=!!this.hass?.user?.is_admin;const houses=this.draft?.buildings??[],levels=this.draft&&floor?this.houseFloors(this.draft,this.house):[];
     const suggestions=this.draft?matchAreas(this.draft,this.areas,this.floors):new Map<string,string>(),suggested=room&&!room.areaId?this.areas.find(a=>a.area_id===suggestions.get(room.id)):undefined;
     return html`<h2>${tr('Plan 3D')}</h2><p>${tr('Votre maison en volume, reliée à vos équipements.')}</p>
     ${this.usingDefault?html`<div class="box default" role="note"><strong>${tr('Plan par défaut')}</strong><p>${tr('Créé automatiquement à partir de vos pièces Home Assistant : une pièce par zone, un étage par niveau ; chaque pièce affiche d’elle-même les équipements de sa zone. Il s’affiche sur le dashboard tant qu’aucun plan n’est enregistré. Modifiez-le avec « Modifier le plan », ou importez votre vrai plan ci-dessous, puis cliquez sur Enregistrer.')}</p></div>`:nothing}
@@ -1020,10 +1086,10 @@ export class MPSpatialEditor extends LitElement {
     ${this.renderLevel()}
     ${this.level&&!this.level.open?html`<div class="box pending-level"><strong>${tr('Plan de « {name} » · modifications non appliquées',{name:this.levelFloor?.name??''})}</strong><p>${tr('Appliquer remplace les pièces de ce niveau par celles modifiées sur le plan, avec leurs associations.')}</p><div class="row"><button class="edit-plan" ?disabled=${!admin} @click=${()=>{this.level={...this.level!,open:true};}}>${mpIcon('plan',16)}${tr('Reprendre')}</button><button class="primary" ?disabled=${!admin} @click=${this.applyLevel}>${tr('Appliquer au niveau')}</button><button @click=${this.dropLevel}>${tr('Abandonner')}</button></div></div>`:nothing}
     ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>${tr('Brouillon IA · non enregistré')}</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?tr('Modifier le brouillon'):tr('Revoir le brouillon')}</button><button class="primary" ?disabled=${!admin||this.applying} @click=${this.applyCandidate}>${tr('Utiliser pour ce niveau')}</button><button @click=${this.discard}>${tr('Ignorer')}</button><p>${this.editable?`${tr('Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse.')} `:''}${tr('Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.')}</p></div>`:nothing}
-    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label><div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${this.draft.floors.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label><button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${this.draft.floors.length>=8} @click=${()=>this.mutate(p=>{p.floors.push({id:`floor-${shortId()}`,name:tr('Niveau {n}',{n:p.floors.length}),elevation:floor.elevation+floor.height,height:2.6,rooms:[{id:'room-1',name:tr('Nouvelle pièce'),polygon:[[0,0],[4,0],[4,4],[0,4]]}]});this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
+    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label>${this.housesEditor(this.draft)}<div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${levels.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label>${houses.length>1?html`<label>${tr('Maison du niveau')}<select @change=${(e:Event)=>this.moveFloor((e.target as HTMLSelectElement).value)}>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===this.house}>${b.name}</option>`)}</select></label>`:nothing}<button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${levels.length>=MAX_FLOORS||this.draft.floors.length>=MAX_SITE_FLOORS} @click=${()=>this.mutate(p=>{const top=levels.reduce((best,f)=>f.elevation>best.elevation?f:best,floor);p.floors.push(this.newFloor(this.house,tr('Niveau {n}',{n:levels.length}),top.elevation+top.height));this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <details class="scale-tools"><summary>${tr('Changer l’échelle du niveau')}</summary><div class="row"><label>${tr('Multiplier l’échelle du niveau')}<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{const f=p.floors[this.floorIndex]!;for(const r of f.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.laundry)r.laundry=r.laundry.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}if(f.backdrop)f.backdrop={...f.backdrop,scale:f.backdrop.scale.map(k=>k*factor)};});}}>${tr('Appliquer l’échelle')}</button></div></details>
       ${this.renderLinks(suggestions)}</fieldset>
-      <div class="workspace"><mp-spatial-viewer .plan=${this.shown} .hass=${this.hass} .placing=${this.placing} @room-select=${this.roomSelected} @floor-select=${this.floorSelected} @plan-pick=${this.picked} @plan-pick-cancel=${this.stopPlacing}></mp-spatial-viewer>
+      <div class="workspace">${keyed(this.house,html`<mp-spatial-viewer .plan=${this.shown?buildingPlan(this.shown,this.house):undefined} .scope=${this.house} .hass=${this.hass} .placing=${this.placing} @room-select=${this.roomSelected} @floor-select=${this.floorSelected} @plan-pick=${this.picked} @plan-pick-cancel=${this.stopPlacing}></mp-spatial-viewer>`)}
       ${room?html`<fieldset ?disabled=${!admin||this.busy}><div class="box"><label>${tr('Pièce à modifier')}<select .value=${room.id} @change=${(e:Event)=>{this.selected=(e.target as HTMLSelectElement).value;this.entitySearch='';}}>${floor.rooms.map(r=>html`<option value=${r.id} .selected=${r.id===room.id}>${r.name}</option>`)}</select></label><p class="muted">${tr('Ou touchez-la sur le plan.')}</p><div class="row"><label>${tr('Nom de la pièce')}<input maxlength="80" .value=${room.name} @change=${(e:Event)=>this.editRoom(r=>{r.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Pièce Home Assistant')}<select .value=${room.areaId??''} @change=${(e:Event)=>this.linkRoom((e.target as HTMLSelectElement).value)}><option value="" .selected=${!room.areaId}>${tr('Non associée')}</option>${this.areas.map(a=>html`<option value=${a.area_id} .selected=${a.area_id===room.areaId}>${a.name}</option>`)}</select></label></div>${suggested?html`<button class="suggest" @click=${()=>this.linkRoom(suggested.area_id)}>${tr('Relier à « {name} »',{name:suggested.name})}</button>`:nothing}${followsArea(room)?this.automatic(room):this.entityPicker(room)}${this.openingsEditor(room)}${this.mediaEditor(room)}${this.laundryEditor(room)}<div class="row"><button class="edit-plan" @click=${()=>this.openLevel(room.id)}>${mpIcon('plan',16)}${tr('Modifier sa forme sur le plan')}</button></div><details><summary>${tr('Corriger les sommets (X / Y en mètres) et les courbes')}</summary><p class="muted">${tr('Courbure du côté qui part du sommet : 0 pour un mur droit, 1 pour un demi-cercle, négatif pour courber de l’autre côté.')}</p>${room.polygon.map((p,i)=>html`<div class="points"><input aria-label=${tr('Sommet {n} X',{n:i+1})} type="number" step="0.01" .value=${String(p[0])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![0]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${tr('Sommet {n} Y',{n:i+1})} type="number" step="0.01" .value=${String(p[1])} @change=${(e:Event)=>this.editRoom(r=>{r.polygon[i]![1]=Number((e.target as HTMLInputElement).value);})}><input aria-label=${tr('Courbure du côté {n}',{n:i+1})} type="number" min="-1" max="1" step="0.05" .value=${String(room.arcs?.[i]??0)} @change=${(e:Event)=>this.editBend(i,Number((e.target as HTMLInputElement).value))}><button aria-label=${tr('Supprimer sommet {n}',{n:i+1})} ?disabled=${room.polygon.length<=3} @click=${()=>this.dropVertex(i)}>×</button></div>`)}<button ?disabled=${room.polygon.length>=40} @click=${()=>this.addVertex()}>${tr('Ajouter un sommet')}</button></details><button ?disabled=${floor.rooms.length<=1} @click=${()=>{this.mutate(p=>{p.floors[this.floorIndex]!.rooms=p.floors[this.floorIndex]!.rooms.filter(r=>r.id!==room.id);});this.selected='';}}>${tr('Supprimer cette pièce')}</button></div></fieldset>`:nothing}</div>`:nothing}`;
   }
 }

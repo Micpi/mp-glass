@@ -1,10 +1,40 @@
 import { describe, expect, it } from 'vitest';
-import { alignRooms, defaultSpatialPlan, examplePlan, insideRoom, nearestSide, OPENING_SIZES, openingPlacement, parseSpatial, reattachOpenings, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point, type SpatialFloor, type SpatialRoom } from '../shared/spatial';
+import { alignRooms, buildingPlan, floorBuilding, planBuildings, type SpatialPlan, defaultSpatialPlan, examplePlan, insideRoom, nearestSide, OPENING_SIZES, openingPlacement, parseSpatial, reattachOpenings, roomArea, roomOutline, roomSize, splitSide, stackFloors, validPolygon, validRoom, wallSegments, type Point, type SpatialFloor, type SpatialRoom } from '../shared/spatial';
 import { defaultProject, parseProject } from '../shared/project';
 import { MPDashboardComposer } from '../shared/presentation';
 import { MPDiscoveryEngine } from '../shared/discovery';
 import { resolvePlan } from '../shared/rooms';
 import { home } from './fixtures';
+
+describe('houses of a domain',()=>{
+  /** Two houses: the main one on two floors, the guest house on one; the last floor names no house, so belongs to the first. */
+  const domain=():SpatialPlan=>{
+    const floor=(id:string,buildingId?:string)=>({...structuredClone(examplePlan().floors[0]!),id,...(buildingId?{buildingId}:{})});
+    return {version:1,enabled:true,buildings:[{id:'main',name:'Maison principale'},{id:'guest',name:'Maison d’amis'}],floors:[floor('main-0','main'),floor('guest-0','guest'),floor('main-1')]};
+  };
+  it('gives each house its floors, a floor without a house going to the first one',()=>{
+    const plan=parseSpatial(domain());
+    expect(planBuildings(plan).map(h=>[h.building.id,h.floors.map(f=>f.id)])).toEqual([['main',['main-0','main-1']],['guest',['guest-0']]]);
+    expect(floorBuilding(plan,plan.floors[2]!)).toBe('main');
+    expect(buildingPlan(plan,'guest').floors.map(f=>f.id)).toEqual(['guest-0']);
+    // An unknown house shows the first one; the same house of the same plan is the same object, so the 3D plan is not redrawn.
+    expect(buildingPlan(plan,'gone').floors.map(f=>f.id)).toEqual(['main-0','main-1']);
+    expect(buildingPlan(plan,'guest')).toBe(buildingPlan(plan,'guest'));
+  });
+  it('keeps a plan without houses as a single house',()=>{
+    const plan=examplePlan();
+    expect(planBuildings(plan)).toEqual([{building:{id:'',name:''},floors:plan.floors}]);
+    expect(buildingPlan(plan,'anything')).toBe(plan);
+    expect(floorBuilding(plan,plan.floors[0]!)).toBe('');
+  });
+  it('refuses unknown or repeated houses and more than eight floors in one house, not on the whole domain',()=>{
+    expect(()=>parseSpatial({...domain(),floors:[{...domain().floors[0]!,buildingId:'nowhere'}]})).toThrow('Maison inconnue');
+    expect(()=>parseSpatial({...domain(),buildings:[{id:'main',name:'A'},{id:'main',name:'B'}]})).toThrow();
+    const many=(house:string)=>Array.from({length:8},(_,i)=>({...structuredClone(examplePlan().floors[0]!),id:`${house}-${i}`,buildingId:house}));
+    expect(parseSpatial({...domain(),floors:[...many('main'),...many('guest')]}).floors).toHaveLength(16);
+    expect(()=>parseSpatial({...domain(),floors:[...many('main'),{...many('main')[0]!,id:'main-8'}]})).toThrow('Trop de niveaux');
+  });
+});
 
 describe('spatial geometry and project persistence',()=>{
   it('draws each wall once and tells exterior walls from partitions',()=>{

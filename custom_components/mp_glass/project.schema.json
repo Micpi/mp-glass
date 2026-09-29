@@ -300,10 +300,34 @@
         "enabled": {
           "type": "boolean"
         },
+        "buildings": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "name"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$"
+              },
+              "name": {
+                "type": "string",
+                "minLength": 1,
+                "maxLength": 80
+              }
+            }
+          }
+        },
         "floors": {
           "type": "array",
           "minItems": 1,
-          "maxItems": 8,
+          "maxItems": 32,
           "items": {
             "type": "object",
             "additionalProperties": false,
@@ -333,6 +357,10 @@
                 "type": "number",
                 "minimum": 1,
                 "maximum": 8
+              },
+              "buildingId": {
+                "type": "string",
+                "pattern": "^[a-zA-Z0-9_-]{1,64}$"
               },
               "backdrop": {
                 "type": "object",

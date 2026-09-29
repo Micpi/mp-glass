@@ -1,8 +1,9 @@
 import { LitElement, html, css, nothing } from 'lit';
+import { keyed } from 'lit/directives/keyed.js';
 import type { AppearanceConfig, NavigationConfig, NavigationItem } from '../shared/models';
 import { MP_GLASS_BACKGROUND } from './background';
 import { mpIcon, type MPIconName } from './icons';
-import type { SpatialPlan } from '../shared/spatial';
+import { buildingPlan, planBuildings, type SpatialPlan } from '../shared/spatial';
 import { ambianceEntities, coverOpen, coverPosition, finite, mediaIsTv, mediaOn, nowPlaying, roomEntityIds, type PlanMode } from '../shared/spatial-state';
 import { available } from '../shared/capabilities';
 import type { Hass } from './ha/client';
@@ -16,6 +17,9 @@ import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController
 import { flag } from './flags';
 import { projectLogoMark } from '../shared/project';
 
+/** The house of the domain last shown on the plan, kept in this browser. */
+const BUILDING_KEY = 'mp-glass.building';
+function readBuilding() { try { return localStorage.getItem(BUILDING_KEY) ?? ''; } catch { return ''; } }
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
 interface ViewConfig {
   mp_spatial?: SpatialPlan;
@@ -35,7 +39,7 @@ interface ViewConfig {
 }
 
 export class MPGlassView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true}, planMode:{state:true}, planFloors:{state:true}, online:{state:true}, detail:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, languageOpen:{state:true}, planMode:{state:true}, planFloors:{state:true}, building:{state:true}, online:{state:true}, detail:{state:true} };
   static styles = css`
     :host{display:block;flex:1 1 100%;width:100%;min-width:0;min-height:100vh;container-type:inline-size;box-sizing:border-box;color:#f8fbff;font-family:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif);position:relative;isolation:isolate;overflow:hidden;background:#061421}
     *{box-sizing:border-box}.backdrop,.shade,.ambient{position:fixed;inset:0;pointer-events:none}.backdrop{z-index:-4;background-size:cover;background-repeat:no-repeat;transform:scale(1.035);filter:blur(var(--mp-bg-blur,0)) saturate(var(--mp-bg-saturation,1))}.shade{z-index:-3;background:linear-gradient(90deg,rgba(2,13,25,.8),rgba(3,18,31,.17) 58%,rgba(2,10,19,.38)),linear-gradient(0deg,rgba(2,11,21,.95),transparent 72%)}.ambient{z-index:-2;background:radial-gradient(circle at 18% 15%,color-mix(in srgb,var(--mp-accent,#69b7ff) 14%,transparent),transparent 34%),radial-gradient(circle at 85% 70%,color-mix(in srgb,var(--mp-secondary,#efbd8b) 10%,transparent),transparent 28%)}
@@ -53,6 +57,11 @@ export class MPGlassView extends LitElement {
     .page-intro{padding:clamp(46px,7vw,90px) 10px clamp(28px,4vw,48px)}.page-intro .eyebrow{margin-bottom:13px}.page-intro h1{font:clamp(42px,5vw,72px)/1 var(--mp-display-font,Georgia,serif);font-weight:400;margin:0}.page-intro p{color:#b9cad9;font-size:16px;margin:13px 0 0}
     .overview{padding:0 0 16px}.overview-card{min-height:94px;border-radius:var(--mp-radius);padding:13px 16px;display:grid;grid-template-columns:minmax(190px,1fr) repeat(3,minmax(120px,.58fr));align-items:stretch;gap:8px}.overview-title{display:flex;align-items:center;gap:12px;padding:5px 8px;min-width:0}.seal{display:grid;place-items:center;width:48px;height:48px;flex:0 0 auto;border-radius:16px;color:#6be6a4;background:radial-gradient(circle,rgba(70,220,143,.24),rgba(39,153,103,.07));border:1px solid rgba(111,237,170,.21);box-shadow:0 0 25px rgba(62,215,135,.13)}.overview-title strong{display:block;font:20px/1.1 var(--mp-display-font,Georgia,serif);font-weight:400}.overview-title small{color:#7de5ab;font-size:11px}.overview-item{display:flex;align-items:center;gap:10px;padding:9px 13px;border-left:1px solid rgba(215,235,255,.12);color:#d9e6f2}.overview-item .mp-icon{color:#a9c6df}.overview-item strong{display:block;font-size:13px}.overview-item small{display:block;margin-top:3px;color:#9eb1c3;font-size:10px}
     mp-spatial-viewer{margin:clamp(14px,2vw,24px) 0 16px}
+    /* The houses of a domain, above the plan: one tab each, the one shown lit. */
+    .houses{display:flex;gap:4px;margin:clamp(14px,2vw,24px) 0 -4px;padding:4px;border-radius:18px;overflow-x:auto;scrollbar-width:none}.houses::-webkit-scrollbar{display:none}
+    .houses button{flex:0 0 auto;display:inline-flex;align-items:center;gap:8px;min-height:42px;padding:0 15px;border:1px solid transparent;border-radius:14px;background:transparent;color:#d4e1ed;font:inherit;font-size:13px;white-space:nowrap;cursor:pointer}.houses button:hover{background:rgba(255,255,255,.07)}
+    .houses button[aria-pressed=true]{color:#fff;background:linear-gradient(145deg,color-mix(in srgb,var(--mp-accent,#69b7ff) 76%,transparent),rgba(38,94,149,.68));border-color:color-mix(in srgb,var(--mp-accent,#69b7ff) 78%,white)}
+    .houses small{display:inline-flex;align-items:center;gap:3px;padding:2px 7px;border-radius:999px;background:rgba(255,213,108,.16);color:#ffe39a;font-size:11px}
     .spatial-note{display:flex;align-items:center;flex-wrap:wrap;gap:9px;margin:-2px 2px 20px;color:#b9cad9;font-size:12px}.spatial-note .mp-icon{color:var(--mp-accent)}.spatial-note a{margin-left:auto;min-height:36px;display:inline-flex;align-items:center;padding:0 13px;border-radius:999px;color:#eef7ff;text-decoration:none;border:1px solid color-mix(in srgb,var(--mp-accent) 45%,transparent);background:color-mix(in srgb,var(--mp-accent) 13%,transparent)}.spatial-note a:hover{background:color-mix(in srgb,var(--mp-accent) 24%,transparent)}
     .badges{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px}.section-head{display:flex;align-items:end;justify-content:space-between;gap:18px;margin:10px 3px 15px}.section-label{display:flex;align-items:center;gap:12px}.section-icon{display:grid;place-items:center;width:42px;height:42px;border-radius:var(--mp-icon-radius,14px);color:#ffe170;background:rgba(255,206,66,.11);border:1px solid rgba(255,221,118,.17);box-shadow:0 0 24px rgba(255,190,40,.08)}.section-head h2{margin:0;font:clamp(23px,2.2vw,31px)/1 var(--mp-display-font,Georgia,serif);font-weight:400}.section-head p{margin:5px 0 0;color:#aebfd0;font-size:12px}.section-action{display:flex;align-items:center;gap:8px;color:#c9d9e8;font-size:12px}.section-action i{width:7px;height:7px;border-radius:50%;background:#7be1aa;box-shadow:0 0 12px #56d99a}.section-action i.off{background:#ff9a86;box-shadow:0 0 12px #ff7a5c}
     .grid{display:grid;grid-template-columns:repeat(var(--mp-columns,4),minmax(0,1fr));gap:var(--mp-gap,12px)}.grid>div{min-width:0}.rooms-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:var(--mp-gap,12px)}.room{min-height:180px;padding:22px;border-radius:var(--mp-radius);color:white;text-decoration:none;display:flex;flex-direction:column;justify-content:space-between;position:relative;overflow:hidden}.room::before{content:'';position:absolute;inset:0;background:linear-gradient(145deg,color-mix(in srgb,var(--mp-tint) 84%,transparent),rgba(4,20,35,.78));z-index:-1}.room:hover{border-color:color-mix(in srgb,var(--mp-accent) 65%,white);transform:translateY(-2px)}.room-icon{width:50px;height:50px;border-radius:16px;display:grid;place-items:center;background:color-mix(in srgb,var(--mp-accent) 16%,transparent);color:#dff0ff}.room h3{font:26px/1 var(--mp-display-font,Georgia,serif);font-weight:400;margin:0}.room p{margin:7px 0 0;color:#b7c8d8;font-size:12px}.room-arrow{position:absolute;right:20px;top:22px}
@@ -109,6 +118,8 @@ export class MPGlassView extends LitElement {
   /** The ambiance the plan shows and the floors it shows: the home section follows them. */
   private planMode: PlanMode = 'lights';
   private planFloors: string[] = [];
+  /** The house of the domain the plan shows, remembered in this browser; '' for the first one. */
+  private building = readBuilding();
   private collapsedGroups = new Set<string>();
   /** hui-root whose bar this view made transparent. */
   private header?: Element;
@@ -344,6 +355,27 @@ export class MPGlassView extends LitElement {
       ${value?html`<span class="tile-value">${value}</span>`:nothing}
     </button>`;
   }
+  /** The house the plan shows: the one chosen when it still has a floor, else the first that has one. */
+  private shownHouse(spatial?: SpatialPlan) {
+    if (!spatial) return { building: '', plan: undefined as unknown as SpatialPlan };
+    const plan = buildingPlan(spatial, this.building);
+    return { building: spatial.buildings?.length ? planBuildings(spatial).find(h => h.floors[0] === plan.floors[0])?.building.id ?? '' : '', plan };
+  }
+  /** Tabs of the houses of a domain above the plan, each with its lights on; nothing for a single house. */
+  private houses(spatial: SpatialPlan) {
+    const houses = planBuildings(spatial).filter(h => h.floors.length);
+    if (houses.length < 2) return nothing;
+    const current = this.shownHouse(spatial).building, states = this.hass?.states ?? {};
+    return html`<nav class="houses glass" aria-label=${tr('Maisons du domaine')}>${houses.map(({ building, floors }) => {
+      const lights = new Set(floors.flatMap(f => f.rooms.flatMap(r => roomEntityIds(r).filter(id => id.startsWith('light.') && states[id]?.state === 'on'))));
+      return html`<button type="button" aria-pressed=${building.id === current} @click=${() => this.chooseBuilding(building.id)}>${mpIcon('home',16)}<span>${building.name}</span>${lights.size ? html`<small title=${tr('{n} lumière allumée|{n} lumières allumées',{n:lights.size})}>${mpIcon('bulb',12)}${lights.size}</small>` : nothing}</button>`;
+    })}</nav>`;
+  }
+  private chooseBuilding(id: string) {
+    if (id === this.building) return;
+    this.building = id; this.planFloors = [];
+    try { localStorage.setItem(BUILDING_KEY, id); } catch { /* Storage blocked: the choice holds for this page only. */ }
+  }
   /** Below the plan, the devices of its ambiance on the floors it shows, arranged room by room. */
   private ambianceSection(spatial: SpatialPlan) {
     const a=this.appearance,mode=this.planMode,states=this.hass?.states??{},meta=MPGlassView.AMBIANCES[mode];
@@ -390,6 +422,8 @@ export class MPGlassView extends LitElement {
     const subtitle = this.viewKind === 'info' ? tr('Les informations utiles sur votre maison et votre interface.') : this.viewKind === 'lights' ? tr('{n} éclairage détecté et contrôlable|{n} éclairages détectés et contrôlables',{n:total}) : this.viewKind === 'rooms' ? tr('{n} espace organisé automatiquement|{n} espaces organisés automatiquement',{n:this.areas.length}) : tr('Les équipements de {name}',{name:viewTitle});
     // A plan MP Nexus drew itself (from the areas, or its example) names its own rooms and floors in the interface language.
     const spatial = this.spatial && this.spatialOrigin !== 'project' ? trPlan(this.spatial, this.spatialOrigin === 'example') : this.spatial;
+    // On a domain, the plan and the section below it show one house at a time.
+    const house = this.shownHouse(spatial);
     return html`
       <div class="backdrop" style=${`background-image:url(${bg});background-position:${a.backgroundPosition ?? 'right'} center`}></div>
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
@@ -402,13 +436,13 @@ export class MPGlassView extends LitElement {
             ${a.showClock === false ? nothing : html`<div class="clock"><strong>${new Intl.DateTimeFormat(locale(),{hour:'2-digit',minute:'2-digit'}).format(now)}</strong><small title=${this.online?tr('Connecté à Home Assistant'):tr('Connexion interrompue, reconnexion…')}><i class=${this.online?'':'off'}></i>${new Intl.DateTimeFormat(locale(),{weekday:'short',day:'numeric',month:'short'}).format(now)}</small></div>`}
           </div>
         </header>
-        ${this.viewKind === 'home' && spatial?.enabled ? html`<mp-spatial-viewer .plan=${spatial} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Nexus</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
+        ${this.viewKind === 'home' && spatial?.enabled ? html`${this.houses(spatial)}${keyed(house.building, html`<mp-spatial-viewer .plan=${house.plan} .scope=${house.building} .hass=${this.hass} .areaHref=${this.areaHref} @plan-ambiance=${this.planAmbiance}></mp-spatial-viewer>`)}${this.spatialOrigin === 'project' ? nothing : html`<p class="spatial-note">${mpIcon('rooms',15)}<span>${this.spatialOrigin === 'areas' ? tr('Plan schématique créé à partir de vos pièces Home Assistant.') : tr('Plan d’exemple : créez vos pièces dans Home Assistant ou importez votre plan.')}</span>${this.hass?.user?.is_admin ? html`<a href="/mp-glass-settings?section=spatial">${tr('Importer ou dessiner mon plan')}</a>` : nothing}</p>`}` :this.viewKind === 'home' && a.showHero !== false ? html`<section class="hero"><div class="hero-copy"><div class="eyebrow">${mpIcon('sparkle',16)} ${trDefault(a.eyebrow,'Une maison plus simple à vivre')}</div><h1>${this.greeting()},<br>${tr('la maison est avec vous.')}</h1><p>${trDefault(a.subtitle,'Vos équipements sont prêts, pièce par pièce.')}</p><div class="hero-meta"><span class="chip">${mpIcon('bulb',14)} ${tr('{n} équipement|{n} équipements',{n:total})}</span><span class="chip">${mpIcon('shield',14)} ${tr('Interface locale')}</span></div></div><div class="quote">${tr('« {text} »',{text:trDefault(a.quote,'Les plus beaux moments commencent à la maison.')})}</div></section>` : this.viewKind !== 'home' ? html`<section class="page-intro"><div class="eyebrow">${mpIcon(this.viewKind==='rooms'?'rooms':'sparkle',16)} MP Nexus</div><h1>${title}</h1><p>${subtitle}</p></section>` : nothing}
         <div class="badges">${this.badges}</div>
         ${this.viewKind === 'info' ? this.renderInfo() : this.viewKind === 'rooms' ? html`
           ${this.section(tr('Pièces'),tr('Ouvrez une pièce pour retrouver uniquement ses équipements'))}
           ${this.areas.length || this.inventory ? nothing : html`<p class="empty glass" role="status">${mpIcon('rooms',22)}<span>${tr('Aucune pièce détectée. Créez des zones dans Home Assistant, puis ouvrez le Studio pour analyser votre installation.')}</span>${this.hass?.user?.is_admin ? html`<a class="settings-link" href="/mp-glass-settings">${mpIcon('tune',16)} ${tr('Ouvrir le Studio')}</a>` : nothing}</p>`}
           <main class="rooms-grid">${this.areas.map(area=>html`<a class="room glass" href=${this.route(`area-${area.id}`)}><span class="room-icon">${mpIcon('rooms',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${area.name}</h3><p>${tr('{n} équipement|{n} équipements',{n:area.deviceCount})} · ${tr('{n} lumière|{n} lumières',{n:area.lightCount})}</p></div></a>`)}${this.inventory ? html`<a class="room glass" href=${this.route('inventory')}><span class="room-icon">${mpIcon('scan',25)}</span><span class="room-arrow">${mpIcon('arrow',20)}</span><div><h3>${this.inventory.title}</h3><p>${tr('{n} entité sans carte dédiée|{n} entités sans carte dédiée',{n:this.inventory.count})}</p></div></a>` : nothing}</main>
-        ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(spatial) : html`
+        ` : this.viewKind === 'home' && spatial?.enabled ? this.ambianceSection(house.plan) : html`
           ${this.section(this.viewKind === 'home' ? trDefault(a.sectionTitle,'Lumières') : title,this.viewKind === 'home' ? trDefault(a.sectionSubtitle,'Contrôle rapide de tous les éclairages détectés') : subtitle)}
           ${this.cards.length ? html`<main class="grid">${this.cards.map(card=>html`<div>${card}</div>`)}</main>` : this.emptyState()}
         `}

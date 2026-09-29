@@ -56,7 +56,7 @@ const motion=():ScrollBehavior=>matchMedia('(prefers-reduced-motion: reduce)').m
 const EDGE=40;
 /** The view Recentrer brings back, per floor, kept in this browser. */
 const VIEW_KEY='mp-glass.spatial.views';
-/** The saved view of every floor at once: never a floor id, which only has letters, digits, _ and -. */
+/** The saved view of every floor at once, followed by the id of its house on a domain: never a floor id, which only has letters, digits, _ and -. */
 const HOUSE='*';
 /** Gap between a floor and its label beside it, in pixels. */
 const LABEL_GAP=12;
@@ -96,7 +96,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -290,6 +290,8 @@ export class MPSpatialViewer extends LitElement {
   preview = false;
   /** The floor shown; '' shows every floor of a house that has several, one above the other. */
   private floor = '';
+  /** The house of the domain the plan shows, '' on a single house: each house keeps its own view of all its floors. */
+  scope = '';
   /** Floor of the stack under the pointer, and the one the camera is flying into. */
   private pointed = '';
   private opening = '';
@@ -641,7 +643,7 @@ export class MPSpatialViewer extends LitElement {
   /** Standard framing of the floor, the one a level without a saved view opens on. */
   private frame() { if(this.topView) this.scene?.top(); else this.scene?.reset(); }
   /** Each floor keeps its own saved view, and the whole house its own. */
-  private get viewKey() { return this.stacked ? HOUSE : this.currentFloor?.id ?? ''; }
+  private get viewKey() { return this.stacked ? HOUSE + this.scope : this.currentFloor?.id ?? ''; }
   private get savedView() { return this.preview||!this.currentFloor?undefined:this.views[this.viewKey]; }
   private recenter=()=>{
     const view=this.savedView;

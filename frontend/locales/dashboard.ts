@@ -96,4 +96,5 @@ export const DASHBOARD = {
   'Entrée': ['Entrance', 'Прихожая'],
   'Bureau': ['Office', 'Кабинет'],
   'Salle de bain': ['Bathroom', 'Ванная'],
+  'Maisons du domaine': ['Houses of the estate', 'Дома участка'],
 } satisfies Messages;

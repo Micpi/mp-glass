@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.14.0 — Plusieurs maisons sur un même domaine
+
+- Le plan 3D gère désormais un domaine de plusieurs maisons (maison principale, maison d’amis, pool house…). Chaque maison a ses propres niveaux et pièces ; une seule instance Home Assistant pilote l’ensemble.
+- Accueil : quand le plan compte au moins deux maisons, des onglets au-dessus du plan permettent de passer de l’une à l’autre, avec le nombre de lumières allumées dans chaque maison. Le plan, sa vue d’ensemble et la section des équipements en dessous ne montrent que la maison choisie ; le choix est retenu dans le navigateur, et chaque maison garde sa propre vue enregistrée.
+- Studio → Plan 3D : nouveau bloc « Maisons du domaine » pour ajouter une maison (créée avec un premier niveau à dessiner ou à importer), la renommer, changer son ordre ou la supprimer après confirmation. Chaque niveau est rattaché à la main à sa maison avec « Maison du niveau » ; la liste des niveaux et l’aperçu 3D suivent la maison modifiée. Un plan importé par Gemini garde la maison du niveau qu’il remplace.
+- Les plans existants ne changent pas : sans maison déclarée, le plan reste une maison unique et l’interface est identique. La première maison ajoutée transforme le plan en domaine, ses niveaux devenant la « Maison principale ».
+- Limites : 12 maisons, 8 niveaux par maison et 32 niveaux en tout, vérifiés dans le navigateur et par Home Assistant avant enregistrement.
+- Vérifications : tests des maisons (répartition des niveaux, maison inconnue ou dupliquée, limites) côté navigateur et côté Home Assistant, lint, TypeScript, suites frontend et Python, reconstruction du bundle HACS, et contrôle dans le navigateur de l’accueil (bureau et mobile) et du Studio.
+
 ## 0.13.17 — Logo de l’intégration dans HACS et Home Assistant
 
 - Ajoute le logo MP Nexus dans `custom_components/mp_glass/brand/` : HACS le détecte comme icône de l’intégration, et Home Assistant l’affiche dans ses écrans d’intégration.

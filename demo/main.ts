@@ -46,6 +46,13 @@ if(spatial) {
       room('room-3','Salle d’eau',10,0,3,4),room('room-4','Palier',0,4,6,4,['light.palier']),room('room-5','Bureau',6,4,7,4),
     ]});
   }
+  // With ?spatial&houses, a domain: the house above becomes the main house, beside a guest house of one floor.
+  if(params.has('houses')){
+    const room=(id:string,name:string,x:number,z:number,w:number,d:number)=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]] as [number,number][]});
+    project.spatial.buildings=[{id:'main',name:'Maison principale'},{id:'guest',name:'Maison d’amis'}];
+    for(const floor of project.spatial.floors)floor.buildingId='main';
+    project.spatial.floors.push({id:'guest-ground',name:'Rez-de-chaussée',elevation:0,height:2.5,buildingId:'guest',rooms:[room('guest-living','Séjour',0,0,6,5),room('guest-room','Chambre',6,0,4,5),room('guest-bath','Salle d’eau',6,5,4,2.5)]});
+  }
 }
 const calls: unknown[] = [];
 /** History requests the window made, so the browser tests can check the period asked for. */

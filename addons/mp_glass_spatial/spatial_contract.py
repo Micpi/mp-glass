@@ -132,8 +132,24 @@ def valid_fixtures(room):
             and len(set(openings)) == len(openings) and len(set(media)) == len(media))
 
 
+# Floors a single house of the domain may hold.
+MAX_FLOORS = 8
+
+
 def validate_geometry(plan):
-    """Call after JSON Schema validation. Reject duplicate IDs, invalid rings and openings on sides that do not exist."""
+    """Call after JSON Schema validation. Reject duplicate IDs, floors of unknown or overfull houses, invalid rings and openings on sides that do not exist."""
+    buildings = [building["id"] for building in plan.get("buildings", [])]
+    if len(set(buildings)) != len(buildings):
+        raise ValueError("invalid_geometry")
+    per_building = {}
+    for floor in plan["floors"]:
+        if "buildingId" in floor and floor["buildingId"] not in buildings:
+            raise ValueError("invalid_geometry")
+        # A floor without a house belongs to the first one.
+        house = floor.get("buildingId", buildings[0] if buildings else "")
+        per_building[house] = per_building.get(house, 0) + 1
+        if per_building[house] > MAX_FLOORS:
+            raise ValueError("invalid_geometry")
     floors = set()
     for floor in plan["floors"]:
         if floor["id"] in floors or not all(math.isfinite(floor[k]) for k in ("height", "elevation")):

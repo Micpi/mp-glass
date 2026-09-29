@@ -10,7 +10,7 @@ Le snapshot HA est une entrée, pas une configuration de chantier.
 | Entity | registry id, sinon state:entity_id | entity_id courant, domain, device, area, disabled, hidden |
 | LogicalDevice | logical:<stable entity id> initialement | source IDs, entités, area, catégorie, confidence, preuves, capabilities, `planKind` (lumière, volet, thermostat, température, humidité, lecteur multimédia, ouverture, présence ; absent pour le diagnostic et les réglages) |
 | Role | identifiant projet | référence stable vers logical device ou entity |
-| Floorplan | identifiant projet | niveaux et pièces en mètres (`project.spatial`) ; par pièce, portes et fenêtres sur ses côtés avec leurs volets et capteurs, téléviseurs et enceintes placés avec leur lecteur |
+| Floorplan | identifiant projet | maisons du domaine (`buildings`, facultatives : sans elles, une seule maison), niveaux rattachés chacun à une maison (`buildingId`, 8 par maison, 32 en tout) et pièces en mètres (`project.spatial`) ; par pièce, portes et fenêtres sur ses côtés avec leurs volets et capteurs, téléviseurs et enceintes placés avec leur lecteur |
 
 La priorité de localisation est override projet > entity area > device area. Un floor est dérivé de l'area. Une area inconnue génère un avertissement. Ni nom identique, ni area partagée ne justifient seuls une fusion.
 

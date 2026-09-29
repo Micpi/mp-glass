@@ -32,8 +32,14 @@ export interface SpatialRoom { id: string; name: string; polygon: Point[]; arcs?
  * pixels, and where it lies, pixel = metre / scale + origin.
  */
 export interface SpatialBackdrop { id: string; width: number; height: number; scale: number[]; origin: number[] }
-export interface SpatialFloor { id: string; name: string; elevation: number; height: number; backdrop?: SpatialBackdrop; rooms: SpatialRoom[] }
-export interface SpatialPlan { version: 1; enabled: boolean; floors: SpatialFloor[] }
+/** `buildingId`: the house of the domain the floor belongs to; without one (or one that no longer exists), the first house. */
+export interface SpatialFloor { id: string; name: string; elevation: number; height: number; buildingId?: string; backdrop?: SpatialBackdrop; rooms: SpatialRoom[] }
+/** A house of the domain (main house, guest house, pool house…), holding its own floors. */
+export interface SpatialBuilding { id: string; name: string }
+/** `buildings`: the houses of a domain, in the order they are offered; without them, the plan is a single house. */
+export interface SpatialPlan { version: 1; enabled: boolean; buildings?: SpatialBuilding[]; floors: SpatialFloor[] }
+/** Floors a single house may hold, and the whole domain. */
+export const MAX_FLOORS = 8, MAX_SITE_FLOORS = 32, MAX_BUILDINGS = 12;
 const validate = new Ajv({ strict: true }).compile<SpatialPlan>(schema);
 /** Positive when the corners turn from x towards y: the inside of the ring is then on the left of each side. */
 function signedArea(points: Point[]): number {
@@ -410,8 +416,45 @@ export function stackFloors(floors: SpatialFloor[]): SpatialFloor[] {
     .sort((a, b) => a.floor.elevation - b.floor.elevation || a.index - b.index)
     .map(({ floor }, level) => ({ ...floor, elevation: level * spacing }));
 }
+/** The house `floor` belongs to: its own when it exists, else the first one; '' on a plan without houses. */
+export function floorBuilding(plan: Pick<SpatialPlan, 'buildings'>, floor: Pick<SpatialFloor, 'buildingId'>): string {
+  const buildings = plan.buildings ?? [];
+  return buildings.find(b => b.id === floor.buildingId)?.id ?? buildings[0]?.id ?? '';
+}
+/** Each house with its floors, in the order of the houses; a plan without houses is one house with every floor, its id ''. */
+export function planBuildings(plan: SpatialPlan): { building: SpatialBuilding; floors: SpatialFloor[] }[] {
+  if (!plan.buildings?.length) return [{ building: { id: '', name: '' }, floors: plan.floors }];
+  return plan.buildings.map(building => ({ building, floors: plan.floors.filter(f => floorBuilding(plan, f) === building.id) }));
+}
+/**
+ * One house of the plan as a plan of its own, the way the 3D plan and the section below it show a house: its floors only.
+ * An unknown `id` gives the first house that has a floor; the plan as it is when it has a single house.
+ */
+export function buildingPlan(plan: SpatialPlan, id: string): SpatialPlan {
+  if (!plan.buildings?.length) return plan;
+  // The same plan and house give the same object: the 3D plan redraws only when the house or the plan changes.
+  const cached = housePlans.get(plan)?.get(id);
+  if (cached) return cached;
+  const houses = planBuildings(plan).filter(h => h.floors.length), house = houses.find(h => h.building.id === id) ?? houses[0];
+  const shown = house ? { ...plan, floors: house.floors } : plan;
+  housePlans.set(plan, (housePlans.get(plan) ?? new Map<string, SpatialPlan>()).set(id, shown));
+  return shown;
+}
+const housePlans = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 export function parseSpatial(value: unknown): SpatialPlan {
   if (!validate(value)) throw new Error('Plan invalide : vérifiez les pièces et les coordonnées.');
+  const buildings = new Set<string>();
+  for (const building of value.buildings ?? []) {
+    if (buildings.has(building.id)) throw new Error('Identifiants de maisons dupliqués.');
+    buildings.add(building.id);
+  }
+  const perBuilding = new Map<string, number>();
+  for (const floor of value.floors) {
+    if (floor.buildingId !== undefined && !buildings.has(floor.buildingId)) throw new Error(`Maison inconnue : ${floor.name}`);
+    const house = floorBuilding(value, floor), count = (perBuilding.get(house) ?? 0) + 1;
+    if (count > MAX_FLOORS) throw new Error('Trop de niveaux dans une maison.');
+    perBuilding.set(house, count);
+  }
   const ids = new Set<string>();
   for (const floor of value.floors) {
     if (ids.has(floor.id)) throw new Error('Identifiants de niveaux dupliqués.');

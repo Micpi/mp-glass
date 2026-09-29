@@ -26,6 +26,24 @@ class ProjectContractTest(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 module.validate_project(self.validator, module.default_project() | patch)
 
+    def test_houses_of_a_domain(self):
+        room = {"id": "r", "name": "Salon", "polygon": [[0, 0], [4, 0], [4, 4], [0, 4]]}
+
+        def floor(floor_id, house=None):
+            return {"id": floor_id, "name": floor_id, "elevation": 0, "height": 2.6, "rooms": [room], **({"buildingId": house} if house else {})}
+
+        def project(buildings, floors):
+            return module.default_project() | {"spatial": {"version": 1, "enabled": True, "buildings": buildings, "floors": floors}}
+
+        houses = [{"id": "main", "name": "Maison principale"}, {"id": "guest", "name": "Maison d'amis"}]
+        # Eight floors in each house: more than one house may hold, not more than the domain.
+        floors = [floor(f"{h}-{i}", h) for h in ("main", "guest") for i in range(8)]
+        module.validate_project(self.validator, project(houses, floors))
+        # A floor without a house belongs to the first one, which is then full.
+        for bad in (project(houses, [floor("x", "nowhere")]), project(houses + [houses[0]], [floor("x")]), project(houses, floors + [floor("main-8")])):
+            with self.assertRaises(ValueError):
+                module.validate_project(self.validator, bad)
+
     def test_migrates_v1_and_preserves_user_choices(self):
         old = module.default_project("Maison")
         old["schema_version"] = 1

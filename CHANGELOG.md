@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.13.15 — Monogramme de site personnalisable
+
+- Le logo du dashboard reprend automatiquement les initiales du nom de la maison ; « Saint Jaume II » affiche « SJ ».
+- Le champ « Monogramme du logo » dans MP Nexus Studio → Identité permet de choisir jusqu’à quatre caractères. Le nouvel emblème à empattements, couleur accent, apparaît aussi dans l’aperçu en direct.
+- Le réglage est enregistré avec chaque projet et conservé lors des modifications et des détections d’équipements.
+- Vérifications : contrat du schéma, initiales de Saint Jaume, lint, TypeScript, suite frontend et reconstruction du bundle HACS.
+
 ## 0.13.14 — Studio du plan 3D plus lisible
 
 - Le bloc « Générer depuis un plan · Gemini » est replié dès qu’un plan existe, pour ne plus occuper le haut de la page ; il reste ouvert tant qu’il n’y a pas de plan ou qu’un fichier est choisi.

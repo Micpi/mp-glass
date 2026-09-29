@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { home } from './fixtures';
 import { MPDiscoveryEngine } from '../shared/discovery';
 import { MPCapabilityEngine, brightnessPercent } from '../shared/capabilities';
-import { defaultProject, migrateProject, parseProject, projectChanges } from '../shared/project';
+import { defaultProject, migrateProject, parseProject, projectChanges, projectLogoMark } from '../shared/project';
 import { MPCardRegistry, MPDashboardComposer } from '../shared/presentation';
 import { HARegistryReader, type Hass } from '../frontend/ha/client';
 
@@ -85,6 +85,14 @@ describe('capabilities',()=>{
   });
 });
 describe('project contract',()=>{
+  it('suggests elegant initials for a named site and keeps the monogram editable',()=>{
+    const project=defaultProject('Saint Jaume II');
+    expect(project.appearance.logoMark).toBe('SJ');
+    expect(projectLogoMark('Saint Jaume II')).toBe('SJ');
+    project.appearance.logoMark='S J';
+    expect(parseProject(project).appearance.logoMark).toBe('S J');
+    expect(()=>parseProject({...project,appearance:{...project.appearance,logoMark:'ABCDE'}})).toThrow('invalid_project');
+  });
   it('exports, imports and migrates v1 without mutating input',()=>{
     const project=defaultProject();project.roles.primary_light='logical:stable-0';
     expect(migrateProject(JSON.parse(JSON.stringify(project)))).toEqual(project);

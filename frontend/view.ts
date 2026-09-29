@@ -14,6 +14,7 @@ import './detail';
 import type { MessageKey } from './locales';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trDefault, trPlan, type Language } from './i18n';
 import { flag } from './flags';
+import { projectLogoMark } from '../shared/project';
 
 interface AreaSummary { id:string; name:string; icon?:string; picture?:string; deviceCount:number; lightCount:number }
 interface ViewConfig {
@@ -83,6 +84,8 @@ export class MPGlassView extends LitElement {
     .tile-value{margin-left:auto;flex:0 0 auto;font:18px/1 var(--mp-display-font,Georgia,serif);color:#eaf4ff}
     .empty-ambiance{margin:6px 3px 22px;color:#9fb6ca;font-size:13px}
     .empty{display:flex;align-items:center;flex-wrap:wrap;gap:12px;padding:26px 22px;border-radius:var(--mp-radius);color:#c9d9e8;font-size:14px}.empty>.mp-icon{color:var(--mp-accent)}.empty a{margin-left:auto;min-height:40px;display:inline-flex;align-items:center;gap:8px;padding:0 13px;border-radius:12px;text-decoration:none;color:#eef7ff;border:1px solid rgba(212,232,250,.2);background:rgba(255,255,255,.055);font-size:12px}.empty a:hover{border-color:var(--mp-accent);background:color-mix(in srgb,var(--mp-accent) 15%,transparent)}
+    .mark{font:italic 23px/1 "Bodoni MT",Didot,Georgia,serif;letter-spacing:-.13em;padding-right:.13em;transform:none}
+    @container (max-width:540px){.mark{font-size:20px}}
     @media(prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
   `;
 
@@ -392,7 +395,7 @@ export class MPGlassView extends LitElement {
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
       <div class="shell" style=${style}>
         <header class="glass">
-          <div class="brand"><span class="mark">≋</span><div><strong>${projectName}</strong><small>Home Assistant · MP Nexus</small></div>${this.languageMenu()}</div>
+          <div class="brand"><span class="mark" aria-hidden="true">${a.logoMark?.trim()||projectLogoMark(projectName)}</span><div><strong>${projectName}</strong><small>Home Assistant · MP Nexus</small></div>${this.languageMenu()}</div>
           <nav class=${this.navigation.showLabels?'':'hide-labels'} aria-label=${tr('Navigation')}>${this.navigation.items.map(item=>this.navItem(item))}${a.showSettingsShortcut === false ? nothing : html`<a class=${this.viewKind === 'info' ? 'info-nav active' : 'info-nav'} href=${this.route('info')} aria-label=${tr('Info')} aria-current=${this.viewKind === 'info' ? 'page' : nothing} title=${tr('Info')}>${mpIcon('info',18)}<span>${tr('Info')}</span></a>`}${this.languageMenu()}</nav>
           <div class="header-tools">
             ${this.languageMenu()}

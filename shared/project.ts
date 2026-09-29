@@ -8,8 +8,13 @@ export function parseProject(value: unknown): ProjectConfig {
   if (value.spatial) parseSpatial(value.spatial);
   return structuredClone(value);
 }
+/** Pick two meaningful initials for the logo, ignoring trailing Roman-numeral site numbers. */
+export function projectLogoMark(name: string): string {
+  const words = name.trim().split(/\s+/).filter(word => word && !/^(?:i{1,3}|iv|v|vi{0,3}|ix|x)$/i.test(word));
+  return words.slice(0, 2).map(word => Array.from(word)[0] ?? '').join('').toLocaleUpperCase() || 'MP';
+}
 export function defaultProject(name = 'MP Nexus'): ProjectConfig {
-  return { schema_version: 2, project: { name }, appearance: { preset: 'glass-blue', accent: '#69b7ff', secondaryAccent: '#f1bd86', glassTint: '#102f49', glassOpacity: .62, glassBlur: 22, borderStrength: .22, shadowStrength: .38, radius: 22, backgroundDim: .44, backgroundPosition: 'right', backgroundBlur: 0, backgroundSaturation: 1, density: 'comfortable', fontStyle: 'elegant', iconStyle: 'tile', cardStyle: 'standard', cardColumns: 4, cardGap: 12, maxWidth: 1560, heroHeight: 455, motion: true, showHero: true, showClock: true, showOverview: false, showFooter: true, showSettingsShortcut: true, showCardDetails: true, showBrightness: true, eyebrow: 'Une maison plus simple à vivre', subtitle: 'Vos équipements sont prêts, pièce par pièce.', quote: 'Les plus beaux moments commencent à la maison.', sectionTitle: 'Lumières', sectionSubtitle: 'Contrôle rapide de tous les éclairages détectés' }, navigation: { items: ['home','lights','rooms'], showLabels: true }, roles: {}, overrides: {} };
+  return { schema_version: 2, project: { name }, appearance: { preset: 'glass-blue', logoMark: projectLogoMark(name), accent: '#69b7ff', secondaryAccent: '#f1bd86', glassTint: '#102f49', glassOpacity: .62, glassBlur: 22, borderStrength: .22, shadowStrength: .38, radius: 22, backgroundDim: .44, backgroundPosition: 'right', backgroundBlur: 0, backgroundSaturation: 1, density: 'comfortable', fontStyle: 'elegant', iconStyle: 'tile', cardStyle: 'standard', cardColumns: 4, cardGap: 12, maxWidth: 1560, heroHeight: 455, motion: true, showHero: true, showClock: true, showOverview: false, showFooter: true, showSettingsShortcut: true, showCardDetails: true, showBrightness: true, eyebrow: 'Une maison plus simple à vivre', subtitle: 'Vos équipements sont prêts, pièce par pièce.', quote: 'Les plus beaux moments commencent à la maison.', sectionTitle: 'Lumières', sectionSubtitle: 'Contrôle rapide de tous les éclairages détectés' }, navigation: { items: ['home','lights','rooms'], showLabels: true }, roles: {}, overrides: {} };
 }
 export function migrateProject(value: unknown): ProjectConfig {
   if (value && typeof value === 'object' && (value as {schema_version?:number}).schema_version === 1) {

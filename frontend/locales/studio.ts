@@ -33,6 +33,8 @@ export const STUDIO = {
   'Équipements': ['Devices', 'Устройства'],
   'Le nom et la signature visuelle de cette installation': ['The name and visual signature of this installation', 'Название и визуальный стиль этой установки'],
   'Nom de la maison': ['Home name', 'Название дома'],
+  'Monogramme du logo': ['Logo monogram', 'Монограмма логотипа'],
+  'Quelques lettres s’affichent dans l’emblème du dashboard.': ['A few letters appear in the dashboard emblem.', 'В эмблеме панели отображается несколько букв.'],
   'Accroche courte': ['Short tagline', 'Короткий слоган'],
   'Ces informations sont propres au chantier. Elles restent intactes lors d’une nouvelle détection des équipements.': ['This information belongs to this installation. It stays as it is when devices are detected again.', 'Эти данные относятся к этой установке. Они сохраняются при повторном поиске устройств.'],
   'Style et matière': ['Style and material', 'Стиль и материал'],

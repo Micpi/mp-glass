@@ -36,6 +36,10 @@
         "preset"
       ],
       "properties": {
+        "logoMark": {
+          "type": "string",
+          "maxLength": 4
+        },
         "preset": {
           "enum": [
             "glass-blue",

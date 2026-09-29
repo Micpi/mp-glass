@@ -21,11 +21,13 @@ def load_validator():
 
 
 def default_project(name="MP Nexus"):
+    words = [word for word in name.strip().split() if word and word.casefold() not in {"i", "ii", "iii", "iv", "v", "vi", "vii", "viii", "ix", "x"}]
+    logo_mark = "".join(word[0] for word in words[:2]).upper() or "MP"
     return {
         "schema_version": 2,
         "project": {"name": name},
         "appearance": {
-            "preset": "glass-blue", "accent": "#69b7ff", "secondaryAccent": "#efbd8b",
+            "preset": "glass-blue", "logoMark": logo_mark, "accent": "#69b7ff", "secondaryAccent": "#efbd8b",
             "glassTint": "#12344f", "glassOpacity": 0.62, "glassBlur": 22,
             "borderStrength": 0.2, "shadowStrength": 0.35, "radius": 22,
             "backgroundDim": 0.44, "backgroundPosition": "right",

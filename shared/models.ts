@@ -11,6 +11,8 @@ export type Preset = 'glass-blue' | 'glass-warm' | 'glass-dark' | 'glass-light' 
 export type NavigationItem = 'home' | 'lights' | 'rooms';
 export interface AppearanceConfig {
   preset: Preset;
+  /** Short monogram shown in the dashboard's home emblem. */
+  logoMark?: string;
   accent?: string;
   glassOpacity?: number;
   glassBlur?: number;

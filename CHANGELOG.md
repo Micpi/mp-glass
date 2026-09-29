@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.1 — Infobulles du plan plus directes
+
+- Dans une infobulle du plan 3D (Climat, Lumières, Ouvrants, Audio-vidéo), toucher un équipement de la liste ouvre directement sa fenêtre de détail, sans passer par un résumé intermédiaire et son bouton « Détails ». La liste reste ouverte derrière la fenêtre, pour passer d’un équipement à l’autre.
+- Même chose pour un équipement touché directement sur le plan 3D (lampe, porte, fenêtre, téléviseur, enceinte) : sa fenêtre de détail s’ouvre aussitôt. Les lave-linge et sèche-linge gardent leur infobulle, qui suit le cycle en cours.
+- La croix de fermeture des infobulles est redessinée : une icône fine dans un bouton rond et discret, éclairé au survol et au focus clavier.
+- Vérifications : lint, TypeScript, suite frontend, tests navigateur du plan (aucun nouvel échec ; les 9 échecs connus du plan et les 6 captures de la carte lumière échouaient déjà avant ce changement), contrôle dans le navigateur de l’ouverture directe depuis l’infobulle Climat.
+
 ## 0.15.0 — Plan de masse du domaine importé d’un DXF
 
 - Studio → Plan 3D : nouveau bloc « Plan de masse du domaine » pour importer un fichier DXF (AutoCAD, BricsCAD…). Le fichier est lu dans le navigateur, sans service externe : calques, lignes, polylignes avec arcs, cercles, splines, hachures et textes de l’espace objet.

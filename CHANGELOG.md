@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.2 — Lanceur Windows du plan 3D local
+
+- Ajoute `Lancer MP Nexus.exe` à la racine du projet : un double-clic démarre la fixture Vite sur le port 5173 et ouvre directement `http://localhost:5173/?spatial&floors&laundry` dans le navigateur par défaut.
+- Le lanceur vérifie la présence de Node.js, installe les dépendances avec `npm ci` si nécessaire, attend que MP Nexus réponde, puis affiche les commandes « Ouvrir le plan » et « Arrêter ». La fermeture du lanceur arrête le serveur qu’il a démarré. Si un serveur MP Nexus répond déjà sur ce port, il ouvre simplement le plan.
+- Ajoute le code source C# et un script PowerShell pour reconstruire l’exécutable sous Windows avec le compilateur .NET Framework fourni par le système.
+- Vérifications : compilation de l’exécutable, ouverture du serveur depuis le lanceur Windows, réponse HTTP du port 5173, fermeture du lanceur et arrêt du serveur, reconstruction du bundle HACS.
+
 ## 0.15.1 — Infobulles du plan plus directes
 
 - Dans une infobulle du plan 3D (Climat, Lumières, Ouvrants, Audio-vidéo), toucher un équipement de la liste ouvre directement sa fenêtre de détail, sans passer par un résumé intermédiaire et son bouton « Détails ». La liste reste ouverte derrière la fenêtre, pour passer d’un équipement à l’autre.

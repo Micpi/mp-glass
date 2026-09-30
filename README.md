@@ -39,6 +39,12 @@ npm run test:e2e
 
 `npm run dev` ouvre une fixture locale : `/?laundry` montre la carte buanderie, et `/?spatial&floors&laundry` ouvre le plan 3D avec les lave-linge fictifs. Sur ce dernier, choisissez « Sous-sol », puis l’ambiance « Buanderie ». Pour un vrai serveur HA isolé : `pwsh -File scripts/dev-ha.ps1` avec Docker Engine actif. Ne pas confondre ces deux environnements.
 
+### Lanceur Windows du plan 3D
+
+Avec Node.js installé, double-cliquez sur `Lancer MP Nexus.exe` à la racine de ce projet. Le lanceur installe les dépendances si besoin, démarre le serveur local sur le port 5173 et ouvre automatiquement `http://localhost:5173/?spatial&floors&laundry`. Gardez la fenêtre ouverte ; « Ouvrir le plan » revient à cette page et « Arrêter » ferme le serveur. L’exécutable doit rester dans le dossier qui contient `package.json` et `vite.config.ts` ; il ne remplace pas l’installation Home Assistant.
+
+Pour reconstruire le lanceur sous Windows : `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher.ps1`.
+
 ## Documentation
 
 [Architecture](ARCHITECTURE.md) · [Home Graph](DATA_MODEL.md) · [Capabilities](CAPABILITY_MODEL.md) · [Projet](PROJECT_CONFIG.md) · [Roadmap](ROADMAP.md) · [ADR](docs/adr/) · [Cards](docs/CARDS.md) · [Découverte](docs/DISCOVERY.md) · [Intégrateur](docs/INTEGRATOR.md) · [Sécurité](docs/SECURITY.md) · [Développement](docs/DEVELOPMENT.md).

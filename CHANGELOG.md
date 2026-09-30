@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.5 — Correctif de construction Docker Synology
+
+- Désactive explicitement la publication en fichier unique pour le conteneur Linux, qui utilise le runtime .NET partagé, tout en conservant les applications desktop autonomes.
+- Utilise la propriété .NET 10 actuelle pour configurer les proxies transférés et supprime l’avertissement de compilation.
+- Vérifications : à compléter après reconstruction et publication.
+
 ## 0.15.4 — Démo Synology avec Docker
 
 - Ajoute une image Docker multi-architecture (`linux/amd64` et `linux/arm64`) pour exécuter le plan 3D de démonstration sur Synology Container Manager, sans Home Assistant ni installation de Node.js sur le NAS.

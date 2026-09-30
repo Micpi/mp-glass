@@ -1,4 +1,11 @@
 node_modules/
+dist-demo/
+desktop/publish/
+desktop/bin/
+desktop/obj/
+/Lancer MP Nexus.exe
+/scripts/build-launcher.ps1
+/scripts/launcher/
 test-results/
 playwright-report/
 .dev-ha/

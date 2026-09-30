@@ -1,6 +1,15 @@
 # Installation
 
-## Avec HACS (mises à jour depuis Home Assistant)
+## Installation manuelle pendant que le dépôt est privé
+
+Le dépôt MP Nexus est actuellement privé. HACS ne peut donc ni installer le dépôt ni y rechercher les mises à jour. Une installation déjà présente dans Home Assistant reste en place, mais HACS ne pourra plus la mettre à jour.
+
+1. Depuis GitHub, ouvrez la [dernière release](https://github.com/Micpi/mp-glass/releases/latest) et téléchargez l’archive **Source code (zip)**. Il faut avoir accès au dépôt privé dans le navigateur.
+2. Décompressez l’archive et copiez `custom_components/mp_glass` dans le dossier `custom_components` de Home Assistant. Pour une mise à jour, remplacez le dossier déjà présent.
+3. Redémarrez Home Assistant. Pour une première installation, ouvrez Paramètres → Appareils et services → Ajouter une intégration → **MP Nexus**.
+4. Ouvrez **MP Nexus Studio** dans la barre latérale. Il crée le dashboard **MP Nexus** à sa première ouverture s’il n’existe pas déjà.
+
+## Avec HACS quand le dépôt est public
 
 Faisable à distance depuis l’application Home Assistant.
 

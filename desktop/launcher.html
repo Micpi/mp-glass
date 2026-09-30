@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="fr">
+  <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1">
+    <meta name="theme-color" content="#0b1520">
+    <title>MP Nexus · Connexion locale</title>
+    <style>
+      :root{color-scheme:dark;font-family:Inter,ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;background:#0b1520;color:#f6f7f9;font-synthesis:none}
+      *{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:24px;background:radial-gradient(ellipse at 50% 0,#193143 0,transparent 55%),#0b1520}
+      main{width:min(920px,100%);border:1px solid #ffffff1a;border-radius:28px;background:#111e2aeF;box-shadow:0 28px 90px #0007;overflow:hidden}
+      header{padding:28px 34px;border-bottom:1px solid #ffffff12;display:flex;align-items:center;gap:14px}.mark{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;background:#b4d5d51c;color:#d5eff0;font-family:Georgia,serif;font-size:23px}header strong{letter-spacing:.13em;font-size:13px}header small{display:block;color:#8c9ba8;font-size:12px;margin-top:4px;letter-spacing:normal;font-weight:400}
+      section{display:grid;grid-template-columns:1.15fr .85fr;gap:44px;padding:42px 46px 46px}.eyebrow{text-transform:uppercase;color:#9fc4c3;letter-spacing:.17em;font-size:11px;font-weight:650}h1{font-family:Georgia,serif;font-weight:400;font-size:clamp(36px,5vw,54px);line-height:1.05;letter-spacing:-.03em;margin:13px 0 15px}.intro{color:#b2bec7;line-height:1.65;max-width:430px;font-size:15px}.actions{display:flex;flex-wrap:wrap;gap:11px;margin-top:28px}.button{border:0;border-radius:13px;padding:13px 17px;font-size:14px;font-weight:650;cursor:pointer;text-decoration:none;display:inline-flex;align-items:center;justify-content:center;gap:9px}.primary{background:#d1e3df;color:#142329}.secondary{color:#dce6e9;background:#ffffff0e;border:1px solid #ffffff18}.button:focus-visible{outline:3px solid #88c4c8;outline-offset:3px}.hint{font-size:12px;color:#8998a5;line-height:1.55;margin-top:19px}
+      aside{border:1px solid #ffffff15;border-radius:20px;background:#0b1520aa;padding:22px;text-align:center}.qr{width:min(100%,240px);aspect-ratio:1;background:#fff;border-radius:17px;padding:12px;margin:0 auto 16px;display:grid;place-items:center;min-height:0;overflow:hidden}.qr canvas{display:block;max-width:100%;max-height:100%;width:100%!important;height:auto!important;aspect-ratio:1;object-fit:contain}.qr-placeholder{color:#51616b;font-size:13px}.scan{font-size:14px;font-weight:650}.address{color:#9fb4bc;overflow-wrap:anywhere;font-size:12px;margin-top:7px}.network-note{font-size:11px;color:#778893;line-height:1.5;margin-top:14px}.footer{border-top:1px solid #ffffff12;padding:16px 34px;display:flex;align-items:center;justify-content:space-between;color:#71818d;font-size:11px}.status{display:inline-flex;align-items:center;gap:8px}.dot{width:7px;height:7px;background:#6ad4a5;border-radius:50%;box-shadow:0 0 12px #6ad4a588}.stop{border:0;background:none;color:#8798a4;text-decoration:underline;text-underline-offset:3px;cursor:pointer;font:inherit}.stop:hover{color:#f2f3f4}
+      @media(max-width:760px){body{padding:12px}main{border-radius:22px}header{padding:20px 22px}section{grid-template-columns:1fr;gap:26px;padding:28px 22px 25px}.intro{max-width:none}.qr{width:min(68vw,220px)}.footer{padding:14px 20px}}@media(max-width:380px){.actions{display:grid}.button{width:100%}.footer{align-items:flex-start;gap:12px;flex-direction:column}}
+    </style>
+  </head>
+  <body>
+    <main>
+      <header><span class="mark">N</span><strong>MP NEXUS<small>Plan 3D · démonstration locale</small></strong></header>
+      <section>
+        <div><div class="eyebrow">Votre espace, en un regard</div><h1>Le plan est prêt.</h1><p class="intro">Explorez la maison de démonstration sur cet ordinateur ou ouvrez-la sur un téléphone ou une tablette connectés au même réseau Wi-Fi.</p><div class="actions"><a class="button primary" href="/?spatial&floors&laundry">Ouvrir le plan 3D <span aria-hidden="true">↗</span></a><button class="button secondary stop" id="stop">Arrêter le serveur</button></div><p class="hint" id="hint">Le serveur reste actif jusqu’à ce que vous l’arrêtiez ici.</p></div>
+        <aside><div class="qr" id="qr"><span class="qr-placeholder">Préparation du QR code…</span></div><div class="scan">Scannez avec l’appareil photo</div><div class="address" id="address">Recherche du réseau local…</div><p class="network-note">Les appareils doivent être connectés au même réseau Wi-Fi. Cette démonstration reste sur votre réseau local.</p></aside>
+      </section>
+      <div class="footer"><span class="status"><span class="dot"></span><span id="status">Serveur actif</span></span><span>MP Nexus · accès local uniquement</span></div>
+    </main>
+    <script type="module" src="./launcher.ts"></script>
+  </body>
+</html>

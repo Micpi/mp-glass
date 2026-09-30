@@ -21,7 +21,7 @@ Cette image montre une fixture de développement, pas une maison cliente. [Résu
 
 ## Installer et créer un premier dashboard
 
-**Avec HACS (recommandé, mises à jour depuis l’interface) :** HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/Micpi/mp-glass`, type **Intégration** → Ajouter. Rechercher **MP Nexus**, **Télécharger**, puis redémarrer Home Assistant et ajouter l’intégration MP Nexus. En ouvrant **MP Nexus Studio**, le dashboard **MP Nexus** est créé dans la barre latérale. Les versions suivantes apparaissent ensuite dans **Paramètres → Mises à jour**.
+**Avec HACS (quand le dépôt est public) :** HACS → menu ⋮ → **Dépôts personnalisés** → `https://github.com/Micpi/mp-glass`, type **Intégration** → Ajouter. Rechercher **MP Nexus**, **Télécharger**, puis redémarrer Home Assistant et ajouter l’intégration MP Nexus. En ouvrant **MP Nexus Studio**, le dashboard **MP Nexus** est créé dans la barre latérale. Les versions suivantes apparaissent ensuite dans **Paramètres → Mises à jour**. Le dépôt étant privé actuellement, suivez l’[installation manuelle](docs/INSTALL.md).
 
 Voir [INSTALL](docs/INSTALL.md) et [QUICKSTART](docs/QUICKSTART.md). Minimum cible HA 2026.6 ; instance de développement épinglée sur 2026.9.1. Il ne s'agit pas encore d'une compatibilité certifiée.
 
@@ -39,11 +39,11 @@ npm run test:e2e
 
 `npm run dev` ouvre une fixture locale : `/?laundry` montre la carte buanderie, et `/?spatial&floors&laundry` ouvre le plan 3D avec les lave-linge fictifs. Sur ce dernier, choisissez « Sous-sol », puis l’ambiance « Buanderie ». Pour un vrai serveur HA isolé : `pwsh -File scripts/dev-ha.ps1` avec Docker Engine actif. Ne pas confondre ces deux environnements.
 
-### Lanceur Windows du plan 3D
+### Application de démonstration Windows et macOS
 
-Avec Node.js installé, double-cliquez sur `Lancer MP Nexus.exe` à la racine de ce projet. Le lanceur installe les dépendances si besoin, démarre le serveur local sur le port 5173 et ouvre automatiquement `http://localhost:5173/?spatial&floors&laundry`. Gardez la fenêtre ouverte ; « Ouvrir le plan » revient à cette page et « Arrêter » ferme le serveur. L’exécutable doit rester dans le dossier qui contient `package.json` et `vite.config.ts` ; il ne remplace pas l’installation Home Assistant.
+Téléchargez l’application autonome correspondant à votre ordinateur depuis les fichiers de la [dernière release](https://github.com/Micpi/mp-glass/releases/latest), puis ouvrez-la. Elle ne nécessite ni Node.js ni le dossier du projet. Une page de lancement affiche un QR code : scannez-le avec un téléphone ou une tablette connectés au même Wi-Fi pour ouvrir le plan 3D. Le bouton « Arrêter le serveur » ferme la démonstration.
 
-Pour reconstruire le lanceur sous Windows : `powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-launcher.ps1`.
+Le serveur est accessible uniquement sur le réseau local. Windows peut afficher SmartScreen pour l’application téléchargée et demander d’autoriser les connexions sur le réseau privé. Sur macOS, les premières versions ne sont pas encore signées par Apple : Gatekeeper peut demander une confirmation au premier lancement.
 
 ## Documentation
 

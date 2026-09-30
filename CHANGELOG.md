@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.3 — Application portable et accès mobile par QR code
+
+- Remplace le lanceur Windows dépendant du dossier source et de Node.js par une application autonome qui intègre le serveur .NET, la fixture de démonstration et toutes ses dépendances. Le téléchargement tient dans un seul `.exe` ; aucun compte Home Assistant n’est nécessaire pour voir le plan de démonstration.
+- Ajoute une application `.app` empaquetée pour Mac Apple Silicon et Mac Intel. Les binaires Windows et Mac sont construits automatiquement et joints à chaque nouvelle release.
+- Au lancement, ouvre une page claire avec le plan 3D et un QR code généré localement. Un téléphone ou une tablette sur le même Wi-Fi ouvre directement `/?spatial&floors&laundry`. La page permet aussi d’arrêter le serveur.
+- Le serveur choisit un port libre et n’écoute que sur l’ordinateur et son adresse IPv4 privée ; il ne contacte aucun service externe pour créer le QR.
+- Précise dans les guides d’installation que le dépôt est privé, que HACS ne peut temporairement plus le mettre à jour et comment installer depuis l’archive d’une release.
+- Vérifications : compilation de la fixture, contrôle TypeScript, publication autonome Windows, vérification HTTP de la page d’accueil, des assets, du plan et du QR, contrôle visuel du QR carré, et arrêt authentifié du serveur ; reconstruction du bundle HACS. Les binaires macOS sont empaquetés par le workflow GitHub sur les runners Apple Silicon et Intel ; ils ne sont pas signés/notariés faute de secrets Apple Developer.
+
 ## 0.15.2 — Lanceur Windows du plan 3D local
 
 - Ajoute `Lancer MP Nexus.exe` à la racine du projet : un double-clic démarre la fixture Vite sur le port 5173 et ouvre directement `http://localhost:5173/?spatial&floors&laundry` dans le navigateur par défaut.

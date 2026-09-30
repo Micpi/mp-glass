@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.6 — Publication multi-architecture simplifiée
+
+- Construit le frontend et le serveur .NET sur l’architecture native du runner, puis assemble des images Synology `linux/amd64` et `linux/arm64` à partir des runtimes correspondants. Cela évite d’émuler Node et .NET pour ARM.
+- Publie l’image `latest`, la version de `package.json` et le SHA depuis le seul événement de mise à jour de `main`, évitant un second build lors de la création de la release.
+- Vérifications : à compléter après publication.
+
 ## 0.15.5 — Correctif de construction Docker Synology
 
 - Désactive explicitement la publication en fichier unique pour le conteneur Linux, qui utilise le runtime .NET partagé, tout en conservant les applications desktop autonomes.

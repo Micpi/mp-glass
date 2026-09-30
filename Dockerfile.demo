@@ -1,11 +1,11 @@
-FROM node:24-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:24-alpine AS frontend
 WORKDIR /src
 COPY package.json package-lock.json ./
 RUN npm ci
 COPY . .
 RUN npm run build:demo
 
-FROM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS publish
+FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS publish
 WORKDIR /src
 COPY desktop/MpNexus.Launcher.csproj desktop/Program.cs ./desktop/
 COPY --from=frontend /src/dist-demo ./dist-demo

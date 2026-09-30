@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.4 — Démo Synology avec Docker
+
+- Ajoute une image Docker multi-architecture (`linux/amd64` et `linux/arm64`) pour exécuter le plan 3D de démonstration sur Synology Container Manager, sans Home Assistant ni installation de Node.js sur le NAS.
+- Publie l’image privée `ghcr.io/micpi/mp-glass-demo:latest` à chaque mise à jour de `main`, et une image étiquetée à chaque release.
+- Ajoute des fichiers Compose Synology et Cloudflare Tunnel, plus un guide d’installation et d’accès distant. Le tunnel permet d’utiliser un nom de domaine sans redirection de port entrante ; une politique Cloudflare Access peut demander une connexion.
+- Le QR code reprend l’hôte et le protocole d’origine transmis par un proxy. La page serveur indique l’adresse utilisée et ne propose pas l’arrêt du conteneur.
+- Passe le lanceur de .NET 8 à .NET 10 LTS pour s’aligner sur la version prise en charge jusqu’en novembre 2028.
+- Vérifications : `npm run build`, `npm run build:demo`, publication locale du serveur .NET 8 avant le passage ciblé à .NET 10, validation des deux fichiers Compose et `git diff --check`. La compilation locale .NET 10 et la construction Docker restent à confirmer : le SDK .NET 10 n’est pas installé et le moteur Docker Desktop n’était pas démarré. Les workflows GitHub construiront les applications et les images après publication.
+
 ## 0.15.3 — Application portable et accès mobile par QR code
 
 - Remplace le lanceur Windows dépendant du dossier source et de Node.js par une application autonome qui intègre le serveur .NET, la fixture de démonstration et toutes ses dépendances. Le téléchargement tient dans un seul `.exe` ; aucun compte Home Assistant n’est nécessaire pour voir le plan de démonstration.

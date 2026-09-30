@@ -1,0 +1,14 @@
+.git
+.github
+.dev-ha
+.venv*
+.env*
+node_modules
+dist
+dist-demo
+desktop/bin
+desktop/obj
+desktop/publish
+custom_components/mp_glass/www
+*.exe
+*.log

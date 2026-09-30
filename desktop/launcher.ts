@@ -6,12 +6,19 @@ const status = document.querySelector<HTMLElement>('#status')!;
 const stop = document.querySelector<HTMLButtonElement>('#stop')!;
 const hint = document.querySelector<HTMLElement>('#hint')!;
 
-interface LauncherInfo { mobileUrl: string; localUrl: string; stopToken: string; mobileAvailable: boolean; }
+interface LauncherInfo { mobileUrl: string; localUrl: string; stopToken?: string | null; mobileAvailable: boolean; canStop: boolean; }
 
 try {
   const response = await fetch('/__mpnexus/config.json', { cache: 'no-store' });
   if (!response.ok) throw new Error('Configuration réseau indisponible.');
   const info: LauncherInfo = await response.json();
+  stop.hidden = !info.canStop;
+  if (!info.canStop) {
+    hint.textContent = 'Le serveur reste actif en permanence sur le NAS.';
+    document.querySelector('.intro')!.textContent = 'Ouvrez la démonstration sur cet ordinateur ou scannez le QR code avec un téléphone ou une tablette.';
+    document.querySelector('.network-note')!.textContent = 'Le QR code reprend cette adresse. Elle fonctionne sur votre réseau ou à distance si un accès distant est configuré.';
+    document.querySelector('header small')!.textContent = 'Plan 3D · serveur Synology';
+  }
   if (info.mobileAvailable) {
     address.textContent = info.mobileUrl;
     const canvas = document.createElement('canvas');
@@ -23,6 +30,7 @@ try {
     qr.classList.add('qr-placeholder');
   }
   stop.addEventListener('click', async () => {
+    if (!info.stopToken) return;
     stop.disabled = true;
     status.textContent = 'Arrêt en cours…';
     try {

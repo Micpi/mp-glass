@@ -6,7 +6,9 @@ using System.Runtime.InteropServices;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.StaticFiles;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 
 namespace MpNexus.Launcher;
@@ -22,27 +24,46 @@ internal static class Program
     {
         try
         {
-            var port = FindPort();
+            var containerMode = Environment.GetEnvironmentVariable("MP_NEXUS_CONTAINER") == "1";
+            var port = containerMode && int.TryParse(Environment.GetEnvironmentVariable("MP_NEXUS_PORT"), out var configuredPort)
+                ? configuredPort
+                : containerMode ? 8080 : FindPort();
             var token = Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24));
-            var lanIp = GetLanAddress();
-            var mobileUrl = lanIp is null
-                ? $"http://<adresse-de-cet-ordinateur>:{port}/?spatial&floors&laundry"
-                : $"http://{lanIp}:{port}/?spatial&floors&laundry";
+            var lanIp = containerMode ? null : GetLanAddress();
+            var publicUrl = Environment.GetEnvironmentVariable("MP_NEXUS_PUBLIC_URL")?.TrimEnd('/');
 
             var builder = WebApplication.CreateBuilder();
             builder.WebHost.ConfigureKestrel(server =>
             {
-                server.ListenLocalhost(port);
-                if (lanIp is not null) server.Listen(lanIp, port);
+                if (containerMode) server.ListenAnyIP(port);
+                else
+                {
+                    server.ListenLocalhost(port);
+                    if (lanIp is not null) server.Listen(lanIp, port);
+                }
             });
+            if (containerMode)
+                builder.Services.Configure<ForwardedHeadersOptions>(options =>
+                {
+                    options.ForwardedHeaders = ForwardedHeaders.XForwardedHost | ForwardedHeaders.XForwardedProto;
+                    options.KnownNetworks.Clear();
+                    options.KnownProxies.Clear();
+                });
             var app = builder.Build();
+            if (containerMode) app.UseForwardedHeaders();
             var resources = LoadDemoResources();
             var mime = new FileExtensionContentTypeProvider();
             var localUrl = $"http://127.0.0.1:{port}/__mpnexus/";
             var lifetime = app.Lifetime;
 
             app.MapGet("/__mpnexus/", async context => await WriteResource(context, "desktop/launcher.html", resources, mime));
-            app.MapGet("/__mpnexus/config.json", () => Results.Json(new { localUrl, mobileUrl, stopToken = token, mobileAvailable = lanIp is not null }));
+            app.MapGet("/__mpnexus/config.json", (HttpContext context) =>
+            {
+                var origin = publicUrl ?? $"{context.Request.Scheme}://{context.Request.Host}";
+                var mobileUrl = $"{origin}/?spatial&floors&laundry";
+                var launcherUrl = containerMode ? $"{origin}/__mpnexus/" : localUrl;
+                return Results.Json(new { localUrl = launcherUrl, mobileUrl, stopToken = containerMode ? null : token, mobileAvailable = containerMode || lanIp is not null, canStop = !containerMode });
+            });
             app.MapPost("/__mpnexus/stop", async context =>
             {
                 var supplied = context.Request.Headers["X-MP-Nexus-Token"].ToString();

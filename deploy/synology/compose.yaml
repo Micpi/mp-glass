@@ -1,0 +1,14 @@
+services:
+  mp-nexus:
+    image: ghcr.io/micpi/mp-glass-demo:latest
+    container_name: mp-nexus-demo
+    restart: unless-stopped
+    ports:
+      - "8080:8080"
+    environment:
+      MP_NEXUS_CONTAINER: "1"
+      MP_NEXUS_PORT: "8080"
+      MP_NEXUS_LAUNCHER_NO_BROWSER: "1"
+      # Fill this only if you want the QR code to use one fixed remote address.
+      # MP_NEXUS_PUBLIC_URL: https://demo.example.com
+

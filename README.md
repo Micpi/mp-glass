@@ -45,6 +45,10 @@ Téléchargez l’application autonome correspondant à votre ordinateur depuis 
 
 Le serveur est accessible uniquement sur le réseau local. Windows peut afficher SmartScreen pour l’application téléchargée et demander d’autoriser les connexions sur le réseau privé. Sur macOS, les premières versions ne sont pas encore signées par Apple : Gatekeeper peut demander une confirmation au premier lancement.
 
+### Démo permanente sur Synology
+
+MP Nexus peut aussi tourner en continu sur un NAS Synology avec Container Manager. L’image Docker `linux/amd64` et `linux/arm64` est publiée dans GHCR ; le guide explique l’installation, les mises à jour nocturnes et l’accès distant avec un nom de domaine via Cloudflare Tunnel : [Déployer la démo sur Synology](docs/SYNOLOGY.md).
+
 ## Documentation
 
 [Architecture](ARCHITECTURE.md) · [Home Graph](DATA_MODEL.md) · [Capabilities](CAPABILITY_MODEL.md) · [Projet](PROJECT_CONFIG.md) · [Roadmap](ROADMAP.md) · [ADR](docs/adr/) · [Cards](docs/CARDS.md) · [Découverte](docs/DISCOVERY.md) · [Intégrateur](docs/INTEGRATOR.md) · [Sécurité](docs/SECURITY.md) · [Développement](docs/DEVELOPMENT.md).

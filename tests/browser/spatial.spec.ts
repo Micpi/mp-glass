@@ -130,6 +130,31 @@ test('3D rotates, zooms, pans, resets and controls a bound light',async({page})=
   expect(errors).toEqual([]);
 });
 
+test('le scénario yacht présente une coque et deux ponts aux noms nautiques',async({page})=>{
+  const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
+  await page.setViewportSize({width:1440,height:1050});
+  await page.goto('/?spatial&scenario=yacht');
+  const viewer=page.locator('mp-spatial-viewer');
+  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont principal',exact:true}).click();
+  await expect(viewer.locator('.chip').filter({hasText:'Timonerie'})).toBeVisible();
+  await expect(viewer.locator('.chip').filter({hasText:'Office'})).toBeVisible();
+  await expect(viewer.locator('.chip').filter({hasText:'Cockpit'})).toBeVisible();
+  await viewer.locator('.chip').filter({hasText:'Cockpit'}).click();
+  await expect(viewer.getByRole('region',{name:'Cockpit'})).toBeVisible();
+  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont principal',exact:true}).click();
+  await page.screenshot({path:'artifacts/spatial-yacht-main.png'});
+  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont inférieur'}).click();
+  await expect(viewer.locator('.chip').filter({hasText:'Compartiment moteur'})).toBeVisible();
+  await expect(viewer.locator('.chip').filter({hasText:'Local technique & lingerie'})).toBeVisible();
+  await page.screenshot({path:'artifacts/spatial-yacht-lower-deck.png'});
+  await page.goto('/?spatial&scenario=office');
+  const office=page.locator('mp-spatial-viewer');
+  await expect(page.getByRole('button',{name:/Replier la pièce Boutique/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Replier la pièce Accueil principal/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Replier la pièce Bureau de direction/})).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
 test('holding Recentrer saves the view after a confirmation, and the plan opens on it',async({page})=>{
   await page.setViewportSize({width:1440,height:1050});await page.goto('/?spatial');
   const viewer=page.locator('mp-spatial-viewer');await expect(viewer.locator('[data-room="living"]')).toBeVisible();

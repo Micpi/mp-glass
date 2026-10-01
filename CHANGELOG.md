@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.12 — Plans de démonstration professionnels
+
+- Donne au yacht une silhouette de coque reconnaissable sur le pont principal et le pont inférieur, avec une étrave resserrée et des formes de poupe arrondies.
+- Organise le yacht en espaces nautiques : timonerie, office, carré, cockpit, cabines bâbord et tribord, coursive, salle d’eau, compartiment moteur et lingerie technique.
+- Replace le lave-linge et le sèche-linge superposé dans le local technique du pont inférieur ; chaque cabine dispose de ses propres équipements de démonstration.
+- Harmonise les noms des pièces et équipements nautiques et ajoute un test navigateur du parcours sur les deux ponts ainsi que des tests de géométrie du plan.
+- Vérifications : tests TypeScript et navigateur des plans, construction du bundle de démo et construction HACS.
+
 ## 0.15.11 — Connexion au portail de démonstration réparée
 
 - Corrige le retour silencieux au formulaire après une connexion réussie : le bouton de déconnexion était recherché dans le contenu principal alors qu’il se trouve dans l’en-tête. L’erreur JavaScript empêchait l’affichage des trois univers et de l’administration.

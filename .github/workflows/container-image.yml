@@ -37,6 +37,7 @@ jobs:
         with:
           context: .
           file: Dockerfile.demo
+          build-args: MP_NEXUS_VERSION=${{ steps.version.outputs.value }}
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}

@@ -7,15 +7,16 @@ RUN npm run build:demo
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0-alpine AS publish
 WORKDIR /src
-COPY desktop/MpNexus.Launcher.csproj desktop/Program.cs ./desktop/
+COPY desktop/MpNexus.Launcher.csproj desktop/Program.cs desktop/PortalStore.cs desktop/PortalEndpoints.cs ./desktop/
 COPY --from=frontend /src/dist-demo ./dist-demo
 RUN dotnet publish desktop/MpNexus.Launcher.csproj -c Release --self-contained false -p:PublishSingleFile=false -p:UseAppHost=false -o /out
 
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
+ARG MP_NEXUS_VERSION=dev
 LABEL org.opencontainers.image.source="https://github.com/Micpi/mp-glass" \
       org.opencontainers.image.description="MP Nexus 3D demo for Synology Container Manager"
 WORKDIR /app
 COPY --from=publish /out ./
-ENV MP_NEXUS_CONTAINER=1 MP_NEXUS_PORT=8080 MP_NEXUS_LAUNCHER_NO_BROWSER=1 ASPNETCORE_ENVIRONMENT=Production
+ENV MP_NEXUS_CONTAINER=1 MP_NEXUS_PORT=8080 MP_NEXUS_LAUNCHER_NO_BROWSER=1 MP_NEXUS_VERSION=$MP_NEXUS_VERSION ASPNETCORE_ENVIRONMENT=Production
 EXPOSE 8080
 ENTRYPOINT ["dotnet", "MpNexus.Launcher.dll"]

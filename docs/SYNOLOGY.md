@@ -6,13 +6,16 @@ Ce projet installe uniquement la démonstration du plan 3D. Il ne se connecte pa
 
 1. Dans Container Manager, ajoutez `ghcr.io` comme registre et connectez-vous avec votre compte GitHub et un jeton personnel classique limité à `read:packages`. Le dépôt étant privé, l’image GHCR est privée elle aussi.
 2. Créez un projet Container Manager nommé `mp-nexus` et choisissez le fichier `deploy/synology/compose.yaml` de ce dépôt (ou collez son contenu dans l’éditeur du projet).
-3. Déployez le projet. Ouvrez `http://ADRESSE-IP-DU-SYNOLOGY:8080/__mpnexus/` sur votre réseau. Le QR code ouvre la démonstration du plan 3D sur un téléphone ou une tablette.
+3. Avant le premier déploiement, définissez `MP_NEXUS_ADMIN_PASSWORD` avec au moins 12 caractères dans les variables du projet Container Manager. Le compte administrateur initial s’appelle `admin` (modifiable avec `MP_NEXUS_ADMIN_USERNAME`). Déployez le projet puis ouvrez `http://ADRESSE-IP-DU-SYNOLOGY:8080/__mpnexus/login`. Après la création du compte, vous pouvez retirer le mot de passe initial des variables : les comptes restent dans le volume `mp-nexus-data`.
+4. Dans **Administration → Comptes utilisateurs**, créez un compte par personne. Le mot de passe provisoire devra être remplacé à la première connexion. Le lien **Ouvrir le plan** lance la démo.
+
+Chaque compte permet de suivre les connexions, ouvertures du plan et une durée de session approximative. Ces statistiques sont conservées 180 jours. Le portail ne stocke pas les adresses IP ni la localisation. Les mots de passe sont hachés ; les comptes et les clés de session restent dans le volume persistant.
 
 Les images `linux/amd64` et `linux/arm64` sont publiées pour les Synology Intel/AMD et ARM compatibles avec Container Manager. L’application redémarre automatiquement si le NAS redémarre.
 
 ## Garder la démo à jour
 
-GitHub publie `:latest` à chaque mise à jour de `main` et une image versionnée à chaque release. Pour appliquer immédiatement une version dans Container Manager, mettez à jour l’image du projet puis recréez le conteneur.
+GitHub publie `:latest` à chaque mise à jour de `main` et une image versionnée à chaque release. Pour appliquer une version dans Container Manager, ouvrez le projet MP Nexus, téléchargez l’image la plus récente, puis recréez le conteneur. Le portail affiche la version installée et rappelle cette procédure. Il ne reçoit aucun accès au moteur Docker du NAS. Le volume `mp-nexus-data` conserve les comptes pendant la mise à jour.
 
 Pour que le NAS vérifie et applique automatiquement la version chaque nuit, créez dans **Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l’utilisateur** une tâche exécutée quotidiennement, avec les droits permettant d’utiliser Docker. Enregistrez le fichier Compose principal dans le dossier de projet `/volume1/docker/mp-nexus`, puis utilisez ce script :
 

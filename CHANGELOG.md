@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.15.7 — Comptes utilisateurs et espace administrateur Synology
+
+- Ajoute un portail de connexion pour la démo Synology avec rôles administrateur/utilisateur, comptes individuels, mots de passe temporaires à renouveler, révocation des sessions et gestion des comptes depuis l’administration.
+- Ajoute des statistiques par compte : connexions, ouvertures du plan, activité sur 14 jours et durée approximative sur 30 jours. Les statistiques expirent après 180 jours ; aucune IP ou localisation n’est enregistrée.
+- Protège les pages et fichiers de la démo par authentification, ajoute une barre discrète de session dans le plan et fournit un QR code utilisable sur téléphone et tablette.
+- Persiste les comptes et les clés de session dans un volume Compose. L’admin affiche la version installée et les étapes de mise à jour dans Synology Container Manager, sans accès Docker depuis l’application.
+- Publie la version dans l’image GHCR via un argument de build et documente la création du premier admin et les comptes utilisateurs.
+- Vérifications : `npm run build`, `npm run build:demo`, compilation .NET et validation Compose à consigner après exécution.
+
 ## 0.15.6 — Publication multi-architecture simplifiée
 
 - Construit le frontend et le serveur .NET sur l’architecture native du runner, puis assemble des images Synology `linux/amd64` et `linux/arm64` à partir des runtimes correspondants. Cela évite d’émuler Node et .NET pour ARM.

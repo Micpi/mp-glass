@@ -11,7 +11,7 @@ export default defineConfig({
     outDir: 'dist-demo',
     emptyOutDir: true,
     rollupOptions: {
-      input: { index: 'index.html', launcher: 'desktop/launcher.html' },
+      input: { index: 'index.html', launcher: 'desktop/launcher.html', access: 'desktop/access.html' },
     },
   },
 });

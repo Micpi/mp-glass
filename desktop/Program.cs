@@ -49,14 +49,26 @@ internal static class Program
                     options.KnownIPNetworks.Clear();
                     options.KnownProxies.Clear();
                 });
-            var app = builder.Build();
-            if (containerMode) app.UseForwardedHeaders();
             var resources = LoadDemoResources();
             var mime = new FileExtensionContentTypeProvider();
+            var dataDirectory = Environment.GetEnvironmentVariable("MP_NEXUS_DATA") ?? "/data";
+            PortalStore? portalStore = null;
+            if (containerMode)
+            {
+                portalStore = new PortalStore(dataDirectory);
+                await portalStore.InitializeAsync(
+                    Environment.GetEnvironmentVariable("MP_NEXUS_ADMIN_USERNAME") ?? "admin",
+                    Environment.GetEnvironmentVariable("MP_NEXUS_ADMIN_PASSWORD"));
+                PortalEndpoints.AddServices(builder, portalStore, dataDirectory);
+            }
+            var app = builder.Build();
+            if (containerMode) app.UseForwardedHeaders();
+            if (containerMode) PortalEndpoints.UseAccessGate(app, portalStore!);
+            if (containerMode) PortalEndpoints.Map(app, resources, mime, portalStore!, Environment.GetEnvironmentVariable("MP_NEXUS_VERSION") ?? "local");
             var localUrl = $"http://127.0.0.1:{port}/__mpnexus/";
             var lifetime = app.Lifetime;
 
-            app.MapGet("/__mpnexus/", async context => await WriteResource(context, "desktop/launcher.html", resources, mime));
+            if (!containerMode) app.MapGet("/__mpnexus/", async context => await WriteResource(context, "desktop/launcher.html", resources, mime));
             app.MapGet("/__mpnexus/config.json", (HttpContext context) =>
             {
                 var origin = publicUrl ?? $"{context.Request.Scheme}://{context.Request.Host}";
@@ -121,7 +133,7 @@ internal static class Program
         return resources;
     }
 
-    private static async Task WriteResource(HttpContext context, string path, IReadOnlyDictionary<string, byte[]> resources, FileExtensionContentTypeProvider mime)
+    internal static async Task WriteResource(HttpContext context, string path, IReadOnlyDictionary<string, byte[]> resources, FileExtensionContentTypeProvider mime)
     {
         if (!resources.TryGetValue(path, out var content))
         {

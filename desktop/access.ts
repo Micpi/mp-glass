@@ -13,11 +13,14 @@ let user:User|null=null;
 let version='';
 
 const esc=(s:string)=>s.replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]!));
-async function token(){const r=await fetch('/__mpnexus/api/csrf');csrf=(await r.json()).token as string}
+class ApiError extends Error {
+  constructor(message:string, readonly status:number){super(message)}
+}
+async function token(){csrf=(await api<{token:string}>('/__mpnexus/api/csrf')).token}
 async function api<T=any>(path:string,method='GET',body?:unknown):Promise<T>{
   const r=await fetch(path,{method,headers:{...(body?{'Content-Type':'application/json'}:{}),...(method!=='GET'?{'X-MP-Nexus-CSRF':csrf}:{})},body:body?JSON.stringify(body):undefined});
   const data=await r.json().catch(()=>({}));
-  if(!r.ok)throw Error(data.error||`Erreur ${r.status}`);
+  if(!r.ok)throw new ApiError(data.error||`Erreur ${r.status}`,r.status);
   return data as T;
 }
 function msg(text:string){const el=app.querySelector<HTMLElement>('.message');if(el)el.textContent=text}
@@ -36,7 +39,7 @@ function shell(title:string,desc:string,content:string){
   const adminNav=user?.role==='admin'?`<a class="button alt small" href="/__mpnexus/admin">Vue d’ensemble</a><a class="button alt small" href="/__mpnexus/admin/users">Utilisateurs</a>`:'';
   header.innerHTML=`<div class="userbar">${adminNav}<span class="who">${esc(user?.username||'')}</span><button class="button alt small" id="logout">Quitter</button></div>`;
   app.innerHTML=`<div class="eyebrow">${user?.role==='admin'?'Espace administrateur':'Espace utilisateur'}</div><h1>${title}</h1><p class="lead">${desc}</p>${content}`;
-  app.querySelector<HTMLButtonElement>('#logout')!.onclick=async()=>{await api('/__mpnexus/api/logout','POST',{});location.assign('/__mpnexus/login')};
+  header.querySelector<HTMLButtonElement>('#logout')!.onclick=async()=>{await api('/__mpnexus/api/logout','POST',{});location.assign('/__mpnexus/login')};
 }
 
 function accountPage(){
@@ -83,7 +86,19 @@ async function load(){
     if(new URLSearchParams(location.search).has('changePassword')&&!user.mustChangePassword)history.replaceState({},'', '/__mpnexus/');
     if(user.role==='admin'&&location.pathname.startsWith('/__mpnexus/admin'))await adminPage();
     else accountPage();
-  }catch{login()}
+  }catch(error){
+    if(error instanceof ApiError&&error.status===401)login();
+    else loadError(error);
+  }
 }
-await token();
-await load();
+function loadError(error:unknown){
+  console.error('MP Nexus : chargement du portail impossible',error);
+  header.textContent='';
+  app.innerHTML='<section class="panel" role="alert"><h1>Impossible de charger votre espace</h1><p>Une erreur est survenue. Réessayez dans quelques instants.</p><button class="button" id="retry">Réessayer</button></section>';
+  app.querySelector<HTMLButtonElement>('#retry')!.onclick=()=>{void start()};
+}
+async function start(){
+  try{await token();await load()}
+  catch(error){loadError(error)}
+}
+await start();

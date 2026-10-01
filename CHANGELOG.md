@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.11 — Connexion au portail de démonstration réparée
+
+- Corrige le retour silencieux au formulaire après une connexion réussie : le bouton de déconnexion était recherché dans le contenu principal alors qu’il se trouve dans l’en-tête. L’erreur JavaScript empêchait l’affichage des trois univers et de l’administration.
+- Seule une session absente ou expirée réaffiche désormais la connexion. Les autres erreurs de chargement affichent un message et un bouton Réessayer, au lieu de masquer la panne.
+- Ajoute trois tests navigateur couvrant connexion et choix des univers puis déconnexion, accès administrateur à la gestion des utilisateurs, et erreur du serveur. Ces trois tests reproduisent les échecs avant correction et passent après correction.
+
 ## 0.15.10 — Mise à jour Synology fiable et diagnostic du service
 
 - Fixe explicitement le nom du projet Compose `mp-nexus-demo` et laisse Compose générer le nom du conteneur, afin que Container Manager suive un conteneur stable au lieu d’une ancienne référence incohérente.

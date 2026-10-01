@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.9 — Afficher le choix des démos après connexion
+
+- Une ouverture directe de l’adresse du plan redirige désormais vers le portail après connexion, afin que l’utilisateur choisisse d’abord Résidentiel, Bureau / magasin ou Yacht.
+- Les liens directs vers les pages d’administration restent préservés pour les administrateurs.
+- Vérifications : build HACS, build démo, vérification TypeScript, compilation .NET et configuration Compose.
+
 ## 0.15.8 — Trois univers pour la démo Synology
 
 - Après connexion, chaque utilisateur choisit une démo **Résidentiel**, **Bureau / magasin** ou **Yacht**. Chaque choix ouvre un plan 3D adapté, avec des états fictifs interactifs.

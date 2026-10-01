@@ -230,8 +230,19 @@ internal static class PortalEndpoints
         catch (AntiforgeryValidationException) { return false; }
     }
 
-    private static string SafeReturnUrl(string? value) =>
-        !string.IsNullOrWhiteSpace(value) && value.StartsWith('/') && !value.StartsWith("//") && !value.StartsWith("/\\") ? value : "/__mpnexus/";
+    private static string SafeReturnUrl(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value) || !value.StartsWith('/') || value.StartsWith("//") || value.StartsWith("/\\"))
+            return "/__mpnexus/";
+
+        // A visitor who opens the demo URL directly must choose an environment after signing in.
+        // Preserve a direct admin deep link, but send demo routes and other paths to the portal first.
+        var path = value.Split('?', '#')[0];
+        return path.Equals("/__mpnexus/admin", StringComparison.OrdinalIgnoreCase)
+            || path.StartsWith("/__mpnexus/admin/", StringComparison.OrdinalIgnoreCase)
+            ? value
+            : "/__mpnexus/";
+    }
 
     private sealed record LoginRequest(string? Username, string? Password, string? ReturnUrl);
     private sealed record PasswordRequest(string? CurrentPassword, string? TemporaryPassword, string? NewPassword);

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.8 — Trois univers pour la démo Synology
+
+- Après connexion, chaque utilisateur choisit une démo **Résidentiel**, **Bureau / magasin** ou **Yacht**. Chaque choix ouvre un plan 3D adapté, avec des états fictifs interactifs.
+- Les trois scénarios montrent toutes les catégories : éclairages, ouvrants et stores, chauffage/climatisation, température et humidité, médias, capteurs de présence et buanderie avec lave-linge et sèche-linge. Le yacht présente deux ponts et des machines superposées ; le scénario professionnel sépare boutique, accueil, lingerie et bureaux.
+- Le menu administrateur mène directement à **Utilisateurs**. Cette page explique la création d’un compte individuel, le rôle, le mot de passe provisoire et le changement obligatoire à la première connexion. Le guide Synology reprend les étapes.
+- Vérifications : build démo, vérification TypeScript, build HACS, compilation .NET et configuration Compose.
+
 ## 0.15.7 — Comptes utilisateurs et espace administrateur Synology
 
 - Ajoute un portail de connexion pour la démo Synology avec rôles administrateur/utilisateur, comptes individuels, mots de passe temporaires à renouveler, révocation des sessions et gestion des comptes depuis l’administration.

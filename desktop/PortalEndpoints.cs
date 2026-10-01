@@ -123,6 +123,7 @@ internal static class PortalEndpoints
         app.MapGet("/__mpnexus/login", async context => await Program.WriteResource(context, "desktop/access.html", resources, mime));
         app.MapGet("/__mpnexus/", async context => await Program.WriteResource(context, "desktop/access.html", resources, mime)).RequireAuthorization();
         app.MapGet("/__mpnexus/admin", async context => await Program.WriteResource(context, "desktop/access.html", resources, mime)).RequireAuthorization("MPNexusAdmin");
+        app.MapGet("/__mpnexus/admin/users", async context => await Program.WriteResource(context, "desktop/access.html", resources, mime)).RequireAuthorization("MPNexusAdmin");
 
         app.MapGet("/__mpnexus/api/csrf", (HttpContext context, IAntiforgery antiforgery) =>
         {

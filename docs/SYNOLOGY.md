@@ -5,8 +5,8 @@ Ce projet installe uniquement la démonstration du plan 3D. Il ne se connecte pa
 ## Installation
 
 1. Dans Container Manager, ajoutez `ghcr.io` comme registre et connectez-vous avec votre compte GitHub et un jeton personnel classique limité à `read:packages`. Le dépôt étant privé, l’image GHCR est privée elle aussi.
-2. Créez un projet Container Manager nommé `mp-nexus` et choisissez le fichier `deploy/synology/compose.yaml` de ce dépôt (ou collez son contenu dans l’éditeur du projet).
-3. Avant le premier déploiement, définissez `MP_NEXUS_ADMIN_PASSWORD` avec au moins 12 caractères dans les variables du projet Container Manager. Le compte administrateur initial s’appelle `admin` (modifiable avec `MP_NEXUS_ADMIN_USERNAME`). Déployez le projet puis ouvrez `http://ADRESSE-IP-DU-SYNOLOGY:8080/__mpnexus/login`. Après la création du compte, vous pouvez retirer le mot de passe initial des variables : les comptes restent dans le volume `mp-nexus-data`.
+2. Créez un projet Container Manager nommé `mp-nexus-demo` et choisissez le fichier `deploy/synology/compose.yaml` de ce dépôt (ou collez son contenu dans l’éditeur du projet). Le projet fixe lui-même son nom Compose et laisse Compose générer le nom du conteneur ; cela évite les noms de conteneur imposés qui ont provoqué des entrées DSM incohérentes.
+3. Avant le premier déploiement, définissez `MP_NEXUS_ADMIN_PASSWORD` avec au moins 12 caractères dans les variables du projet Container Manager. Le compte administrateur initial s’appelle `admin` (modifiable avec `MP_NEXUS_ADMIN_USERNAME`). Déployez le projet puis ouvrez `http://ADRESSE-IP-DU-SYNOLOGY:8080/__mpnexus/login`. Après la création du compte, vous pouvez retirer le mot de passe initial des variables : les comptes restent dans le volume `mp-nexus-demo-data`.
 4. Connectez-vous avec `admin` et le mot de passe choisi. Dans le menu en haut, ouvrez **Utilisateurs** puis **Créer un utilisateur**. Renseignez un nom, un mot de passe provisoire d’au moins 12 caractères et le rôle **Utilisateur**. Transmettez ces identifiants à la personne ; elle devra choisir son propre mot de passe à la première connexion. La page **Utilisateurs** permet aussi de changer un rôle, réinitialiser un mot de passe ou supprimer un compte.
 
 Après connexion, chacun choisit l’une des trois démos : **Résidentiel**, **Bureau / magasin** ou **Yacht**. Elles présentent toutes les catégories d’équipements dans un plan 3D fictif : éclairages, ouvrants, climatisation/chauffage, température et humidité, médias, présence et buanderie. Le choix ouvre directement le plan correspondant ; revenir à l’accueil permet d’en sélectionner un autre.
@@ -17,19 +17,19 @@ Les images `linux/amd64` et `linux/arm64` sont publiées pour les Synology Intel
 
 ## Garder la démo à jour
 
-GitHub publie `:latest` à chaque mise à jour de `main` et une image versionnée à chaque release. Pour appliquer une version dans Container Manager, ouvrez le projet MP Nexus, téléchargez l’image la plus récente, puis recréez le conteneur. Le portail affiche la version installée et rappelle cette procédure. Il ne reçoit aucun accès au moteur Docker du NAS. Le volume `mp-nexus-data` conserve les comptes pendant la mise à jour.
+GitHub publie `:latest` à chaque mise à jour de `main` et une image versionnée à chaque release. Une mise à jour demande deux opérations : télécharger l’image, puis recréer le conteneur. Un simple redémarrage ne récupère pas la nouvelle image. Le script `deploy/synology/update.sh` fait les deux opérations, retire les anciens conteneurs orphelins de ce projet, puis affiche l’état du service. Il ne touche pas aux autres projets du NAS. Le volume `mp-nexus-demo-data` conserve les comptes pendant la mise à jour.
 
-Pour que le NAS vérifie et applique automatiquement la version chaque nuit, créez dans **Panneau de configuration → Planificateur de tâches → Créer → Tâche planifiée → Script défini par l’utilisateur** une tâche exécutée quotidiennement, avec les droits permettant d’utiliser Docker. Enregistrez le fichier Compose principal dans le dossier de projet `/volume1/docker/mp-nexus`, puis utilisez ce script :
+Pour l’utiliser, placez `compose.yaml` et `update.sh` dans le dossier du projet sur le NAS, par exemple `/volume1/docker/mp-nexus-demo`. Dans Planificateur de tâches, créez une tâche planifiée de type **Script défini par l’utilisateur**, exécutée avec un compte qui peut utiliser Docker, et mettez comme commande :
 
 ```sh
-cd /volume1/docker/mp-nexus
-docker compose pull
-docker compose up -d
+/bin/sh /volume1/docker/mp-nexus-demo/update.sh
 ```
 
-La première ligne doit désigner le dossier réellement choisi dans Container Manager. Si la connexion GHCR du NAS est conservée, Docker peut réutiliser ses identifiants lors des prochains téléchargements.
+Vous pouvez lancer cette même commande manuellement après chaque publication. Pour automatiser, programmez la tâche une fois par nuit. Le script vérifie la syntaxe Compose avant de télécharger l’image, puis force la recréation pour éviter que DSM conserve un ancien conteneur référencé sous un nom invalide.
 
-Cette mise à jour ne contrôle que le projet MP Nexus ; elle ne redémarre pas les autres conteneurs du NAS.
+Si le projet existe déjà dans Container Manager, remplacez d’abord son YAML par le contenu actuel de `compose.yaml`, en gardant le nom du projet `mp-nexus-demo`. Ensuite, exécutez `update.sh` une première fois. Comme vous n’avez pas de comptes ni de statistiques à préserver, la migration vers le volume persistant est sans risque pour vos données.
+
+Si l’authentification GHCR est enregistrée sur le NAS, Docker réutilise ses identifiants pour les téléchargements ultérieurs.
 
 ## Accès avec une adresse facile à retenir
 

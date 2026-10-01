@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.10 — Mise à jour Synology fiable et diagnostic du service
+
+- Fixe explicitement le nom du projet Compose `mp-nexus-demo` et laisse Compose générer le nom du conteneur, afin que Container Manager suive un conteneur stable au lieu d’une ancienne référence incohérente.
+- Ajoute un contrôle de santé HTTP visible dans Container Manager et un script `deploy/synology/update.sh` qui valide Compose, télécharge l’image, recrée le conteneur, supprime les orphelins de ce projet et affiche son état.
+- Le volume persistant porte désormais le nom fixe `mp-nexus-demo-data`, indépendamment du nom de dossier choisi dans DSM.
+- Remplace dans l’administration la procédure ambiguë « télécharger puis recréer » par le script de mise à jour ; documente l’installation et la planification quotidienne sur Synology.
+- Vérifications : `npm run check`, `npm run build:demo` et validation Compose réussis. Compilation .NET indisponible sur le poste, qui ne dispose que du SDK 9 alors que le lanceur cible .NET 10.
+
 ## 0.15.9 — Afficher le choix des démos après connexion
 
 - Une ouverture directe de l’adresse du plan redirige désormais vers le portail après connexion, afin que l’utilisateur choisisse d’abord Résidentiel, Bureau / magasin ou Yacht.

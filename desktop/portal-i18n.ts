@@ -140,7 +140,16 @@ const API_ERRORS: Record<string, keyof typeof COPY.fr> = {
   'Ce compte n’est plus actif.': 'inactiveAccount',
 };
 export function portalError(message: string) { return API_ERRORS[message] ? portalText(API_ERRORS[message]!) : message; }
+
+const FLAG: Record<PortalLanguage, string> = {
+  fr: '<svg viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" fill="#002395"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ed2939"/></svg>',
+  en: '<svg viewBox="0 0 60 30" preserveAspectRatio="xMidYMid slice"><path d="M0 0v30h60V0z" fill="#012169"/><path d="M0 0l60 30m0-30L0 30" stroke="#fff" stroke-width="6"/><path d="M0 0l60 30m0-30L0 30" stroke="#c8102e" stroke-width="3"/><path d="M30 0v30M0 15h60" stroke="#fff" stroke-width="10"/><path d="M30 0v30M0 15h60" stroke="#c8102e" stroke-width="6"/></svg>',
+  de: '<svg viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="3" height="2" fill="#ffce00"/><rect width="3" height="1.333" fill="#dd0000"/><rect width="3" height=".667" fill="#000"/></svg>',
+  it: '<svg viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="1" height="2" fill="#009246"/><rect x="1" width="1" height="2" fill="#fff"/><rect x="2" width="1" height="2" fill="#ce2b37"/></svg>',
+  ru: '<svg viewBox="0 0 3 2" preserveAspectRatio="none"><rect width="3" height="2" fill="#fff"/><rect y=".667" width="3" height=".667" fill="#0039a6"/><rect y="1.333" width="3" height=".667" fill="#d52b1e"/></svg>',
+};
 export function portalLanguagePicker() {
-  const options = LANGUAGES.map(language => `<option value="${language}"${language === current ? ' selected' : ''}>${LABELS[language]}</option>`).join('');
-  return `<label class="portal-locale"><span>${portalText('language')}</span><select data-portal-language aria-label="${portalText('language')}">${options}</select></label>`;
+  const label = `${portalText('language')} : ${LABELS[current]}`;
+  const choices = LANGUAGES.map(language => `<button type="button" role="menuitemradio" aria-checked="${language === current}" lang="${language}" data-portal-language-choice="${language}"><span class="portal-flag" aria-hidden="true">${FLAG[language]}</span><span>${LABELS[language]}</span></button>`).join('');
+  return `<div class="portal-locale"><button type="button" class="portal-locale-toggle" data-portal-language-toggle aria-label="${label}" title="${label}" aria-haspopup="menu" aria-expanded="false"><span class="portal-flag" aria-hidden="true">${FLAG[current]}</span></button><div class="portal-locale-menu" role="menu" aria-label="${portalText('language')}" hidden>${choices}</div></div>`;
 }

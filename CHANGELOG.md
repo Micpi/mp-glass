@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.22 — Drapeaux de langue sur le portail de démonstration
+
+- Remplace le menu déroulant textuel des pages de connexion et de sélection par le sélecteur compact à drapeau déjà utilisé dans l’interface MP Nexus.
+- Affiche les drapeaux français, britannique, allemand, italien et russe dans un menu accessible avec le nom natif de chaque langue.
+- Conserve le choix de langue, avec fermeture du menu au clic extérieur et à la touche Échap.
+- Vérifie les drapeaux et le changement de langue sur la connexion et la sélection des démos.
+
 ## 0.15.21 — Allemand, italien et langues du portail
 
 - Ajoute un sélecteur de langue sur la connexion et le choix de démonstration : français, anglais, allemand, italien et russe.

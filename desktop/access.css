@@ -1,0 +1,13 @@
+.portal-locale{position:relative;display:flex;align-items:center;justify-content:center}
+.portal-locale-toggle{display:flex;align-items:center;justify-content:center;width:42px;height:40px;padding:0;border:1px solid #ffffff20;border-radius:12px;background:#18252c;color:#e4ebea;cursor:pointer;transition:background .18s,border-color .18s}
+.portal-locale-toggle:hover,.portal-locale-toggle[aria-expanded=true]{background:#ffffff12;border-color:#a6c9c177}
+.portal-locale-toggle:focus-visible,.portal-locale-menu button:focus-visible{outline:2px solid #a6c9c1;outline-offset:2px}
+.portal-flag{display:inline-flex;width:23px;height:16px;flex:0 0 auto;overflow:hidden;border-radius:3px;box-shadow:0 0 0 1px #ffffff55,0 2px 6px #00081559}
+.portal-flag svg{display:block;width:100%;height:100%}
+.portal-locale-menu{position:absolute;z-index:10;top:calc(100% + 8px);right:0;display:grid;gap:2px;min-width:154px;padding:5px;border:1px solid #cee6ff33;border-radius:13px;background:#101c24;box-shadow:0 16px 36px #00081580}
+.portal-locale-menu[hidden]{display:none}
+.portal-locale-menu button{display:flex;align-items:center;gap:10px;min-height:38px;padding:0 10px;border:0;border-radius:9px;background:transparent;color:#e3eeec;font-size:12px;text-align:left;cursor:pointer}
+.portal-locale-menu button:hover,.portal-locale-menu button[aria-checked=true]{background:#ffffff12}
+.portal-locale-menu button[aria-checked=true]{color:#d3e8e0}
+.userbar .portal-locale{margin-right:4px}
+@media(max-width:760px){.portal-locale-toggle{width:38px;height:38px}.portal-locale-menu{right:-3px}}

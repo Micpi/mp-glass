@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import icmLogoUrl from './assets/access-icm-logo.png';
+import './access.css';
 import { portalError, portalLanguage, portalLanguagePicker, portalText, setPortalLanguage } from './portal-i18n';
 
 type User = { id:string; username:string; role:string; createdAt:string; lastLoginAt:string|null; mustChangePassword:boolean };
@@ -108,11 +109,32 @@ async function start(){
   try{await token();await load()}
   catch(error){loadError(error)}
 }
-document.addEventListener('change',event=>{
+document.addEventListener('click',event=>{
   const target=event.target;
-  if(target instanceof HTMLSelectElement&&target.matches('[data-portal-language]')){
-    setPortalLanguage(target.value);
-    void start();
+  if(!(target instanceof Element))return;
+  const picker=target.closest<HTMLElement>('.portal-locale');
+  document.querySelectorAll<HTMLElement>('.portal-locale-menu').forEach(menu=>{
+    if(!picker||!picker.contains(menu))menu.hidden=true;
+  });
+  document.querySelectorAll<HTMLButtonElement>('[data-portal-language-toggle]').forEach(button=>{
+    if(!picker||!picker.contains(button))button.setAttribute('aria-expanded','false');
+  });
+  const toggle=target.closest<HTMLButtonElement>('[data-portal-language-toggle]');
+  if(toggle){
+    const menu=toggle.parentElement?.querySelector<HTMLElement>('.portal-locale-menu');
+    const open=toggle.getAttribute('aria-expanded')!=='true';
+    toggle.setAttribute('aria-expanded',String(open));
+    if(menu)menu.hidden=!open;
+    return;
   }
+  const choice=target.closest<HTMLButtonElement>('[data-portal-language-choice]');
+  if(choice){setPortalLanguage(choice.dataset.portalLanguageChoice||'');void start()}
+});
+document.addEventListener('keydown',event=>{
+  if(event.key!=='Escape')return;
+  document.querySelectorAll<HTMLElement>('.portal-locale-menu').forEach(menu=>menu.hidden=true);
+  document.querySelectorAll<HTMLButtonElement>('[data-portal-language-toggle]').forEach(button=>{
+    if(button.getAttribute('aria-expanded')==='true'){button.setAttribute('aria-expanded','false');button.focus()}
+  });
 });
 await start();

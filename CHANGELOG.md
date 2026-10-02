@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.19 — Identité ICM sur la page de connexion
+
+- Présente le logo ICM et précise que l’entreprise déploie l’interface de démonstration.
+- Affiche explicitement que MP Nexus reste la propriété de MP Programming, sans déplacer la marque MP Nexus ni modifier le parcours de connexion.
+- Sert le logo depuis les ressources publiques de la page d’accès afin qu’il soit visible avant l’authentification.
+- Vérifie le rendu de la page d’accès, les deux identités de marque et le chargement du logo.
+
 ## 0.15.18 — Démonstration de bureaux enrichie
 
 - Agrandit nettement l’étage de bureaux et le structure en onze espaces : direction, salles de réunion et de formation, open space, bureaux spécialisés, détente, archives et informatique.

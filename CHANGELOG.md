@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.13 — Aménagement yacht sur quatre ponts
+
+- Redessine le scénario yacht de la démo comme un plan d’ensemble nautique : coque longue à proue effilée, plateforme arrière et quatre ponts distincts.
+- Aménage les ponts avec des espaces cohérents : garage à annexe, salle des machines, buanderie, cabines bâbord et tribord, carré, timonerie, terrasse et pont soleil avec jacuzzi.
+- Ajoute des états interactifs de démonstration pour le bimini, le jacuzzi, le garage et la salle des machines ; conserve les commandes et équipements propres à chaque pièce.
+- Étend les tests du plan et du navigateur aux quatre ponts et à leurs espaces.
+- Le dessin reste un plan schématique original inspiré de la présentation générale fournie, pas une reproduction du plan constructeur.
+
 ## 0.15.12 — Plans de démonstration professionnels
 
 - Donne au yacht une silhouette de coque reconnaissable sur le pont principal et le pont inférieur, avec une étrave resserrée et des formes de poupe arrondies.

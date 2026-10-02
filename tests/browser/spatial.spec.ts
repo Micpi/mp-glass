@@ -142,6 +142,16 @@ test('le scénario bureau conserve ses espaces professionnels',async({page})=>{
   await expect(page.getByRole('button',{name:/Replier la pièce Boutique/})).toBeVisible();
   await expect(page.getByRole('button',{name:/Replier la pièce Accueil principal/})).toBeVisible();
   await expect(page.getByRole('button',{name:/Replier la pièce Bureau de direction/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Replier la pièce Grand open space/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Replier la pièce Salle informatique/})).toBeVisible();
+  const shades=await page.evaluate(()=>Object.values((window as unknown as {demo:{hass:{states:Record<string,{attributes:{device_class?:string}}>}}}).demo.hass.states).filter(state=>['blind','shutter','garage'].includes(state.attributes.device_class??'')).map(state=>state.attributes.device_class));
+  expect(shades.length).toBeGreaterThanOrEqual(28);
+  expect(shades.filter(kind=>kind==='shutter').length).toBeGreaterThanOrEqual(13);
+  expect(shades.filter(kind=>kind==='blind').length).toBeGreaterThanOrEqual(12);
+  await office.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Bureaux · étage 1'}).click();
+  await expect(page.getByRole('button',{name:/Replier la pièce Salle de formation/})).toBeVisible();
+  await expect(page.getByRole('button',{name:/Replier la pièce Bureau commercial/})).toBeVisible();
+  await page.screenshot({path:'artifacts/office-expanded-floor.png',fullPage:false});
   expect(errors).toEqual([]);
 });
 

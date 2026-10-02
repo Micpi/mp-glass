@@ -1,6 +1,23 @@
 import { describe, expect, it } from 'vitest';
-import { nearestSide, parseSpatial, validRoom } from '../shared/spatial';
-import { yachtDemoPlan } from '../demo/scenarios';
+import { nearestSide, parseSpatial, polygonArea, validRoom } from '../shared/spatial';
+import { officeDemoPlan, officeShadeFixtures, yachtDemoPlan } from '../demo/scenarios';
+
+describe('office spatial demonstration',()=>{
+  it('expands the upper floor and distributes motorized blinds and shutters across the rooms',()=>{
+    const plan=officeDemoPlan();
+    expect(()=>parseSpatial(plan)).not.toThrow();
+    const [ground,upper]=plan.floors;
+    expect(ground!.rooms).toHaveLength(7);
+    expect(upper!.rooms).toHaveLength(11);
+    expect(Math.max(...upper!.rooms.flatMap(room=>room.polygon.map(point=>point[0])))).toBe(36);
+    expect(Math.max(...upper!.rooms.flatMap(room=>room.polygon.map(point=>point[1])))).toBe(25);
+    expect(upper!.rooms.reduce((area,room)=>area+polygonArea(room.polygon),0)).toBe(36*25);
+    expect(ground!.rooms.concat(upper!.rooms).every(validRoom)).toBe(true);
+    expect(ground!.rooms.concat(upper!.rooms).flatMap(room=>room.openings??[])).toHaveLength(officeShadeFixtures.length);
+    expect(officeShadeFixtures.filter(item=>item.deviceClass==='blind')).toHaveLength(13);
+    expect(officeShadeFixtures.filter(item=>item.deviceClass==='shutter'||item.deviceClass==='garage').length).toBeGreaterThanOrEqual(15);
+  });
+});
 
 describe('yacht spatial demonstration', () => {
   it('uses a valid four-deck hull layout with nautical room names and curved transoms', () => {

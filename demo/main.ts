@@ -1,4 +1,4 @@
-import { examplePlan, type SpatialRoom } from '../shared/spatial';
+import { examplePlan } from '../shared/spatial';
 import '../frontend/index';
 import { home } from '../tests/fixtures';
 import { MPDiscoveryEngine } from '../shared/discovery';
@@ -10,7 +10,7 @@ import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
-import { yachtDemoPlan } from './scenarios';
+import { officeDemoPlan, officeShadeFixtures, yachtDemoPlan } from './scenarios';
 import officeBackground from './assets/backgrounds/office.webp';
 import yachtBackground from './assets/backgrounds/yacht.webp';
 const snapshot = home();
@@ -24,28 +24,9 @@ const project = defaultProject(scenario === 'office' ? 'Bureau et magasin de dé
 const laundryDemoEntities=['sensor.buanderie_washing_machine_cycle','sensor.buanderie_washing_machine_remaining_time','sensor.buanderie_washing_machine_program','sensor.buanderie_washing_machine_progress','sensor.buanderie_washing_machine_power','sensor.buanderie_washing_machine_energy','binary_sensor.buanderie_washing_machine_door'];
 /** With ?spatial&floors, a house of three floors: a basement below the example floor and an upstairs above it. */
 const floors = spatial && params.has('floors');
-if(spatial && (scenario === 'office' || scenario === 'yacht')) {
-  const room=(id:string,name:string,x:number,z:number,w:number,d:number,entityIds:string[]):SpatialRoom=>({id,name,polygon:[[x,z],[x+w,z],[x+w,z+d],[x,z+d]],entityIds});
-  const office=scenario==='office';
-  const names=office
-    ? ['Boutique','Accueil principal','Réserve & lingerie','Bureau de direction','Salle de réunion']
-    : ['Timonerie','Office','Carré','Cockpit','Cabine armateur','Cabine invités','Salle d’eau','Local technique & lingerie','Cabine équipage'];
-  const ids=office
-    ? ['office_shop','office_lobby','office_laundry','office_room','office_meeting']
-    : ['yacht_bridge','yacht_office','yacht_saloon','yacht_cockpit','yacht_owner','yacht_guest','yacht_bath','yacht_laundry','yacht_crew'];
-  const first=office
-    ? [room(ids[0]!,names[0]!,0,0,12,8,['light.demo_shop','cover.demo_shop','climate.demo_shop','sensor.demo_shop_temperature','sensor.demo_shop_humidity','binary_sensor.demo_shop_presence','binary_sensor.demo_shop_door','media_player.demo_signage']),room(ids[1]!,names[1]!,12,0,5,8,['light.demo_lobby','binary_sensor.demo_entry_door','binary_sensor.demo_lobby_presence']),room(ids[2]!,names[2]!,17,0,6,5,['light.demo_laundry','sensor.buanderie_washing_machine_cycle','sensor.demo_dryer_cycle','binary_sensor.demo_laundry_presence']),room(ids[3]!,names[3]!,17,5,6,5,['light.demo_office','climate.demo_office','sensor.demo_office_temperature']),room(ids[4]!,names[4]!,0,8,9,6,['light.demo_meeting','climate.demo_meeting','media_player.demo_meeting_screen','binary_sensor.demo_meeting_presence'])]
-    : [];
-  if(office){
-    first[0]!.openings=[{id:'shop-front',kind:'french_window',name:'Vitrine et entrée',side:0,at:.5,width:3.2,entityIds:['cover.demo_shop','binary_sensor.demo_shop_door']}];
-    first[0]!.media=[{id:'signage',kind:'tv',name:'Écran vitrine',at:[6,7.2],entityId:'media_player.demo_signage'}];
-    first[2]!.laundry=[{id:'washer',kind:'washer',name:'Lave-linge',at:[18.5,3.5],entityId:'sensor.buanderie_washing_machine_cycle'},{id:'dryer',kind:'dryer',name:'Sèche-linge',at:[20,3.5],entityId:'sensor.demo_dryer_cycle'}];
-    first[4]!.media=[{id:'meeting-screen',kind:'tv',name:'Écran de réunion',at:[4.5,13],entityId:'media_player.demo_meeting_screen'}];
-    project.spatial={version:1,enabled:true,floors:[{id:'professional-main',name:'Espace commercial',elevation:0,height:3.1,rooms:first.slice(0,3)},{id:'professional-office',name:'Bureaux',elevation:3.1,height:2.8,rooms:first.slice(3)}]};
-  } else {
-    project.spatial=yachtDemoPlan();
-  }
-} else if(spatial) {
+if(spatial && scenario==='office') project.spatial=officeDemoPlan();
+else if(spatial && scenario==='yacht') project.spatial=yachtDemoPlan();
+else if(spatial) {
   project.spatial=examplePlan();
   const rooms=project.spatial.floors[0]!.rooms;
   rooms[0]!.areaId='salon';
@@ -185,6 +166,24 @@ if(spatial&&(scenario==='office'||scenario==='yacht')) hass.states={...hass.stat
   'media_player.demo_signage':{entity_id:'media_player.demo_signage',state:'playing',attributes:{friendly_name:'Vitrine · Écran',device_class:'tv',media_title:'Bienvenue',volume_level:0,supported_features:1|4|8|16|32}},'media_player.demo_meeting_screen':{entity_id:'media_player.demo_meeting_screen',state:'paused',attributes:{friendly_name:'Réunion · Écran',device_class:'tv',media_title:'Présentation trimestrielle',volume_level:.15,is_volume_muted:false,supported_features:1|4|8|16|32|128}},'media_player.demo_saloon':{entity_id:'media_player.demo_saloon',state:'playing',attributes:{friendly_name:'Carré · Téléviseur',device_class:'tv',media_title:'Documentaire océan',volume_level:.24,is_volume_muted:false,supported_features:1|4|8|16|32|128}},'media_player.demo_galley':{entity_id:'media_player.demo_galley',state:'paused',attributes:{friendly_name:scenario==='yacht'?'Office · Enceinte':'Cuisine · Enceinte',device_class:'speaker',media_title:'Jazz à bord',media_artist:'Miles Davis',volume_level:.18,is_volume_muted:false,supported_features:1|4|8|16|32|128}},
   'sensor.buanderie_washing_machine_cycle':{entity_id:'sensor.buanderie_washing_machine_cycle',state:'rinse',attributes:{friendly_name:`${scenario==='office'?'Réserve et lingerie':'Buanderie'} · Lave-linge · Cycle`}},'sensor.demo_dryer_cycle':{entity_id:'sensor.demo_dryer_cycle',state:'drying',attributes:{friendly_name:`${scenario==='office'?'Réserve et lingerie':'Buanderie'} · Sèche-linge · Cycle`}},
 };
+if(spatial&&scenario==='office'&&project.spatial){
+  const states:Record<string,HAState>={...hass.states};
+  const rooms=project.spatial.floors.flatMap(level=>level.rooms),roomNames=new Map(rooms.map(space=>[space.id,space.name]));
+  const entityRooms=new Map(rooms.flatMap(space=>(space.entityIds??[]).map(id=>[id,space.name] as const)));
+  for(const shade of officeShadeFixtures){
+    const state=shade.position===0?'closed':shade.position===100?'open':'open';
+    states[shade.id]={entity_id:shade.id,state,attributes:{friendly_name:`${roomNames.get(shade.roomId)} · ${shade.name}`,device_class:shade.deviceClass,current_position:shade.position,supported_features:shade.deviceClass==='blind'?15|128:15,...(shade.tilt===undefined?{}:{current_tilt_position:shade.tilt})}};
+  }
+  for(const [id,roomName] of entityRooms){
+    if(states[id])continue;
+    if(id.startsWith('light.'))states[id]=light(id,`${roomName} · Éclairage`,id.endsWith('open_space')||id.endsWith('board'));
+    else if(id.startsWith('climate.'))states[id]={entity_id:id,state:'heat',attributes:{friendly_name:`${roomName} · Climatisation`,current_temperature:21.4,temperature:21,hvac_action:'heating',hvac_modes:['off','heat','cool','auto'],min_temp:16,max_temp:30,target_temp_step:.5}};
+    else if(id.startsWith('sensor.')&&id.endsWith('_humidity'))states[id]={entity_id:id,state:'46',attributes:{friendly_name:`${roomName} · Humidité`,device_class:'humidity',unit_of_measurement:'%'}};
+    else if(id.startsWith('sensor.')&&id.endsWith('_temperature'))states[id]=temperature(id,`${roomName} · Température`,'21.4');
+    else if(id.startsWith('media_player.'))states[id]={entity_id:id,state:'paused',attributes:{friendly_name:`${roomName} · Écran`,device_class:'tv',media_title:'Présentation commerciale',volume_level:.12,supported_features:1|4|8|16|32|128}};
+  }
+  hass.states=states;
+}
 if(spatial&&scenario==='yacht') hass.states={...hass.states,
   'light.demo_guest_starboard':light('light.demo_guest_starboard','Cabine invités tribord · Éclairage',true),
   'climate.demo_guest_starboard':{entity_id:'climate.demo_guest_starboard',state:'auto',attributes:{friendly_name:'Cabine invités tribord · Climatisation',current_temperature:21.6,temperature:22,hvac_action:'idle',hvac_modes:['off','heat','cool','auto'],min_temp:16,max_temp:30,target_temp_step:1}},

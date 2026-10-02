@@ -1,4 +1,4 @@
-import type { SpatialFloor, SpatialPlan, SpatialRoom } from '../shared/spatial';
+import type { OpeningKind, SpatialFloor, SpatialPlan, SpatialRoom } from '../shared/spatial';
 
 type Point = [number, number];
 const room = (id: string, name: string, polygon: Point[], entityIds: string[] = [], arcs?: number[]): SpatialRoom => ({
@@ -7,6 +7,83 @@ const room = (id: string, name: string, polygon: Point[], entityIds: string[] = 
 const deck = (id: string, name: string, elevation: number, rooms: SpatialRoom[]): SpatialFloor => ({
   id, name, elevation, height: 2.6, rooms,
 });
+
+export interface OfficeShadeFixture {
+  id:string; roomId:string; name:string; deviceClass:'blind'|'shutter'|'garage'; side:number; at:number; width:number; position:number; tilt?:number;
+}
+
+/** A dense but plausible mix of motorized blinds and roller shutters, each attached to an actual opening. */
+export const officeShadeFixtures:OfficeShadeFixture[] = [
+  {id:'cover.demo_shop',roomId:'office_shop',name:'Store de vitrine',deviceClass:'blind',side:0,at:.34,width:2.8,position:68,tilt:55},
+  {id:'cover.office_shop_shutter',roomId:'office_shop',name:'Volet roulant façade',deviceClass:'shutter',side:0,at:.68,width:2.8,position:28},
+  {id:'cover.office_lobby_shutter',roomId:'office_lobby',name:'Volet roulant accueil',deviceClass:'shutter',side:1,at:.5,width:2.2,position:100},
+  {id:'cover.office_reserve_blind',roomId:'office_laundry',name:'Store de réserve',deviceClass:'blind',side:0,at:.35,width:1.6,position:44,tilt:35},
+  {id:'cover.office_reserve_shutter',roomId:'office_laundry',name:'Volet roulant réserve',deviceClass:'shutter',side:0,at:.72,width:1.6,position:0},
+  {id:'cover.office_lounge_blind',roomId:'office_lounge',name:'Store de l’espace détente',deviceClass:'blind',side:2,at:.5,width:2.2,position:72,tilt:75},
+  {id:'cover.office_service_shutter',roomId:'office_service',name:'Volet roulant du local',deviceClass:'shutter',side:2,at:.5,width:1.8,position:18},
+  {id:'cover.office_delivery_door',roomId:'office_delivery',name:'Rideau métallique de livraison',deviceClass:'garage',side:2,at:.5,width:3.2,position:82},
+  {id:'cover.office_direction_blind',roomId:'office_room',name:'Store bureau de direction',deviceClass:'blind',side:0,at:.3,width:2.8,position:32,tilt:45},
+  {id:'cover.office_direction_shutter',roomId:'office_room',name:'Volet roulant direction',deviceClass:'shutter',side:0,at:.72,width:2.8,position:0},
+  {id:'cover.office_meeting_blind',roomId:'office_meeting',name:'Store salle de réunion',deviceClass:'blind',side:0,at:.32,width:2.8,position:56,tilt:20},
+  {id:'cover.office_meeting_shutter',roomId:'office_meeting',name:'Volet roulant réunion',deviceClass:'shutter',side:0,at:.72,width:2.8,position:0},
+  {id:'cover.office_board_blind',roomId:'office_board',name:'Store salle du conseil',deviceClass:'blind',side:0,at:.34,width:2.8,position:38,tilt:45},
+  {id:'cover.office_board_shutter',roomId:'office_board',name:'Volet roulant salle du conseil',deviceClass:'shutter',side:0,at:.72,width:2.8,position:0},
+  {id:'cover.office_open_blind_1',roomId:'office_open_space',name:'Store open space · travée 1',deviceClass:'blind',side:0,at:.28,width:2.8,position:42,tilt:35},
+  {id:'cover.office_open_blind_2',roomId:'office_open_space',name:'Store open space · travée 2',deviceClass:'blind',side:0,at:.72,width:2.8,position:42,tilt:35},
+  {id:'cover.office_open_shutter_1',roomId:'office_open_space',name:'Volet roulant open space · 1',deviceClass:'shutter',side:2,at:.3,width:2.8,position:0},
+  {id:'cover.office_open_shutter_2',roomId:'office_open_space',name:'Volet roulant open space · 2',deviceClass:'shutter',side:2,at:.7,width:2.8,position:0},
+  {id:'cover.office_sales_blind',roomId:'office_sales',name:'Store bureau commercial',deviceClass:'blind',side:0,at:.34,width:2.4,position:65,tilt:60},
+  {id:'cover.office_sales_shutter',roomId:'office_sales',name:'Volet roulant commercial',deviceClass:'shutter',side:0,at:.72,width:2.4,position:0},
+  {id:'cover.office_hr_blind',roomId:'office_hr',name:'Store ressources humaines',deviceClass:'blind',side:0,at:.32,width:2.4,position:35,tilt:30},
+  {id:'cover.office_hr_shutter',roomId:'office_hr',name:'Volet roulant ressources humaines',deviceClass:'shutter',side:0,at:.72,width:2.4,position:0},
+  {id:'cover.office_project_blind',roomId:'office_project',name:'Store espace projet',deviceClass:'blind',side:0,at:.34,width:2.4,position:48,tilt:50},
+  {id:'cover.office_project_shutter',roomId:'office_project',name:'Volet roulant espace projet',deviceClass:'shutter',side:0,at:.72,width:2.4,position:0},
+  {id:'cover.office_training_blind',roomId:'office_training',name:'Store salle de formation',deviceClass:'blind',side:2,at:.32,width:2.4,position:24,tilt:20},
+  {id:'cover.office_training_shutter',roomId:'office_training',name:'Volet roulant formation',deviceClass:'shutter',side:2,at:.72,width:2.4,position:0},
+  {id:'cover.office_break_blind',roomId:'office_break',name:'Store espace de pause',deviceClass:'blind',side:2,at:.5,width:2.6,position:75,tilt:70},
+  {id:'cover.office_archive_shutter',roomId:'office_archive',name:'Volet roulant archives',deviceClass:'shutter',side:2,at:.5,width:1.8,position:0},
+  {id:'cover.office_it_shutter',roomId:'office_it',name:'Volet roulant salle informatique',deviceClass:'shutter',side:2,at:.5,width:1.8,position:0},
+];
+
+/** Two-storey office and retail sample, with a much larger upper floor and motorized sun protection throughout. */
+export function officeDemoPlan():SpatialPlan{
+  const spaces=[
+    room('office_shop','Boutique',[[0,0],[12,0],[12,8],[0,8]],['light.demo_shop','climate.demo_shop','sensor.demo_shop_temperature','sensor.demo_shop_humidity','binary_sensor.demo_shop_presence','binary_sensor.demo_shop_door','media_player.demo_signage']),
+    room('office_lobby','Accueil principal',[[12,0],[17,0],[17,8],[12,8]],['light.demo_lobby','binary_sensor.demo_entry_door','binary_sensor.demo_lobby_presence']),
+    room('office_laundry','Réserve & lingerie',[[17,0],[23,0],[23,5],[17,5]],['light.demo_laundry','sensor.buanderie_washing_machine_cycle','sensor.demo_dryer_cycle','binary_sensor.demo_laundry_presence']),
+    room('office_lounge','Espace de détente',[[0,8],[7,8],[7,14],[0,14]],['light.office_lounge']),
+    room('office_restrooms','Sanitaires',[[7,8],[12,8],[12,14],[7,14]],['light.office_restrooms']),
+    room('office_service','Local de service',[[12,8],[17,8],[17,14],[12,14]],['light.office_service']),
+    room('office_delivery','Quai de livraison',[[17,5],[23,5],[23,14],[17,14]],['light.office_delivery']),
+    room('office_room','Bureau de direction',[[0,0],[12,0],[12,8],[0,8]],['light.demo_office','climate.demo_office','sensor.demo_office_temperature']),
+    room('office_meeting','Salle de réunion',[[12,0],[24,0],[24,8],[12,8]],['light.demo_meeting','climate.demo_meeting','media_player.demo_meeting_screen','binary_sensor.demo_meeting_presence']),
+    room('office_board','Salle du conseil',[[24,0],[36,0],[36,8],[24,8]],['light.office_board','climate.office_board','sensor.office_board_temperature']),
+    room('office_open_space','Grand open space',[[0,8],[18,8],[18,18],[0,18]],['light.office_open_space','climate.office_open_space','sensor.office_open_temperature','sensor.office_open_humidity']),
+    room('office_sales','Bureau commercial',[[18,8],[27,8],[27,18],[18,18]],['light.office_sales','climate.office_sales','sensor.office_sales_temperature']),
+    room('office_hr','Ressources humaines',[[27,8],[36,8],[36,18],[27,18]],['light.office_hr','climate.office_hr','sensor.office_hr_temperature']),
+    room('office_project','Salle projet',[[0,18],[12,18],[12,25],[0,25]],['light.office_project','media_player.office_project_screen']),
+    room('office_training','Salle de formation',[[12,18],[22,18],[22,25],[12,25]],['light.office_training','climate.office_training','sensor.office_training_temperature','media_player.office_training_screen']),
+    room('office_break','Espace de pause',[[22,18],[29,18],[29,25],[22,25]],['light.office_break']),
+    room('office_archive','Archives',[[29,18],[33,18],[33,25],[29,25]],['light.office_archive']),
+    room('office_it','Salle informatique',[[33,18],[36,18],[36,25],[33,25]],['light.office_it','climate.office_it','sensor.office_it_temperature']),
+  ];
+  for(const shade of officeShadeFixtures){
+    const target=spaces.find(candidate=>candidate.id===shade.roomId)!;
+    const kind:OpeningKind=shade.deviceClass==='garage'?'door':'window';
+    target.openings=[...(target.openings??[]),{id:`${shade.id.split('.').at(-1)}-opening`,kind,name:shade.name,side:shade.side,at:shade.at,width:shade.width,entityIds:[shade.id]}];
+  }
+  spaces.find(candidate=>candidate.id==='office_shop')!.media=[{id:'signage',kind:'tv',name:'Écran vitrine',at:[6,7.82],entityId:'media_player.demo_signage'}];
+  spaces.find(candidate=>candidate.id==='office_meeting')!.media=[{id:'meeting-screen',kind:'tv',name:'Écran de réunion',at:[18,7.82],entityId:'media_player.demo_meeting_screen'}];
+  spaces.find(candidate=>candidate.id==='office_training')!.media=[{id:'training-screen',kind:'tv',name:'Écran de formation',at:[17,24.82],entityId:'media_player.office_training_screen'}];
+  spaces.find(candidate=>candidate.id==='office_laundry')!.laundry=[
+    {id:'washer',kind:'washer',name:'Lave-linge',at:[17.33,1.8],rotation:Math.PI/2,entityId:'sensor.buanderie_washing_machine_cycle'},
+    {id:'dryer',kind:'dryer',name:'Sèche-linge',at:[17.33,3.2],rotation:Math.PI/2,entityId:'sensor.demo_dryer_cycle'},
+  ];
+  return {version:1,enabled:true,floors:[
+    {id:'professional-main',name:'Espace commercial',elevation:0,height:3.2,rooms:spaces.slice(0,7)},
+    {id:'professional-office',name:'Bureaux · étage 1',elevation:3.2,height:3.0,rooms:spaces.slice(7)},
+  ]};
+}
 
 /** Original four-deck explorer-yacht sample: full-length hull, pointed bow, transom and distinct general-arrangement decks. */
 export function yachtDemoPlan(): SpatialPlan {

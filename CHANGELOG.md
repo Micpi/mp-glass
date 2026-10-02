@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.18 — Démonstration de bureaux enrichie
+
+- Agrandit nettement l’étage de bureaux et le structure en onze espaces : direction, salles de réunion et de formation, open space, bureaux spécialisés, détente, archives et informatique.
+- Étoffe le rez-de-chaussée avec l’accueil, une boutique, la réserve, un espace de pause, des sanitaires, un local de service et un quai de livraison.
+- Ajoute 28 stores, volets roulants et un rideau métallique, répartis sur des ouvertures du plan avec des positions et inclinaisons de démonstration variées.
+- Complète les pièces avec leurs éclairages, thermostats, capteurs et écrans de démonstration ; conserve le fond professionnel déjà créé.
+- Vérifie les deux niveaux, la taille du plan, les ouvertures et le parcours bureau dans le navigateur.
+
 ## 0.15.17 — Fonds adaptés aux démos professionnelles et yacht
 
 - Ajoute un fond photographique dédié au scénario Bureau & magasin, avec un intérieur professionnel contemporain.

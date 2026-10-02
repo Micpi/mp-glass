@@ -5,10 +5,10 @@ import { available } from '../../shared/capabilities';
 import type { HAArea, HAFloor, LogicalDevice, Override } from '../../shared/models';
 import { areaEquipment, followsArea, matchAreas, resolvePlan, ROOM_ENTITY_LIMIT, type PlanKind } from '../../shared/rooms';
 import { discoverLaundryUnits } from '../../shared/laundry';
-import { bent, buildingPlan, floorBuilding, MAX_BUILDINGS, SITE_KINDS, type SiteKind, MAX_FLOORS, MAX_SITE_FLOORS, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { bent, buildingPlan, floorBuilding, MAX_BUILDINGS, SITE_EQUIPMENT, SITE_KINDS, type SiteEquipment, type SiteEquipmentKind, type SiteKind, MAX_FLOORS, MAX_SITE_FLOORS, laundryPlacement, examplePlan, insideRoom, nearestSide, OPENING_SIZES, outline, parseSpatial, reattachOpenings, roomArea, roomOutline, sideLength, splitSide, wallFrame, type LaundryKind, type SpatialLaundry, type MediaKind, type OpeningKind, type Point, type SpatialBackdrop, type SpatialMedia, type SpatialFloor, type SpatialOpening, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { groupCover, roomTemperature } from '../../shared/spatial-state';
 import { decodeDxf, parseDxf, type DxfDrawing } from '../../shared/dxf';
-import { buildSite, guessKind, guessScale, outlineAt, SITE_UNITS, type SiteDraft } from '../../shared/site';
+import { buildSite, EQUIPMENT_DOMAINS, guessKind, guessScale, outlineAt, SITE_UNITS, type SiteDraft } from '../../shared/site';
 import { attachFixtures, type DraftFixture, type ImageFrame } from '../../shared/fixtures';
 import { backdropRect, backdropWalls, fitBackdrop, levelPlan, levelWalls, openLevel, placeMarks, rebuildLevel, reframeLevel, shiftBackdrop, zoomBackdrop, type LevelDraft, type LevelZone, type PlanWalls } from '../../shared/level';
 import type { Hass } from '../ha/client';
@@ -18,6 +18,7 @@ import type { MessageKey } from '../locales';
 import { defineElement } from '../registry';
 import './viewer';
 import './site';
+import './site-viewer';
 import { detectWalls, snapBox, snapOutline, type DetectionRoom, type Source, type Walls } from './zones';
 
 /** Exhausted Gemini quota, as read by Home Assistant in Google's answer. */
@@ -66,8 +67,12 @@ function planError(error:unknown){
   const message=(error as Error)?.message??String(error),room=/^Géométrie invalide : (.*)$/s.exec(message),house=/^Maison inconnue : (.*)$/s.exec(message);
   return room?tr('Géométrie invalide : {name}',{name:room[1]!}):house?tr('Maison inconnue : {name}',{name:house[1]!}):trText(message);
 }
+/** Equipment of the grounds, as the Studio names it, with its icon. */
+const EQUIPMENT_NAMES:Record<SiteEquipmentKind,[MessageKey,MPIconName]>={light:['Éclairage','bulb'],irrigation:['Arrosage','drop'],gate:['Portail','gate'],camera:['Caméra','camera']};
+/** Equipment the grounds of a domain may hold. */
+const MAX_EQUIPMENT=300;
 /** What each kind of layer of a site plan shows, as the Studio names it. */
-const SITE_KIND_NAMES:Record<SiteKind,MessageKey>={boundary:'Limites et clôtures',path:'Allées et voiries',water:'Ruisseaux et fossés',pool:'Piscines et bassins',building:'Bâtiments',sport:'Terrains de sport',green:'Pelouses',wall:'Murs et murets',other:'Autre'};
+const SITE_KIND_NAMES:Record<SiteKind,MessageKey>={boundary:'Limites et clôtures',path:'Allées et voiries',water:'Ruisseaux et fossés',pool:'Piscines et bassins',building:'Bâtiments',sport:'Terrains de sport',green:'Pelouses',wood:'Bois et plantations',wall:'Murs et murets',other:'Autre'};
 /** Units of a drawing, by metres per unit. */
 const UNIT_NAMES:Record<number,MessageKey>={1:'Mètres',.01:'Centimètres',.001:'Millimètres',.3048:'Pieds',.0254:'Pouces'};
 /** Notes of Home Assistant on an analysis, written in French: those MP Nexus knows in the interface language, Gemini's as they come. */
@@ -163,7 +168,7 @@ async function prepareUpload(file:File,page:number):Promise<Blob>{
 }
 
 export class MPSpatialEditor extends LitElement {
-  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},applying:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true},siteImport:{state:true},siteBusy:{state:true},siting:{state:true}};
+  static properties={plan:{attribute:false},fallback:{attribute:false},hass:{attribute:false},areas:{attribute:false},floors:{attribute:false},devices:{attribute:false},draft:{state:true},usingDefault:{state:true},candidate:{state:true},message:{state:true},detail:{state:true},busy:{state:true},selected:{state:true},floorIndex:{state:true},file:{state:true},page:{state:true},confirmed:{state:true},phase:{state:true},dialogOpen:{state:true},warnings:{state:true},tick:{state:true},model:{state:true},quality:{state:true},info:{state:true},errorCode:{state:true},source:{state:true},sourceUrl:{state:true},view:{state:true},detection:{state:true},history:{state:true},walls:{state:true},recomputing:{state:true},applying:{state:true},entitySearch:{state:true},asking:{state:true},placing:{state:true},fixtures:{state:true},level:{state:true},siteImport:{state:true},siteBusy:{state:true},siting:{state:true},domainMode:{state:true},equipmentPick:{state:true},equipmentKind:{state:true},equipmentId:{state:true},site3d:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.5 system-ui,sans-serif}*{box-sizing:border-box}h2{font:28px Georgia,serif;margin:0 0 8px}p{color:#b7ccdf}.box{border:1px solid #c5e4ff26;border-radius:14px;padding:15px;margin:15px 0;background:#071a2c55}.row{display:flex;flex-wrap:wrap;align-items:end;gap:9px;margin:10px 0}label{display:flex;flex-direction:column;gap:5px;flex:1;min-width:120px}input,select,textarea,button{font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;padding:10px;min-height:42px;max-width:100%}select option{background:#0b253d;color:#eef6ff}select[multiple] option:checked{background:linear-gradient(#2a648e,#2a648e);color:#fff}button{cursor:pointer}button:disabled{opacity:.45;cursor:default}.primary{background:#2a648e;border-color:#8acbff}textarea{width:100%;font:12px/1.4 monospace;min-height:130px}.check{display:flex;flex-direction:row;align-items:center}.check input{min-height:22px}a{color:#9ad4ff}.points{display:grid;grid-template-columns:repeat(3,minmax(0,1fr)) auto;gap:6px;margin:8px 0}.points input{width:100%;min-width:0}.note{border-left:2px solid #8bceff;padding:9px 12px}.note small{display:block;margin-top:6px;color:#9fb6ca;font:11px/1.4 ui-monospace,monospace;overflow-wrap:anywhere}.default{border-color:#8bceff55;background:#10365555}.default p{margin:6px 0 0}.warning{color:#ffda9a}details{margin:14px 0}fieldset{padding:0;border:0;min-width:0}mp-spatial-viewer{margin:15px -6px}
     .equipment-head{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px 12px;margin-top:14px}.links .equipment-head{margin-top:0}.links p{margin:8px 0 0}.suggest{margin:4px 0 8px}
@@ -206,7 +211,9 @@ export class MPSpatialEditor extends LitElement {
     @keyframes scan{to{top:36px}}@keyframes spin{to{transform:rotate(1turn)}}@keyframes slide{from{transform:translateX(-100%)}to{transform:translateX(300%)}}
     @media (prefers-reduced-motion:reduce){.job-orb.scan::after,.steps .current .dot,.bar span{animation:none}}
     /* The site plan of the domain, and the choice of the layers of a drawing. */
-    .site mp-site-plan{--mp-stage-height:min(56vh,460px);margin:12px 0}
+    .site mp-site-plan{--mp-stage-height:min(56vh,460px);margin:12px 0}.site mp-site-viewer{--mp-stage-height:min(60vh,480px);margin:12px 0}
+    .equipment{margin-top:14px;padding-top:12px;border-top:1px solid #c5e4ff1f}.equipment-list{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+    .equipment-list button{display:inline-flex;align-items:center;gap:6px;min-height:36px;padding:4px 11px;font-size:12px}.equipment-list button[aria-pressed=true]{background:#2a648e;border-color:#8acbff}.equipment-list small{color:#ffda9a}
     .file-button{flex:none;flex-direction:row;align-items:center;gap:8px;min-width:0;min-height:42px;padding:0 14px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;cursor:pointer}.file-button input{display:none}.file-button:focus-within{outline:2px solid #a2d7ff}
     dialog.site-import{width:min(1400px,calc(100vw - 24px));max-height:calc(100dvh - 24px);overflow:auto;padding:22px;border:1px solid #9fd2ff40;border-radius:22px;color:#eef6ff;background:linear-gradient(150deg,#12344ff2,#071a2cfa 70%);box-shadow:0 30px 80px #000a,inset 0 1px #ffffff1f}
     dialog.site-import::backdrop{background:#020a14a6;backdrop-filter:blur(6px)}dialog.site-import h3{margin:0 0 6px;font:22px Georgia,serif}
@@ -235,6 +242,12 @@ export class MPSpatialEditor extends LitElement {
   private siteBusy=false;
   /** The house edited waits for a tap on the site plan to stand there. */
   private siting=false;
+  /** The multi-property mode turned on in the Studio, before a house or a site plan keeps it on. */
+  private domainMode=false;
+  /** Equipment of the grounds: the kind of the next one, the one edited, and a tap on the site plan awaited to place it. */
+  private equipmentKind:SiteEquipmentKind='light';private equipmentId='';private equipmentPick:''|'new'|'move'='';
+  /** The site plan shown in 3D, as on the home page, rather than flat to place houses and equipment. */
+  private site3d=false;
   /** A level being edited on its plan, « Modifier le plan ». */
   private level?:LevelEdit;private levelCache?:{draft:LevelDraft;backdrop?:LevelBackdrop;zones:SpatialPlan;preview:SpatialPlan;walls:Walls};
   /** Images shown while a level is edited on its plan, let go when it ends. */
@@ -397,12 +410,13 @@ export class MPSpatialEditor extends LitElement {
     this.message=tr('Plan de masse prêt. Placez chaque maison dessus, puis cliquez sur Enregistrer dans le Studio.');
   };
   private removeSite=()=>{
-    this.asking='';this.siting=false;
+    this.asking='';this.siting=false;this.equipmentPick='';this.equipmentId='';this.site3d=false;
     this.mutate(p=>{delete p.site;for(const b of p.buildings??[])delete b.site;});
     this.message=tr('Plan de masse supprimé. Cliquez sur Enregistrer dans le Studio.');
   };
   /** The house edited stands where the site plan was touched, with the outline of the building drawn there if any. */
   private sitePicked=(e:CustomEvent<{at:Point}>)=>{
+    if(this.equipmentPick){this.equipmentPicked(e.detail.at);return;}
     const site=this.draft?.site,house=this.house;
     if(!this.siting||!site||!house)return;
     const at=e.detail.at,outline=outlineAt(site,at);
@@ -419,8 +433,45 @@ export class MPSpatialEditor extends LitElement {
     return html`<div class="box site"><strong>${tr('Plan de masse du domaine')}</strong>
       <p class="muted">${tr('{w} × {h} m · {n} calque|{w} × {h} m · {n} calques',{w:whole.format(site.width),h:whole.format(site.height),n:site.layers.length})}</p>
       ${current?html`<div class="row"><button class=${this.siting?'primary':''} @click=${()=>{this.siting=!this.siting;}}>${mpIcon('pin',16)}${this.siting?tr('Annuler le placement'):current.site?tr('Déplacer « {name} » sur le plan',{name:current.name}):tr('Placer « {name} » sur le plan',{name:current.name})}</button>${current.site?html`<button @click=${()=>this.mutate(p=>{const b=p.buildings?.find(x=>x.id===current.id);if(b)delete b.site;})}>${tr('Retirer du plan de masse')}</button>`:nothing}</div>`:html`<p class="muted">${tr('Ajoutez des maisons au domaine pour les placer sur le plan de masse.')}</p>`}
-      <mp-site-plan .site=${site} .houses=${placed} .selected=${this.house} ?picking=${this.siting} @site-pick=${this.sitePicked} @house-select=${(e:CustomEvent<{id:string}>)=>this.chooseHouse(e.detail.id)}></mp-site-plan>
+      <div class="row"><button aria-pressed=${!this.site3d} class=${this.site3d?'':'primary'} @click=${()=>{this.site3d=false;}}>${mpIcon('plan',16)}${tr('Plan 2D')}</button><button aria-pressed=${this.site3d} class=${this.site3d?'primary':''} @click=${()=>{this.site3d=true;this.siting=false;this.equipmentPick='';}}>${mpIcon('site',16)}${tr('Aperçu 3D')}</button></div>
+      ${this.site3d?html`<mp-site-viewer .site=${site} .houses=${placed.map(h=>({...h,floors:this.houseFloors(plan,h.id).length}))} .hass=${this.hass}></mp-site-viewer>`:html`<mp-site-plan .site=${site} .houses=${placed} .equipment=${site.equipment??[]} .chosen=${this.equipmentId} .hint=${this.equipmentPick?tr('Touchez l’emplacement de l’équipement sur le plan de masse'):''} .selected=${this.house} ?picking=${this.siting||!!this.equipmentPick} @site-pick=${this.sitePicked} @equipment-select=${(e:CustomEvent<{id:string}>)=>{this.equipmentId=e.detail.id;}} @house-select=${(e:CustomEvent<{id:string}>)=>this.chooseHouse(e.detail.id)}></mp-site-plan>`}
+      ${this.equipmentEditor(plan,site)}
       <div class="row">${input('Remplacer par un autre DXF')}<button class="danger" @click=${()=>{this.asking='site';}}>${tr('Supprimer le plan de masse')}</button></div></div>`;
+  }
+  /** A new piece of equipment stands where the site plan was touched, or the one edited moves there. */
+  private equipmentPicked(at:Point){
+    const pick=this.equipmentPick;this.equipmentPick='';
+    if(pick==='move'){const id=this.equipmentId;this.mutate(p=>{const item=p.site?.equipment?.find(x=>x.id===id);if(item)item.at=at;});return;}
+    const kind=this.equipmentKind,id=`${kind}-${shortId()}`,count=(this.draft?.site?.equipment??[]).filter(x=>x.kind===kind).length+1;
+    // A new piece of equipment belongs to the garden of the house edited, when the domain has houses.
+    const item:SiteEquipment={id,kind,name:`${tr(EQUIPMENT_NAMES[kind][0])} ${count}`,at,...(this.house?{buildingId:this.house}:{}),...(kind==='irrigation'?{radius:6}:{})};
+    this.mutate(p=>{if(p.site)p.site.equipment=[...p.site.equipment??[],item];});
+    this.equipmentId=id;
+    this.message=tr('Équipement placé : choisissez son entité Home Assistant, puis cliquez sur Enregistrer dans le Studio.');
+  }
+  private editEquipment(id:string,edit:(item:SiteEquipment)=>void){this.mutate(p=>{const item=p.site?.equipment?.find(x=>x.id===id);if(item)edit(item);});}
+  /** Entities Home Assistant offers for a kind of equipment, by name. */
+  private equipmentEntities(kind:SiteEquipmentKind){
+    const domains=EQUIPMENT_DOMAINS[kind];
+    return Object.values(this.hass?.states??{}).filter(s=>domains.includes(s.entity_id.split('.')[0]!))
+      .map(s=>({id:s.entity_id,name:String(s.attributes.friendly_name??s.entity_id)})).sort((a,b)=>a.name.localeCompare(b.name,locale()));
+  }
+  /** Lights, sprinklers, gates and cameras of the grounds: placed on the site plan, each tied to its entity and its garden. */
+  private equipmentEditor(plan:SpatialPlan,site:NonNullable<SpatialPlan['site']>){
+    const items=site.equipment??[],item=items.find(x=>x.id===this.equipmentId),houses=plan.buildings??[];
+    const label=(x:SiteEquipment)=>x.name??(x.entityId?String(this.hass?.states[x.entityId]?.attributes.friendly_name??x.entityId):tr(EQUIPMENT_NAMES[x.kind][0]));
+    const entities=item?this.equipmentEntities(item.kind):[];
+    return html`<div class="equipment"><strong>${tr('Équipements extérieurs')}</strong>
+      <p class="muted">${tr('Placez l’éclairage, l’arrosage, les portails et les caméras du domaine : sur l’accueil, ils s’allument, arrosent et s’ouvrent depuis le plan de masse 3D.')}</p>
+      <div class="row"><label>${tr('Nouvel équipement')}<select @change=${(e:Event)=>{this.equipmentKind=(e.target as HTMLSelectElement).value as SiteEquipmentKind;}}>${SITE_EQUIPMENT.map(k=>html`<option value=${k} .selected=${k===this.equipmentKind}>${tr(EQUIPMENT_NAMES[k][0])}</option>`)}</select></label>
+        <button class=${this.equipmentPick==='new'?'primary':''} ?disabled=${items.length>=MAX_EQUIPMENT} @click=${()=>{this.equipmentPick=this.equipmentPick==='new'?'':'new';this.siting=false;this.site3d=false;}}>${mpIcon('pin',16)}${this.equipmentPick==='new'?tr('Annuler le placement'):tr('Placer sur le plan')}</button></div>
+      ${items.length?html`<div class="equipment-list">${items.map(x=>html`<button aria-pressed=${x.id===this.equipmentId} @click=${()=>{this.equipmentId=x.id===this.equipmentId?'':x.id;}}>${mpIcon(EQUIPMENT_NAMES[x.kind][1],15)}<span>${label(x)}</span>${x.entityId?nothing:html`<small>${tr('Sans entité')}</small>`}</button>`)}</div>`:nothing}
+      ${item?html`<div class="row"><label>${tr('Nom')}<input maxlength="80" .value=${item.name??''} @change=${(e:Event)=>{const name=(e.target as HTMLInputElement).value.trim();this.editEquipment(item.id,x=>{if(name)x.name=name;else delete x.name;});}}></label>
+        <label>${tr('Entité Home Assistant')}<select @change=${(e:Event)=>{const id=(e.target as HTMLSelectElement).value;this.editEquipment(item.id,x=>{if(id)x.entityId=id;else delete x.entityId;});}}><option value="" .selected=${!item.entityId}>${tr('Aucune')}</option>${item.entityId&&!entities.some(x=>x.id===item.entityId)?html`<option value=${item.entityId} selected>${item.entityId}</option>`:nothing}${entities.map(x=>html`<option value=${x.id} .selected=${x.id===item.entityId}>${x.name} · ${x.id}</option>`)}</select></label></div>
+        <div class="row">${houses.length?html`<label>${tr('Jardin de')}<select @change=${(e:Event)=>{const id=(e.target as HTMLSelectElement).value;this.editEquipment(item.id,x=>{if(id)x.buildingId=id;else delete x.buildingId;});}}><option value="" .selected=${!item.buildingId}>${tr('Parties communes du domaine')}</option>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===item.buildingId}>${b.name}</option>`)}</select></label>`:nothing}
+        ${item.kind==='irrigation'?html`<label>${tr('Portée de l’arrosage (m)')}<input type="number" min="1" max="60" step="0.5" .value=${String(item.radius??6)} @change=${(e:Event)=>{const r=Number((e.target as HTMLInputElement).value);if(r>=1&&r<=60)this.editEquipment(item.id,x=>{x.radius=r;});}}></label>`:nothing}</div>
+        <div class="row"><button class=${this.equipmentPick==='move'?'primary':''} @click=${()=>{this.equipmentPick=this.equipmentPick==='move'?'':'move';this.siting=false;this.site3d=false;}}>${mpIcon('pin',16)}${this.equipmentPick==='move'?tr('Annuler le placement'):tr('Déplacer sur le plan')}</button><button class="danger" @click=${()=>{const id=item.id;this.equipmentId='';this.mutate(p=>{if(p.site){p.site.equipment=(p.site.equipment??[]).filter(x=>x.id!==id);if(!p.site.equipment.length)delete p.site.equipment;}});}}>${tr('Supprimer cet équipement')}</button></div>`:nothing}
+    </div>`;
   }
   /** The layers of the drawing to tick, what each one shows, the unit of the drawing and the plan they give. */
   private siteDialog(){
@@ -444,6 +495,15 @@ export class MPSpatialEditor extends LitElement {
       </div>
       <div class="job-actions"><button @click=${()=>{this.siteImport=undefined;}}>${tr('Annuler')}</button><button class="primary" ?disabled=${!d} @click=${this.applySite}>${tr('Utiliser ce plan de masse')}</button></div>
     </dialog>`;
+  }
+  /**
+   * The multi-property mode, off until turned on: several houses on one domain and the site plan they stand on. A domain that
+   * already has houses or a site plan keeps it on until they are removed.
+   */
+  private domainEditor(plan:SpatialPlan){
+    const kept=!!plan.buildings?.length||!!plan.site,on=kept||this.domainMode;
+    return html`<label class="check" title=${kept?tr('Supprimez les maisons ajoutées et le plan de masse pour désactiver ce mode.'):''}><input type="checkbox" .checked=${on} ?disabled=${kept} @change=${(e:Event)=>{this.domainMode=(e.target as HTMLInputElement).checked;}}>${tr('Mode multi-propriété : plusieurs maisons sur un plan de masse 3D interactif')}</label>
+      ${on?html`${this.housesEditor(plan)}${this.siteEditor(plan)}`:nothing}`;
   }
   /** The houses of the domain: the one of the level edited, its name, and houses added, moved or removed. */
   private housesEditor(plan:SpatialPlan){
@@ -1203,7 +1263,7 @@ export class MPSpatialEditor extends LitElement {
     ${this.renderLevel()}
     ${this.level&&!this.level.open?html`<div class="box pending-level"><strong>${tr('Plan de « {name} » · modifications non appliquées',{name:this.levelFloor?.name??''})}</strong><p>${tr('Appliquer remplace les pièces de ce niveau par celles modifiées sur le plan, avec leurs associations.')}</p><div class="row"><button class="edit-plan" ?disabled=${!admin} @click=${()=>{this.level={...this.level!,open:true};}}>${mpIcon('plan',16)}${tr('Reprendre')}</button><button class="primary" ?disabled=${!admin} @click=${this.applyLevel}>${tr('Appliquer au niveau')}</button><button @click=${this.dropLevel}>${tr('Abandonner')}</button></div></div>`:nothing}
     ${this.candidate&&!this.dialogOpen?html`<div class="box"><strong>${tr('Brouillon IA · non enregistré')}</strong><mp-spatial-viewer preview .plan=${this.drafted}></mp-spatial-viewer><button ?disabled=${!admin} @click=${this.reopen}>${this.editable?tr('Modifier le brouillon'):tr('Revoir le brouillon')}</button><button class="primary" ?disabled=${!admin||this.applying} @click=${this.applyCandidate}>${tr('Utiliser pour ce niveau')}</button><button @click=${this.discard}>${tr('Ignorer')}</button><p>${this.editable?`${tr('Modifier le brouillon rouvre la fenêtre de résultat, sur le plan d’origine, pour corriger les pièces sans relancer d’analyse.')} `:''}${tr('Remplace la géométrie du niveau sélectionné. Les associations des pièces de même nom sont reprises, les autres pièces sont reliées par leur nom quand c’est sans ambiguïté ; vérifiez-les.')}</p></div>`:nothing}
-    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label>${this.housesEditor(this.draft)}${this.siteEditor(this.draft)}<div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${levels.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label>${houses.length>1?html`<label>${tr('Maison du niveau')}<select @change=${(e:Event)=>this.moveFloor((e.target as HTMLSelectElement).value)}>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===this.house}>${b.name}</option>`)}</select></label>`:nothing}<button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${levels.length>=MAX_FLOORS||this.draft.floors.length>=MAX_SITE_FLOORS} @click=${()=>this.mutate(p=>{const top=levels.reduce((best,f)=>f.elevation>best.elevation?f:best,floor);p.floors.push(this.newFloor(this.house,tr('Niveau {n}',{n:levels.length}),top.elevation+top.height));this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
+    ${this.draft&&floor?html`<fieldset ?disabled=${!admin||this.busy}><label class="check"><input type="checkbox" .checked=${this.draft.enabled} @change=${(e:Event)=>this.mutate(p=>{p.enabled=(e.target as HTMLInputElement).checked;})}>${tr('Afficher le plan sur l’accueil')}</label>${this.domainEditor(this.draft)}<div class="row"><label>${tr('Niveau à modifier')}<select .value=${floor.id} @change=${(e:Event)=>{this.floorIndex=this.draft!.floors.findIndex(f=>f.id===(e.target as HTMLSelectElement).value);this.selected='';}}>${levels.map(f=>html`<option value=${f.id} .selected=${f.id===floor.id}>${f.name}</option>`)}</select></label>${houses.length>1?html`<label>${tr('Maison du niveau')}<select @change=${(e:Event)=>this.moveFloor((e.target as HTMLSelectElement).value)}>${houses.map(b=>html`<option value=${b.id} .selected=${b.id===this.house}>${b.name}</option>`)}</select></label>`:nothing}<button class="primary edit-plan" @click=${()=>this.openLevel()}>${mpIcon('plan',16)}${tr('Modifier le plan')}</button><button ?disabled=${levels.length>=MAX_FLOORS||this.draft.floors.length>=MAX_SITE_FLOORS} @click=${()=>this.mutate(p=>{const top=levels.reduce((best,f)=>f.elevation>best.elevation?f:best,floor);p.floors.push(this.newFloor(this.house,tr('Niveau {n}',{n:levels.length}),top.elevation+top.height));this.floorIndex=p.floors.length-1;})}>${tr('Ajouter un niveau')}</button><button class="danger" ?disabled=${this.draft.floors.length<=1} @click=${()=>{this.asking='floor';}}>${tr('Supprimer ce niveau')}</button></div><div class="row"><label>${tr('Nom du niveau')}<input maxlength="80" .value=${floor.name} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.name=(e.target as HTMLInputElement).value;})}></label><label>${tr('Hauteur des murs (m)')}<input type="number" min="1" max="8" step="0.1" .value=${String(floor.height)} @change=${(e:Event)=>this.mutate(p=>{p.floors[this.floorIndex]!.height=Number((e.target as HTMLInputElement).value);})}></label></div>
       <details class="scale-tools"><summary>${tr('Changer l’échelle du niveau')}</summary><div class="row"><label>${tr('Multiplier l’échelle du niveau')}<input id="scale" type="number" min="0.01" max="100" step="0.01" value="1"></label><button @click=${()=>{const factor=Number(this.renderRoot.querySelector<HTMLInputElement>('#scale')!.value);if(factor>0&&Number.isFinite(factor))this.mutate(p=>{const f=p.floors[this.floorIndex]!;for(const r of f.rooms){r.polygon=r.polygon.map(([x,z])=>[x*factor,z*factor]);if(r.laundry)r.laundry=r.laundry.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));if(r.media)r.media=r.media.map(m=>({...m,at:[round(m.at[0]*factor),round(m.at[1]*factor)]}));}if(f.backdrop)f.backdrop={...f.backdrop,scale:f.backdrop.scale.map(k=>k*factor)};});}}>${tr('Appliquer l’échelle')}</button></div></details>
       ${this.renderLinks(suggestions)}</fieldset>
       <div class="workspace">${keyed(this.house,html`<mp-spatial-viewer .plan=${this.shown?buildingPlan(this.shown,this.house):undefined} .scope=${this.house} .hass=${this.hass} .placing=${this.placing} @room-select=${this.roomSelected} @floor-select=${this.floorSelected} @plan-pick=${this.picked} @plan-pick-cancel=${this.stopPlacing}></mp-spatial-viewer>`)}

@@ -53,6 +53,9 @@ const icons = {
   volume: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
   mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
   pin: '<path d="M12 21s6.5-6.2 6.5-11.5a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/>',
+  gate: '<path d="M3 20V6m18 14V6M3 9h18M3 17h18M7 9v8m5-8v8m5-8v8"/>',
+  camera: '<path d="M3 8.5A1.5 1.5 0 0 1 4.5 7H14a1.5 1.5 0 0 1 1.5 1.5v7A1.5 1.5 0 0 1 14 17H4.5A1.5 1.5 0 0 1 3 15.5z"/><path d="m15.5 11 5.5-3v8l-5.5-3"/>',
+  site: '<path d="M3 6.5 9 4l6 2.5L21 4v13.5L15 20l-6-2.5L3 20z"/><path d="M9 4v13.5M15 6.5V20"/>',
 } as const;
 
 export type MPIconName = keyof typeof icons;

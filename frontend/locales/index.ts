@@ -5,12 +5,13 @@ import { PLAN } from './plan';
 import { STUDIO } from './studio';
 import { ZONES } from './zones';
 import { LAUNDRY } from './laundry';
+import { SITE } from './site';
 import { DE } from './de';
 import { IT } from './it';
 
 /** Every French-keyed catalog, for tests that check consistent English and Russian translations. */
-export const CATALOGS = { DASHBOARD, DETAIL, STUDIO, PLAN, EDITOR, ZONES, LAUNDRY };
-export const CATALOG = { ...DASHBOARD, ...DETAIL, ...STUDIO, ...PLAN, ...EDITOR, ...ZONES, ...LAUNDRY };
+export const CATALOGS = { DASHBOARD, DETAIL, STUDIO, PLAN, EDITOR, ZONES, LAUNDRY, SITE };
+export const CATALOG = { ...DASHBOARD, ...DETAIL, ...STUDIO, ...PLAN, ...EDITOR, ...ZONES, ...LAUNDRY, ...SITE };
 /** German and Italian translations for the dashboard, device detail and core plan controls; untranslated messages fall back to English. */
 type ExtraMessages = Partial<Record<keyof typeof CATALOG, string>>;
 export const EXTRA_CATALOGS: Record<'de' | 'it', ExtraMessages> = { de: DE, it: IT };

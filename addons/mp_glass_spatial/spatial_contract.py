@@ -156,6 +156,10 @@ def validate_geometry(plan):
     buildings = [building["id"] for building in plan.get("buildings", [])]
     if len(set(buildings)) != len(buildings):
         raise ValueError("invalid_geometry")
+    equipment = [item["id"] for item in plan.get("site", {}).get("equipment", [])]
+    if len(set(equipment)) != len(equipment) or any(
+            "buildingId" in item and item["buildingId"] not in buildings for item in plan.get("site", {}).get("equipment", [])):
+        raise ValueError("invalid_geometry")
     per_building = {}
     for floor in plan["floors"]:
         if "buildingId" in floor and floor["buildingId"] not in buildings:

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { decodeDxf, parseDxf, plainText } from '../shared/dxf';
-import { buildSite, guessKind, guessScale, linePoints, outlineAt } from '../shared/site';
+import { buildSite, equipmentActive, equipmentCommand, guessKind, guessScale, houseFrame, linePoints, outlineAt } from '../shared/site';
+import { estate, estateStates } from '../demo/estate';
 import { examplePlan, parseSpatial, SITE_POINTS, type SpatialSite } from '../shared/spatial';
 
 /** A DXF file from its group codes and values, written as CAD programs write them: one per line. */
@@ -117,5 +118,48 @@ describe('site plan of a domain', () => {
     expect(() => parseSpatial({ ...examplePlan(), site: { ...heavy, layers: heavy.layers.slice(0, 5) } })).not.toThrow();
     expect(() => parseSpatial({ ...examplePlan(), site: { ...heavy, layers: [...heavy.layers, ...heavy.layers.map(l => ({ ...l, name: `${l.name}b` }))] } })).toThrow('trop détaillé');
     expect(() => parseSpatial({ ...examplePlan(), site: { width: 10, height: 10, layers: [{ name: 'odd', kind: 'path', paths: [[1, 2, 3, 4, 5]] }] } })).toThrow();
+  });
+});
+
+describe('equipment of the grounds of a domain', () => {
+  const site = (equipment: SpatialSite['equipment']): SpatialSite => ({ width: 100, height: 80, layers: [], equipment });
+  const plan = (equipment: SpatialSite['equipment']) => ({ ...examplePlan(), site: site(equipment), buildings: [{ id: 'main', name: 'Maison' }] });
+  it('keeps lights, sprinklers, gates and cameras placed on the site plan, each in a garden the domain has', () => {
+    const lamp = { id: 'lamp', kind: 'light' as const, at: [10, 12] as [number, number], entityId: 'light.borne', buildingId: 'main' };
+    expect(parseSpatial(plan([lamp, { id: 'lawn', kind: 'irrigation', at: [40, 40], entityId: 'valve.pelouse', radius: 8 }])).site?.equipment).toHaveLength(2);
+    expect(() => parseSpatial(plan([lamp, { ...lamp }]))).toThrow('Équipement du domaine invalide.');
+    expect(() => parseSpatial(plan([{ ...lamp, buildingId: 'guest' }]))).toThrow('Équipement du domaine invalide.');
+    expect(() => parseSpatial(plan([{ ...lamp, radius: 0 }]))).toThrow();
+  });
+  it('turns each kind of equipment on and off with the service of its domain, never a camera', () => {
+    const on = { state: 'on' }, closed = { state: 'closed' };
+    expect(equipmentActive({ kind: 'light' }, on)).toBe(true);
+    expect(equipmentActive({ kind: 'irrigation' }, { state: 'open' })).toBe(true);
+    expect(equipmentActive({ kind: 'gate' }, closed)).toBe(false);
+    expect(equipmentActive({ kind: 'camera' }, { state: 'streaming' })).toBe(false);
+    expect(equipmentCommand({ kind: 'light', entityId: 'light.borne' }, on, false)).toEqual({ domain: 'light', service: 'turn_off' });
+    expect(equipmentCommand({ kind: 'irrigation', entityId: 'valve.pelouse' }, closed, true)).toEqual({ domain: 'valve', service: 'open_valve' });
+    expect(equipmentCommand({ kind: 'irrigation', entityId: 'switch.arrosage' }, { state: 'off' }, true)).toEqual({ domain: 'switch', service: 'turn_on' });
+    expect(equipmentCommand({ kind: 'gate', entityId: 'cover.portail' }, { state: 'open' }, false)).toEqual({ domain: 'cover', service: 'close_cover' });
+    expect(equipmentCommand({ kind: 'gate', entityId: 'lock.portail' }, { state: 'locked' }, true)).toEqual({ domain: 'lock', service: 'unlock' });
+    expect(equipmentCommand({ kind: 'camera', entityId: 'camera.cour' }, { state: 'idle' }, true)).toBeUndefined();
+    expect(equipmentCommand({ kind: 'light', entityId: 'cover.portail' }, closed, true)).toBeUndefined();
+    expect(equipmentCommand({ kind: 'light', entityId: 'light.borne' }, { state: 'unavailable' }, true)).toBeUndefined();
+  });
+  it('frames a house with its garden around it, from its walls or from its spot alone', () => {
+    expect(houseFrame({ at: [50, 50], outline: [[40, 40], [60, 40], [60, 55], [40, 55]] }, 10)).toEqual([30, 30, 40, 35]);
+    expect(houseFrame({ at: [50, 50] }, 20)).toEqual([30, 30, 40, 40]);
+  });
+  it('tells woods, orchards and vineyards from lawns', () => {
+    expect(['Bois', 'Oliveraie', 'Vignes', 'Forêt', 'Pelouse'].map(guessKind)).toEqual(['wood', 'wood', 'wood', 'wood', 'green']);
+  });
+  it('gives the demo a valid domain of six houses with the equipment of its grounds', () => {
+    const domain = estate(examplePlan().floors), parsed = parseSpatial({ ...examplePlan(), ...domain });
+    expect(parsed.buildings?.map(b => b.id)).toEqual(['bastide', 'bois', 'clos', 'pavillon-1', 'pavillon-2', 'pavillon-3']);
+    expect(parsed.buildings?.every(b => b.site?.outline)).toBe(true);
+    const kinds = new Set(parsed.site?.equipment?.map(e => e.kind));
+    expect([...kinds].sort()).toEqual(['camera', 'gate', 'irrigation', 'light']);
+    const states = estateStates(parsed.site!);
+    expect(parsed.site!.equipment!.every(e => !e.entityId || states[e.entityId])).toBe(true);
   });
 });

@@ -10,6 +10,7 @@ import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
+import { estate, estateStates } from './estate';
 import { officeDemoPlan, officeShadeFixtures, yachtDemoPlan } from './scenarios';
 import officeBackground from './assets/backgrounds/office.webp';
 import yachtBackground from './assets/backgrounds/yacht.webp';
@@ -18,7 +19,7 @@ const snapshot = home();
 const suspension = snapshot.states['light.circuit_0']!;
 snapshot.states['light.circuit_0'] = { ...suspension, attributes: { ...suspension.attributes, supported_color_modes: ['color_temp', 'hs'], color_temp_kelvin: 2700, min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6500, rgb_color: [255, 190, 120] } };
 const params = new URLSearchParams(location.search);
-const spatial = params.has('spatial');
+const spatial = params.has('spatial') || params.has('site');
 const scenario = params.get('scenario') ?? 'residential';
 const project = defaultProject(scenario === 'office' ? 'Bureau et magasin de démonstration' : scenario === 'yacht' ? 'Yacht de démonstration' : 'Maison de démonstration');
 const laundryDemoEntities=['sensor.buanderie_washing_machine_cycle','sensor.buanderie_washing_machine_remaining_time','sensor.buanderie_washing_machine_program','sensor.buanderie_washing_machine_progress','sensor.buanderie_washing_machine_power','sensor.buanderie_washing_machine_energy','binary_sensor.buanderie_washing_machine_door'];
@@ -59,6 +60,8 @@ else if(spatial) {
     for(const floor of project.spatial.floors)floor.buildingId='main';
     project.spatial.floors.push({id:'guest-ground',name:'Rez-de-chaussée',elevation:0,height:2.5,buildingId:'guest',rooms:[room('guest-living','Séjour',0,0,6,5),room('guest-room','Chambre',6,0,4,5),room('guest-bath','Salle d’eau',6,5,4,2.5)]});
   }
+  // With ?site, a domain of six houses on its site plan, the lights, sprinklers, gates and cameras of its grounds placed on it.
+  if(params.has('site')){const domain=estate(project.spatial.floors);project.spatial={...project.spatial,site:domain.site,buildings:domain.buildings,floors:domain.floors};}
 }
 const calls: unknown[] = [];
 /** History requests the window made, so the browser tests can check the period asked for. */
@@ -67,6 +70,7 @@ const cards: Array<MPGlassLight | MPGlassLaundry> = [];
 /** What Home Assistant would report once a command is done, roughly: enough for the fixture to follow its own commands. */
 function commanded(domain:string,service:string,data:Record<string,unknown>,old:HAState):HAState{
   const attributes={...old.attributes};
+  if(domain==='valve')return {...old,state:service==='open_valve'?'open':'closed'};
   if(domain==='cover'){
     if(service==='set_cover_tilt_position'){attributes.current_tilt_position=Number(data.tilt_position);return {...old,attributes};}
     if(service==='stop_cover')return old;
@@ -124,6 +128,7 @@ const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id
   for(const card of cards) card.hass={...hass};
   view.hass={...hass};
 } };
+if (params.has('site') && project.spatial?.site) hass.states = { ...hass.states, ...estateStates(project.spatial.site) };
 if (params.has('laundry')) hass.states = { ...hass.states,
   'sensor.buanderie_dryer_cycle':{entity_id:'sensor.buanderie_dryer_cycle',state:'idle',attributes:{friendly_name:'Buanderie · Sèche-linge · Cycle'}},
   'sensor.buanderie_washing_machine_cycle':{entity_id:'sensor.buanderie_washing_machine_cycle',state:'rinse',attributes:{friendly_name:'Buanderie · Lave-linge · Cycle'}},

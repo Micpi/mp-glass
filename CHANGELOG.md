@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.16.0 — Mode multi-propriété et plan de masse 3D interactif
+
+- Ajoute dans le Studio l’option « Mode multi-propriété », désactivée par défaut : elle fait apparaître la gestion des maisons du domaine et du plan de masse. Un domaine qui a déjà des maisons ou un plan de masse la garde active jusqu’à leur suppression.
+- Affiche l’onglet Domaine de l’accueil en 3D, dans le style verre des plans de niveau : les calques du DXF (pelouses, bois, allées, piscines, terrains de sport, murs, limites), les bâtiments annexes en volume, les arbres des bois, et chaque maison en volume de verre haut d’autant d’étages qu’elle en compte.
+- Toucher une maison, ou son nom, survole son jardin et ouvre une fiche : éclairage extérieur, arrosage et accès de ce jardin, « Voir l’intérieur » pour ouvrir son plan 3D, et « Voir tout le domaine » pour revenir.
+- Ajoute les catégories Vue d’ensemble, Éclairage extérieur, Arrosage, et Accès et caméras, avec leur légende. Toucher une borne l’allume ou l’éteint, toucher un arroseur ouvre ou ferme sa vanne ; un portail ou une caméra ouvre sa fenêtre de détails. La fiche propose « Tout éteindre », « Tout arrêter » et « Tout fermer ».
+- Le Studio place sur le plan de masse l’éclairage, l’arrosage (avec sa portée), les portails et les caméras du domaine, chacun relié à son entité Home Assistant (light, switch, valve, cover, lock, camera) et au jardin d’une maison ou aux parties communes ; il propose aussi un aperçu 3D.
+- Reconnaît les calques de bois, d’oliveraies, de vergers et de vignes d’un DXF comme « Bois et plantations ».
+- Écarte les étiquettes des maisons proches l’une de l’autre, et revient au plan de masse à plat sur un appareil sans WebGL.
+- Ajoute la démo `?site` : un domaine de six maisons inspiré d’un vrai plan de masse, avec des noms inventés.
+- Vérifie le schéma des équipements côté navigateur et côté Home Assistant, les commandes par domaine, la démo, et le parcours dans le navigateur.
+
 ## 0.15.22 — Drapeaux de langue sur le portail de démonstration
 
 - Remplace le menu déroulant textuel des pages de connexion et de sélection par le sélecteur compact à drapeau déjà utilisé dans l’interface MP Nexus.

@@ -40,16 +40,27 @@ export interface SpatialFloor { id: string; name: string; elevation: number; hei
  */
 export interface SpatialBuilding { id: string; name: string; site?: { at: Point; outline?: Point[] } }
 /** What a layer of the site plan shows, which gives its colours. */
-export type SiteKind = 'boundary' | 'path' | 'water' | 'pool' | 'building' | 'sport' | 'green' | 'wall' | 'other';
-export const SITE_KINDS: SiteKind[] = ['boundary', 'path', 'water', 'pool', 'building', 'sport', 'green', 'wall', 'other'];
+export type SiteKind = 'boundary' | 'path' | 'water' | 'pool' | 'building' | 'sport' | 'green' | 'wood' | 'wall' | 'other';
+export const SITE_KINDS: SiteKind[] = ['boundary', 'path', 'water', 'pool', 'building', 'sport', 'green', 'wood', 'wall', 'other'];
 /**
  * A layer of the site plan, named as in the drawing it comes from: its lines (`paths`) and its filled shapes (`fills`),
  * each as a flat list x0, y0, x1, y1… in metres, x towards the east and y towards the south of its north-west corner.
  */
 export interface SiteLayer { name: string; kind: SiteKind; paths?: number[][]; fills?: number[][] }
 export interface SiteLabel { text: string; at: Point }
-/** The plan of the whole domain, drawn from a CAD drawing: `width` × `height` metres, its layers and its written names. */
-export interface SpatialSite { width: number; height: number; layers: SiteLayer[]; labels?: SiteLabel[] }
+export type SiteEquipmentKind = 'light' | 'irrigation' | 'gate' | 'camera';
+export const SITE_EQUIPMENT: SiteEquipmentKind[] = ['light', 'irrigation', 'gate', 'camera'];
+/**
+ * Equipment of the grounds standing at `at` on the site plan, in metres like the site: a garden light, a sprinkler and the
+ * valve that waters its zone (`radius` metres around it), a gate, a camera. `buildingId`: the house whose garden it lights
+ * or waters, none for the grounds shared by the domain.
+ */
+export interface SiteEquipment { id: string; kind: SiteEquipmentKind; name?: string; at: Point; entityId?: string; buildingId?: string; radius?: number }
+/**
+ * The plan of the whole domain, drawn from a CAD drawing: `width` × `height` metres, its layers and its written names, and
+ * the equipment of its grounds placed on it.
+ */
+export interface SpatialSite { width: number; height: number; layers: SiteLayer[]; labels?: SiteLabel[]; equipment?: SiteEquipment[] }
 /**
  * `buildings`: the houses of a domain, in the order they are offered; without them, the plan is a single house.
  * `site`: the plan of the whole domain, the houses placed on it.
@@ -476,6 +487,11 @@ export function parseSpatial(value: unknown): SpatialPlan {
   for (const building of value.buildings ?? []) {
     if (buildings.has(building.id)) throw new Error('Identifiants de maisons dupliqués.');
     buildings.add(building.id);
+  }
+  const equipment = new Set<string>();
+  for (const item of value.site?.equipment ?? []) {
+    if (equipment.has(item.id) || (item.buildingId !== undefined && !buildings.has(item.buildingId))) throw new Error('Équipement du domaine invalide.');
+    equipment.add(item.id);
   }
   const perBuilding = new Map<string, number>();
   for (const floor of value.floors) {

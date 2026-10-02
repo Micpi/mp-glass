@@ -20,9 +20,25 @@
             "required": ["name", "kind"],
             "properties": {
               "name": {"type": "string", "minLength": 1, "maxLength": 120},
-              "kind": {"enum": ["boundary", "path", "water", "pool", "building", "sport", "green", "wall", "other"]},
+              "kind": {"enum": ["boundary", "path", "water", "pool", "building", "sport", "green", "wood", "wall", "other"]},
               "paths": {"type": "array", "maxItems": 20000, "items": {"type": "array", "minItems": 4, "maxItems": 8000, "items": {"type": "number", "minimum": -10, "maximum": 5010}}},
               "fills": {"type": "array", "maxItems": 20000, "items": {"type": "array", "minItems": 4, "maxItems": 8000, "items": {"type": "number", "minimum": -10, "maximum": 5010}}}
+            }
+          }
+        },
+        "equipment": {
+          "type": "array", "maxItems": 300,
+          "items": {
+            "type": "object", "additionalProperties": false,
+            "required": ["id", "kind", "at"],
+            "properties": {
+              "id": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
+              "kind": {"enum": ["light", "irrigation", "gate", "camera"]},
+              "name": {"type": "string", "minLength": 1, "maxLength": 80},
+              "at": {"type": "array", "minItems": 2, "maxItems": 2, "items": {"type": "number", "minimum": -10, "maximum": 5010}},
+              "entityId": {"type": "string", "pattern": "^[a-z_]+\\.[a-z0-9_]+$"},
+              "buildingId": {"type": "string", "pattern": "^[a-zA-Z0-9_-]{1,64}$"},
+              "radius": {"type": "number", "minimum": 1, "maximum": 60}
             }
           }
         },

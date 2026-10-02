@@ -1,14 +1,15 @@
 import { LitElement, css, html, nothing, svg } from 'lit';
-import type { Point, SiteKind, SpatialSite } from '../../shared/spatial';
-import { mpIcon } from '../icons';
+import type { Point, SiteEquipment, SiteEquipmentKind, SiteKind, SpatialSite } from '../../shared/spatial';
+import { mpIcon, type MPIconName } from '../icons';
 import { LanguageController, tr } from '../i18n';
 import { defineElement } from '../registry';
 
 /** A house on the site plan: where it stands, its outline when known, and its lights on. */
 export interface SiteHouse { id: string; name: string; at: Point; outline?: Point[]; lights?: number }
 interface View { x: number; y: number; w: number; h: number }
+const EQUIPMENT_ICONS: Record<SiteEquipmentKind, MPIconName> = { light: 'bulb', irrigation: 'drop', gate: 'gate', camera: 'camera' };
 /** Layers drawn from the ground up: lawns and courts first, buildings on top. */
-const ORDER: SiteKind[] = ['green', 'sport', 'water', 'pool', 'path', 'boundary', 'wall', 'other', 'building'];
+const ORDER: SiteKind[] = ['green', 'wood', 'sport', 'water', 'pool', 'path', 'boundary', 'wall', 'other', 'building'];
 const line = (data: number[], close: boolean) => {
   let d = '';
   for (let i = 0; i + 1 < data.length; i += 2) d += `${i ? 'L' : 'M'}${data[i]} ${data[i + 1]}`;
@@ -31,7 +32,7 @@ function layersOf(site: SpatialSite) {
  * wheel (once the plan is touched, or with Ctrl) or pinch to zoom. `picking`: the next tap chooses a point (`site-pick`).
  */
 export class MPSitePlan extends LitElement {
-  static properties = { site: { attribute: false }, houses: { attribute: false }, selected: {}, picking: { type: Boolean, reflect: true }, pending: { attribute: false }, view: { state: true }, engaged: { state: true }, size: { state: true } };
+  static properties = { site: { attribute: false }, houses: { attribute: false }, equipment: { attribute: false }, chosen: {}, hint: {}, selected: {}, picking: { type: Boolean, reflect: true }, pending: { attribute: false }, view: { state: true }, engaged: { state: true }, size: { state: true } };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible{outline:2px solid #a2d7ff;outline-offset:2px}
@@ -41,6 +42,7 @@ export class MPSitePlan extends LitElement {
     path{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
     .s{fill:none;stroke-width:1}.f{stroke:none;fill-rule:evenodd}
     .k-green.f{fill:rgba(96,170,86,.26)}.k-green.s{stroke:rgba(120,190,100,.45)}
+    .k-wood.f{fill:rgba(62,130,80,.34)}.k-wood.s{stroke:rgba(110,175,110,.5)}
     .k-sport.f{fill:rgba(92,165,92,.3)}.k-sport.s{stroke:rgba(150,215,140,.7)}
     .k-water.f{fill:rgba(70,150,230,.35)}.k-water.s{stroke:rgba(120,190,255,.8);stroke-width:1.4}
     .k-pool.f{fill:rgba(64,172,238,.62)}.k-pool.s{stroke:rgba(150,215,255,.9)}
@@ -58,7 +60,11 @@ export class MPSitePlan extends LitElement {
     .house span{overflow:hidden;text-overflow:ellipsis}.house .mp-icon{flex:none;color:var(--accent)}
     .house:hover,.house[aria-pressed=true]{border-color:color-mix(in srgb,var(--accent) 80%,white);background:color-mix(in srgb,var(--accent) 34%,rgba(5,20,34,.8))}
     .house small{display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:999px;background:rgba(255,213,108,.16);color:#ffe39a;font-size:10.5px}
-    :host([picking]) .house{pointer-events:none;opacity:.55}
+    :host([picking]) .house,:host([picking]) .item{pointer-events:none;opacity:.55}
+    /* Equipment of the grounds placed in the Studio: a small round button each, the one edited lit. */
+    .item{position:absolute;z-index:1;transform:translate(-50%,-50%);display:grid;place-items:center;width:24px;height:24px;padding:0;border-radius:50%;color:#dceaf6}
+    .item.k-light{color:#ffd35a}.item.k-irrigation{color:#5ec8ff}.item.k-gate{color:#8ff0c8}.item.k-camera{color:#d9c2ff}
+    .item[aria-pressed=true]{width:30px;height:30px;border-color:#fff;background:color-mix(in srgb,var(--accent) 50%,rgba(5,20,34,.8))}
     .rail{position:absolute;z-index:2;top:12px;right:12px;display:grid;gap:4px;padding:4px;border-radius:14px}
     .rail button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:10px;background:transparent}.rail button:hover{background:rgba(255,255,255,.1)}
     .north{position:absolute;z-index:1;left:14px;bottom:12px;font-size:11px;letter-spacing:.14em;color:#b7c9da;pointer-events:none}
@@ -67,6 +73,11 @@ export class MPSitePlan extends LitElement {
   `;
   site?: SpatialSite;
   houses: SiteHouse[] = [];
+  /** Equipment of the grounds shown on the plan, in the Studio; `chosen` the one edited. */
+  equipment: SiteEquipment[] = [];
+  chosen = '';
+  /** What a tap chooses while `picking`, told over the plan; the spot of a house by default. */
+  hint = '';
   selected = '';
   picking = false;
   /** The point chosen in the Studio, shown before it is kept. */
@@ -166,6 +177,7 @@ export class MPSitePlan extends LitElement {
         ${near ? (site.labels ?? []).map(l => svg`<text class="label" x=${l.at[0]} y=${l.at[1]} font-size=${11 * k}>${l.text}</text>`) : nothing}
         ${this.pending ? svg`<circle class="pending" cx=${this.pending[0]} cy=${this.pending[1]} r=${6 * k}></circle>` : nothing}
       </svg>` : nothing}
+      ${this.equipment.map(e => html`<button class=${`item glass k-${e.kind}`} style=${at(e.at)} aria-pressed=${e.id === this.chosen} title=${e.name ?? e.entityId ?? ''} aria-label=${e.name ?? e.entityId ?? e.kind} @click=${() => this.dispatchEvent(new CustomEvent<{ id: string }>('equipment-select', { detail: { id: e.id }, bubbles: true, composed: true }))}>${mpIcon(EQUIPMENT_ICONS[e.kind], 13)}</button>`)}
       ${this.houses.map(h => html`<button class="house glass" style=${at(h.at)} aria-pressed=${h.id === this.selected} title=${tr('Ouvrir {name}', { name: h.name })} @click=${() => this.choose(h.id)}>${mpIcon('home', 15)}<span>${h.name}</span>${h.lights ? html`<small title=${tr('{n} lumière allumée|{n} lumières allumées', { n: h.lights })}>${mpIcon('bulb', 11)}${h.lights}</small>` : nothing}</button>`)}
       <div class="rail glass">
         <button aria-label=${tr('Zoomer')} title=${tr('Zoomer')} @click=${() => this.zoom(1 / 1.5)}>${mpIcon('plus', 17)}</button>
@@ -173,7 +185,7 @@ export class MPSitePlan extends LitElement {
         <button aria-label=${tr('Voir tout le domaine')} title=${tr('Voir tout le domaine')} @click=${this.fit}>${mpIcon('target', 17)}</button>
       </div>
       <span class="north" aria-hidden="true">N ↑</span>
-      ${this.picking ? html`<span class="hint glass">${tr('Touchez l’emplacement de la maison sur le plan de masse')}</span>` : !this.engaged ? html`<span class="hint glass">${tr('Glissez pour déplacer · pincez ou Ctrl + molette pour zoomer')}</span>` : nothing}
+      ${this.picking ? html`<span class="hint glass">${this.hint || tr('Touchez l’emplacement de la maison sur le plan de masse')}</span>` : !this.engaged ? html`<span class="hint glass">${tr('Glissez pour déplacer · pincez ou Ctrl + molette pour zoomer')}</span>` : nothing}
     </div>`;
   }
 }

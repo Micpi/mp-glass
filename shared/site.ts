@@ -1,5 +1,6 @@
 import type { DxfDrawing, DxfPoint, DxfShape } from './dxf';
-import { SITE_POINTS, type Point, type SiteKind, type SiteLabel, type SiteLayer, type SpatialSite } from './spatial';
+import type { HAState } from './models';
+import { SITE_POINTS, type Point, type SiteEquipment, type SiteEquipmentKind, type SiteKind, type SiteLabel, type SiteLayer, type SpatialSite } from './spatial';
 
 /**
  * The site plan of a domain, drawn from a CAD drawing: the layers chosen (limits, driveways, buildings, pools, lawns…)
@@ -21,6 +22,7 @@ const KINDS: [RegExp, SiteKind][] = [
   [/rivi[eè]re|ruisseau|foss[ée]|river|stream|canal|\blac\b|[ée]tang|pond/i, 'water'],
   [/limite|parcelle|cadastr|boundary|cl[oô]ture|fence|portail/i, 'boundary'],
   [/all[ée]e|route|chemin|enrob|trottoir|pav(ing|ement|[ée])|pathway|parking|voirie|road|drive|terrasse|deck|dallage/i, 'path'],
+  [/\bbois\b|for[eê]t|\bwoods?\b|olivi|oliveraie|verger|orchard|vignes?\b|vineyard/i, 'wood'],
   [/grass|pelouse|gazon|lawn/i, 'green'],
   [/^murs?$|\bmurs?\b|muret|wall|sout[eè]n/i, 'wall'],
 ];
@@ -181,4 +183,33 @@ export function outlineAt(site: SpatialSite, at: Point): Point[] | undefined {
   let outline = best;
   for (let tolerance = .05; outline.length > 400; tolerance *= 1.6) outline = simplify([...best, best[0]!], tolerance).slice(0, -1);
   return outline.map(([x, y]) => [round(x), round(y)]);
+}
+
+/** Domains of Home Assistant that can stand for each kind of equipment of the grounds. */
+export const EQUIPMENT_DOMAINS: Record<SiteEquipmentKind, string[]> = {
+  light: ['light', 'switch'], irrigation: ['valve', 'switch'], gate: ['cover', 'lock', 'switch'], camera: ['camera'],
+};
+/** Whether a piece of equipment is lit, watering or open; a camera never is. */
+export function equipmentActive(item: Pick<SiteEquipment, 'kind'>, state?: Pick<HAState, 'state'>): boolean {
+  if (item.kind === 'camera' || !state) return false;
+  return ['on', 'open', 'opening', 'unlocked', 'unlocking'].includes(state.state);
+}
+/**
+ * The service that turns a piece of equipment on (lit, watering, open) or off, for its entity's domain; none for a camera, an
+ * entity Home Assistant cannot reach, or a domain the equipment does not use.
+ */
+export function equipmentCommand(item: Pick<SiteEquipment, 'kind' | 'entityId'>, state: Pick<HAState, 'state'> | undefined, on: boolean): { domain: string; service: string } | undefined {
+  const domain = item.entityId?.split('.')[0] ?? '';
+  if (!state || state.state === 'unavailable' || !EQUIPMENT_DOMAINS[item.kind].includes(domain) || item.kind === 'camera') return undefined;
+  if (domain === 'valve') return { domain, service: on ? 'open_valve' : 'close_valve' };
+  if (domain === 'cover') return { domain, service: on ? 'open_cover' : 'close_cover' };
+  if (domain === 'lock') return { domain, service: on ? 'unlock' : 'lock' };
+  return { domain, service: on ? 'turn_on' : 'turn_off' };
+}
+/** What a house and its garden take up on the site plan, `[x, y, width, height]` in metres: its outline and around it. */
+export function houseFrame(house: { at: Point; outline?: Point[] }, garden = 22): [number, number, number, number] {
+  const points = house.outline?.length ? house.outline : [house.at];
+  const xs = points.map(p => p[0]), ys = points.map(p => p[1]);
+  const x = Math.min(...xs) - garden, y = Math.min(...ys) - garden;
+  return [x, y, Math.max(...xs) + garden - x, Math.max(...ys) + garden - y];
 }

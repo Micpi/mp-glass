@@ -62,6 +62,15 @@ class ProjectContractTest(unittest.TestCase):
                 module.validate_project(self.validator, project(bad))
         with self.assertRaises(ValidationError):
             module.validate_project(self.validator, project({**site, "layers": [{"name": "x", "kind": "lamp", "paths": []}]}))
+        # Equipment of the grounds: its own ids, in the garden of a house the domain has.
+        lamp = {"id": "lamp", "kind": "light", "name": "Borne", "at": [12, 40], "entityId": "light.borne", "buildingId": "main"}
+        sprinkler = {"id": "lawn", "kind": "irrigation", "at": [60, 80], "entityId": "valve.pelouse", "radius": 8}
+        module.validate_project(self.validator, project({**site, "equipment": [lamp, sprinkler]}))
+        for bad in ([lamp, {**sprinkler, "id": "lamp"}], [{**lamp, "buildingId": "guest"}]):
+            with self.assertRaises(ValueError):
+                module.validate_project(self.validator, project({**site, "equipment": bad}))
+        with self.assertRaises(ValidationError):
+            module.validate_project(self.validator, project({**site, "equipment": [{**lamp, "kind": "fountain"}]}))
 
     def test_migrates_v1_and_preserves_user_choices(self):
         old = module.default_project("Maison")

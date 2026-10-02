@@ -6,6 +6,9 @@ test('yacht demo keeps the original interface with English decks and room inform
   await page.goto('/?spatial&scenario=yacht');
   const original=page.locator('mp-glass-view-v4');
   await expect(original).toBeVisible();
+  await expect.poll(()=>original.locator('.backdrop').evaluate(element=>getComputedStyle(element).backgroundImage)).toContain('yacht.webp');
+  const imageUrl=await original.locator('.backdrop').evaluate(element=>getComputedStyle(element).backgroundImage.match(/url\(["']?(.*?)["']?\)/)?.[1]??'');
+  expect((await page.request.get(new URL(imageUrl,page.url()).toString())).status()).toBe(200);
   await expect(page.locator('mp-yacht-demo')).toHaveCount(0);
   for(const name of ['Accueil','Lumières','Pièces','Info'])await expect(original.getByRole('link',{name,exact:true})).toBeVisible();
   const viewer=original.locator('mp-spatial-viewer');

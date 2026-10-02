@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.15.17 — Fonds adaptés aux démos professionnelles et yacht
+
+- Ajoute un fond photographique dédié au scénario Bureau & magasin, avec un intérieur professionnel contemporain.
+- Ajoute un fond dédié au scénario Yacht, avec un salon nautique ouvert sur la mer.
+- Limite ces fonds aux scénarios correspondants et conserve le fond habituel de la démo résidentielle.
+- Vérifie dans le navigateur que chaque scénario charge son image et que les ressources sont disponibles.
+
 ## 0.15.16 — Équipements placés contre les cloisons
 
 - Place le lave-linge et le sèche-linge superposé le long d’une cloison de la buanderie du yacht, avec leur façade tournée vers l’intérieur.

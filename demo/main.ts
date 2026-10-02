@@ -11,6 +11,8 @@ import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
 import { yachtDemoPlan } from './scenarios';
+import officeBackground from './assets/backgrounds/office.webp';
+import yachtBackground from './assets/backgrounds/yacht.webp';
 const snapshot = home();
 // The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
 const suspension = snapshot.states['light.circuit_0']!;
@@ -236,7 +238,8 @@ if(spatial&&params.has('studio')){
   const title=document.createElement('div');title.innerHTML='<div style="font-size:10px;letter-spacing:.24em;text-transform:uppercase;color:#a9c0b6">MP NEXUS · DÉMONSTRATION</div><h1 style="margin:9px 0 0;font:clamp(32px,5vw,52px)/1 Georgia,serif;font-weight:400">Buanderie</h1><p style="margin:10px 0 0;color:#b7c5c0;font-size:14px">Deux machines fictives · un cycle en cours · détection automatique</p>';
   heading.append(title);for(const card of cards) card.style.width='min(100%,1100px)';shell.append(heading,...cards);document.body.replaceChildren(shell);
 } else {
-  view.setConfig(selectedView);
+  const demoBackground=scenario==='office'?officeBackground:scenario==='yacht'?yachtBackground:undefined;
+  view.setConfig(demoBackground?{...selectedView,mp_appearance:{...selectedView.mp_appearance,backgroundUrl:demoBackground}}:selectedView);
   view.cards=cards;
   view.hass=hass;
 }

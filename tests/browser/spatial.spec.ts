@@ -136,6 +136,9 @@ test('le scénario bureau conserve ses espaces professionnels',async({page})=>{
   await page.goto('/?spatial&scenario=office');
   const office=page.locator('mp-spatial-viewer');
   await expect(office).toBeVisible();
+  await expect.poll(()=>page.locator('mp-glass-view-v4 .backdrop').evaluate(element=>getComputedStyle(element).backgroundImage)).toContain('office.webp');
+  const imageUrl=await page.locator('mp-glass-view-v4 .backdrop').evaluate(element=>getComputedStyle(element).backgroundImage.match(/url\(["']?(.*?)["']?\)/)?.[1]??'');
+  expect((await page.request.get(new URL(imageUrl,page.url()).toString())).status()).toBe(200);
   await expect(page.getByRole('button',{name:/Replier la pièce Boutique/})).toBeVisible();
   await expect(page.getByRole('button',{name:/Replier la pièce Accueil principal/})).toBeVisible();
   await expect(page.getByRole('button',{name:/Replier la pièce Bureau de direction/})).toBeVisible();

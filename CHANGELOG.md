@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.15 — Rétablissement de l’interface originale de la démo
+
+- Rétablit la démo yacht dans l’interface MP Nexus existante, avec sa navigation Accueil, Lumières, Pièces et Info, son fond, son plan 3D et ses panneaux d’équipements.
+- Supprime la page Explorer 37 et son interface de plan aménagé, introduites en 0.15.14 ; le scénario ne remplace plus la vue commune par une page dédiée.
+- Conserve uniquement les améliorations du plan : coque affinée, quatre ponts, coursive longitudinale, placement corrigé des hublots et noms nautiques anglais des pièces, niveaux et équipements.
+- Rétablit la langue habituelle de l’interface et la présentation originale de la fiche yacht du portail, avec l’indication correcte des quatre ponts.
+- Vérifie le retour de la navigation et du plan d’origine sur ordinateur et téléphone, ainsi que l’accès aux informations des pièces.
+
 ## 0.15.14 — Démonstration yacht Explorer 37
 
 - Ajoute une présentation dédiée au yacht dans la démo : silhouette de profil, finitions marine et laiton, choix des quatre ponts et vue de plan aménagé affichée à l’ouverture.

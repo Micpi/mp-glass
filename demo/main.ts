@@ -11,8 +11,6 @@ import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
 import { yachtDemoPlan } from './scenarios';
-import './yacht';
-import type { MPYachtDemo } from './yacht';
 const snapshot = home();
 // The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
 const suspension = snapshot.states['light.circuit_0']!;
@@ -80,7 +78,6 @@ if(spatial && (scenario === 'office' || scenario === 'yacht')) {
   }
 }
 const calls: unknown[] = [];
-let yachtDemo: MPYachtDemo | undefined;
 /** History requests the window made, so the browser tests can check the period asked for. */
 const historyCalls: Record<string, unknown>[] = [];
 const cards: Array<MPGlassLight | MPGlassLaundry> = [];
@@ -131,7 +128,7 @@ function history(entityId:string,start:number,end:number){
   for(let i=0;i<9;i++)rows.push({s:held[i%held.length],lu:(start+span*i/9)/1000});
   return [...rows,{s:state.state,lu:(end-span/12)/1000}];
 }
-const hass: Hass = { connection:{},states:snapshot.states,language:scenario==='yacht'?'en':'fr',user:{id:'demo',is_admin:true},callWS:async<T>(message:Record<string,unknown>)=>{
+const hass: Hass = { connection:{},states:snapshot.states,language:'fr',user:{id:'demo',is_admin:true},callWS:async<T>(message:Record<string,unknown>)=>{
   if(message.type!=='history/history_during_period')return [] as T;
   historyCalls.push(message);
   const ids=Array.isArray(message.entity_ids)?message.entity_ids.map(entityId=>String(entityId)):[];
@@ -141,7 +138,6 @@ const hass: Hass = { connection:{},states:snapshot.states,language:scenario==='y
   calls.push({domain,service,data});const states={...hass.states};
   for(const entityId of ([] as unknown[]).concat(data.entity_id).map(String))states[entityId]=commanded(domain,service,data,states[entityId]!);
   hass.states=states;
-  if(yachtDemo)yachtDemo.hass={...hass};
   for(const card of cards) card.hass={...hass};
   view.hass={...hass};
 } };
@@ -227,11 +223,7 @@ for(const config of viewCards) {
   }
 }
 const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
-if(spatial&&scenario==='yacht'&&!params.has('studio')){
-  yachtDemo=document.createElement('mp-yacht-demo') as MPYachtDemo;
-  yachtDemo.plan=project.spatial!;yachtDemo.hass=hass;
-  document.body.replaceChildren(yachtDemo);
-} else if(spatial&&params.has('studio')){
+if(spatial&&params.has('studio')){
   const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
   editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;
   editor.devices=MPDiscoveryEngine.discover({...snapshot,states:hass.states},project).devices;

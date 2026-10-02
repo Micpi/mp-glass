@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.20 — Mise en valeur d’ICM
+
+- Renforce la présence d’ICM sur la page de connexion avec un logo agrandi, le nom complet « Integrated Components for Media » et une mention dédiée à l’intégration et au déploiement.
+- Retire de cette page la mention de MP Programming, sans modifier l’identité MP Nexus ni le parcours de connexion.
+- Vérifie le nouveau message, le formulaire et le chargement du logo dans le navigateur.
+
 ## 0.15.19 — Identité ICM sur la page de connexion
 
 - Présente le logo ICM et précise que l’entreprise déploie l’interface de démonstration.

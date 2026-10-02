@@ -24,8 +24,7 @@ export function yachtDemoPlan(): SpatialPlan {
     narrowingDeck('sun-helm', 'Timonerie haute', ['light.demo_lobby','climate.demo_office','sensor.demo_office_temperature']),
     foredeck('sun-foredeck', 'Pont avant'),
   ];
-  sun[0]!.openings = [{ id:'swim-platform-gate', kind:'door', name:'Passage vers la plateforme', side:2, at:.5, width:1 }];
-  sun[2]!.openings = [{ id:'sun-lounge-port', kind:'window', name:'Baie du salon extérieur', side:3, at:.5, width:2.4 }];
+  sun[0]!.openings = [{ id:'swim-platform-gate', kind:'door', name:'Passage vers la plateforme', side:3, at:.5, width:1 }];
   sun[4]!.openings = [{ id:'upper-windscreen', kind:'french_window', name:'Pare-brise de timonerie', side:1, at:.5, width:2.2 }];
 
   const upper = [
@@ -35,11 +34,11 @@ export function yachtDemoPlan(): SpatialPlan {
     room('upper-owner-suite', 'Suite armateur', [[18,0],[23,0],[23,6],[18,6]], ['light.demo_owner','climate.demo_owner','sensor.demo_owner_temperature','binary_sensor.demo_owner_hatch']),
     room('upper-private-lounge', 'Salon privé', [[18,6],[23,6],[23,12],[18,12]]),
     room('upper-gallery', 'Coursive supérieure', [[23,0],[26,0],[26,12],[23,12]], []),
-    narrowingDeck('upper-observation', 'Salon d’observation'),
+    narrowingDeck('upper-observation', 'Salon d’observation', ['light.demo_lobby','climate.demo_office','sensor.demo_office_temperature','binary_sensor.demo_entry_door']),
     foredeck('upper-foredeck', 'Pont avant'),
   ];
-  upper[1]!.openings = [{ id:'panorama-port', kind:'window', name:'Baies panoramiques bâbord', side:3, at:.5, width:3 }];
-  upper[3]!.openings = [{ id:'owner-upper-porthole', kind:'window', name:'Hublot de la suite armateur', side:3, at:.5, width:.9, entityIds:['binary_sensor.demo_owner_hatch'] }];
+  upper[1]!.openings = [{ id:'panorama-port', kind:'window', name:'Baies panoramiques bâbord', side:0, at:.5, width:3 }];
+  upper[3]!.openings = [{ id:'owner-upper-porthole', kind:'window', name:'Hublot de la suite armateur', side:0, at:.5, width:.9, entityIds:['binary_sensor.demo_owner_hatch'] }];
   upper[1]!.media = [{ id:'panorama-tv', kind:'tv', name:'Téléviseur du salon panoramique', at:[8,6], entityId:'media_player.demo_saloon' }];
 
   const main = [
@@ -53,9 +52,9 @@ export function yachtDemoPlan(): SpatialPlan {
     narrowingDeck('main-helm', 'Timonerie', ['light.demo_lobby','climate.demo_office','sensor.demo_office_temperature','binary_sensor.demo_entry_door']),
     foredeck('main-foredeck', 'Pont avant'),
   ];
-  main[1]!.openings = [{ id:'saloon-cockpit-door', kind:'french_window', name:'Accès à la plage arrière', side:1, at:.5, width:1.6, entityIds:['binary_sensor.demo_saloon_hatch'] }];
+  main[1]!.openings = [{ id:'saloon-cockpit-door', kind:'french_window', name:'Accès à la plage arrière', side:3, at:.5, width:1.6, entityIds:['binary_sensor.demo_saloon_hatch'] }];
   main[1]!.media = [{ id:'main-tv', kind:'tv', name:'Téléviseur du grand salon', at:[8,6], entityId:'media_player.demo_saloon' }];
-  main[3]!.openings = [{ id:'galley-porthole', kind:'window', name:'Hublot de l’office', side:1, at:.5, width:.8, entityIds:['binary_sensor.demo_galley_hatch'] }];
+  main[3]!.openings = [{ id:'galley-porthole', kind:'window', name:'Hublot de l’office', side:0, at:.5, width:.8, entityIds:['binary_sensor.demo_galley_hatch'] }];
   main[7]!.openings = [{ id:'helm-windscreen', kind:'window', name:'Pare-brise de timonerie', side:1, at:.5, width:2.2 }];
 
   const lower = [
@@ -63,27 +62,39 @@ export function yachtDemoPlan(): SpatialPlan {
     room('lower-tender-garage', 'Garage à annexe', [[4,0],[9,0],[9,12],[4,12]], ['light.demo_garage','cover.demo_garage']),
     room('lower-engine-room', 'Salle des machines', [[9,0],[13,0],[13,12],[9,12]], ['light.demo_engine_room','sensor.demo_engine_room_temperature','binary_sensor.demo_engine_alarm']),
     room('lower-laundry', 'Buanderie', [[13,0],[16,0],[16,12],[13,12]], ['light.demo_yacht_laundry','sensor.buanderie_washing_machine_cycle','sensor.demo_dryer_cycle','binary_sensor.demo_laundry_presence']),
-    room('lower-corridor', 'Coursive centrale', [[16,0],[18,0],[18,12],[16,12]], []),
-    room('lower-guest-port', 'Cabine invités bâbord', [[18,0],[22,0],[22,6],[18,6]], ['light.demo_guest','climate.demo_guest','sensor.demo_guest_temperature','binary_sensor.demo_guest_hatch']),
-    room('lower-guest-starboard', 'Cabine invités tribord', [[18,6],[22,6],[22,12],[18,12]], ['light.demo_guest_starboard','climate.demo_guest_starboard','sensor.demo_guest_starboard_temperature','binary_sensor.demo_guest_starboard_hatch']),
-    room('lower-heads', 'Salle d’eau', [[22,0],[25,0],[25,6],[22,6]], []),
-    room('lower-owner-suite', 'Cabine armateur', [[22,6],[25,6],[25,12],[22,12]], ['light.demo_owner','climate.demo_owner','sensor.demo_owner_temperature','binary_sensor.demo_owner_hatch']),
-    room('lower-crew-port', 'Cabine équipage bâbord', [[25,0],[30,2],[30,6],[25,6]], []),
-    room('lower-crew-starboard', 'Cabine équipage tribord', [[25,6],[30,6],[30,10],[25,12]], []),
+    room('lower-corridor', 'Coursive centrale', [[16,5.2],[30,5.2],[30,6.8],[16,6.8]], []),
+    room('lower-guest-port', 'Cabine invités bâbord', [[16,0],[23,0],[23,5.2],[16,5.2]], ['light.demo_guest','climate.demo_guest','sensor.demo_guest_temperature','binary_sensor.demo_guest_hatch']),
+    room('lower-guest-starboard', 'Cabine invités tribord', [[16,6.8],[23,6.8],[23,12],[16,12]], ['light.demo_guest_starboard','climate.demo_guest_starboard','sensor.demo_guest_starboard_temperature','binary_sensor.demo_guest_starboard_hatch']),
+    room('lower-heads', 'Salle d’eau', [[23,0],[26,0],[26,5.2],[23,5.2]], []),
+    room('lower-owner-suite', 'Cabine armateur', [[23,6.8],[26,6.8],[26,12],[23,12]]),
+    room('lower-crew-port', 'Cabine équipage bâbord', [[26,0],[30,2],[30,5.2],[26,5.2]], []),
+    room('lower-crew-starboard', 'Cabine équipage tribord', [[26,6.8],[30,6.8],[30,10],[26,12]], []),
     foredeck('lower-foredeck', 'Pique avant'),
   ];
-  lower[8]!.openings = [{ id:'owner-lower-porthole', kind:'window', name:'Hublot de la cabine armateur', side:3, at:.5, width:.9, entityIds:['binary_sensor.demo_owner_hatch'] }];
-  lower[5]!.openings = [{ id:'guest-porthole-port', kind:'window', name:'Hublot bâbord · cabine invités', side:3, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_hatch'] }];
-  lower[6]!.openings = [{ id:'guest-porthole-starboard', kind:'window', name:'Hublot tribord · cabine invités', side:3, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_starboard_hatch'] }];
+  lower[8]!.openings = [{ id:'crew-mess-porthole', kind:'window', name:'Hublot', side:2, at:.5, width:.9 }];
+  lower[5]!.openings = [{ id:'guest-porthole-port', kind:'window', name:'Hublot bâbord · cabine invités', side:0, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_hatch'] }];
+  lower[6]!.openings = [{ id:'guest-porthole-starboard', kind:'window', name:'Hublot tribord · cabine invités', side:2, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_starboard_hatch'] }];
   lower[3]!.laundry = [
     { id:'washer', kind:'washer', name:'Lave-linge', at:[14.5,6], entityId:'sensor.buanderie_washing_machine_cycle' },
     { id:'dryer', kind:'dryer', name:'Sèche-linge superposé', at:[14.5,6], stackedOn:'washer', entityId:'sensor.demo_dryer_cycle' },
   ];
 
-  return { version:1, enabled:true, floors:[
-    deck('yacht-lower','Pont inférieur',-8.1,lower),
-    deck('yacht-main','Pont principal',-5.4,main),
-    deck('yacht-upper','Pont supérieur',-2.7,upper),
-    deck('yacht-sun','Pont soleil · Sun deck',0,sun),
+  const names: Record<string,string> = {
+    'sun-swim-platform':'Aft Terrace','sun-jacuzzi':'Jacuzzi','sun-lounge':'Sun Lounge','sun-beds':'Sunpads','sun-helm':'Observation Lounge','sun-foredeck':'Foredeck',
+    'upper-terrace':'Aft Deck','upper-saloon':'Skylounge','upper-dining':'Dining Salon','upper-owner-suite':"Owner’s Suite",'upper-private-lounge':'Private Lounge','upper-gallery':'Upper Lobby','upper-observation':'Bridge','upper-foredeck':'Foredeck',
+    'main-swim-platform':'Aft Deck','main-lounge':'Main Salon','main-dining':'Dining Room','main-galley':'Galley','main-vip-port':'Port VIP Suite','main-vip-starboard':'Starboard VIP Suite','main-passage':'Main Lobby','main-helm':'Forward Lounge','main-foredeck':'Foredeck',
+    'lower-garage-platform':'Swim Platform','lower-tender-garage':'Tender Garage','lower-engine-room':'Engine Room','lower-laundry':'Laundry','lower-corridor':'Guest Corridor','lower-guest-port':'Port Guest Suite','lower-guest-starboard':'Starboard Guest Suite','lower-heads':'Guest Bathroom','lower-owner-suite':'Crew Mess','lower-crew-port':'Port Crew Cabin','lower-crew-starboard':'Starboard Crew Cabin','lower-foredeck':'Forepeak',
+  };
+  const point = ([x,z]:Point):Point => [x*37.5/36,z*8.1/12];
+  const plan: SpatialPlan = { version:1, enabled:true, floors:[
+    deck('yacht-lower','Lower Deck',-8.1,lower),deck('yacht-main','Main Deck',-5.4,main),
+    deck('yacht-upper','Upper Deck',-2.7,upper),deck('yacht-sun','Sun Deck',0,sun),
   ] };
+  for(const floor of plan.floors)for(const space of floor.rooms){
+    space.name=names[space.id]!;space.polygon=space.polygon.map(point);
+    for(const unit of space.laundry??[]){unit.at=point(unit.at);unit.name=unit.kind==='washer'?'Washing machine':'Stacked dryer';}
+    for(const unit of space.media??[]){unit.at=point(unit.at);unit.name=unit.kind==='tv'?`${space.name} · Television`:`${space.name} · Speaker`;}
+    for(const opening of space.openings??[])opening.name=`${space.name} · ${opening.kind==='door'?'Access door':opening.width>1.5?'Panoramic glazing':'Porthole'}`;
+  }
+  return plan;
 }

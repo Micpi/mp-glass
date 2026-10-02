@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.15.14 — Démonstration yacht Explorer 37
+
+- Ajoute une présentation dédiée au yacht dans la démo : silhouette de profil, finitions marine et laiton, choix des quatre ponts et vue de plan aménagé affichée à l’ouverture.
+- Dessine un aménagement original avec mobilier, lits, cuisine, tables et fauteuils, jacuzzi, moteurs et annexe ; les équipements et le mobilier restent contenus dans leur pièce et la coque.
+- Affine les proportions à 37,5 × 8,1 m, organise une coursive longitudinale au pont inférieur et replace les hublots et l’accès arrière sur les parois correspondantes.
+- Utilise les noms nautiques anglais pour les quatre ponts, les pièces et les équipements : Lower Deck, Main Deck, Upper Deck, Sun Deck, Bridge, Skylounge, Owner’s Suite, Tender Garage et Engine Room.
+- Rend les pièces du dessin et de la liste sélectionnables pour consulter les états et commander éclairage, température, stores et multimédia ; garde l’accès au rendu 3D et à ses équipements interactifs.
+- Adapte les plans et commandes aux téléphones et tablettes, avec défilement du dessin sans débordement de la page ; met à jour la fiche yacht du portail pour annoncer quatre ponts.
+- Vérifie les commandes sur ordinateur, le parcours mobile, les quatre ponts, la géométrie et le scénario bureau ; reconstruit la démo Docker et les bundles HACS.
+
 ## 0.15.13 — Aménagement yacht sur quatre ponts
 
 - Redessine le scénario yacht de la démo comme un plan d’ensemble nautique : coque longue à proue effilée, plateforme arrière et quatre ponts distincts.

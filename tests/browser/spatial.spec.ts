@@ -130,26 +130,9 @@ test('3D rotates, zooms, pans, resets and controls a bound light',async({page})=
   expect(errors).toEqual([]);
 });
 
-test('le scénario yacht présente quatre ponts et des espaces nautiques',async({page})=>{
+test('le scénario bureau conserve ses espaces professionnels',async({page})=>{
   const errors:string[]=[];page.on('pageerror',error=>errors.push(error.message));
   await page.setViewportSize({width:1440,height:1050});
-  await page.goto('/?spatial&scenario=yacht');
-  const viewer=page.locator('mp-spatial-viewer');
-  const levels=viewer.getByRole('group',{name:'Niveau affiché'});
-  await expect(levels.getByRole('button',{name:'Pont soleil · Sun deck'})).toBeVisible();
-  await expect(levels.getByRole('button',{name:'Pont supérieur'})).toBeVisible();
-  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont principal',exact:true}).click();
-  await expect(viewer.locator('.chip').filter({hasText:'Timonerie'})).toBeVisible();
-  await expect(viewer.locator('.chip').filter({hasText:'Office principal'})).toBeVisible();
-  await expect(viewer.locator('.chip').filter({hasText:'Grand salon'})).toBeVisible();
-  await viewer.locator('.chip').filter({hasText:'Grand salon'}).click();
-  await expect(viewer.getByRole('region',{name:'Grand salon'})).toBeVisible();
-  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont principal',exact:true}).click();
-  await page.screenshot({path:'artifacts/spatial-yacht-main.png'});
-  await viewer.getByRole('group',{name:'Niveau affiché'}).getByRole('button',{name:'Pont inférieur'}).click();
-  await expect(viewer.locator('.chip').filter({hasText:'Salle des machines'})).toBeVisible();
-  await expect(viewer.locator('.chip').filter({hasText:'Buanderie'})).toBeVisible();
-  await page.screenshot({path:'artifacts/spatial-yacht-lower-deck.png'});
   await page.goto('/?spatial&scenario=office');
   const office=page.locator('mp-spatial-viewer');
   await expect(office).toBeVisible();

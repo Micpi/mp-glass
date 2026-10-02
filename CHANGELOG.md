@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.15.16 — Équipements placés contre les cloisons
+
+- Place le lave-linge et le sèche-linge superposé le long d’une cloison de la buanderie du yacht, avec leur façade tournée vers l’intérieur.
+- Replace les téléviseurs des salons principal et panoramique près de leur cloison, au lieu du centre des pièces.
+- Vérifie que machines et téléviseurs restent dans leur pièce et au contact visuel d’un mur dans le plan 3D.
+
 ## 0.15.15 — Rétablissement de l’interface originale de la démo
 
 - Rétablit la démo yacht dans l’interface MP Nexus existante, avec sa navigation Accueil, Lumières, Pièces et Info, son fond, son plan 3D et ses panneaux d’équipements.

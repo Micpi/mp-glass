@@ -39,7 +39,7 @@ export function yachtDemoPlan(): SpatialPlan {
   ];
   upper[1]!.openings = [{ id:'panorama-port', kind:'window', name:'Baies panoramiques bâbord', side:0, at:.5, width:3 }];
   upper[3]!.openings = [{ id:'owner-upper-porthole', kind:'window', name:'Hublot de la suite armateur', side:0, at:.5, width:.9, entityIds:['binary_sensor.demo_owner_hatch'] }];
-  upper[1]!.media = [{ id:'panorama-tv', kind:'tv', name:'Téléviseur du salon panoramique', at:[8,6], entityId:'media_player.demo_saloon' }];
+  upper[1]!.media = [{ id:'panorama-tv', kind:'tv', name:'Téléviseur du salon panoramique', at:[11.85,6], entityId:'media_player.demo_saloon' }];
 
   const main = [
     aftPlatform('main-swim-platform', 'Plage arrière', ['light.demo_cockpit','cover.demo_cockpit','binary_sensor.demo_cockpit_presence']),
@@ -53,7 +53,7 @@ export function yachtDemoPlan(): SpatialPlan {
     foredeck('main-foredeck', 'Pont avant'),
   ];
   main[1]!.openings = [{ id:'saloon-cockpit-door', kind:'french_window', name:'Accès à la plage arrière', side:3, at:.5, width:1.6, entityIds:['binary_sensor.demo_saloon_hatch'] }];
-  main[1]!.media = [{ id:'main-tv', kind:'tv', name:'Téléviseur du grand salon', at:[8,6], entityId:'media_player.demo_saloon' }];
+  main[1]!.media = [{ id:'main-tv', kind:'tv', name:'Téléviseur du grand salon', at:[10.85,6], entityId:'media_player.demo_saloon' }];
   main[3]!.openings = [{ id:'galley-porthole', kind:'window', name:'Hublot de l’office', side:0, at:.5, width:.8, entityIds:['binary_sensor.demo_galley_hatch'] }];
   main[7]!.openings = [{ id:'helm-windscreen', kind:'window', name:'Pare-brise de timonerie', side:1, at:.5, width:2.2 }];
 
@@ -75,8 +75,8 @@ export function yachtDemoPlan(): SpatialPlan {
   lower[5]!.openings = [{ id:'guest-porthole-port', kind:'window', name:'Hublot bâbord · cabine invités', side:0, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_hatch'] }];
   lower[6]!.openings = [{ id:'guest-porthole-starboard', kind:'window', name:'Hublot tribord · cabine invités', side:2, at:.5, width:.8, entityIds:['binary_sensor.demo_guest_starboard_hatch'] }];
   lower[3]!.laundry = [
-    { id:'washer', kind:'washer', name:'Lave-linge', at:[14.5,6], entityId:'sensor.buanderie_washing_machine_cycle' },
-    { id:'dryer', kind:'dryer', name:'Sèche-linge superposé', at:[14.5,6], stackedOn:'washer', entityId:'sensor.demo_dryer_cycle' },
+    { id:'washer', kind:'washer', name:'Lave-linge', at:[13.31,6], rotation:Math.PI/2, entityId:'sensor.buanderie_washing_machine_cycle' },
+    { id:'dryer', kind:'dryer', name:'Sèche-linge superposé', at:[13.31,6], rotation:Math.PI/2, stackedOn:'washer', entityId:'sensor.demo_dryer_cycle' },
   ];
 
   const names: Record<string,string> = {

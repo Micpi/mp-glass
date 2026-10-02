@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseSpatial, validRoom } from '../shared/spatial';
+import { nearestSide, parseSpatial, validRoom } from '../shared/spatial';
 import { yachtDemoPlan } from '../demo/scenarios';
 
 describe('yacht spatial demonstration', () => {
@@ -16,11 +16,20 @@ describe('yacht spatial demonstration', () => {
     expect(plan.floors.every(floor => floor.rooms.some(room => room.arcs?.some(bulge => bulge !== 0)))).toBe(true);
   });
 
-  it('places the washer and stacked dryer in the technical and laundry compartment', () => {
+  it('places the stacked washer and dryer flush against the laundry bulkhead', () => {
     const room = yachtDemoPlan().floors[0]!.rooms.find(room => room.id === 'lower-laundry')!;
     expect(room.laundry).toEqual([
-      expect.objectContaining({ id: 'washer', at: [14.5*37.5/36, 6*8.1/12] }),
-      expect.objectContaining({ id: 'dryer', at: [14.5*37.5/36, 6*8.1/12], stackedOn: 'washer' }),
+      expect.objectContaining({ id: 'washer', at: [13.31*37.5/36, 6*8.1/12], rotation: Math.PI/2 }),
+      expect.objectContaining({ id: 'dryer', at: [13.31*37.5/36, 6*8.1/12], rotation: Math.PI/2, stackedOn: 'washer' }),
     ]);
+    expect(nearestSide(room, room.laundry![0]!.at).distance).toBeCloseTo(.33, 1);
+  });
+
+  it('mounts both salon televisions beside their bulkhead walls', () => {
+    const plan = yachtDemoPlan();
+    for (const [floorIndex, roomId] of [[1, 'main-lounge'], [2, 'upper-saloon']] as const) {
+      const room = plan.floors[floorIndex]!.rooms.find(room => room.id === roomId)!;
+      expect(nearestSide(room, room.media![0]!.at).distance).toBeCloseTo(.16, 2);
+    }
   });
 });

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { chooseLanguage, followHass, interfaceLanguage, language, locale, tr, trDefault, trPlan, trText } from '../frontend/i18n';
-import { CATALOGS } from '../frontend/locales';
+import { CATALOG, CATALOGS, EXTRA_CATALOGS } from '../frontend/locales';
 import { examplePlan } from '../shared/spatial';
 
 const placeholders = (text: string) => [...new Set([...text.matchAll(/\{(\w+)\}/g)].map(m => m[1]))].sort().join();
@@ -30,17 +30,31 @@ describe('catalog of the interface', () => {
       for (const form of [...forms.en, ...forms.ru]) expect(form.trim(), key).not.toBe('');
     }
   });
+  it('keeps German and Italian overlays keyed to the project catalog with intact placeholders and plurals', () => {
+    for (const [language, catalog] of Object.entries(EXTRA_CATALOGS)) for (const [key, value] of Object.entries(catalog)) {
+      expect(key in CATALOG, `${language}: ${key}`).toBe(true);
+      const french = key.replace(/#[a-z-]+$/, '').split('|');
+      const translated = value.split('|');
+      expect(translated, `${language}: ${key}`).toHaveLength(french.length);
+      expect(placeholders(translated.join(' ')), `${language}: ${key}`).toBe(placeholders(french.join(' ')));
+      expect(translated.every(form => form.trim().length > 0), `${language}: ${key}`).toBe(true);
+    }
+  });
 });
 
 describe('language of the interface', () => {
-  it('speaks the language of the Home Assistant profile: French and Russian as they are, English for the others', () => {
-    expect([interfaceLanguage(undefined), interfaceLanguage('fr-CA'), interfaceLanguage('ru'), interfaceLanguage('en-GB'), interfaceLanguage('de')]).toEqual(['fr', 'fr', 'ru', 'en', 'en']);
+  it('follows supported Home Assistant languages and falls back to English for others', () => {
+    expect([interfaceLanguage(undefined), interfaceLanguage('fr-CA'), interfaceLanguage('ru'), interfaceLanguage('de-DE'), interfaceLanguage('it-IT'), interfaceLanguage('en-GB'), interfaceLanguage('nl')]).toEqual(['fr', 'fr', 'ru', 'de', 'it', 'en', 'en']);
     followHass({ language: 'fr' });
     expect(language()).toBe('fr');
     expect(tr('Enregistrer')).toBe('Enregistrer');
     expect(tr('Annuler#undo')).toBe('Annuler');
     followHass({ language: 'de', locale: { language: 'de' } });
-    expect([language(), tr('Enregistrer'), tr('Annuler#undo'), locale()]).toEqual(['en', 'Save', 'Undo', 'en']);
+    expect([language(), tr('Lumières'), locale()]).toEqual(['de', 'Beleuchtung', 'de']);
+    expect([tr('Ambiance du plan'), tr('Niveau affiché'), tr('Tout ouvrir')]).toEqual(['Planansicht', 'Angezeigte Etage', 'Alle öffnen']);
+    followHass({ language: 'it-IT' });
+    expect([language(), tr('Lumières'), locale()]).toEqual(['it', 'Luci', 'it-IT']);
+    expect([tr('Ambiance du plan'), tr('Niveau affiché'), tr('Tout ouvrir')]).toEqual(['Vista della planimetria', 'Piano visualizzato', 'Apri tutto']);
     followHass({ language: 'en-GB' });
     expect(locale()).toBe('en-GB');
   });

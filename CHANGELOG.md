@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.15.21 — Allemand, italien et langues du portail
+
+- Ajoute un sélecteur de langue sur la connexion et le choix de démonstration : français, anglais, allemand, italien et russe.
+- Suit la langue du navigateur au premier passage, conserve ensuite le choix localement, et traduit les messages d’identifiants incorrects.
+- Traduit le tableau de bord, les fenêtres de détails d’équipement et les commandes courantes du plan 3D en allemand et en italien ; Home Assistant reconnaît ces langues et les affiche dans son menu.
+- Les modules Studio et éditeur dont les textes ne disposent pas encore d’une traduction allemande ou italienne utilisent l’anglais.
+- Vérifie les catalogues, les variantes singulier/pluriel, le portail et le menu de langue dans le navigateur.
+
 ## 0.15.20 — Mise en valeur d’ICM
 
 - Renforce la présence d’ICM sur la page de connexion avec un logo agrandi, le nom complet « Integrated Components for Media » et une mention dédiée à l’intégration et au déploiement.

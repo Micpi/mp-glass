@@ -1,5 +1,6 @@
 import QRCode from 'qrcode';
 import icmLogoUrl from './assets/access-icm-logo.png';
+import { portalError, portalLanguage, portalLanguagePicker, portalText, setPortalLanguage } from './portal-i18n';
 
 type User = { id:string; username:string; role:string; createdAt:string; lastLoginAt:string|null; mustChangePassword:boolean };
 type Analytics = {
@@ -27,32 +28,33 @@ async function api<T=any>(path:string,method='GET',body?:unknown):Promise<T>{
 function msg(text:string){const el=app.querySelector<HTMLElement>('.message');if(el)el.textContent=text}
 
 function login(){
-  header.textContent='';
-  app.innerHTML=`<div class="login"><div><div class="eyebrow">Votre espace de démonstration</div><h1>Bienvenue dans MP Nexus.</h1><p class="lead">Connectez-vous avec les identifiants fournis par l’administrateur pour choisir votre univers et explorer le plan 3D.</p><div class="notice">Votre compte permet à l’administrateur de suivre l’utilisation de la démo : connexions, ouvertures du plan et durée approximative. Aucune adresse IP ni localisation n’est enregistrée. Les statistiques sont conservées 180 jours.</div><div class="login-credit"><img src="${icmLogoUrl}" alt="Logo ICM — Integrated Components for Media"><span><strong>Intégration & déploiement par ICM</strong><small>Integrated Components for Media · Votre interface de contrôle.</small></span></div></div><div class="panel"><h2>Connexion</h2><form id="login"><label>Nom d’utilisateur<input name="username" autocomplete="username" required autofocus></label><label>Mot de passe<input name="password" type="password" autocomplete="current-password" required></label><div class="message"></div><button class="button">Se connecter</button></form></div></div>`;
+  header.innerHTML=portalLanguagePicker();
+  app.innerHTML=`<div class="login"><div><div class="eyebrow">${portalText('loginKicker')}</div><h1>${portalText('welcome')}</h1><p class="lead">${portalText('loginLead')}</p><div class="notice">${portalText('privacy')}</div><div class="login-credit"><img src="${icmLogoUrl}" alt="Logo ICM — Integrated Components for Media"><span><strong>${portalText('icmCredit')}</strong><small>${portalText('icmDetail')}</small></span></div></div><div class="panel"><h2>${portalText('signInTitle')}</h2><form id="login"><label>${portalText('username')}<input name="username" autocomplete="username" required autofocus></label><label>${portalText('password')}<input name="password" type="password" autocomplete="current-password" required></label><div class="message"></div><button class="button">${portalText('signIn')}</button></form></div></div>`;
   app.querySelector<HTMLFormElement>('#login')!.onsubmit=async e=>{
     e.preventDefault();msg('');const f=new FormData(e.currentTarget as HTMLFormElement);
     try{const result=await api<{returnUrl:string}>('/__mpnexus/api/login','POST',{username:f.get('username'),password:f.get('password'),returnUrl:new URLSearchParams(location.search).get('returnUrl')});location.assign(result.returnUrl)}
-    catch(error){msg((error as Error).message)}
+    catch(error){msg(portalError((error as Error).message))}
   };
 }
 
-function shell(title:string,desc:string,content:string){
+function shell(title:string,desc:string,content:string,showLanguage=false){
   const adminNav=user?.role==='admin'?`<a class="button alt small" href="/__mpnexus/admin">Vue d’ensemble</a><a class="button alt small" href="/__mpnexus/admin/users">Utilisateurs</a>`:'';
-  header.innerHTML=`<div class="userbar">${adminNav}<span class="who">${esc(user?.username||'')}</span><button class="button alt small" id="logout">Quitter</button></div>`;
+  header.innerHTML=`<div class="userbar">${showLanguage?portalLanguagePicker():''}${adminNav}<span class="who">${esc(user?.username||'')}</span><button class="button alt small" id="logout">Quitter</button></div>`;
   app.innerHTML=`<div class="eyebrow">${user?.role==='admin'?'Espace administrateur':'Espace utilisateur'}</div><h1>${title}</h1><p class="lead">${desc}</p>${content}`;
   header.querySelector<HTMLButtonElement>('#logout')!.onclick=async()=>{await api('/__mpnexus/api/logout','POST',{});location.assign('/__mpnexus/login')};
 }
 
 function accountPage(){
   const must=user?.mustChangePassword;
-  const changePassword=must?`<section class="panel"><h2>Choisissez votre mot de passe</h2><p class="footnote">Le mot de passe provisoire doit être remplacé avant d’accéder aux démos.</p><form id="password" class="stack"><label>Mot de passe provisoire<input name="temporaryPassword" type="password" autocomplete="current-password" required></label><label>Nouveau mot de passe<input name="newPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><div class="message"></div><button class="button">Enregistrer</button></form></section>`:'';
+  const changePassword=must?`<section class="panel"><h2>${portalText('changePassword')}</h2><p class="footnote">${portalText('temporaryHint')}</p><form id="password" class="stack"><label>${portalText('temporaryPassword')}<input name="temporaryPassword" type="password" autocomplete="current-password" required></label><label>${portalText('newPassword')}<input name="newPassword" type="password" minlength="12" maxlength="128" autocomplete="new-password" required></label><div class="message"></div><button class="button">${portalText('save')}</button></form></section>`:'';
   const cards=[
-    {id:'residential',icon:'⌂',title:'Résidentiel',tag:'Maison · 3 niveaux',text:'Une maison connectée, du séjour à la buanderie.',items:'Éclairage · chauffage · volets · sécurité · multimédia · linge'},
-    {id:'office',icon:'▦',title:'Bureau / magasin',tag:'Espaces professionnels',text:'Un commerce, ses réserves et ses espaces de travail.',items:'Éclairage · climatisation · stores · accès · présence · affichage · linge'},
-    {id:'yacht',icon:'⌁',title:'Yacht',tag:'À bord · 4 ponts',text:'Les équipements d’un yacht, du salon au pont extérieur.',items:'Éclairage · climatisation · hublots · accès · multimédia · linge'},
+    {id:'residential',icon:'⌂',title:portalText('residential'),tag:portalText('homeThreeFloors'),text:portalText('homeDescription'),items:portalText('residentialCategories')},
+    {id:'office',icon:'▦',title:portalText('office'),tag:portalText('professional'),text:portalText('officeDescription'),items:portalText('officeCategories')},
+    {id:'yacht',icon:'⌁',title:portalText('yacht'),tag:portalText('yachtFourDecks'),text:portalText('yachtDescription'),items:portalText('yachtCategories')},
   ];
-  const demos=`<section class="demo-grid" aria-label="Choisir un type de démonstration">${cards.map(c=>`<a class="demo-card" href="/?spatial&scenario=${c.id}${c.id==='residential'?'&floors&laundry':''}"><span class="demo-icon" aria-hidden="true">${c.icon}</span><span class="demo-tag">${c.tag}</span><h2>${c.title}</h2><p>${c.text}</p><span class="demo-categories">${c.items}</span><span class="demo-open">Explorer cette démo <b aria-hidden="true">↗</b></span></a>`).join('')}</section>`;
-  shell('Choisissez votre univers.',`Bonjour ${esc(user?.username||'')}. Sélectionnez un environnement pour découvrir les équipements et le plan 3D.`,`${changePassword}${demos}<section class="panel qr-panel"><div><h2 style="margin-bottom:8px">Sur un autre appareil</h2><span class="footnote">Scannez le QR code, connectez-vous puis choisissez une démo.</span></div><canvas id="plan-qr" width="160" height="160" style="background:white;border-radius:12px;padding:8px"></canvas></section>${user?.role==='admin'?`<section class="panel update-box"><div><h2 style="margin-bottom:8px">Administration et mise à jour</h2><div class="footnote">Gérez les comptes depuis <strong>Utilisateurs</strong> dans le menu en haut. Version installée : ${esc(version)}. Sur le Synology, lancez <code>update.sh</code> depuis le dossier du projet pour télécharger l’image et recréer proprement le conteneur.</div></div><a class="badge" href="/__mpnexus/admin/users">Gérer les utilisateurs ↗</a></section>`:''}`);
+  const demos=`<section class="demo-grid" aria-label="${portalText('chooseDemo')}">${cards.map(c=>`<a class="demo-card" href="/?spatial&scenario=${c.id}${c.id==='residential'?'&floors&laundry':''}"><span class="demo-icon" aria-hidden="true">${c.icon}</span><span class="demo-tag">${c.tag}</span><h2>${c.title}</h2><p>${c.text}</p><span class="demo-categories">${c.items}</span><span class="demo-open">${portalText('explore')} <b aria-hidden="true">↗</b></span></a>`).join('')}</section>`;
+  const description=portalText('hello').replace('{username}',esc(user?.username||''));
+  shell(portalText('chooseTitle'),description,`${changePassword}${demos}<section class="panel qr-panel"><div><h2 style="margin-bottom:8px">${portalText('qrTitle')}</h2><span class="footnote">${portalText('qrHint')}</span></div><canvas id="plan-qr" width="160" height="160" style="background:white;border-radius:12px;padding:8px"></canvas></section>${user?.role==='admin'?`<section class="panel update-box"><div><h2 style="margin-bottom:8px">${portalText('adminUpdate')}</h2><div class="footnote">${portalText('adminInfo',{version:esc(version)})}</div></div><a class="badge" href="/__mpnexus/admin/users">${portalText('manageUsers')}</a></section>`:''}`,true);
   const canvas=app.querySelector<HTMLCanvasElement>('#plan-qr');
   if(canvas)void QRCode.toCanvas(canvas,`${location.origin}/__mpnexus/`,{width:144,margin:0,color:{dark:'#142126',light:'#ffffff'}});
   const form=app.querySelector<HTMLFormElement>('#password');
@@ -99,7 +101,18 @@ function loadError(error:unknown){
   app.querySelector<HTMLButtonElement>('#retry')!.onclick=()=>{void start()};
 }
 async function start(){
+  document.documentElement.lang=portalLanguage();
+  document.title=portalText('pageTitle');
+  const caption=document.querySelector<HTMLElement>('.brand small');
+  if(caption)caption.textContent=portalText('brandCaption');
   try{await token();await load()}
   catch(error){loadError(error)}
 }
+document.addEventListener('change',event=>{
+  const target=event.target;
+  if(target instanceof HTMLSelectElement&&target.matches('[data-portal-language]')){
+    setPortalLanguage(target.value);
+    void start();
+  }
+});
 await start();

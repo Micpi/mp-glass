@@ -235,6 +235,8 @@ test('each user picks their language with the flag of the dashboard, and the Stu
   expect(await flag.textContent()).toBe('');
   await flag.click();
   await expect(page.getByRole('menuitemradio',{name:'Français'})).toHaveAttribute('aria-checked','true');
+  await expect(page.getByRole('menuitemradio',{name:'Deutsch'})).toBeVisible();
+  await expect(page.getByRole('menuitemradio',{name:'Italiano'})).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(page.getByRole('menu')).toHaveCount(0);
   await expect(flag).toBeFocused();

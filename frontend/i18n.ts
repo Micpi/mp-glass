@@ -1,5 +1,5 @@
 import type { ReactiveController, ReactiveControllerHost } from 'lit';
-import { CATALOG, type MessageKey } from './locales';
+import { CATALOG, EXTRA_CATALOGS, type MessageKey } from './locales';
 
 /**
  * Languages of the MP Nexus interface. The French text is the key of every message: the code reads as the interface
@@ -7,12 +7,12 @@ import { CATALOG, type MessageKey } from './locales';
  * meanings («Annuler» cancels a window or undoes an edit). `a|b` gives the singular and plural forms, chosen by the
  * `n` parameter: two forms in French and English, three in Russian (1, 2-4, 5 and more).
  */
-export type Language = 'fr' | 'en' | 'ru';
+export type Language = 'fr' | 'en' | 'ru' | 'de' | 'it';
 /** `auto` follows the language of the user's Home Assistant profile. */
 export type LanguageChoice = Language | 'auto';
-export const LANGUAGES: Language[] = ['fr', 'en', 'ru'];
+export const LANGUAGES: Language[] = ['fr', 'en', 'de', 'it', 'ru'];
 /** Each language named in itself, as a language menu shows it. */
-export const LANGUAGE_NAMES: Record<Language, string> = { fr: 'Français', en: 'English', ru: 'Русский' };
+export const LANGUAGE_NAMES: Record<Language, string> = { fr: 'Français', en: 'English', de: 'Deutsch', it: 'Italiano', ru: 'Русский' };
 /** Fired on window when the interface changes language: every MP Nexus element draws itself again. */
 export const LANGUAGE_EVENT = 'mp-glass-language';
 /** This browser's copy of the choice, read before Home Assistant answers. */
@@ -40,10 +40,10 @@ let current: Language = resolve();
 /** Connection whose saved choice has been read. */
 let synced: object | undefined;
 
-/** The language MP Nexus speaks for a Home Assistant language: French and Russian as they are, English for the others. */
+/** The language MP Nexus speaks for a Home Assistant language. */
 export function interfaceLanguage(tag?: string): Language {
   const value = (tag ?? '').toLowerCase();
-  return !value || value.startsWith('fr') ? 'fr' : value.startsWith('ru') ? 'ru' : 'en';
+  return !value || value.startsWith('fr') ? 'fr' : value.startsWith('ru') ? 'ru' : value.startsWith('de') ? 'de' : value.startsWith('it') ? 'it' : 'en';
 }
 function resolve(): Language { return choice === 'auto' ? interfaceLanguage(haTag) : choice; }
 export const language = () => current;
@@ -112,7 +112,12 @@ function format(text: string, params?: Params) {
 }
 /** The message in the interface language, its `{name}` parameters filled in. */
 export function tr(key: MessageKey, params?: Params): string {
-  return format(current === 'fr' ? key.replace(CONTEXT, '') : CATALOG[key][current === 'en' ? 0 : 1], params);
+  const translated = current === 'fr' ? key.replace(CONTEXT, '')
+    : current === 'en' ? CATALOG[key][0]
+      : current === 'ru' ? CATALOG[key][1]
+        : current === 'de' ? EXTRA_CATALOGS.de[key] ?? CATALOG[key][0]
+          : EXTRA_CATALOGS.it[key] ?? CATALOG[key][0];
+  return format(translated, params);
 }
 /** A text that may be a message (a name MP Nexus gave, a note of Home Assistant); any other text stays as it is. */
 export function trText(text: string, params?: Params): string {

@@ -11,23 +11,27 @@ interface MPGlassModule {
  */
 const TAG = 'll-strategy-dashboard-mp-glass';
 const log = (message: string) => console.info(`[MP Nexus ${__MP_GLASS_VERSION__}] ${message} (${Math.round(performance.now())} ms après l’ouverture de la page)`);
-type Language = 'fr' | 'en' | 'ru';
+type Language = 'fr' | 'en' | 'ru' | 'de' | 'it';
 /** The interface language as frontend/i18n.ts decides it (this file imports nothing), for the two messages shown from here. */
 function language(hass?: Hass): Language {
   let choice: string | null = null;
   try { choice = localStorage.getItem('mp-glass.language'); } catch { /* Storage blocked: the language of Home Assistant. */ }
-  if (choice === 'fr' || choice === 'en' || choice === 'ru') return choice;
+  if (choice === 'fr' || choice === 'en' || choice === 'ru' || choice === 'de' || choice === 'it') return choice;
   const tag = (hass?.locale?.language ?? hass?.language ?? '').toLowerCase();
-  return !tag || tag.startsWith('fr') ? 'fr' : tag.startsWith('ru') ? 'ru' : 'en';
+  return !tag || tag.startsWith('fr') ? 'fr' : tag.startsWith('ru') ? 'ru' : tag.startsWith('de') ? 'de' : tag.startsWith('it') ? 'it' : 'en';
 }
 const TOO_OLD: Record<Language, (agent: string) => string> = {
   fr: agent => `Ce navigateur est trop ancien pour l’interface MP Nexus (au minimum Chrome 107, Safari 16 ou Firefox 104). Mettez à jour le navigateur, ou Android System WebView pour une application. Navigateur : ${agent}`,
   en: agent => `This browser is too old for the MP Nexus interface (Chrome 107, Safari 16 or Firefox 104 at least). Update the browser, or Android System WebView for an app. Browser: ${agent}`,
+  de: agent => `Dieser Browser ist zu alt für MP Nexus (mindestens Chrome 107, Safari 16 oder Firefox 104 erforderlich). Aktualisieren Sie den Browser oder Android System WebView. Browser: ${agent}`,
+  it: agent => `Questo browser è troppo vecchio per MP Nexus (sono richiesti almeno Chrome 107, Safari 16 o Firefox 104). Aggiorna il browser o Android System WebView. Browser: ${agent}`,
   ru: agent => `Этот браузер слишком старый для интерфейса MP Nexus (нужен как минимум Chrome 107, Safari 16 или Firefox 104). Обновите браузер или Android System WebView для приложения. Браузер: ${agent}`,
 };
 const UNREACHABLE: Record<Language, (error: string) => string> = {
   fr: error => `MP Nexus n’a pas pu charger son interface (${error}). Vérifiez la connexion à Home Assistant, puis rechargez la page.`,
   en: error => `MP Nexus could not load its interface (${error}). Check the connection to Home Assistant, then reload the page.`,
+  de: error => `MP Nexus konnte die Benutzeroberfläche nicht laden (${error}). Prüfen Sie die Verbindung zu Home Assistant und laden Sie die Seite neu.`,
+  it: error => `MP Nexus non è riuscito a caricare l’interfaccia (${error}). Controlla la connessione a Home Assistant e ricarica la pagina.`,
   ru: error => `MP Nexus не удалось загрузить интерфейс (${error}). Проверьте подключение к Home Assistant, затем перезагрузите страницу.`,
 };
 /** Waits before each new attempt at loading the engine. */

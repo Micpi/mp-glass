@@ -30,6 +30,6 @@ export class MPGlassStrategy extends HTMLElement {
     generated = true;
     followHass(hass);
     const [snapshot, {project, version}] = await Promise.all([HARegistryReader.read(hass), readProjectWhenReady(hass)]);
-    return MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot, project), project, !!config.debug && !!hass.user?.is_admin, tr('Inventaire'), { lights: tr('Lumières'), rooms: tr('Pièces') }, version);
+    return MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot, project), project, !!config.debug && !!hass.user?.is_admin, tr('Inventaire'), { lights: tr('Lumières'), rooms: tr('Pièces'), media: tr('Multimédia'), plus: tr('Plus') }, version);
   }
 }

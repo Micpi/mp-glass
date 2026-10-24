@@ -233,6 +233,21 @@
         }
       }
     },
+    "interface": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "version"
+      ],
+      "properties": {
+        "version": {
+          "enum": [
+            1,
+            2
+          ]
+        }
+      }
+    },
     "roles": {
       "type": "object",
       "maxProperties": 500,

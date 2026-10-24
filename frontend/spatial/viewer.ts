@@ -45,6 +45,8 @@ const ROOM_ICONS:[RegExp,MPIconName][]=[
 ];
 const roomIcon=(name:string)=>ROOM_ICONS.find(([pattern])=>pattern.test(plain(name)))?.[1]??'rooms';
 export { roomIcon };
+/** Name and icon of each layer of the plan, for the pages that draw their own layer buttons. */
+export const PLAN_LAYERS:Record<PlanMode,{label:MessageKey;icon:MPIconName}>=Object.fromEntries([...MODES,LAUNDRY_MODE].map(m=>[m.mode,{label:m.label,icon:m.icon}])) as Record<PlanMode,{label:MessageKey;icon:MPIconName}>;
 /** Shutters of a floor, of the whole house or of a room: how the pair of commands names them. */
 const COVER_SCOPES={
   floor:['Volets du niveau','Ouvrir tous les volets du niveau','Fermer tous les volets du niveau'],
@@ -96,7 +98,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -271,6 +273,12 @@ export class MPSpatialViewer extends LitElement {
     @container (min-width:560px) and (max-width:899px){.stats{grid-template-columns:repeat(auto-fit,minmax(120px,1fr))}.stat:last-child:nth-child(odd){grid-column:auto}}
     @container (min-width:900px){.layout{grid-template-columns:minmax(0,1fr) minmax(300px,360px);gap:16px}}
     :host([preview]) .side,:host([preview]) .rooms{display:none}:host([preview]) .layout{grid-template-columns:1fr}
+    /* MP Nexus v2: the house floats on the page's photo, filling the panel around it; the page draws the layers and the room card. */
+    :host([bare]){height:100%}:host([bare]) .layout,:host([bare]) .stage-col{height:100%;grid-template-columns:1fr;grid-template-rows:minmax(0,1fr)}
+    :host([bare]) .side,:host([bare]) .rooms,:host([bare]) .modes{display:none}
+    :host([bare]) .stage,:host([bare][stacked]) .stage{height:var(--mp-stage-height,100%);min-height:180px;background:none;border:0;box-shadow:none;border-radius:0;overflow:visible}
+    :host([bare]) .legend{bottom:12px;right:62px}
+    :host([quiet]) .floors,:host([quiet]) .floor-tag,:host([quiet]) .rail,:host([quiet]) .hint,:host([quiet]) .legend{display:none}
     @media (pointer:coarse){.rail .zoom{display:none}.rail button{width:40px;height:40px}.hint .touch{display:inline}.hint .fine{display:none}.more{display:none!important}}
     dialog.ask{width:min(380px,calc(100vw - 32px));padding:20px;border:1px solid rgba(159,210,255,.25);border-radius:20px;color:#eef6ff;background:linear-gradient(150deg,rgba(18,52,79,.96),rgba(7,26,44,.98) 70%);box-shadow:0 30px 80px rgba(0,0,0,.6),inset 0 1px rgba(255,255,255,.12)}
     dialog.ask::backdrop{background:rgba(2,10,20,.6);backdrop-filter:blur(6px)}
@@ -289,6 +297,16 @@ export class MPSpatialViewer extends LitElement {
   areaHref?: (areaId: string) => string | undefined;
   /** Plan only, without the room list and card (import draft). */
   preview = false;
+  /** MP Nexus v2: the plan without its frame, its layer buttons, room list and room card, which the page draws. */
+  bare = false;
+  /** The layer the page asks for, from its own buttons. */
+  layer?: PlanMode;
+  /** The room the page brings into view, '' for none: opened on its floor and framed by the camera. */
+  focusRoom = '';
+  /** A button of the rail asks the page to show the plan on the whole screen. */
+  expandable = false;
+  /** A small banner of the plan: the house alone, without its floor tabs, controls and hints. */
+  quiet = false;
   /** The floor shown; '' shows every floor of a house that has several, one above the other. */
   private floor = '';
   /** The house of the domain the plan shows, '' on a single house: each house keeps its own view of all its floors. */
@@ -384,10 +402,20 @@ export class MPSpatialViewer extends LitElement {
       if(placing.what==='laundry')this.mode='laundry';
       this.selected=placing.roomId;this.focusAfter=placing.roomId;this.engaged=true;
     }
+    if(changed.has('layer')&&this.layer)this.mode=this.layer;
+    if(changed.has('focusRoom'))this.focusOn(this.focusRoom);
     if(changed.has('plan')||changed.has('floor')||changed.has('mode')||changed.has('walls')||placing)this.closeEquipment();
     this.toggleAttribute('stacked', this.stacked);
     // Every floor at once needs room for each label beside it, one above the other.
     this.style.setProperty('--floors', String(this.plan?.floors.length ?? 1));
+  }
+  /** The page's choice of room: its floor opened, the room selected and framed; '' goes back to the whole floor. */
+  private focusOn(id:string){
+    if(!id){if(this.selected){this.selected='';this.scene?.overview();}return;}
+    const floor=this.plan?.floors.find(f=>f.rooms.some(r=>r.id===id));
+    if(!floor||(this.selected===id&&!this.stacked&&this.currentFloor?.id===floor.id))return;
+    if(this.stacked||this.currentFloor?.id!==floor.id){this.flight++;this.floor=floor.id;this.opening='';this.pointed='';this.topView=false;}
+    this.closeEquipment();this.selected=id;this.focusAfter=id;this.engaged=true;
   }
   private escape=(e:KeyboardEvent)=>{if(e.key!=='Escape')return;if(this.placing){e.preventDefault();this.cancelPick();}else if(this.equipment&&!this.detail){e.preventDefault();this.closeEquipment();}};
   /** The point touched while placing, told to the Studio with the room it is for. */
@@ -413,8 +441,8 @@ export class MPSpatialViewer extends LitElement {
     if (!this.plan || !this.currentFloor) return;
     // The ambiance chosen and the floors on screen, told to the page: the section below the plan arranges itself on them.
     if(!this.preview){
-      const detail={mode:this.planMode(this.shownFloors),floorIds:this.shownFloors.map(f=>f.id)};
-      const key=JSON.stringify([detail.mode,detail.floorIds]);
+      const detail={mode:this.planMode(this.shownFloors),floorIds:this.shownFloors.map(f=>f.id),modes:this.modes(this.shownFloors).map(m=>m.mode)};
+      const key=JSON.stringify([detail.mode,detail.floorIds,detail.modes]);
       if(key!==this.announced){this.announced=key;this.dispatchEvent(new CustomEvent('plan-ambiance',{detail}));}
     }
     if (!this.scene && !this.loading && !this.error) {
@@ -618,8 +646,9 @@ export class MPSpatialViewer extends LitElement {
     const strip=this.renderRoot.querySelector<HTMLElement>('.strip');
     strip?.scrollBy({left:direction*(strip.clientWidth-2*EDGE),behavior:motion()});
   }
-  private close=()=>{ this.selected=''; this.scene?.overview(); };
+  private close=()=>{ this.selected=''; this.scene?.overview(); this.dispatchEvent(new CustomEvent('room-deselect')); };
   private showFloor(id: string) {
+    if(this.selected)this.dispatchEvent(new CustomEvent('room-deselect'));
     this.flight++; this.floor=id; this.selected=''; this.topView=false; this.pointed=''; this.opening='';
     // The Studio edits the floor opened on the plan.
     if(id) this.dispatchEvent(new CustomEvent('floor-select',{detail:{floorId:id}}));
@@ -892,6 +921,7 @@ export class MPSpatialViewer extends LitElement {
             @contextmenu=${(e:Event)=>{e.preventDefault();this.ask();}}>${mpIcon('target',18)}</button>
           ${top}
           <button aria-label=${tr('Murs')} title=${tr('Afficher les murs')} aria-pressed=${this.walls} @click=${()=>{this.walls=!this.walls;}}>${mpIcon('walls',18)}</button>
+          ${this.expandable?html`<span class="sep"></span><button aria-label=${tr('Plan en plein écran')} title=${tr('Plan en plein écran')} @click=${()=>this.dispatchEvent(new CustomEvent('plan-expand'))}>${mpIcon('expand',18)}</button>`:nothing}
         </div>
         ${this.placing?html`<div class="picking glass" role="status"><span>${this.placing.prompt}</span><button @click=${this.cancelPick}>${tr('Annuler')}</button></div>`:nothing}
         <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error||!!this.placing}><span class="touch">${tr('Touchez la maison pour la manipuler')}</span><span class="fine">${tr('Glissez la maison pour la tourner · molette pour zoomer')}</span></p>

@@ -49,8 +49,11 @@ export interface AppearanceConfig {
   sectionSubtitle?: string;
 }
 export interface NavigationConfig { items: NavigationItem[]; showLabels: boolean }
+/** Which MP Nexus interface the dashboard draws: the first one, or MP Nexus v2. Unset is v1. */
+export type InterfaceVersion = 1 | 2;
+export interface InterfaceConfig { version: InterfaceVersion }
 export interface Override { name?: string; areaId?: string; hidden?: boolean; presentation?: Category }
-export interface ProjectConfig { schema_version: 2; project: { name: string }; appearance: AppearanceConfig; navigation: NavigationConfig; roles: Record<string, string>; overrides: Record<string, Override>; spatial?: import('./spatial').SpatialPlan }
+export interface ProjectConfig { schema_version: 2; project: { name: string }; appearance: AppearanceConfig; navigation: NavigationConfig; interface?: InterfaceConfig; roles: Record<string, string>; overrides: Record<string, Override>; spatial?: import('./spatial').SpatialPlan }
 export interface LogicalDevice {
   id: string; entityKey: string; entityId: string; name: string; sourceDeviceIds: string[];
   areaId?: string; floorId?: string; category: Category; presentation?: Category;

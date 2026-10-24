@@ -247,6 +247,18 @@ if (params.has('v2') && spatial) {
     'person.jo':{entity_id:'person.jo',state:'not_home',attributes:{friendly_name:'Mamie Jo'}},
     'binary_sensor.chambre_fenetre':{...hass.states['binary_sensor.chambre_fenetre']!,state:'on',last_changed:new Date(Date.now()-6*60_000).toISOString()},
     'sensor.entree_detecteur_batterie':{entity_id:'sensor.entree_detecteur_batterie',state:'8',attributes:{friendly_name:'Entrée · Détecteur · Batterie',device_class:'battery',unit_of_measurement:'%'}},
+    'sensor.maison_puissance':{entity_id:'sensor.maison_puissance',state:'1840',attributes:{friendly_name:'Maison · Puissance',device_class:'power',unit_of_measurement:'W'}},
+    'sensor.cuisine_clim_puissance':{entity_id:'sensor.cuisine_clim_puissance',state:'920',attributes:{friendly_name:'Cuisine · Climatisation · Puissance',device_class:'power',unit_of_measurement:'W'}},
+    'sensor.maison_energie_jour':{entity_id:'sensor.maison_energie_jour',state:'12.4',attributes:{friendly_name:'Maison · Énergie aujourd’hui',device_class:'energy',unit_of_measurement:'kWh'}},
+    'automation.volets_coucher':{entity_id:'automation.volets_coucher',state:'on',attributes:{friendly_name:'Volets au coucher du soleil',last_triggered:new Date(Date.now()-3*3600_000).toISOString()}},
+    'automation.arrosage_pluie':{entity_id:'automation.arrosage_pluie',state:'on',attributes:{friendly_name:'Pas d’arrosage s’il pleut',last_triggered:null}},
+    'weather.maison':{entity_id:'weather.maison',state:'sunny',attributes:{friendly_name:'Maison',temperature:17,temperature_unit:'°C',humidity:62,wind_speed:12,wind_speed_unit:'km/h'}},
+    'sun.sun':{entity_id:'sun.sun',state:'below_horizon',attributes:{friendly_name:'Soleil',next_rising:new Date(Date.now()+9*3600_000).toISOString(),next_setting:new Date(Date.now()+20*3600_000).toISOString()}},
+    'valve.jardin_pelouse':{entity_id:'valve.jardin_pelouse',state:'open',attributes:{friendly_name:'Jardin · Pelouse'}},
+    'valve.jardin_potager':{entity_id:'valve.jardin_potager',state:'closed',attributes:{friendly_name:'Jardin · Potager'}},
+    'lock.entree':{entity_id:'lock.entree',state:'locked',attributes:{friendly_name:'Entrée · Serrure'}},
+    'cover.garage':{entity_id:'cover.garage',state:'closed',attributes:{friendly_name:'Garage · Porte',device_class:'garage',supported_features:3}},
+    'timer.cuisine':{entity_id:'timer.cuisine',state:'active',attributes:{friendly_name:'Pâtes · cuisine',finishes_at:new Date(Date.now()+10*60_000).toISOString()}},
     'update.mp_nexus':{entity_id:'update.mp_nexus',state:'on',attributes:{friendly_name:'MP Nexus',installed_version:'0.17.0',latest_version:'0.18.0'}},
   };
   hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'}};
@@ -256,6 +268,7 @@ if (params.has('v2') && spatial) {
     fav:{title:'Favoris',media_content_id:'fav',media_content_type:'directory',can_play:false,can_expand:true,children:[item('Jazz du soir','f1',['#3a1c5c','#14284f']),item('Dîner','f2',['#ffb46b','#d4417a']),item('Focus','f3',['#65b5ff','#1d3f73'])]},
     radio:{title:'Radios',media_content_id:'radio',media_content_type:'directory',can_play:false,can_expand:true,children:[item('France Inter','r1',['#ff6b6b','#8a1d3a']),item('FIP','r2',['#ff9fd0','#7a2f8f']),item('TSF Jazz','r3',['#ffe481','#a86a1a'])]},
   };
+  hass.fetchWithAuth=async(path:string,init?:RequestInit)=>{calls.push({fetch:path,body:init?.body});return new Response('{"result":"ok"}',{status:200});};
   const callService=hass.callService;
   hass.callService=async(domain,service,data)=>{
     if(domain!=='media_player'||(service!=='join'&&service!=='unjoin'))return callService(domain,service,data);
@@ -268,6 +281,8 @@ if (params.has('v2') && spatial) {
   };
   const callWS=hass.callWS;
   hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
+    :message.type==='logbook/get_events'?[{when:Date.now()/1000-3600,entity_id:'light.circuit_0',state:'on'},{when:Date.now()/1000-1800,entity_id:'cover.salon',state:'open'},{when:Date.now()/1000-600,entity_id:'binary_sensor.chambre_fenetre',state:'on'}] as T
+    :message.type==='mp_glass/project/get'?{revision:1,project} as T
     :message.type==='conversation/process'?{response:{response_type:'action_done',speech:{plain:{speech:`Il fait 21,5 °C au salon et 26,8 °C dans la cuisine.`}}}} as T:callWS<T>(message);
   for(const entityId of ['media_player.salon_sonos','media_player.terrasse'])selectedView.mp_media=[...(selectedView.mp_media??[]),entityId];
   const salon=(selectedView.mp_spatial as {floors?:{rooms:{entityIds?:string[];media?:{entityId?:string}[]}[]}[]}|undefined)?.floors?.flatMap(f=>f.rooms).find(r=>r.media?.some(m=>m.entityId==='media_player.salon_tv'));

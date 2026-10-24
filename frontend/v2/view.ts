@@ -15,9 +15,11 @@ import '../controls';
 import '../detail';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trPlan, type Language } from '../i18n';
 import { flag } from '../flags';
-import { projectLogoMark } from '../../shared/project';
 import { nexusStyles } from './styles';
 import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
+import { automationId, automationOf, backupName, energySummary, projectTemplate, readSaver, routineReady, SAVER_DELAYS, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPrefs, type SaverWidget } from './plus';
+import { readProject, saveProject } from '../ha/client';
+import { parseProject, projectLogoMark } from '../../shared/project';
 import { browse, clockTime, elapsed, groupOf, nextRepeat, remoteRoutes, type BrowseItem, type RemoteKey } from './media';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
@@ -45,7 +47,10 @@ interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
 /** The four faces of the Multimédia page. */
 type MediaTab = 'play'|'foryou'|'rooms'|'remote';
 /** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
-interface SubPanel { type: 'climate'|'covers'; id: string }
+interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'; id: string }
+interface LogEntry { when: number; entity_id?: string; name?: string; message?: string; state?: string }
+const EXPORT_KEY = 'mp-nexus.last-export';
+const newRoutine = (): Routine => ({ name: '', when: { kind: 'sunset', offsetMinutes: 0 }, then: { kind: 'covers-close', entities: [] } });
 /** The browser's dictation, under the name each browser gives it. */
 interface SpeechEvent { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }
 interface Recognition { lang: string; interimResults: boolean; onresult: ((e: SpeechEvent) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start(): void; stop(): void }
@@ -73,6 +78,12 @@ const CLIMATE_NAMES: Record<string, 'Aucun'|'Éco'|'Confort'|'Absent'|'Nuit'|'Bo
   none: 'Aucun', eco: 'Éco', comfort: 'Confort', away: 'Absent', sleep: 'Nuit', boost: 'Boost', schedule: 'Programme', auto: 'Automatique', low: 'Faible', medium: 'Moyenne', high: 'Forte',
 };
 const climateName = (value: string) => { const key = CLIMATE_NAMES[value.toLowerCase()]; return key ? tr(key) : value; };
+/** The weather as Home Assistant names it, in the interface language. */
+const WEATHER: Record<string, 'Ensoleillé'|'Nuit claire'|'Nuageux'|'Éclaircies'|'Pluie'|'Averses'|'Neige'|'Neige et pluie'|'Brouillard'|'Venteux'|'Orage'|'Grêle'> = {
+  sunny: 'Ensoleillé', 'clear-night': 'Nuit claire', cloudy: 'Nuageux', partlycloudy: 'Éclaircies', rainy: 'Pluie', pouring: 'Averses', snowy: 'Neige', 'snowy-rainy': 'Neige et pluie',
+  fog: 'Brouillard', windy: 'Venteux', 'windy-variant': 'Venteux', lightning: 'Orage', 'lightning-rainy': 'Orage', hail: 'Grêle',
+};
+const weatherName = (state: string) => { const key = WEATHER[state]; return key ? tr(key) : state; };
 const HVAC_TONES: Record<string, string> = { heat: '#ff9a5c', cool: '#5cd8ff', dry: '#b08cff', fan_only: '#71d7c0', heat_cool: '#ffd45c', auto: '#ffd45c' };
 const TABS: Record<Tab, { label: 'Accueil'|'Lumières'|'Pièces'|'Multimédia'|'Plus'; icon: MPIconName }> = {
   home: { label: 'Accueil', icon: 'home' }, lights: { label: 'Lumières', icon: 'bulb' }, rooms: { label: 'Pièces', icon: 'rooms' },
@@ -85,7 +96,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -129,6 +140,18 @@ export class MPNexusView extends LitElement {
   private query = '';
   private answer?: { text: string };
   private listening = false;
+  private draft: Routine = newRoutine();
+  private routineState: ''|'saving'|'saved'|'error' = '';
+  private routineRoom = '';
+  private routineWhenRoom = '';
+  private logbook?: LogEntry[] | 'error';
+  private logbookAsked = false;
+  private backupState?: { ok: boolean; text: string };
+  private lastExport = (() => { try { return Number(localStorage.getItem(EXPORT_KEY)) || 0; } catch { return 0; } })();
+  private saver: SaverPrefs = readSaver();
+  private saving = false;
+  private saverSince = 0;
+  private lastActivity = Date.now();
   private header?: Element;
   private clock?: number;
   private hold?: number;
@@ -169,7 +192,8 @@ export class MPNexusView extends LitElement {
     addEventListener('keydown', this.escape);
     addEventListener('pointerdown', this.outside);
     this.resize.observe(this);
-    this.clock = window.setInterval(() => this.requestUpdate(), 30_000);
+    this.clock = window.setInterval(() => { this.checkIdle(); this.requestUpdate(); }, 15_000);
+    for (const type of ['pointerdown', 'keydown', 'wheel']) addEventListener(type, this.activity, { passive: true });
     this.measure();
   }
   disconnectedCallback() {
@@ -180,11 +204,14 @@ export class MPNexusView extends LitElement {
     removeEventListener('resize', this.measure);
     removeEventListener('keydown', this.escape);
     removeEventListener('pointerdown', this.outside);
+    for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
     this.resize.disconnect();
     clearInterval(this.clock);
   }
   protected updated() {
     this.watchConnection();
+    if (this.saving) this.checkIdle();
+    if (this.sub?.type === 'history') this.loadLogbook(); else if (this.logbookAsked) { this.logbookAsked = false; this.logbook = undefined; }
     if (this.kind !== 'media') return;
     const id = this.currentPlayer;
     if (!id) return;
@@ -476,7 +503,7 @@ export class MPNexusView extends LitElement {
         ${playing.map(id => this.nowPlayingRow(id))}
         ${running.map(s => html`<button class="live glass" @click=${() => { this.sub = { type: 'climate', id: s.entity_id }; }}><span class="ib">${mpIcon(entityIcon(s.entity_id, s), 18)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)} · ${stateDetail(s.entity_id, s)}</small></div></button>`)}
         ${open.length ? html`<div class="rlab">${tr('À surveiller')}</div><div class="sg">${open.map(id => html`<button class="rw" @click=${() => { this.detail = id; }}><span class="ib" style="color:#ffb4b4">${mpIcon('window', 16)}</span><div><b>${this.name(id)}</b><small>${stateLabel(id, states[id])}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`)}</div>` : nothing}
-        ${weather ? html`<div class="rlab">${tr('Météo')}</div><button class="live glass" @click=${() => { this.detail = weather.entity_id; }}><span class="ib">${mpIcon('sun', 18)}</span><div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)} ${String(weather.attributes.temperature_unit ?? '°')}`}</b><small>${String(weather.attributes.friendly_name ?? '')} · ${weather.state}</small></div></button>` : nothing}
+        ${weather ? html`<div class="rlab">${tr('Météo')}</div><button class="live glass" @click=${() => { this.detail = weather.entity_id; }}><span class="ib">${mpIcon('sun', 18)}</span><div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)} ${String(weather.attributes.temperature_unit ?? '°')}`}</b><small>${String(weather.attributes.friendly_name ?? '')} · ${weatherName(weather.state)}</small></div></button>` : nothing}
         ${quiet ? html`<p class="empty">${tr('Tout est calme à la maison.')}</p>` : nothing}
       </div>
     </section>`;
@@ -806,7 +833,9 @@ export class MPNexusView extends LitElement {
   }
   private subPanel() {
     const sub = this.sub!;
-    return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${sub.type === 'climate' ? this.climatePanel(sub.id) : this.coversPanel(sub.id)}</section>`;
+    const body = sub.type === 'climate' ? this.climatePanel(sub.id) : sub.type === 'covers' ? this.coversPanel(sub.id) : sub.type === 'routines' ? this.routinesPanel() : sub.type === 'routine' ? this.routinePanel()
+      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : this.saverPanel();
+    return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${body}</section>`;
   }
 
   // ——— Who is home, search and voice, alerts ———
@@ -934,23 +963,256 @@ export class MPNexusView extends LitElement {
     </div>`;
   }
 
+  // ——— Plus: routines, energy, outdoor, access, history, backup, screensaver ———
+  private back = () => { this.sub = undefined; };
+  private ofDomain(domain: string, test: (s: HAState) => boolean = () => true) { return Object.values(this.hass?.states ?? {}).filter(s => s.entity_id.startsWith(`${domain}.`) && test(s)); }
+  /** The entities of a domain in one room of the plan, or in the whole house. */
+  private inScope(domain: string, roomId: string, test: (s: HAState) => boolean = () => true) {
+    const room = this.placedAll.find(p => p.room.id === roomId)?.room;
+    return this.ofDomain(domain, test).map(s => s.entity_id).filter(id => !room || roomEntityIds(room).includes(id));
+  }
+  private toggleRow(id: string, sub: string) {
+    const s = this.state(id), on = this.on(id) || s?.state === 'open';
+    return html`<div class="rw"><span class="ib">${mpIcon(entityIcon(id, s), 16)}</span><button class="txt" @click=${() => { this.detail = id; }}><b>${this.name(id)}</b><small>${sub}</small></button>
+      <button class="end" role="switch" aria-checked=${on} aria-label=${this.name(id)} @click=${() => domainOf(id) === 'valve' ? this.call('valve', on ? 'close_valve' : 'open_valve', { entity_id: id }) : this.call(domainOf(id), 'toggle', { entity_id: id })}><span class=${`tgl ${on ? '' : 'off'}`}></span></button></div>`;
+  }
+  private routinesPanel() {
+    const automations = this.ofDomain('automation', s => available(s)).sort((a, b) => this.name(a.entity_id).localeCompare(this.name(b.entity_id), locale()));
+    const admin = !!this.hass?.user?.is_admin, active = automations.filter(s => s.state === 'on').length;
+    const last = (s: HAState) => { const at = Date.parse(String(s.attributes.last_triggered ?? '')); return Number.isFinite(at) ? tr('Dernière fois : {when}', { when: new Intl.DateTimeFormat(locale(), { weekday: 'short', hour: '2-digit', minute: '2-digit' }).format(at) }) : tr('Jamais déclenchée'); };
+    return html`${this.head(tr('Routines « Si… alors… »'), tr('{n} active|{n} actives', { n: active }), admin ? html`<button class="btn primary sm" @click=${() => { this.routineRoom = ''; this.routineWhenRoom = ''; this.draft = { ...newRoutine(), then: { kind: 'covers-close', entities: this.inScope('cover', '', s => groupCover(s)) } }; this.routineState = ''; this.sub = { type: 'routine', id: '' }; }}>${mpIcon('plus', 15)}${tr('Nouvelle')}</button>` : nothing, this.back)}
+      <div class="body">
+        ${automations.length ? html`<div class="sg">${automations.map(s => html`<div class="rw"><span class="ib">${mpIcon('sparkle', 16)}</span><button class="txt" @click=${() => { this.detail = s.entity_id; }}><b>${this.name(s.entity_id)}</b><small>${last(s)}</small></button>
+          <button class="end" role="switch" aria-checked=${s.state === 'on'} aria-label=${this.name(s.entity_id)} @click=${() => this.call('automation', s.state === 'on' ? 'turn_off' : 'turn_on', { entity_id: s.entity_id })}><span class=${`tgl ${s.state === 'on' ? '' : 'off'}`}></span></button></div>`)}</div>`
+          : html`<p class="empty">${tr('Aucune routine pour le moment. Créez la première en deux touches.')}</p>`}
+        ${admin ? html`<p class="muted" style="margin:0;font-size:12px">${tr('Les routines sont des automatisations Home Assistant : vous les retrouvez et les modifiez aussi dans Paramètres → Automatisations.')}</p>` : nothing}
+      </div>`;
+  }
+  /** Builds a routine in two touches: what starts it, what it does, and a sentence that says it back. */
+  private routinePanel() {
+    const draft = this.draft, set = (change: Partial<Routine>) => { this.draft = { ...draft, ...change }; this.routineState = ''; };
+    const rooms = this.placedAll, contacts = (roomId: string) => this.inScope('binary_sensor', roomId, s => contactSensor(s));
+    const persons = people(this.hass?.states ?? {}), scenes = this.ofDomain('scene', s => available(s));
+    const roomSelect = (value: string, change: (roomId: string) => void, has: (roomId: string) => boolean) => html`<select aria-label=${tr('Pièce')} @change=${(e: Event) => change((e.target as HTMLSelectElement).value)}>
+      <option value="" .selected=${!value}>${tr('Toute la maison')}</option>${rooms.filter(p => has(p.room.id)).map(p => html`<option value=${p.room.id} .selected=${value === p.room.id}>${p.room.name}</option>`)}</select>`;
+    const chip = (on: boolean, icon: MPIconName, label: string, pick: () => void) => html`<button class="pill" aria-pressed=${on} @click=${pick}>${mpIcon(icon, 13)}${label}</button>`;
+    const w = draft.when, t = draft.then, scope = this.routineRoom;
+    const thenScoped = (kind: 'climate-off'|'lights-on'|'covers-close', roomId: string) => ({ kind, entities: this.inScope(kind === 'climate-off' ? 'climate' : kind === 'lights-on' ? 'light' : 'cover', roomId) });
+    const whenText = w.kind === 'opens' ? (this.routineWhenRoom ? tr('une fenêtre s’ouvre ({room})', { room: rooms.find(p => p.room.id === this.routineWhenRoom)?.room.name ?? '' }) : tr('une fenêtre s’ouvre')) : w.kind === 'sunset' ? tr('le soleil se couche') : w.kind === 'arrives' ? tr('quelqu’un arrive') : tr('il est {time}', { time: w.at || '—' });
+    const where = scope ? rooms.find(p => p.room.id === scope)?.room.name ?? '' : tr('toute la maison');
+    const thenText = t.kind === 'climate-off' ? tr('couper la climatisation ({where})', { where }) : t.kind === 'lights-on' ? tr('allumer les lumières ({where})', { where }) : t.kind === 'covers-close' ? tr('fermer les volets ({where})', { where }) : t.kind === 'notify' ? tr('m’envoyer une alerte') : tr('lancer la scène {scene}', { scene: t.scene ? this.name(t.scene) : '—' });
+    const sentence = tr('Si {when}, alors {then}.', { when: whenText, then: thenText }), ready = routineReady({ ...draft, name: draft.name || sentence });
+    return html`${this.head(tr('Nouvelle routine'), tr('Si… alors…'), html`<button class="btn primary sm" ?disabled=${!ready || this.routineState === 'saving'} @click=${() => void this.saveRoutine(sentence)}>${tr('Enregistrer')}</button>`, () => { this.sub = { type: 'routines', id: '' }; })}
+      <div class="body">
+        <div class="rlab">${tr('Si')}</div>
+        <div class="houses wrap">
+          ${chip(w.kind === 'opens', 'window', tr('Une fenêtre s’ouvre'), () => set({ when: { kind: 'opens', sensors: contacts(this.routineWhenRoom) } }))}
+          ${chip(w.kind === 'sunset', 'moon', tr('Le soleil se couche'), () => set({ when: { kind: 'sunset', offsetMinutes: 0 } }))}
+          ${chip(w.kind === 'arrives', 'motion', tr('Quelqu’un arrive'), () => set({ when: { kind: 'arrives', people: persons.map(p => p.id) } }))}
+          ${chip(w.kind === 'time', 'sun', tr('À une heure'), () => set({ when: { kind: 'time', at: '07:00' } }))}
+        </div>
+        ${w.kind === 'opens' ? html`<label class="vol">${mpIcon('window', 16)}${roomSelect(this.routineWhenRoom, roomId => { this.routineWhenRoom = roomId; set({ when: { kind: 'opens', sensors: contacts(roomId) } }); }, roomId => contacts(roomId).length > 0)}<small class="muted">${tr('{n} capteur|{n} capteurs', { n: w.sensors.length })}</small></label>`
+          : w.kind === 'arrives' ? html`<div class="houses wrap">${persons.map(p => chip(w.people.includes(p.id), 'user', p.name, () => set({ when: { kind: 'arrives', people: w.people.includes(p.id) ? w.people.filter(x => x !== p.id) : [...w.people, p.id] } })))}</div>`
+            : w.kind === 'time' ? html`<label class="vol">${mpIcon('sun', 16)}<input type="time" .value=${w.at} aria-label=${tr('Heure')} @change=${(e: Event) => set({ when: { kind: 'time', at: (e.target as HTMLInputElement).value } })}><span></span></label>` : nothing}
+        <div class="rlab">${tr('Alors')}</div>
+        <div class="houses wrap">
+          ${chip(t.kind === 'climate-off', 'thermo', tr('Couper la climatisation'), () => set({ then: thenScoped('climate-off', scope) }))}
+          ${chip(t.kind === 'lights-on', 'bulb', tr('Allumer les lumières'), () => set({ then: thenScoped('lights-on', scope) }))}
+          ${chip(t.kind === 'covers-close', 'shutter', tr('Fermer les volets'), () => set({ then: thenScoped('covers-close', scope) }))}
+          ${chip(t.kind === 'notify', 'bell', tr('M’envoyer une alerte'), () => set({ then: { kind: 'notify', message: sentence } }))}
+          ${scenes.length ? chip(t.kind === 'scene', 'sparkle', tr('Lancer une scène'), () => set({ then: { kind: 'scene', scene: scenes[0]!.entity_id } })) : nothing}
+        </div>
+        ${t.kind === 'climate-off' || t.kind === 'lights-on' || t.kind === 'covers-close' ? html`<label class="vol">${mpIcon('rooms', 16)}${roomSelect(scope, roomId => { this.routineRoom = roomId; set({ then: thenScoped(t.kind, roomId) }); }, roomId => this.inScope(t.kind === 'climate-off' ? 'climate' : t.kind === 'lights-on' ? 'light' : 'cover', roomId).length > 0)}<small class="muted">${tr('{n} équipement|{n} équipements', { n: t.entities.length })}</small></label>`
+          : t.kind === 'notify' ? html`<label class="inp wide"><input .value=${t.message} aria-label=${tr('Message')} @input=${(e: Event) => set({ then: { kind: 'notify', message: (e.target as HTMLInputElement).value } })}></label>`
+            : html`<label class="vol">${mpIcon('sparkle', 16)}<select aria-label=${tr('Scène')} @change=${(e: Event) => set({ then: { kind: 'scene', scene: (e.target as HTMLSelectElement).value } })}>${scenes.map(s => html`<option value=${s.entity_id} .selected=${t.scene === s.entity_id}>${this.name(s.entity_id)}</option>`)}</select><span></span></label>`}
+        <div class="rlab">${tr('En résumé')}</div>
+        <div class="live glass summary"><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${sentence}</b><small>${tr('Tous les jours, dans toute la maison')}</small></div></div>
+        <label class="inp wide">${mpIcon('text', 16)}<input .value=${draft.name} placeholder=${sentence} aria-label=${tr('Nom de la routine')} @input=${(e: Event) => set({ name: (e.target as HTMLInputElement).value })}></label>
+        ${this.routineState === 'saved' ? html`<p class="note ok">${tr('Routine enregistrée dans Home Assistant.')}</p>` : this.routineState === 'error' ? html`<p class="note">${tr('Home Assistant a refusé la routine. Vérifiez que vous êtes administrateur.')}</p>` : nothing}
+      </div>`;
+  }
+  private async saveRoutine(sentence: string) {
+    const hass = this.hass;
+    if (!hass?.fetchWithAuth) { this.routineState = 'error'; return; }
+    this.routineState = 'saving';
+    const routine = { ...this.draft, name: this.draft.name.trim() || sentence };
+    try {
+      const response = await hass.fetchWithAuth(`/api/config/automation/config/${automationId()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(automationOf(routine)) });
+      this.routineState = response.ok ? 'saved' : 'error';
+      if (response.ok) window.setTimeout(() => { if (this.sub?.type === 'routine') this.sub = { type: 'routines', id: '' }; }, 1200);
+    } catch { this.routineState = 'error'; }
+  }
+  private energyPanel() {
+    const { power, energy } = energySummary(this.hass?.states ?? {});
+    const watts = (w: number) => w >= 1000 ? `${this.format(w / 1000, 2)} kW` : `${this.format(w, 0)} W`;
+    const bar = (value: number, max: number) => html`<i class="meter"><b style=${`width:${max ? Math.max(3, value / max * 100) : 0}%`}></b></i>`;
+    return html`${this.head(tr('Énergie'), tr('En ce moment'), this.hass?.user?.is_admin ? html`<a class="pill" href="/energy">${tr('Tableau Énergie')}</a>` : nothing, this.back)}
+      <div class="body">
+        ${power.length ? html`<div class="rlab">${tr('Puissance')}</div><div class="sg">${power.slice(0, 8).map(p => html`<button class="rw" @click=${() => { this.detail = p.id; }}><span class="ib">${mpIcon('gauge', 16)}</span><div style="flex:1"><b>${this.name(p.id)}</b>${bar(p.watts, power[0]!.watts)}</div><span class="end"><b>${watts(p.watts)}</b></span></button>`)}</div>` : nothing}
+        ${energy.length ? html`<div class="rlab">${tr('Consommation')}</div><div class="sg">${energy.slice(0, 8).map(e => html`<button class="rw" @click=${() => { this.detail = e.id; }}><span class="ib">${mpIcon('leaf', 16)}</span><div style="flex:1"><b>${this.name(e.id)}</b>${bar(e.kwh, energy[0]!.kwh)}</div><span class="end"><b>${this.format(e.kwh, 1)} kWh</b></span></button>`)}</div>` : nothing}
+        ${power.length || energy.length ? nothing : html`<p class="empty">${tr('Aucun capteur de puissance ou d’énergie pour le moment.')}</p>`}
+      </div>`;
+  }
+  private outdoorPanel() {
+    const states = this.hass?.states ?? {}, weather = this.ofDomain('weather', s => available(s))[0], sun = states['sun.sun'];
+    const water = [...this.ofDomain('valve', s => available(s)), ...this.ofDomain('switch', s => available(s) && /arros|irrig|sprink|water|goutte|pelouse|jardin/i.test(`${s.entity_id} ${String(s.attributes.friendly_name ?? '')}`))].map(s => s.entity_id);
+    const time = (value: unknown) => { const at = Date.parse(String(value ?? '')); return Number.isFinite(at) ? new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(at) : '—'; };
+    const on = water.filter(id => this.on(id) || states[id]?.state === 'open').length;
+    return html`${this.head(tr('Extérieur & arrosage'), water.length ? tr('{n} zone sur {total}|{n} zones sur {total}', { n: on, total: water.length }) : tr('Extérieur'), nothing, this.back)}
+      <div class="body">
+        ${weather ? html`<button class="live glass" @click=${() => { this.detail = weather.entity_id; }}><span class="ib">${mpIcon('sun', 18)}</span><div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)} ${String(weather.attributes.temperature_unit ?? '°')}`}</b><small>${[weatherName(weather.state), finite(weather.attributes.humidity) === undefined ? '' : `${this.format(finite(weather.attributes.humidity)!, 0)} %`, finite(weather.attributes.wind_speed) === undefined ? '' : `${this.format(finite(weather.attributes.wind_speed)!, 0)} ${String(weather.attributes.wind_speed_unit ?? 'km/h')}`].filter(Boolean).join(' · ')}</small></div></button>` : nothing}
+        ${sun ? html`<div class="stat"><span class="pill">${mpIcon('sun', 13)}${tr('Lever {time}', { time: time(sun.attributes.next_rising) })}</span><span class="pill">${mpIcon('moon', 13)}${tr('Coucher {time}', { time: time(sun.attributes.next_setting) })}</span></div>` : nothing}
+        ${water.length ? html`<div class="rlab">${tr('Arrosage')}</div><div class="sg">${water.map(id => this.toggleRow(id, stateLabel(id, states[id])))}</div>` : html`<p class="empty">${tr('Aucune vanne ni zone d’arrosage détectée.')}</p>`}
+      </div>`;
+  }
+  private accessPanel() {
+    const cameras = this.ofDomain('camera', s => available(s)), locks = this.ofDomain('lock', s => available(s));
+    const gates = this.ofDomain('cover', s => available(s) && ['garage', 'gate', 'door'].includes(String(s.attributes.device_class ?? ''))), alarms = this.ofDomain('alarm_control_panel', s => available(s));
+    const open = locks.filter(s => s.state !== 'locked').length + gates.filter(s => s.state !== 'closed').length;
+    return html`${this.head(tr('Accès & caméras'), open ? tr('{n} ouvert|{n} ouverts', { n: open }) : tr('Tout est fermé'), nothing, this.back)}
+      <div class="body">
+        ${alarms.map(s => html`<button class="live glass" @click=${() => { this.detail = s.entity_id; }}><span class="ib">${mpIcon('shield', 18)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)}</small></div></button>`)}
+        ${cameras.length ? html`<div class="cams">${cameras.map(s => html`<button class="cam" @click=${() => { this.detail = s.entity_id; }}><span style=${typeof s.attributes.entity_picture === 'string' ? `background-image:url("${s.attributes.entity_picture.replace(/"/g, '%22')}")` : ''}></span><b>${this.name(s.entity_id)}</b></button>`)}</div>` : nothing}
+        ${locks.length ? html`<div class="rlab">${tr('Serrures')}</div><div class="sg">${locks.map(s => html`<div class="rw"><span class="ib">${mpIcon('lock', 16)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)}</small></div><span class="end"><button class="pill" @click=${() => this.call('lock', s.state === 'locked' ? 'unlock' : 'lock', { entity_id: s.entity_id })}>${s.state === 'locked' ? tr('Déverrouiller') : tr('Verrouiller')}</button></span></div>`)}</div>` : nothing}
+        ${gates.length ? html`<div class="rlab">${tr('Portes et portails')}</div><div class="sg">${gates.map(s => html`<div class="rw"><span class="ib">${mpIcon('door', 16)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)}</small></div><span class="end"><button class="pill" @click=${() => this.call('cover', s.state === 'closed' ? 'open_cover' : 'close_cover', { entity_id: s.entity_id })}>${s.state === 'closed' ? tr('Ouvrir') : tr('Fermer#cover')}</button></span></div>`)}</div>` : nothing}
+        ${cameras.length || locks.length || gates.length || alarms.length ? nothing : html`<p class="empty">${tr('Aucune caméra, serrure ni portail détecté.')}</p>`}
+      </div>`;
+  }
+  /** What happened at home over the last day, newest first, for the devices of the dashboard and of the plan. */
+  private historyPanel() {
+    const log = this.logbook;
+    return html`${this.head(tr('Historique'), tr('Dernières 24 heures'), nothing, this.back)}
+      <div class="body">
+        ${!log ? html`<p class="empty">${tr('Chargement…')}</p>` : log === 'error' ? html`<p class="empty">${tr('L’historique ne répond pas.')}</p>` : log.length ? html`<div class="sg">${log.map(e => html`<button class="rw" @click=${() => { if (e.entity_id) this.detail = e.entity_id; }}><span class="ib">${mpIcon(e.entity_id ? entityIcon(e.entity_id, this.state(e.entity_id)) : 'info', 16)}</span><div><b>${e.name ?? (e.entity_id ? this.name(e.entity_id) : '')}</b><small>${e.message ?? (e.entity_id && e.state ? stateLabel(e.entity_id, { ...this.state(e.entity_id)!, state: e.state }) : e.state ?? '')}</small></div><span class="end"><small>${new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(e.when * 1000)}</small></span></button>`)}</div>` : html`<p class="empty">${tr('Rien ne s’est passé ces dernières 24 heures.')}</p>`}
+      </div>`;
+  }
+  private loadLogbook() {
+    const hass = this.hass;
+    if (!hass || this.logbookAsked) return;
+    this.logbookAsked = true;
+    const ids = new Set([...this.entities, ...this.placedAll.flatMap(p => roomEntityIds(p.room)), ...this.media]);
+    hass.callWS<LogEntry[]>({ type: 'logbook/get_events', start_time: new Date(Date.now() - 86_400_000).toISOString() })
+      .then(events => { this.logbook = events.filter(e => !e.entity_id || ids.has(e.entity_id)).filter(e => e.entity_id).slice(-60).reverse(); })
+      .catch(() => { this.logbook = 'error'; });
+  }
+  private backupPanel() {
+    const admin = !!this.hass?.user?.is_admin;
+    return html`${this.head(tr('Sauvegarde & partage'), this.lastExport ? tr('Dernière exportation : {when}', { when: new Intl.DateTimeFormat(locale(), { dateStyle: 'medium', timeStyle: 'short' }).format(this.lastExport) }) : tr('Configuration MP Nexus'), nothing, this.back)}
+      <div class="body">
+        <div class="live glass"><span class="ib" style="color:#9fd0ff">${mpIcon('layers', 18)}</span><div><b>${tr('Configuration complète')}</b><small>${tr('Tableau de bord, apparence, plan 3D et équipements')}</small></div></div>
+        ${admin ? html`<div class="acts"><button class="btn primary" @click=${() => void this.exportProject(false)}>${mpIcon('download', 16)}${tr('Exporter')}</button>
+          <label class="btn">${mpIcon('up', 16)}${tr('Restaurer')}<input type="file" accept="application/json,.json" hidden @change=${(e: Event) => void this.restoreProject(e)}></label></div>
+          <button class="btn" @click=${() => void this.exportProject(true)}>${mpIcon('sparkle', 16)}${tr('Partager comme modèle (sans données privées)')}</button>
+          ${this.backupState ? html`<p class=${`note ${this.backupState.ok ? 'ok' : ''}`}>${this.backupState.text}</p>` : nothing}`
+          : html`<p class="empty">${tr('Seul un administrateur peut exporter ou restaurer la configuration.')}</p>`}
+        <p class="note info">${tr('Le modèle garde le plan, les pièces et l’apparence, sans vos appareils, vos zones, vos photos ni le nom de la maison. Les sauvegardes complètes de Home Assistant restent dans Paramètres → Système → Sauvegardes.')}</p>
+      </div>`;
+  }
+  private async exportProject(template: boolean) {
+    const hass = this.hass;
+    if (!hass) return;
+    try {
+      const { project } = await readProject(hass);
+      const blob = new Blob([JSON.stringify(template ? projectTemplate(project) : project, null, 2)], { type: 'application/json' });
+      const link = document.createElement('a');
+      link.href = URL.createObjectURL(blob); link.download = template ? backupName().replace('mp-nexus', 'mp-nexus-modele') : backupName();
+      this.renderRoot.appendChild(link); link.click(); link.remove();
+      window.setTimeout(() => URL.revokeObjectURL(link.href), 5000);
+      if (!template) { this.lastExport = Date.now(); try { localStorage.setItem(EXPORT_KEY, String(this.lastExport)); } catch { /* For this page only. */ } }
+      this.backupState = { ok: true, text: template ? tr('Modèle téléchargé.') : tr('Configuration téléchargée.') };
+    } catch { this.backupState = { ok: false, text: tr('La configuration n’a pas pu être lue.') }; }
+  }
+  private async restoreProject(event: Event) {
+    const input = event.target as HTMLInputElement, file = input.files?.[0], hass = this.hass;
+    input.value = '';
+    if (!file || !hass) return;
+    try {
+      const project = parseProject(JSON.parse(await file.text()));
+      const current = await readProject(hass);
+      await saveProject(hass, { revision: current.revision, project });
+      this.backupState = { ok: true, text: tr('Configuration restaurée. Rechargez la page pour la voir.') };
+    } catch { this.backupState = { ok: false, text: tr('Ce fichier n’est pas une configuration MP Nexus valide.') }; }
+  }
+  private saverPanel() {
+    const saver = this.saver, set = (change: Partial<SaverPrefs>) => { this.saver = { ...saver, ...change }; writeSaver(this.saver); this.lastActivity = Date.now(); };
+    const sensors = this.ofDomain('binary_sensor', s => ['motion', 'occupancy', 'presence'].includes(String(s.attributes.device_class ?? '')));
+    const widgets: [SaverWidget, 'Heure'|'Météo'|'Minuteur'|'Musique'|'Alertes'|'Qui est là'][] = [['clock', 'Heure'], ['weather', 'Météo'], ['timer', 'Minuteur'], ['music', 'Musique'], ['alerts', 'Alertes'], ['people', 'Qui est là']];
+    const contents: [SaverContent, 'Photos'|'Plan 3D'|'Horloge'][] = [['photos', 'Photos'], ['plan', 'Plan 3D'], ['clock', 'Horloge']];
+    return html`${this.head(tr('Écran de veille'), saver.enabled ? tr('Après {n} min sans toucher l’écran', { n: saver.delayMinutes }) : tr('Désactivé sur cet écran'), html`<button class="end" role="switch" aria-checked=${saver.enabled} aria-label=${tr('Écran de veille')} @click=${() => set({ enabled: !saver.enabled })}><span class=${`tgl ${saver.enabled ? '' : 'off'}`}></span></button>`, this.back)}
+      <div class="body">
+        <div class="rlab">${tr('Contenu')}</div>
+        <div class="layers">${contents.map(([value, label]) => html`<button aria-pressed=${saver.content === value} @click=${() => set({ content: value })}><span>${tr(label)}</span></button>`)}</div>
+        <div class="rlab">${tr('Afficher')}</div>
+        <div class="houses wrap">${widgets.map(([value, label]) => html`<button class="pill" aria-pressed=${saver.widgets.includes(value)} @click=${() => set({ widgets: saver.widgets.includes(value) ? saver.widgets.filter(x => x !== value) : [...saver.widgets, value] })}>${tr(label)}</button>`)}</div>
+        <div class="sg">
+          <div class="rw"><span class="ib">${mpIcon('sun', 16)}</span><div><b>${tr('Démarrer après')}</b><small>${tr('sans toucher l’écran')}</small></div><span class="end"><select aria-label=${tr('Démarrer après')} @change=${(e: Event) => set({ delayMinutes: Number((e.target as HTMLSelectElement).value) })}>${SAVER_DELAYS.map(n => html`<option value=${n} .selected=${n === saver.delayMinutes}>${tr('{n} min', { n })}</option>`)}</select></span></div>
+          <div class="rw"><span class="ib">${mpIcon('moon', 16)}</span><div><b>${tr('Assombrir la nuit')}</b><small>${tr('23:00 – 7:00 · luminosité 15 %')}</small></div><button class="end" role="switch" aria-checked=${saver.nightDim} aria-label=${tr('Assombrir la nuit')} @click=${() => set({ nightDim: !saver.nightDim })}><span class=${`tgl ${saver.nightDim ? '' : 'off'}`}></span></button></div>
+          <div class="rw"><span class="ib">${mpIcon('motion', 16)}</span><div><b>${tr('Réveil à l’approche')}</b><small>${tr('Un capteur de présence réveille l’écran')}</small></div><span class="end"><select aria-label=${tr('Réveil à l’approche')} @change=${(e: Event) => set({ wakeSensor: (e.target as HTMLSelectElement).value })}><option value="" .selected=${!saver.wakeSensor}>${tr('Aucun')}</option>${sensors.map(s => html`<option value=${s.entity_id} .selected=${saver.wakeSensor === s.entity_id}>${this.name(s.entity_id)}</option>`)}</select></span></div>
+        </div>
+        <button class="btn primary" @click=${() => { this.saving = true; this.saverSince = Date.now(); }}>${mpIcon('play', 16)}${tr('Aperçu')}</button>
+      </div>`;
+  }
+  /** The screen at rest: a photo, the plan or a clock, with the few things worth seeing from across the room. */
+  private screensaver(background: string) {
+    const saver = this.saver, now = new Date(), states = this.hass?.states ?? {};
+    const has = (w: SaverWidget) => saver.widgets.includes(w);
+    const weather = this.ofDomain('weather', s => available(s))[0], playing = this.media.find(id => mediaPlaying(states[id]));
+    const timer = this.ofDomain('timer', s => s.state === 'active')[0], left = timerLeft(timer);
+    const alerts = unseen(this.alerts, this.prefs), home = this.persons.filter(p => p.home);
+    const dim = saver.nightDim && inQuietHours(now);
+    return html`<div class=${`saver ${saver.content}`} role="dialog" aria-label=${tr('Écran de veille')} @pointerdown=${this.wake}>
+      ${saver.content === 'photos' ? html`<div class="backdrop kb" style=${background}></div>` : saver.content === 'plan' ? html`<div class="backdrop" style=${`${background};filter:brightness(.4)`}></div><div class="splan">${this.viewer({ key: 'saver', quiet: true })}</div>` : nothing}
+      <div class="sl">
+        ${has('clock') || saver.content === 'clock' ? html`<div class="sclock">${new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(now)}</div><div class="sdate">${new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(now)}</div>` : nothing}
+        ${has('weather') && weather ? html`<div class="sw">${mpIcon('sun', 22)}<div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)}°`}</b><small>${weatherName(weather.state)}</small></div></div>` : nothing}
+        ${has('timer') && timer && left !== undefined ? html`<div class="sw"><span class="ring">${clockTime(left)}</span><div><b>${tr('Minuteur')}</b><small>${this.name(timer.entity_id)}</small></div></div>` : nothing}
+        ${has('music') && playing ? html`<div class="sw"><span class="art" style=${this.artwork(states[playing])}></span><div><b>${nowPlaying(states[playing]) ?? ''}</b><small>${this.playerLabel(playing)}</small></div></div>` : nothing}
+        ${has('alerts') && alerts.length ? html`<div class="sw warn">${mpIcon('bell', 22)}<div><b>${this.name(alerts[0]!.entity)}</b><small>${tr('{n} alerte|{n} alertes', { n: alerts.length })}</small></div></div>` : nothing}
+        ${has('people') && home.length ? html`<div class="sw"><span class="who stack">${home.slice(0, 4).map(p => this.avatar(p, 30, this.persons.indexOf(p)))}</span><div><b>${tr('À la maison')}</b><small>${home.map(p => p.name).join(', ')}</small></div></div>` : nothing}
+      </div>
+      <div class="shint">${tr('Touchez pour revenir')}</div>
+      ${dim ? html`<div class="sdim"></div>` : nothing}
+    </div>`;
+  }
+  private wake = () => { this.saving = false; this.lastActivity = Date.now(); };
+  private activity = () => { this.lastActivity = Date.now(); };
+  private checkIdle() {
+    const saver = this.saver;
+    if (saver.enabled && !this.saving && Date.now() - this.lastActivity > saver.delayMinutes * 60_000) { this.saving = true; this.saverSince = Date.now(); }
+    const sensor = saver.wakeSensor ? this.state(saver.wakeSensor) : undefined;
+    if (this.saving && sensor?.state === 'on' && Date.parse(sensor.last_changed ?? '') > this.saverSince) this.wake();
+  }
+
   // ——— Plus, info and the other devices ———
   private plusMain() {
-    const admin = !!this.hass?.user?.is_admin;
-    const row = (href: string, icon: MPIconName, title: string, sub: string) => html`<a class="rw" href=${href}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div><span class="end">${mpIcon('arrow', 16)}</span></a>`;
+    const admin = !!this.hass?.user?.is_admin, states = this.hass?.states ?? {};
+    const link = (href: string, icon: MPIconName, title: string, sub: string) => html`<a class="rw" href=${href}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div><span class="end">${mpIcon('arrow', 16)}</span></a>`;
+    const open = (type: SubPanel['type'], icon: MPIconName, title: string, sub: string) => html`<button class="rw" aria-pressed=${this.sub?.type === type} @click=${() => { this.sub = { type, id: '' }; }}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`;
+    const automations = this.ofDomain('automation', s => s.state === 'on').length, { power } = energySummary(states);
+    const locksOpen = this.ofDomain('lock', s => available(s) && s.state !== 'locked').length + this.ofDomain('cover', s => available(s) && ['garage', 'gate', 'door'].includes(String(s.attributes.device_class ?? '')) && s.state !== 'closed').length;
+    const saver = this.saver;
     return html`<section class="main panel card glass">
       ${this.head(tr('Plus'), tr('Toute la maison'))}
       <div class="body">
         <div class="sg">
-          ${this.inventory ? row(this.route('inventory'), 'scan', this.inventory.title, tr('{n} équipement|{n} équipements', { n: this.inventory.count })) : nothing}
-          ${row(this.route('info'), 'info', tr('Info'), tr('Versions et installation'))}
+          ${open('routines', 'sparkle', tr('Routines « Si… alors… »'), tr('{n} active|{n} actives', { n: automations }))}
+          ${open('energy', 'gauge', tr('Énergie'), power[0] ? tr('En ce moment · {value}', { value: power[0].watts >= 1000 ? `${this.format(power[0].watts / 1000, 2)} kW` : `${this.format(power[0].watts, 0)} W` }) : tr('Puissance et consommation'))}
+          ${open('outdoor', 'leaf', tr('Extérieur & arrosage'), tr('Météo, soleil et arrosage'))}
+          ${open('access', 'shield', tr('Accès & caméras'), locksOpen ? tr('{n} ouvert|{n} ouverts', { n: locksOpen }) : tr('Tout est fermé'))}
+          ${open('history', 'scan', tr('Historique'), tr('Dernières 24 heures'))}
         </div>
         ${this.housePanels()}
         ${this.screenPrefs()}
         <div class="sg">
+          ${open('saver', 'moon', tr('Écran de veille'), saver.enabled ? tr('{content} · après {n} min', { content: tr(saver.content === 'photos' ? 'Photos' : saver.content === 'plan' ? 'Plan 3D' : 'Horloge'), n: saver.delayMinutes }) : tr('Désactivé sur cet écran'))}
+          ${admin ? open('backup', 'layers', tr('Sauvegarde & partage'), this.lastExport ? tr('Dernière exportation : {when}', { when: new Intl.DateTimeFormat(locale(), { dateStyle: 'short' }).format(this.lastExport) }) : tr('Exporter, restaurer, partager')) : nothing}
+        </div>
+        <div class="sg">
+          ${this.inventory ? link(this.route('inventory'), 'scan', this.inventory.title, tr('{n} équipement|{n} équipements', { n: this.inventory.count })) : nothing}
+          ${link(this.route('info'), 'info', tr('Info'), tr('Versions et installation'))}
           ${this.languageMenu('row')}
-          ${admin ? row('/mp-glass-settings', 'tune', 'MP Nexus Studio', tr('Apparence, plan 3D et équipements')) : nothing}
-          ${admin ? row('/mp-glass-settings', 'sparkle', tr('Interface MP Nexus v2 (aperçu)'), tr('Revenir à la v1 depuis le Studio')) : nothing}
+          ${admin ? link('/mp-glass-settings', 'tune', 'MP Nexus Studio', tr('Apparence, plan 3D et équipements')) : nothing}
+          ${admin ? link('/mp-glass-settings', 'sparkle', tr('Interface MP Nexus v2 (aperçu)'), tr('Revenir à la v1 depuis le Studio')) : nothing}
         </div>
       </div>
     </section>`;
@@ -1017,6 +1279,7 @@ export class MPNexusView extends LitElement {
       ${!big && placed && !this.full && (this.kind === 'home' || this.kind === 'rooms') ? html`<div class="scrim" @click=${() => { this.room = ''; }}></div><section class="sheet panel">${this.roomCard(placed, 'sheet')}</section>` : nothing}
       ${this.full && this.plan ? this.fullPlan(background) : nothing}
       ${this.overlay ? this.overlayPanel() : nothing}
+      ${this.saving ? this.screensaver(background) : nothing}
       ${this.detail && this.hass ? html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>` : nothing}`;
   }
 }

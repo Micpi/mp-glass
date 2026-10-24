@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.19.0 — MP Nexus v2 (aperçu), étape 4 : Plus
+
+- Plus est réorganisé en groupes : la maison (routines, énergie, extérieur, accès, historique), le confort (climat, ouvrants), les alertes et la recherche, puis ce qui est propre à cet écran.
+- Routines « Si… alors… » : la liste des automatisations de Home Assistant avec leur interrupteur, et « Nouvelle » pour en créer une en trois choix. Quand (une porte ou fenêtre s’ouvre, le coucher du soleil, quelqu’un arrive, une heure), alors (couper le chauffage, allumer des lumières, fermer les volets, envoyer une notification, lancer une scène), dans quelles pièces. La phrase résume la routine avant de l’enregistrer. Elle devient une automatisation ordinaire de Home Assistant, modifiable ensuite dans Home Assistant (réservé aux administrateurs).
+- Énergie : la puissance consommée en ce moment et l’énergie comptée, par capteur, avec un lien vers le tableau Énergie de Home Assistant.
+- Extérieur & arrosage : la météo (traduite), le lever et le coucher du soleil, les vannes et zones d’arrosage avec leur interrupteur.
+- Accès & caméras : les caméras, les serrures (Verrouiller, Déverrouiller), les portes de garage et portails (Ouvrir, Fermer) et l’alarme.
+- Historique : ce qui s’est passé ces dernières 24 heures sur les appareils du tableau de bord et du plan.
+- Sauvegarde & partage : exporter la configuration MP Nexus dans un fichier, la restaurer, ou la partager comme modèle sans données privées (ni appareils, ni zones, ni photos, ni nom de la maison).
+- Écran de veille : photos, plan 3D ou horloge, avec l’heure, la météo, un minuteur, la musique, les alertes et qui est là. Il démarre après 1 à 30 minutes sans toucher l’écran, s’assombrit la nuit, et peut se réveiller à l’approche avec un capteur de présence. « Aperçu » le montre tout de suite. Réglé pour chaque écran.
+- La météo est traduite partout (Ensoleillé, Nuageux, Pluie…), et l’état des vannes aussi.
+
 ## 0.18.0 — MP Nexus v2 (aperçu), étape 3 : qui est là, recherche, alertes, confort
 
 - Qui est à la maison : les visages des personnes présentes dans l’en-tête de l’accueil, et sur grand écran « À la maison » avec chacun (présent ou absent) dans « En ce moment ». Se désactive dans Plus → Sur cet écran.

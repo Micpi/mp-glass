@@ -10,13 +10,14 @@ import type { Hass } from '../ha/client';
 import { claimHeader, releaseHeader } from '../ha/header';
 import '../spatial/viewer';
 import { PLAN_LAYERS, roomIcon } from '../spatial/viewer';
-import { climateActionMode, domainOf, entityIcon, HVAC, hvacIcon, kindOf, RUN_SERVICES, stateDetail, stateLabel, stateName, TOGGLE_DOMAINS } from '../entities';
+import { climateActionMode, domainOf, entityIcon, HVAC, hvacIcon, kindOf, RUN_SERVICES, since, stateDetail, stateLabel, stateName, TOGGLE_DOMAINS } from '../entities';
 import '../controls';
 import '../detail';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trPlan, type Language } from '../i18n';
 import { flag } from '../flags';
 import { projectLogoMark } from '../../shared/project';
 import { nexusStyles } from './styles';
+import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { browse, clockTime, elapsed, groupOf, nextRepeat, remoteRoutes, type BrowseItem, type RemoteKey } from './media';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
@@ -45,6 +46,13 @@ interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
 type MediaTab = 'play'|'foryou'|'rooms'|'remote';
 /** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
 interface SubPanel { type: 'climate'|'covers'; id: string }
+/** The browser's dictation, under the name each browser gives it. */
+interface SpeechEvent { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }
+interface Recognition { lang: string; interimResults: boolean; onresult: ((e: SpeechEvent) => void) | null; onend: (() => void) | null; onerror: (() => void) | null; start(): void; stop(): void }
+const speechRecognition = () => (window as unknown as { SpeechRecognition?: new () => Recognition; webkitSpeechRecognition?: new () => Recognition }).SpeechRecognition
+  ?? (window as unknown as { webkitSpeechRecognition?: new () => Recognition }).webkitSpeechRecognition;
+/** The faces of people without a picture: one colour each, always in the same order. */
+const AVATAR_TONES = ['linear-gradient(135deg,#65b5ff,#327ccd)', 'linear-gradient(135deg,#ff9fb6,#c14d7a)', 'linear-gradient(135deg,#ffe481,#ff9f40)', 'linear-gradient(135deg,#7be0c4,#2c7f8f)', 'linear-gradient(135deg,#b9a4ff,#5a3fb0)'];
 interface Browsing { player: string; stack: BrowseItem[]; state: 'loading'|'ready'|'error' }
 
 /** Kept in this browser, shared with the v1 view: the house of the domain the plan shows. */
@@ -77,7 +85,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -116,6 +124,11 @@ export class MPNexusView extends LitElement {
   private queue?: { player: string; next: { title: string; artist: string; image: string } };
   private queueKey = '';
   private sub?: SubPanel;
+  private prefs: NexusPrefs = readPrefs();
+  private overlay: ''|'search'|'alerts' = '';
+  private query = '';
+  private answer?: { text: string };
+  private listening = false;
   private header?: Element;
   private clock?: number;
   private hold?: number;
@@ -150,6 +163,7 @@ export class MPNexusView extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.header = claimHeader(this);
+    this.toggleAttribute('comfort', this.prefs.comfort);
     this.addEventListener('hass-more-info', this.interceptMoreInfo);
     addEventListener('resize', this.measure);
     addEventListener('keydown', this.escape);
@@ -196,6 +210,7 @@ export class MPNexusView extends LitElement {
   private escape = (e: KeyboardEvent) => {
     if (e.key !== 'Escape' || this.detail) return;
     if (this.languageOpen) this.languageOpen = false;
+    else if (this.overlay) this.closeOverlay();
     else if (this.full) this.full = false;
     else if (this.sub) this.sub = undefined;
     else if (this.room && this.layout === 'phone') this.room = '';
@@ -376,7 +391,7 @@ export class MPNexusView extends LitElement {
   private get mark() { return this.appearance.logoMark?.trim() || projectLogoMark(this.projectName || tr('Maison')); }
   private navigationBar() {
     if (this.layout === 'desk') return html`<header class="dhead glass"><span class="logo" aria-hidden="true">${this.mark}</span><div class="brand"><b>${this.projectName || tr('Maison')}</b><div class="lbl">${tr('{n} pièce|{n} pièces', { n: this.placed.length || this.areas.length })}</div></div>
-      <nav aria-label=${tr('Navigation')}>${this.tabs.map(tab => this.navLink(tab))}</nav>${this.appearance.showClock === false ? html`<span style="margin-left:auto"></span>` : this.clockFace()}${this.languageMenu('button')}</header>`;
+      <nav aria-label=${tr('Navigation')}>${this.tabs.map(tab => this.navLink(tab))}</nav>${this.appearance.showClock === false ? html`<span style="margin-left:auto"></span>` : this.clockFace()}${this.headerActions()}${this.languageMenu('button')}</header>`;
     if (this.layout === 'rail') return html`<nav class="rail" aria-label=${tr('Navigation')}><span class="logo" aria-hidden="true">${this.mark}</span>${this.tabs.map(tab => this.navLink(tab, true))}</nav>`;
     return html`<nav class="tabbar glass" aria-label=${tr('Navigation')}>${this.tabs.map(tab => this.navLink(tab, true))}</nav>`;
   }
@@ -423,6 +438,7 @@ export class MPNexusView extends LitElement {
       ${covers.length ? pill('openings', 'shutter', `${covers.filter(id => coverOpen(states[id])).length}/${covers.length}`, tr('ouverts')) : nothing}
       ${contacts.length ? pill('openings', 'window', String(contacts.length), tr('ouverture|ouvertures', { n: contacts.length }), true) : nothing}
       ${playing ? pill('media', 'music', String(playing), tr('en lecture')) : nothing}
+      ${this.prefs.quietNight && inQuietHours() ? html`<button class="pill night" @click=${() => this.openOverlay('alerts')}>${mpIcon('moon', 14)}${tr('Nuit silencieuse')}</button>` : nothing}
     </div>`;
   }
   private scenes() {
@@ -434,7 +450,7 @@ export class MPNexusView extends LitElement {
   }
   private homeMain() {
     return html`<section class="main panel card glass">
-      ${this.head(this.projectName || tr('Ma maison'), this.greeting(), this.layout === 'phone' || this.layout === 'portrait' ? this.languageMenu('button') : nothing)}
+      ${this.head(this.projectName || tr('Ma maison'), this.greeting(), html`${this.whoStack()}${this.layout === 'desk' ? nothing : this.headerActions()}`)}
       <div class="body">
         ${this.stats()}${this.houseButtons()}
         ${this.plan ? html`<div class="plan3d">${this.viewer({ key: 'home', expandable: true })}</div>${this.layerButtons()}` : this.noPlan()}
@@ -456,6 +472,7 @@ export class MPNexusView extends LitElement {
     return html`<section class="side panel card glass">
       ${this.head(tr('En ce moment'), new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}
       <div class="body">
+        ${this.whoRow()}
         ${playing.map(id => this.nowPlayingRow(id))}
         ${running.map(s => html`<button class="live glass" @click=${() => { this.sub = { type: 'climate', id: s.entity_id }; }}><span class="ib">${mpIcon(entityIcon(s.entity_id, s), 18)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)} · ${stateDetail(s.entity_id, s)}</small></div></button>`)}
         ${open.length ? html`<div class="rlab">${tr('À surveiller')}</div><div class="sg">${open.map(id => html`<button class="rw" @click=${() => { this.detail = id; }}><span class="ib" style="color:#ffb4b4">${mpIcon('window', 16)}</span><div><b>${this.name(id)}</b><small>${stateLabel(id, states[id])}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`)}</div>` : nothing}
@@ -792,6 +809,131 @@ export class MPNexusView extends LitElement {
     return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${sub.type === 'climate' ? this.climatePanel(sub.id) : this.coversPanel(sub.id)}</section>`;
   }
 
+  // ——— Who is home, search and voice, alerts ———
+  private setPrefs(change: Partial<NexusPrefs>) {
+    this.prefs = { ...this.prefs, ...change };
+    writePrefs(this.prefs);
+    this.toggleAttribute('comfort', this.prefs.comfort);
+  }
+  private get persons(): Person[] { return this.prefs.people ? people(this.hass?.states ?? {}) : []; }
+  private avatar(person: Person, size: number, index: number) {
+    const gradient = AVATAR_TONES[index % AVATAR_TONES.length]!;
+    return html`<span class="av" style=${`width:${size}px;height:${size}px;font-size:${Math.round(size * .42)}px;${person.picture ? `background-image:url("${person.picture.replace(/"/g, '%22')}")` : `background:${gradient}`}`}>${person.picture ? nothing : person.name.trim().charAt(0).toLocaleUpperCase(locale())}</span>`;
+  }
+  /** The faces of those at home, side by side in the header of the home page. */
+  private whoStack() {
+    const home = this.persons.filter(p => p.home), all = this.persons;
+    if (!home.length) return nothing;
+    const label = tr('À la maison : {names}', { names: home.map(p => p.name).join(', ') });
+    return html`<span class="who stack" role="img" aria-label=${label} title=${label}>${home.slice(0, 4).map(p => this.avatar(p, 28, all.indexOf(p)))}</span>`;
+  }
+  private whoRow() {
+    const all = this.persons;
+    if (!all.length) return nothing;
+    return html`<div class="rlab">${tr('À la maison')}</div><div class="who row">${all.map((p, i) => html`<button class=${`p ${p.home ? '' : 'away'}`} @click=${() => { this.detail = p.id; }}>${this.avatar(p, 44, i)}<i class="d"></i><small>${p.name.split(/\s+/)[0]}</small></button>`)}</div>`;
+  }
+  private roomOfEntity = (id: string) => this.placedAll.find(p => roomEntityIds(p.room).includes(id))?.room.name;
+  private get alerts(): Alert[] { return houseAlerts(this.hass?.states ?? {}, this.roomOfEntity); }
+  private headerActions() {
+    const count = unseen(this.alerts, this.prefs).length;
+    const bell = count ? tr('Alertes : {n} à voir', { n: count }) : tr('Alertes');
+    return html`<button class="ib" aria-label=${tr('Rechercher')} title=${tr('Rechercher')} @click=${() => this.openOverlay('search')}>${mpIcon('search', 17)}</button>
+      <button class="ib bell" aria-label=${bell} title=${bell} @click=${() => this.openOverlay('alerts')}>${mpIcon('bell', 17)}${count ? html`<span class="bdg">${count > 9 ? '9+' : count}</span>` : nothing}</button>`;
+  }
+  private openOverlay(which: 'search'|'alerts') {
+    this.overlay = which; this.query = ''; this.answer = undefined;
+    if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
+  }
+  private closeOverlay = () => { this.overlay = ''; this.stopListening(); };
+  /** The rooms, devices and actions whose name holds what was typed, then Assist for anything else. */
+  private searchPanel() {
+    const q = fold(this.query.trim()), states = this.hass?.states ?? {};
+    const rooms = q ? this.placedAll.filter(p => fold(p.room.name).includes(q)).slice(0, 4) : [];
+    const devices = q ? Object.values(states).filter(s => available(s) && ['light', 'switch', 'cover', 'climate', 'media_player', 'fan', 'lock', 'scene', 'script', 'sensor', 'binary_sensor', 'input_boolean', 'vacuum'].includes(domainOf(s.entity_id))
+      && fold(String(s.attributes.friendly_name ?? s.entity_id)).includes(q)).sort((a, b) => Number(SWITCHED.includes(domainOf(b.entity_id))) - Number(SWITCHED.includes(domainOf(a.entity_id)))).slice(0, 10) : [];
+    const offRooms = rooms.filter(p => this.lightsIn(roomEntityIds(p.room)).some(id => this.on(id)));
+    const voice = !!speechRecognition();
+    const roomRow = (p: PlacedRoom) => { const lit = this.lightsIn(roomEntityIds(p.room)).filter(id => this.on(id)).length, t = this.temperature(p.room); return html`<button class="rw" @click=${() => { this.closeOverlay(); const path = this.areaPath(p.room.areaId); if (path) this.go(path); else this.room = p.room.id; }}><span class="ib">${mpIcon(roomIcon(p.room.name), 16)}</span><div><b>${p.room.name}</b><small>${[lit ? tr('{n} lumière|{n} lumières', { n: lit }) : '', t ? `${this.format(t.value)}°` : '', p.floor.name].filter(Boolean).join(' · ')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`; };
+    const deviceRow = (s: HAState) => { const id = s.entity_id, switched = SWITCHED.includes(domainOf(id)), run = !!RUN_SERVICES[domainOf(id)]; return html`<div class="rw"><span class="ib">${mpIcon(entityIcon(id, s), 16)}</span><button class="txt" @click=${() => { this.detail = id; }}><b>${this.name(id)}</b><small>${[stateLabel(id, s), this.roomOfEntity(id) ?? ''].filter(Boolean).join(' · ')}</small></button>
+      <span class="end">${switched ? html`<button role="switch" aria-checked=${this.on(id)} aria-label=${this.name(id)} @click=${() => this.act(id)}><span class=${`tgl ${this.on(id) ? '' : 'off'}`}></span></button>` : run ? html`<button class="pill" @click=${() => this.act(id)}>${mpIcon('play', 13)}${tr('Lancer')}</button>` : mpIcon('arrow', 16)}</span></div>`; };
+    return html`<div class="hd srch">
+        <label class="inp">${mpIcon('search', 17)}<input type="search" .value=${this.query} placeholder=${tr('Une pièce, un appareil, une question…')} aria-label=${tr('Rechercher')} @input=${(e: Event) => { this.query = (e.target as HTMLInputElement).value; this.answer = undefined; }} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && this.query.trim()) void this.ask(this.query.trim()); }}></label>
+        <button class=${`ib micb ${this.listening ? 'on' : ''}`} aria-label=${tr('Parler à Assist')} title=${voice ? tr('Parler à Assist') : tr('La dictée n’est pas disponible dans ce navigateur.')} ?disabled=${!voice} @click=${() => this.listening ? this.stopListening() : this.listen()}>${mpIcon('mic', 18)}</button>
+        <button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>
+      </div>
+      <div class="body">
+        ${this.listening ? html`<div class="voice"><div class="mic">${mpIcon('mic', 30)}</div><div class="muted">${tr('J’écoute…')}</div><div class="serif">${this.query}</div></div>` : nothing}
+        ${this.answer ? html`<div class="live glass answer"><span class="ib">${mpIcon('sparkle', 16)}</span><div><small>${tr('Assist · Home Assistant')}</small><b>${this.answer.text}</b></div></div>` : nothing}
+        ${rooms.length ? html`<div class="rlab">${tr('Pièces')}</div><div class="sg">${rooms.map(roomRow)}</div>` : nothing}
+        ${devices.length ? html`<div class="rlab">${tr('Appareils')}</div><div class="sg">${devices.map(deviceRow)}</div>` : nothing}
+        ${offRooms.length ? html`<div class="rlab">${tr('Actions')}</div><div class="sg">${offRooms.map(p => html`<button class="rw" @click=${() => this.allOff(roomEntityIds(p.room))}><span class="ib">${mpIcon('power', 16)}</span><div><b>${tr('Éteindre : {room}', { room: p.room.name })}</b><small>${tr('Toutes les lumières de la pièce')}</small></div></button>`)}</div>` : nothing}
+        ${q ? html`<button class="rw ask" @click=${() => void this.ask(this.query.trim())}><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Demander à Assist : « {text} »', { text: this.query.trim() })}</b><small>${tr('Entrée pour envoyer')}</small></div></button>`
+          : html`<p class="muted" style="margin:0">${tr('Cherchez une pièce ou un appareil, ou parlez à Assist :')}</p><div class="houses">${[tr('Éteins tout au salon'), tr('Quelle température fait-il ?'), tr('Mets de la musique dans la cuisine')].map(text => html`<button class="pill" @click=${() => { this.query = text; void this.ask(text); }}>« ${text} »</button>`)}</div>`}
+      </div>`;
+  }
+  private async ask(text: string) {
+    const hass = this.hass;
+    if (!hass) return;
+    this.answer = { text: tr('Je réfléchis…') };
+    try { this.answer = { text: await askAssist(hass, text, language()) || tr('C’est fait.') }; }
+    catch { this.answer = { text: tr('Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.') }; }
+  }
+  private recognition?: { stop(): void };
+  private listen() {
+    const Recognition = speechRecognition();
+    if (!Recognition) return;
+    const recognition = new Recognition();
+    recognition.lang = locale(); recognition.interimResults = true;
+    recognition.onresult = (event: SpeechEvent) => {
+      const result = event.results[event.results.length - 1];
+      this.query = Array.from(event.results).map(r => r[0]?.transcript ?? '').join(' ');
+      if (result?.isFinal) { this.stopListening(); void this.ask(this.query.trim()); }
+    };
+    recognition.onend = () => { this.listening = false; };
+    recognition.onerror = () => { this.listening = false; };
+    this.recognition = recognition; this.listening = true; this.answer = undefined;
+    recognition.start();
+  }
+  private stopListening() { this.recognition?.stop(); this.recognition = undefined; this.listening = false; }
+  /** The alerts of the house, the most serious first, with a silent night that lets only alarms through. */
+  private alertsPanel() {
+    const alerts = this.alerts, states = this.hass?.states ?? {}, fresh = new Set(unseen(alerts, this.prefs).map(a => a.key));
+    const groups: [AlertLevel, 'Alarmes'|'Sécurité'|'Maison'|'Infos'][] = [['alarm', 'Alarmes'], ['security', 'Sécurité'], ['house', 'Maison'], ['info', 'Infos']];
+    const row = (a: Alert) => {
+      const s = states[a.entity], name = this.name(a.entity), when = since(s);
+      const detail = a.kind === 'battery' ? tr('Batterie faible · {n} %', { n: this.format(a.value ?? 0, 0) }) : a.kind === 'heating-open' ? tr('En marche avec une fenêtre ouverte') : a.kind === 'update' ? tr('Mise à jour disponible') : stateLabel(a.entity, s);
+      const icon: MPIconName = a.kind === 'alarm' ? 'alarm' : a.kind === 'open' ? 'window' : a.kind === 'unlocked' ? 'lock' : a.kind === 'battery' ? 'battery' : a.kind === 'heating-open' ? 'thermo' : 'download';
+      return html`<div class=${`al ${a.level} ${fresh.has(a.key) ? 'new' : ''}`}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${name}</b><small>${[detail, a.room ?? '', a.kind === 'battery' ? '' : when ?? ''].filter(Boolean).join(' · ')}</small></div>
+        ${a.kind === 'heating-open' ? html`<button class="pill" @click=${() => this.call('climate', 'set_hvac_mode', { entity_id: a.entity, hvac_mode: 'off' })}>${tr('Couper')}</button>` : a.kind === 'update' && this.hass?.user?.is_admin ? html`<a class="pill" href="/config/updates">${tr('Voir')}</a>` : html`<button class="pill" @click=${() => { this.detail = a.entity; }}>${tr('Voir')}</button>`}</div>`;
+    };
+    return html`${this.head(tr('Alertes'), alerts.length ? tr('{n} à voir|{n} à voir', { n: fresh.size }) : tr('Tout va bien'), html`<button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>`)}
+      <div class="body">
+        ${alerts.length ? groups.map(([level, label]) => { const list = alerts.filter(a => a.level === level); return list.length ? html`<div class="rlab">${tr(label)}</div>${list.map(row)}` : nothing; }) : html`<p class="empty">${tr('Aucune alerte : tout est en ordre à la maison.')}</p>`}
+        <div class="live glass"><span class="ib" style="color:#c9b8ff">${mpIcon('moon', 16)}</span><div><b>${tr('Nuit silencieuse')}</b><small>${tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` })}</small></div>
+          <button class="end" role="switch" aria-checked=${this.prefs.quietNight} aria-label=${tr('Nuit silencieuse')} @click=${() => this.setPrefs({ quietNight: !this.prefs.quietNight })}><span class=${`tgl ${this.prefs.quietNight ? '' : 'off'}`}></span></button></div>
+        ${fresh.size ? html`<button class="btn" @click=${() => this.setPrefs({ seen: [...new Set([...this.prefs.seen, ...alerts.map(a => a.key)])] })}>${mpIcon('check', 16)}${tr('Tout marquer comme lu')}</button>` : nothing}
+      </div>`;
+  }
+  private overlayPanel() {
+    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.alertsPanel()}</section>`;
+  }
+  /** The choices this screen keeps for itself: who is home, comfort mode, silent night. */
+  private screenPrefs() {
+    const toggle = (on: boolean, label: string, change: () => void) => html`<button class="end" role="switch" aria-checked=${on} aria-label=${label} @click=${change}><span class=${`tgl ${on ? '' : 'off'}`}></span></button>`;
+    const row = (icon: MPIconName, title: string, sub: string, on: boolean, change: () => void) => html`<div class="rw"><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div>${toggle(on, title, change)}</div>`;
+    const count = unseen(this.alerts, this.prefs).length;
+    return html`<div class="sg">
+      <button class="rw" @click=${() => this.openOverlay('alerts')}><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Alertes')}</b><small>${count ? tr('{n} à voir|{n} à voir', { n: count }) : tr('Tout va bien')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>
+      <button class="rw" @click=${() => this.openOverlay('search')}><span class="ib">${mpIcon('search', 16)}</span><div><b>${tr('Rechercher')}</b><small>${tr('Pièces, appareils et Assist à la voix')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>
+    </div>
+    <div class="rlab">${tr('Sur cet écran')}</div>
+    <div class="sg">
+      ${row('user', tr('Qui est à la maison'), this.prefs.people ? tr('Affiché sur l’accueil') : tr('Masqué'), this.prefs.people, () => this.setPrefs({ people: !this.prefs.people }))}
+      ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
+      ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
+    </div>`;
+  }
+
   // ——— Plus, info and the other devices ———
   private plusMain() {
     const admin = !!this.hass?.user?.is_admin;
@@ -804,6 +946,7 @@ export class MPNexusView extends LitElement {
           ${row(this.route('info'), 'info', tr('Info'), tr('Versions et installation'))}
         </div>
         ${this.housePanels()}
+        ${this.screenPrefs()}
         <div class="sg">
           ${this.languageMenu('row')}
           ${admin ? row('/mp-glass-settings', 'tune', 'MP Nexus Studio', tr('Apparence, plan 3D et équipements')) : nothing}
@@ -873,6 +1016,7 @@ export class MPNexusView extends LitElement {
       <div class="app">${this.layout === 'desk' ? this.navigationBar() : nothing}${main}${side}${this.layout !== 'desk' ? this.navigationBar() : nothing}</div>
       ${!big && placed && !this.full && (this.kind === 'home' || this.kind === 'rooms') ? html`<div class="scrim" @click=${() => { this.room = ''; }}></div><section class="sheet panel">${this.roomCard(placed, 'sheet')}</section>` : nothing}
       ${this.full && this.plan ? this.fullPlan(background) : nothing}
+      ${this.overlay ? this.overlayPanel() : nothing}
       ${this.detail && this.hass ? html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>` : nothing}`;
   }
 }

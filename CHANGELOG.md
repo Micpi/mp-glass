@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.18.0 — MP Nexus v2 (aperçu), étape 3 : qui est là, recherche, alertes, confort
+
+- Qui est à la maison : les visages des personnes présentes dans l’en-tête de l’accueil, et sur grand écran « À la maison » avec chacun (présent ou absent) dans « En ce moment ». Se désactive dans Plus → Sur cet écran.
+- Recherche : une loupe dans l’en-tête trouve les pièces, les appareils (avec leur interrupteur) et propose « Éteindre : pièce ». Sans accents ni majuscules nécessaires.
+- Voix et Assist : le micro dicte la demande (dans les navigateurs qui le permettent) et l’envoie à Assist de Home Assistant ; une question tapée part avec Entrée. La réponse d’Assist s’affiche.
+- Centre d’alertes : une cloche avec le nombre d’alertes à voir, regroupées en Alarmes (fumée, gaz, fuite…), Sécurité (portes et fenêtres ouvertes, serrures ouvertes), Maison (batteries faibles, chauffage ou clim en marche avec une fenêtre ouverte dans la pièce, avec « Couper ») et Infos (mises à jour). « Tout marquer comme lu » ; une alerte revient si l’événement se reproduit.
+- Nuit silencieuse : de 23:00 à 7:00, seules les alarmes comptent ; un badge le rappelle sur l’accueil.
+- Mode confort : texte plus grand et contraste renforcé.
+- Ces choix sont propres à chaque écran : une tablette murale et un téléphone peuvent choisir différemment.
+
 ## 0.17.0 — MP Nexus v2 (aperçu), étape 2 : multimédia, climat et volets
 
 - Multimédia en quatre onglets : Lecture, Pour vous, Pièces et Télécommande.

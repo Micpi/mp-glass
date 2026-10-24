@@ -240,6 +240,14 @@ if (params.has('v2') && spatial) {
     'media_player.cuisine':{...hass.states['media_player.cuisine']!,state:'playing',attributes:{...hass.states['media_player.cuisine']!.attributes,friendly_name:'Cuisine · Era 100',media_title:'Nuits d’été',media_artist:'Lumen Drift',volume_level:.24,group_members:['media_player.salon_sonos','media_player.cuisine'],supported_features:all}},
     'media_player.terrasse':{entity_id:'media_player.terrasse',state:'idle',attributes:{friendly_name:'Terrasse · Enceinte',device_class:'speaker',volume_level:.4,supported_features:all}},
     'remote.salon_tv':{entity_id:'remote.salon_tv',state:'on',attributes:{friendly_name:'Salon · Téléviseur'}},
+    // Who is home, and what the alerts centre has to say: a window open while the bedroom heats, a tired battery, an update.
+    'person.mickael':{entity_id:'person.mickael',state:'home',attributes:{friendly_name:'Mickael'}},
+    'person.claire':{entity_id:'person.claire',state:'home',attributes:{friendly_name:'Claire'}},
+    'person.leo':{entity_id:'person.leo',state:'home',attributes:{friendly_name:'Léo'}},
+    'person.jo':{entity_id:'person.jo',state:'not_home',attributes:{friendly_name:'Mamie Jo'}},
+    'binary_sensor.chambre_fenetre':{...hass.states['binary_sensor.chambre_fenetre']!,state:'on',last_changed:new Date(Date.now()-6*60_000).toISOString()},
+    'sensor.entree_detecteur_batterie':{entity_id:'sensor.entree_detecteur_batterie',state:'8',attributes:{friendly_name:'Entrée · Détecteur · Batterie',device_class:'battery',unit_of_measurement:'%'}},
+    'update.mp_nexus':{entity_id:'update.mp_nexus',state:'on',attributes:{friendly_name:'MP Nexus',installed_version:'0.17.0',latest_version:'0.18.0'}},
   };
   hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'}};
   const item=(title:string,id:string,colors:[string,string],play=true)=>({title,media_content_id:id,media_content_type:play?'music':'directory',can_play:play,can_expand:!play,thumbnail:art(...colors)});
@@ -259,7 +267,8 @@ if (params.has('v2') && spatial) {
     hass.states=states;view.hass={...hass};
   };
   const callWS=hass.callWS;
-  hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T:callWS<T>(message);
+  hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
+    :message.type==='conversation/process'?{response:{response_type:'action_done',speech:{plain:{speech:`Il fait 21,5 °C au salon et 26,8 °C dans la cuisine.`}}}} as T:callWS<T>(message);
   for(const entityId of ['media_player.salon_sonos','media_player.terrasse'])selectedView.mp_media=[...(selectedView.mp_media??[]),entityId];
   const salon=(selectedView.mp_spatial as {floors?:{rooms:{entityIds?:string[];media?:{entityId?:string}[]}[]}[]}|undefined)?.floors?.flatMap(f=>f.rooms).find(r=>r.media?.some(m=>m.entityId==='media_player.salon_tv'));
   if(salon)salon.entityIds=[...(salon.entityIds??[]),'media_player.salon_sonos'];

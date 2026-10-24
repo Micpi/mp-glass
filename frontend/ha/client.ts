@@ -3,7 +3,7 @@ import { parseProject } from '../../shared/project';
 export interface Hass {
   states: Record<string, HAState>; language?: string; locale?: { language: string };
   config?: { version?: string; unit_system?: { temperature?: string } };
-  user?: { id: string; is_admin: boolean };
+  user?: { id: string; is_admin: boolean; name?: string };
   connection: object;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService(domain: string, service: string, data: Record<string, unknown>): Promise<unknown>;

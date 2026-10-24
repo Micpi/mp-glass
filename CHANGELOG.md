@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.16.0 — MP Nexus v2 (aperçu), étape 1
+
+- Nouvelle interface MP Nexus v2, à activer dans le Studio (Interface → v2, ou le sélecteur v1/v2 en haut du Studio). La v1 reste l’interface par défaut et on peut y revenir à tout moment ; réglages, plan et équipements sont communs aux deux versions.
+- Une seule application sur tous les écrans : iPhone avec barre d’onglets en bas, tablette en portrait (page en haut, carte en dessous), tablette en paysage (rail à gauche, page et panneau côte à côte), ordinateur (onglets dans l’en-tête).
+- Cinq onglets : Accueil, Lumières, Pièces, Multimédia et Plus.
+- Le plan 3D au centre et sans fond laiteux : la maison flotte sur la photo, avec ses calques Lumières, Climat, Ouvrants et Médias. Sur tablette et ordinateur, le plan reste visible dans un panneau à droite de chaque page.
+- Toucher une pièce du plan zoome dessus et ouvre sa carte (feuille en bas sur iPhone) avec ses équipements, « Tout éteindre » et « Ouvrir la pièce ».
+- Plan 3D en plein écran, avec niveaux, zoom sur la pièce et carte flottante.
+- Accueil : résumé (lumières allumées, température, ouvrants, lecture en cours), scènes Home Assistant, et sur grand écran « En ce moment » (lecture, chauffage ou climatisation en marche, ouvertures, météo).
+- Lumières regroupées par pièce avec interrupteur de pièce et « Tout éteindre » ; Pièces avec badges d’état et filtre par niveau ; page de pièce avec zoom du plan, ouvrants (Ouvrir, Mi-ombre, Fermer) et « Quitter la pièce » ; Multimédia avec lecteur, volume, source et liste des lecteurs ; Plus avec langue, Studio, informations et autres équipements.
+- Un toucher allume, éteint, ouvre ou lance ; un appui long ou le bouton « … » ouvre la fenêtre de détails MP Nexus.
+- Traductions anglais, russe, allemand et italien.
+
 ## 0.15.22 — Drapeaux de langue sur le portail de démonstration
 
 - Remplace le menu déroulant textuel des pages de connexion et de sélection par le sélecteur compact à drapeau déjà utilisé dans l’interface MP Nexus.

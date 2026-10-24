@@ -26,6 +26,12 @@ class ProjectContractTest(unittest.TestCase):
             with self.assertRaises(ValidationError):
                 module.validate_project(self.validator, module.default_project() | patch)
 
+    def test_interface_version(self):
+        source = module.default_project() | {"interface": {"version": 2}}
+        self.assertEqual(module.validate_project(self.validator, source)["interface"], {"version": 2})
+        with self.assertRaises(ValidationError):
+            module.validate_project(self.validator, module.default_project() | {"interface": {"version": 3}})
+
     def test_houses_of_a_domain(self):
         room = {"id": "r", "name": "Salon", "polygon": [[0, 0], [4, 0], [4, 4], [0, 4]]}
 

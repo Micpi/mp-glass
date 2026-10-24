@@ -10,6 +10,7 @@ import type { MPGlassLight } from '../frontend/cards/light';
 import type { MPSpatialEditor } from '../frontend/spatial/editor';
 import type { MPGlassLaundry } from '../frontend/cards/laundry';
 import type { MPGlassView } from '../frontend/view';
+import type { MPNexusView } from '../frontend/v2/view';
 import { officeDemoPlan, officeShadeFixtures, yachtDemoPlan } from './scenarios';
 import officeBackground from './assets/backgrounds/office.webp';
 import yachtBackground from './assets/backgrounds/yacht.webp';
@@ -21,6 +22,8 @@ const params = new URLSearchParams(location.search);
 const spatial = params.has('spatial');
 const scenario = params.get('scenario') ?? 'residential';
 const project = defaultProject(scenario === 'office' ? 'Bureau et magasin de démonstration' : scenario === 'yacht' ? 'Yacht de démonstration' : 'Maison de démonstration');
+/** With ?v2, the MP Nexus v2 interface. */
+if (params.has('v2')) project.interface = { version: 2 };
 const laundryDemoEntities=['sensor.buanderie_washing_machine_cycle','sensor.buanderie_washing_machine_remaining_time','sensor.buanderie_washing_machine_program','sensor.buanderie_washing_machine_progress','sensor.buanderie_washing_machine_power','sensor.buanderie_washing_machine_energy','binary_sensor.buanderie_washing_machine_door'];
 /** With ?spatial&floors, a house of three floors: a basement below the example floor and an upstairs above it. */
 const floors = spatial && params.has('floors');
@@ -223,7 +226,8 @@ for(const config of viewCards) {
     const card=document.createElement(config.type.replace('custom:','')) as MPGlassLight;card.setConfig(config as CardConfig);card.hass={...hass};cards.push(card);
   }
 }
-const view = document.querySelector('mp-glass-view-v4') as MPGlassView;
+let view = document.querySelector('mp-glass-view-v4') as MPGlassView | MPNexusView;
+if (params.has('v2')) { const nexus = document.createElement('mp-nexus-view-v2') as MPNexusView; view.replaceWith(nexus); view = nexus; }
 if(spatial&&params.has('studio')){
   const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
   editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;
@@ -238,7 +242,7 @@ if(spatial&&params.has('studio')){
   heading.append(title);for(const card of cards) card.style.width='min(100%,1100px)';shell.append(heading,...cards);document.body.replaceChildren(shell);
 } else {
   const demoBackground=scenario==='office'?officeBackground:scenario==='yacht'?yachtBackground:undefined;
-  view.setConfig(demoBackground?{...selectedView,mp_appearance:{...selectedView.mp_appearance,backgroundUrl:demoBackground}}:selectedView);
+  view.setConfig((demoBackground?{...selectedView,mp_appearance:{...selectedView.mp_appearance,backgroundUrl:demoBackground}}:selectedView) as Parameters<MPGlassView['setConfig']>[0] & Parameters<MPNexusView['setConfig']>[0]);
   view.cards=cards;
   view.hass=hass;
 }

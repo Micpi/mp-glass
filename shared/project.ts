@@ -1,6 +1,6 @@
 import Ajv from 'ajv';
 import schema from './project.schema.json';
-import type { ProjectConfig } from './models';
+import type { InterfaceVersion, ProjectConfig } from './models';
 import { parseSpatial } from './spatial';
 const validate = new Ajv({ allErrors: true, strict: true }).compile<ProjectConfig>(schema);
 export function parseProject(value: unknown): ProjectConfig {
@@ -25,8 +25,10 @@ export function migrateProject(value: unknown): ProjectConfig {
   }
   return parseProject(value);
 }
+/** The interface the dashboard draws: v1 until MP Nexus v2 is chosen in the Studio. */
+export function interfaceVersion(project: ProjectConfig): InterfaceVersion { return project.interface?.version ?? 1; }
 /** What differs between two projects, by user-facing area: enough for a human summary, never a raw JSON diff. */
-export type ProjectChange = { field: 'name' | 'appearance' | 'navigation' | 'overrides' | 'spatial' | 'roles'; count?: number };
+export type ProjectChange = { field: 'name' | 'appearance' | 'navigation' | 'interface' | 'overrides' | 'spatial' | 'roles'; count?: number };
 export function projectChanges(before: ProjectConfig, after: ProjectConfig): ProjectChange[] {
   const same = (a: unknown, b: unknown) => JSON.stringify(a ?? null) === JSON.stringify(b ?? null);
   const differing = (a: object, b: object) => [...new Set([...Object.keys(a), ...Object.keys(b)])].filter(key => !same((a as Record<string, unknown>)[key], (b as Record<string, unknown>)[key])).length;
@@ -35,6 +37,7 @@ export function projectChanges(before: ProjectConfig, after: ProjectConfig): Pro
   const appearance = differing(before.appearance, after.appearance);
   if (appearance) changes.push({ field: 'appearance', count: appearance });
   if (!same(before.navigation, after.navigation)) changes.push({ field: 'navigation' });
+  if (interfaceVersion(before) !== interfaceVersion(after)) changes.push({ field: 'interface' });
   const overrides = differing(before.overrides, after.overrides);
   if (overrides) changes.push({ field: 'overrides', count: overrides });
   if (!same(before.spatial, after.spatial)) changes.push({ field: 'spatial' });

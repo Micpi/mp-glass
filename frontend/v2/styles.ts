@@ -243,6 +243,36 @@ export const nexusStyles = css`
   :host([comfort]) .panel.card{background:linear-gradient(145deg,rgba(8,26,42,.92),rgba(4,16,28,.96))}
   :host([comfort][layout=phone]) .main,:host([comfort][layout=portrait]) .main{background:rgba(4,16,28,.72)}
 
+  /* Plus: routines, energy, access, backup, screensaver. */
+  .btn.sm{min-height:36px;padding:0 12px;font-size:12px}
+  .houses.wrap{flex-wrap:wrap;overflow:visible}
+  .inp.wide{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid rgba(213,234,255,.22);background:rgba(5,23,39,.6);color:var(--t2)}
+  .inp.wide input{flex:1;min-width:0;border:0;background:none;color:#fff;font:inherit;outline:none}
+  input[type=time]{min-height:38px;padding:0 10px;border-radius:12px;border:1px solid rgba(213,234,255,.2);background:rgba(5,23,39,.6);color:inherit;font:inherit;color-scheme:dark}
+  .summary{border-color:rgba(255,212,92,.4)}.summary b{white-space:normal;font-size:14px;line-height:1.35}
+  .note.ok{border-color:rgba(121,230,174,.5);background:rgba(121,230,174,.1)}
+  .note.info{border-color:rgba(255,255,255,.16);background:rgba(10,20,40,.55);color:rgba(255,255,255,.82);font-size:12px}
+  button.rw[aria-pressed=true] b{color:var(--accent)}
+  .meter{display:block;height:4px;margin-top:6px;border-radius:9px;background:rgba(206,226,246,.12);overflow:hidden}.meter b{display:block;height:100%;border-radius:9px;background:linear-gradient(90deg,var(--accent),#b9dcff)}
+  .cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
+  .cam{display:flex;flex-direction:column;gap:6px;text-align:left}.cam span{aspect-ratio:16/9;border-radius:14px;border:1px solid var(--line);background:#0a1a2a center/cover no-repeat}.cam b{font-size:12px}
+  .saver{position:absolute;inset:0;z-index:40;background:#02070d;overflow:hidden;cursor:none;animation:fade .6s ease-out}
+  .saver .backdrop{z-index:0}
+  .saver .kb{animation:kb 60s ease-in-out infinite alternate}
+  @keyframes kb{from{transform:scale(1.04) translate(0,0)}to{transform:scale(1.14) translate(-3%,-2%)}}
+  .saver.photos::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,8,16,.7),transparent 60%)}
+  .saver .splan{position:absolute;inset:6% 4% 6% 34%}.saver .splan mp-spatial-viewer{position:absolute;inset:0}
+  .saver.clock{background:radial-gradient(ellipse at 30% 40%,#12344f,#02070d 70%)}
+  .saver .sl{position:absolute;left:6%;top:50%;transform:translateY(-50%);z-index:2;display:flex;flex-direction:column;gap:14px;max-width:min(440px,88%)}
+  .saver.clock .sl{left:50%;transform:translate(-50%,-50%);align-items:center;text-align:center}
+  .sclock{font:clamp(72px,14vw,168px)/.9 var(--mp-display-font,Georgia,serif);letter-spacing:-.02em;text-shadow:0 10px 40px rgba(0,0,0,.5)}
+  .sdate{font-size:clamp(16px,2.2vw,24px);color:#dbe8f5;text-transform:capitalize;margin-bottom:10px}
+  .sw{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:18px;background:rgba(5,23,39,.55);border:1px solid rgba(213,234,255,.16);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);text-align:left}
+  .sw b{display:block;font-size:15px}.sw small{color:var(--t2);font-size:12px}.sw.warn{border-color:rgba(255,180,180,.45)}.sw.warn .mp-icon{color:#ffb4b4}
+  .sw .ring{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:3px solid var(--warn)}
+  .shint{position:absolute;left:0;right:0;bottom:22px;text-align:center;font-size:12px;color:rgba(219,232,245,.55);z-index:2}
+  .sdim{position:absolute;inset:0;z-index:3;background:#000;opacity:.85;pointer-events:none}
+
   /* A room opened from the plan: a card beside it, a sheet over a phone, a card over the full-screen plan. */
   .scrim{position:absolute;inset:0;z-index:9;background:rgba(2,8,16,.45)}
   .sheet{position:absolute;left:0;right:0;bottom:0;z-index:10;max-height:min(70%,520px);border-radius:28px 28px 0 0;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(145deg,rgba(18,52,79,.97),rgba(8,29,48,.99));animation:rise .22s ease-out}

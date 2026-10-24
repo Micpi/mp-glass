@@ -70,7 +70,7 @@ export function stateLabel(id:string,state?:HAState):string{
   if(!available(state))return tr('Indisponible');
   const domain=domainOf(id),kind=kindOf(id,state),on=state!.state==='on';
   if(kind==='light')return on?tr('Allumée'):tr('Éteinte');
-  if(kind==='cover')return stateName(COVER_STATES,state!.state);
+  if(kind==='cover'||domain==='valve')return stateName(COVER_STATES,state!.state);
   if(kind==='climate')return stateName(HVAC,state!.state);
   if(kind==='media')return stateName(MEDIA_STATES,state!.state);
   if(kind==='opening')return on?tr('Ouverte'):tr('Fermée');

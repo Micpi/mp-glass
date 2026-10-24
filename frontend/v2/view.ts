@@ -744,7 +744,7 @@ export class MPNexusView extends LitElement {
     const call = (service: string, data: Record<string, unknown>) => this.call('climate', service, { entity_id: id, ...data });
     const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step));
     const action = climateActionMode(state) ?? state.state, tone = HVAC_TONES[action] ?? 'var(--accent)';
-    const reading = [stateLabel(id, state), current === undefined ? '' : tr('mesurée {n} °', { n: this.format(current) }), humidity === undefined ? '' : `${this.format(humidity, 0)} %`].filter(Boolean).join(' · ');
+    const reading = [stateLabel(id, state), current === undefined || target !== undefined ? '' : tr('mesurée {n} °', { n: this.format(current) }), humidity === undefined ? '' : `${this.format(humidity, 0)} %`].filter(Boolean).join(' · ');
     const pair = (label: string, value: number, set: (v: number) => void) => html`<div class="rh"><b>${label}</b><span class="end" style="display:flex;align-items:center;gap:8px"><button class="ib" aria-label=${tr('Baisser la consigne')} @click=${() => set(clamp(value - step))}>${mpIcon('minus', 16)}</button><b class="serif" style="font-size:22px;min-width:56px;text-align:center">${this.format(value)}°</b><button class="ib" aria-label=${tr('Monter la consigne')} @click=${() => set(clamp(value + step))}>${mpIcon('plus', 16)}</button></span></div>`;
     return html`${this.head(this.name(id, room?.room.name), room?.room.name ?? tr('Climat'), html`<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('tune', 16)}</button>`, close)}
       <div class="body">

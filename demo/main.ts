@@ -80,6 +80,9 @@ function commanded(domain:string,service:string,data:Record<string,unknown>,old:
     if(service==='volume_set')attributes.volume_level=Number(data.volume_level);
     if(service==='volume_mute')attributes.is_volume_muted=data.is_volume_muted===true;
     if(service==='select_source')attributes.source=String(data.source);
+    if(service==='shuffle_set')attributes.shuffle=data.shuffle===true;
+    if(service==='repeat_set')attributes.repeat=String(data.repeat);
+    if(service==='media_play_pause')return {...old,state:old.state==='playing'?'paused':'playing',attributes};
     const state=({turn_off:'off',turn_on:'idle',media_play:'playing',media_pause:'paused'} as Record<string,string>)[service]??old.state;
     return {...old,state,attributes};
   }
@@ -228,6 +231,39 @@ for(const config of viewCards) {
 }
 let view = document.querySelector('mp-glass-view-v4') as MPGlassView | MPNexusView;
 if (params.has('v2')) { const nexus = document.createElement('mp-nexus-view-v2') as MPNexusView; view.replaceWith(nexus); view = nexus; }
+// MP Nexus v2 shows what the players of a real house offer: a speaker grouped with the kitchen, a library to browse, the TV's remote.
+if (params.has('v2') && spatial) {
+  const art=(a:string,b:string)=>`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/><circle cx="3" cy="3" r="2.4" fill="#fff" opacity=".18"/></svg>`)}`;
+  const all=1|2|4|8|16|32|128|256|512|2048|16384|32768|131072|262144|524288;
+  hass.states={...hass.states,
+    'media_player.salon_sonos':{entity_id:'media_player.salon_sonos',state:'playing',attributes:{friendly_name:'Salon · Sonos Arc',device_class:'speaker',media_title:'Nuits d’été',media_artist:'Lumen Drift',app_name:'Spotify',source:'Spotify',source_list:['Spotify','Radio France','TV','Ligne'],entity_picture:art('#ffb46b','#c14d7a'),media_duration:214,media_position:64,media_position_updated_at:new Date().toISOString(),shuffle:false,repeat:'all',volume_level:.32,is_volume_muted:false,group_members:['media_player.salon_sonos','media_player.cuisine'],supported_features:all}},
+    'media_player.cuisine':{...hass.states['media_player.cuisine']!,state:'playing',attributes:{...hass.states['media_player.cuisine']!.attributes,friendly_name:'Cuisine · Era 100',media_title:'Nuits d’été',media_artist:'Lumen Drift',volume_level:.24,group_members:['media_player.salon_sonos','media_player.cuisine'],supported_features:all}},
+    'media_player.terrasse':{entity_id:'media_player.terrasse',state:'idle',attributes:{friendly_name:'Terrasse · Enceinte',device_class:'speaker',volume_level:.4,supported_features:all}},
+    'remote.salon_tv':{entity_id:'remote.salon_tv',state:'on',attributes:{friendly_name:'Salon · Téléviseur'}},
+  };
+  hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'}};
+  const item=(title:string,id:string,colors:[string,string],play=true)=>({title,media_content_id:id,media_content_type:play?'music':'directory',can_play:play,can_expand:!play,thumbnail:art(...colors)});
+  const library:Record<string,unknown>={
+    '':{title:'Bibliothèque',media_content_id:'',media_content_type:'',can_play:false,can_expand:true,children:[item('Favoris','fav',['#65b5ff','#327ccd'],false),item('Radios','radio',['#ffe481','#ff9f40'],false),item('Golden Hour','p1',['#ff9fb6','#c14d7a']),item('Slow Tide','p2',['#7be0c4','#2c7f8f']),item('Paper Lights','p3',['#b9a4ff','#5a3fb0']),item('Riviera','p4',['#ffd38a','#d9734a'])]},
+    fav:{title:'Favoris',media_content_id:'fav',media_content_type:'directory',can_play:false,can_expand:true,children:[item('Jazz du soir','f1',['#3a1c5c','#14284f']),item('Dîner','f2',['#ffb46b','#d4417a']),item('Focus','f3',['#65b5ff','#1d3f73'])]},
+    radio:{title:'Radios',media_content_id:'radio',media_content_type:'directory',can_play:false,can_expand:true,children:[item('France Inter','r1',['#ff6b6b','#8a1d3a']),item('FIP','r2',['#ff9fd0','#7a2f8f']),item('TSF Jazz','r3',['#ffe481','#a86a1a'])]},
+  };
+  const callService=hass.callService;
+  hass.callService=async(domain,service,data)=>{
+    if(domain!=='media_player'||(service!=='join'&&service!=='unjoin'))return callService(domain,service,data);
+    const leader=String(data.entity_id),moved=service==='join'?(data.group_members as string[]):[leader],states={...hass.states};
+    const group=(id:string)=>(states[id]?.attributes.group_members as string[]|undefined)??[];
+    const next=service==='join'?[...new Set([leader,...group(leader),...moved])]:group(Object.keys(states).find(id=>group(id).includes(leader)&&id!==leader)??leader).filter(id=>id!==leader);
+    for(const id of next)states[id]={...states[id]!,attributes:{...states[id]!.attributes,group_members:next}};
+    if(service==='unjoin')states[leader]={...states[leader]!,attributes:{...states[leader]!.attributes,group_members:[]}};
+    hass.states=states;view.hass={...hass};
+  };
+  const callWS=hass.callWS;
+  hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T:callWS<T>(message);
+  for(const entityId of ['media_player.salon_sonos','media_player.terrasse'])selectedView.mp_media=[...(selectedView.mp_media??[]),entityId];
+  const salon=(selectedView.mp_spatial as {floors?:{rooms:{entityIds?:string[];media?:{entityId?:string}[]}[]}[]}|undefined)?.floors?.flatMap(f=>f.rooms).find(r=>r.media?.some(m=>m.entityId==='media_player.salon_tv'));
+  if(salon)salon.entityIds=[...(salon.entityIds??[]),'media_player.salon_sonos'];
+}
 if(spatial&&params.has('studio')){
   const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
   editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;

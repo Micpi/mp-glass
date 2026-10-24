@@ -5,6 +5,8 @@ export interface Hass {
   config?: { version?: string; unit_system?: { temperature?: string } };
   user?: { id: string; is_admin: boolean; name?: string };
   connection: object;
+  /** The entity registry as the frontend keeps it: what device an entity belongs to, and what integration made it. */
+  entities?: Record<string, { entity_id: string; device_id?: string | null; platform?: string; area_id?: string | null }>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService(domain: string, service: string, data: Record<string, unknown>): Promise<unknown>;
   fetchWithAuth?(path: string, init?: RequestInit): Promise<Response>;

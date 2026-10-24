@@ -161,6 +161,49 @@ export const nexusStyles = css`
   input[type=range]{width:100%;accent-color:var(--accent)}
   select{min-height:38px;padding:0 10px;border-radius:12px;border:1px solid rgba(213,234,255,.2);background:rgba(5,23,39,.6);color:inherit;font:inherit;font-size:13px}
 
+  :host([layout=phone]) .mtabs button:not([aria-pressed=true]) span,.side .mtabs button:not([aria-pressed=true]) span{display:none}
+  :host([layout=phone]) .mtabs button[aria-pressed=true],.side .mtabs button[aria-pressed=true]{flex:2.2}
+  .plan3d.banner{overflow:hidden}
+  .cover.spin{animation:breathe 6s ease-in-out infinite}
+  @keyframes breathe{50%{transform:scale(1.015);box-shadow:0 26px 60px rgba(0,0,0,.5),0 0 40px color-mix(in srgb,var(--accent) 22%,transparent)}}
+  .track{text-align:center;min-width:0}.track .serif{font-size:26px;line-height:1.15;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}.track .muted{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .seek .bar.can{cursor:pointer;height:6px}
+  .times{display:flex;justify-content:space-between;margin-top:6px;font-size:11px;color:var(--t2);font-variant-numeric:tabular-nums}
+  .ctl .sm{position:relative;width:40px;height:40px;color:var(--t2)}
+  .ctl .sm[aria-pressed=true]{color:var(--accent)}
+  .ctl .sm .one{position:absolute;right:6px;top:6px;font-size:9px;font-weight:800}
+  .vol .ib{width:34px;height:34px;border-radius:11px}
+  .vol.mini{grid-template-columns:auto 1fr 40px;gap:8px;padding:0 0 10px 44px}.vol.mini span{font-size:11px;text-align:right}
+  .eq{width:6px;height:6px;border-radius:50%;background:#79e6ae;box-shadow:0 0 8px #79e6ae}
+  .srcs{display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px}
+  .src{display:flex;align-items:center;gap:8px;padding:8px;border-radius:14px;border:1px solid var(--line);background:rgba(5,23,39,.42);text-align:left;min-width:0}
+  .src b{font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.src .ib{width:30px;height:30px;border-radius:10px}
+  .src[aria-pressed=true]{border-color:color-mix(in srgb,var(--accent) 70%,white);background:color-mix(in srgb,var(--accent) 22%,transparent)}
+  .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
+  :host([layout=phone]) .lib{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+  .li{display:flex;flex-direction:column;gap:6px;text-align:left;min-width:0}
+  .li b{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  .li .th{position:relative;aspect-ratio:1;border-radius:14px;display:grid;place-items:center;color:var(--t2);border:1px solid var(--line);background:rgba(5,23,39,.5) center/cover no-repeat}
+  .li .pl{position:absolute;right:6px;bottom:6px;width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#f7fbff;color:#0a2338;box-shadow:0 4px 12px rgba(0,0,0,.4)}
+  .li:disabled{opacity:.5;cursor:default}
+  .spk{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;border-bottom:1px solid rgba(213,234,255,.08)}
+  .spk .rw{border:0}.spk .vol{grid-column:1/-1}.sg>.spk:last-child{border:0}
+  .pad{position:relative;width:min(240px,70%);aspect-ratio:1;margin:6px auto;border-radius:50%;background:radial-gradient(circle,rgba(5,23,39,.2) 34%,rgba(197,220,243,.1) 35%);border:1px solid var(--border);display:grid;grid-template:". n ." 1fr "w ok e" 1fr ". s ." 1fr / 1fr 1fr 1fr}
+  .pad .k{display:grid;place-items:center;color:#dbe8f5}.pad .n{grid-area:n}.pad .s{grid-area:s}.pad .w{grid-area:w}.pad .e{grid-area:e}
+  .pad .ok{grid-area:ok;border-radius:50%;background:linear-gradient(135deg,#f7fbff,#c9def3);color:#0a2338;box-shadow:0 8px 24px color-mix(in srgb,var(--accent) 30%,transparent);font-size:15px}
+  .pad button.k:not(.ok):active{color:var(--accent)}
+  .rkeys{display:flex;justify-content:space-between;align-items:center;gap:12px}
+  .rk{display:flex;flex-direction:column;align-items:center;gap:4px;padding:6px;border-radius:99px;border:1px solid var(--line);background:rgba(5,23,39,.42)}
+  .rk button{width:44px;height:44px;border-radius:50%;display:grid;place-items:center}.rk button:disabled{opacity:.35}.rk small{font-size:10px;color:var(--t2)}
+  .rc{display:flex;gap:10px}.rc .ib{width:48px;height:48px;border-radius:50%}
+  .dialrow{display:grid;grid-template-columns:auto minmax(0,260px) auto;justify-content:center;align-items:center;gap:14px}
+  .ib.round{width:52px;height:52px;border-radius:50%}
+  .cv{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;column-gap:8px;padding-bottom:10px;border-bottom:1px solid rgba(213,234,255,.08)}
+  .cv .rw{border:0}.cv .end{display:flex;gap:6px}.cv .end .ib{width:34px;height:34px;border-radius:11px}
+  .cv mp-glass-bar{grid-column:1/-1;height:40px}
+  .sg>.cv:last-child{border:0}
+  .secg .more{margin-left:auto;color:var(--accent);font-size:12px}
+
   /* A room opened from the plan: a card beside it, a sheet over a phone, a card over the full-screen plan. */
   .scrim{position:absolute;inset:0;z-index:9;background:rgba(2,8,16,.45)}
   .sheet{position:absolute;left:0;right:0;bottom:0;z-index:10;max-height:min(70%,520px);border-radius:28px 28px 0 0;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(145deg,rgba(18,52,79,.97),rgba(8,29,48,.99));animation:rise .22s ease-out}

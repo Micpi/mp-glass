@@ -4,18 +4,20 @@ import type { AppearanceConfig, HAState, NavigationConfig } from '../../shared/m
 import { MP_GLASS_BACKGROUND } from '../background';
 import { mpIcon, type MPIconName } from '../icons';
 import { buildingPlan, planBuildings, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
-import { canMedia, contactSensor, coverOpen, coverPosition, finite, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, roomEntityIds, roomTemperature, type PlanMode } from '../../shared/spatial-state';
+import { canMedia, contactSensor, coverOpen, coverPosition, finite, groupCover, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, roomEntityIds, roomTemperature, type PlanMode } from '../../shared/spatial-state';
 import { available } from '../../shared/capabilities';
 import type { Hass } from '../ha/client';
 import { claimHeader, releaseHeader } from '../ha/header';
 import '../spatial/viewer';
 import { PLAN_LAYERS, roomIcon } from '../spatial/viewer';
-import { domainOf, entityIcon, kindOf, RUN_SERVICES, stateDetail, stateLabel, TOGGLE_DOMAINS } from '../entities';
+import { climateActionMode, domainOf, entityIcon, HVAC, hvacIcon, kindOf, RUN_SERVICES, stateDetail, stateLabel, stateName, TOGGLE_DOMAINS } from '../entities';
+import '../controls';
 import '../detail';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trPlan, type Language } from '../i18n';
 import { flag } from '../flags';
 import { projectLogoMark } from '../../shared/project';
 import { nexusStyles } from './styles';
+import { browse, clockTime, elapsed, groupOf, nextRepeat, remoteRoutes, type BrowseItem, type RemoteKey } from './media';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
 /** The four ways MP Nexus v2 lays itself out: phone, tablet held upright, tablet held sideways, computer. */
@@ -39,6 +41,11 @@ interface ViewConfig {
   mp_media?: string[];
 }
 interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
+/** The four faces of the Multimédia page. */
+type MediaTab = 'play'|'foryou'|'rooms'|'remote';
+/** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
+interface SubPanel { type: 'climate'|'covers'; id: string }
+interface Browsing { player: string; stack: BrowseItem[]; state: 'loading'|'ready'|'error' }
 
 /** Kept in this browser, shared with the v1 view: the house of the domain the plan shows. */
 const BUILDING_KEY = 'mp-glass.building';
@@ -47,6 +54,18 @@ function readBuilding(): string { try { return localStorage.getItem(BUILDING_KEY
 let chosenLayer: PlanMode = 'lights';
 /** Each page opens its plan on the layer that speaks of it; the others keep the layer last chosen. */
 const PAGE_LAYERS: Partial<Record<ViewKind, PlanMode>> = { lights: 'lights', media: 'media' };
+/** The face of the Multimédia page last chosen, kept while the dashboard stays open. */
+let mediaTab: MediaTab = 'play';
+const MEDIA_TABS: Record<MediaTab, { label: 'Lecture'|'Pour vous'|'Pièces'|'Télécommande'; icon: MPIconName }> = {
+  play: { label: 'Lecture', icon: 'play' }, foryou: { label: 'Pour vous', icon: 'sparkle' }, rooms: { label: 'Pièces', icon: 'speaker' }, remote: { label: 'Télécommande', icon: 'remote' },
+};
+/** The colour of a thermostat's arc: what it is doing, as the plan and the detail window show it. */
+/** The usual presets and fan speeds of thermostats, named in the interface language; others keep the name their integration gives. */
+const CLIMATE_NAMES: Record<string, 'Aucun'|'Éco'|'Confort'|'Absent'|'Nuit'|'Boost'|'Programme'|'Automatique'|'Faible'|'Moyenne'|'Forte'> = {
+  none: 'Aucun', eco: 'Éco', comfort: 'Confort', away: 'Absent', sleep: 'Nuit', boost: 'Boost', schedule: 'Programme', auto: 'Automatique', low: 'Faible', medium: 'Moyenne', high: 'Forte',
+};
+const climateName = (value: string) => { const key = CLIMATE_NAMES[value.toLowerCase()]; return key ? tr(key) : value; };
+const HVAC_TONES: Record<string, string> = { heat: '#ff9a5c', cool: '#5cd8ff', dry: '#b08cff', fan_only: '#71d7c0', heat_cool: '#ffd45c', auto: '#ffd45c' };
 const TABS: Record<Tab, { label: 'Accueil'|'Lumières'|'Pièces'|'Multimédia'|'Plus'; icon: MPIconName }> = {
   home: { label: 'Accueil', icon: 'home' }, lights: { label: 'Lumières', icon: 'bulb' }, rooms: { label: 'Pièces', icon: 'rooms' },
   media: { label: 'Multimédia', icon: 'music' }, plus: { label: 'Plus', icon: 'dots' },
@@ -58,7 +77,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -92,6 +111,11 @@ export class MPNexusView extends LitElement {
   private floorFilter = '';
   private player = '';
   private online = true;
+  private mediaTab: MediaTab = mediaTab;
+  private browsing?: Browsing;
+  private queue?: { player: string; next: { title: string; artist: string; image: string } };
+  private queueKey = '';
+  private sub?: SubPanel;
   private header?: Element;
   private clock?: number;
   private hold?: number;
@@ -106,6 +130,7 @@ export class MPNexusView extends LitElement {
     this.appearance = config?.mp_appearance ?? { preset: 'glass-blue' };
     this.navigation = config?.mp_navigation ?? { items: ['home', 'lights', 'rooms'], showLabels: true };
     this.kind = config?.mp_view_kind ?? 'home';
+    if ((config?.mp_view_path ?? 'home') !== this.path) this.sub = undefined;
     this.path = config?.mp_view_path ?? 'home';
     this.viewTitle = config?.mp_view_title ?? '';
     this.areas = config?.mp_areas ?? [];
@@ -144,7 +169,14 @@ export class MPNexusView extends LitElement {
     this.resize.disconnect();
     clearInterval(this.clock);
   }
-  protected updated() { this.watchConnection(); }
+  protected updated() {
+    this.watchConnection();
+    if (this.kind !== 'media') return;
+    const id = this.currentPlayer;
+    if (!id) return;
+    this.loadQueue(id);
+    if (this.mediaTab === 'foryou' && this.browsing?.player !== id && canMedia(this.state(id), 'browse_media')) void this.browseInto(id);
+  }
 
   /** The app fills the screen below Home Assistant's bar; its layout follows the width and the way the screen is held. */
   private measure = () => {
@@ -165,6 +197,7 @@ export class MPNexusView extends LitElement {
     if (e.key !== 'Escape' || this.detail) return;
     if (this.languageOpen) this.languageOpen = false;
     else if (this.full) this.full = false;
+    else if (this.sub) this.sub = undefined;
     else if (this.room && this.layout === 'phone') this.room = '';
   };
   private outside = (e: Event) => {
@@ -235,11 +268,11 @@ export class MPNexusView extends LitElement {
     if (this.kind === 'lights') this.renderRoot.querySelector(`[data-room="${CSS.escape(roomId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   private planDeselect = () => { if (this.kind !== 'area') this.room = ''; };
-  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string }) {
+  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string; layer?: PlanMode }) {
     const plan = this.plan;
     if (!plan) return nothing;
     return keyed(`${opts.key}|${this.building}`, html`<mp-spatial-viewer bare ?quiet=${opts.quiet ?? false} ?expandable=${opts.expandable ?? false} .plan=${plan} .scope=${this.building} .hass=${this.hass} .areaHref=${this.areaHref}
-      .layer=${this.layer} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
+      .layer=${opts.layer ?? this.layer} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
       @plan-expand=${() => { this.full = true; }}></mp-spatial-viewer>`);
   }
   /** The plan as a banner on a phone, a button to open it on the whole screen. */
@@ -279,7 +312,8 @@ export class MPNexusView extends LitElement {
     if (this.held) { this.held = false; return; }
     const domain = domainOf(id), state = this.state(id);
     if (!available(state)) { this.detail = id; return; }
-    if (SWITCHED.includes(domain)) this.call(domain, 'toggle', { entity_id: id });
+    if (domain === 'climate') this.sub = { type: 'climate', id };
+    else if (SWITCHED.includes(domain)) this.call(domain, 'toggle', { entity_id: id });
     else if (RUN_SERVICES[domain]) this.call(domain, RUN_SERVICES[domain]!, { entity_id: id });
     else if (domain === 'media_player' && mediaOn(state) && canMedia(state, 'pause')) this.call('media_player', 'media_play_pause', { entity_id: id });
     else this.detail = id;
@@ -312,8 +346,10 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— Pieces of the pages ———
-  private head(title: string, sub = '', right: TemplateResult | typeof nothing = nothing, back?: string) {
-    return html`<div class="hd">${back ? html`<a class="ib" href=${this.route(back)} aria-label=${tr('Retour')} title=${tr('Retour')}>${mpIcon('back', 18)}</a>` : nothing}
+  private head(title: string, sub = '', right: TemplateResult | typeof nothing = nothing, back?: string | (() => void)) {
+    const backIcon = mpIcon('back', 18);
+    return html`<div class="hd">${typeof back === 'function' ? html`<button class="ib" aria-label=${tr('Retour')} title=${tr('Retour')} @click=${back}>${backIcon}</button>`
+      : back ? html`<a class="ib" href=${this.route(back)} aria-label=${tr('Retour')} title=${tr('Retour')}>${backIcon}</a>` : nothing}
       <div>${sub ? html`<div class="lbl">${sub}</div>` : nothing}<div class="title serif">${title}</div></div>${right === nothing ? nothing : html`<div class="rgt">${right}</div>`}</div>`;
   }
   private greeting() {
@@ -421,7 +457,7 @@ export class MPNexusView extends LitElement {
       ${this.head(tr('En ce moment'), new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(new Date()))}
       <div class="body">
         ${playing.map(id => this.nowPlayingRow(id))}
-        ${running.map(s => html`<button class="live glass" @click=${() => { this.detail = s.entity_id; }}><span class="ib">${mpIcon(entityIcon(s.entity_id, s), 18)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)} · ${stateDetail(s.entity_id, s)}</small></div></button>`)}
+        ${running.map(s => html`<button class="live glass" @click=${() => { this.sub = { type: 'climate', id: s.entity_id }; }}><span class="ib">${mpIcon(entityIcon(s.entity_id, s), 18)}</span><div><b>${this.name(s.entity_id)}</b><small>${stateLabel(s.entity_id, s)} · ${stateDetail(s.entity_id, s)}</small></div></button>`)}
         ${open.length ? html`<div class="rlab">${tr('À surveiller')}</div><div class="sg">${open.map(id => html`<button class="rw" @click=${() => { this.detail = id; }}><span class="ib" style="color:#ffb4b4">${mpIcon('window', 16)}</span><div><b>${this.name(id)}</b><small>${stateLabel(id, states[id])}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`)}</div>` : nothing}
         ${weather ? html`<div class="rlab">${tr('Météo')}</div><button class="live glass" @click=${() => { this.detail = weather.entity_id; }}><span class="ib">${mpIcon('sun', 18)}</span><div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)} ${String(weather.attributes.temperature_unit ?? '°')}`}</b><small>${String(weather.attributes.friendly_name ?? '')} · ${weather.state}</small></div></button>` : nothing}
         ${quiet ? html`<p class="empty">${tr('Tout est calme à la maison.')}</p>` : nothing}
@@ -514,7 +550,7 @@ export class MPNexusView extends LitElement {
     const others = ids.filter(id => !shown.has(id) && !readings.includes(id));
     const name = room?.name ?? area?.name ?? this.viewTitle, lit = lights.filter(id => this.on(id)).length;
     const pills = html`<div class="stat">${readings.map(id => html`<button class="pill" @click=${() => { this.detail = id; }}>${mpIcon(entityIcon(id, this.state(id)), 13)}${stateLabel(id, this.state(id))}</button>`)}</div>`;
-    const section = (icon: MPIconName, title: string, sub: string, list: string[], extra: TemplateResult | typeof nothing = nothing) => list.length ? html`<div class="secg">${mpIcon(icon, 17)}<b>${title}</b><small>${sub}</small></div>${extra}<div class="tgrid">${list.map(id => this.tile(id, name))}</div>` : nothing;
+    const section = (icon: MPIconName, title: string, sub: string, list: string[], extra: TemplateResult | typeof nothing = nothing, more?: SubPanel) => list.length ? html`<div class="secg">${mpIcon(icon, 17)}<b>${title}</b><small>${sub}</small>${more ? html`<button class="more" @click=${() => { this.sub = more; }}>${tr('Voir tout')}</button>` : nothing}</div>${extra}<div class="tgrid">${list.map(id => this.tile(id, name))}</div>` : nothing;
     const positions = covers.filter(id => coverPosition(this.state(id)) !== undefined).map(id => coverPosition(this.state(id))!);
     const coverActions = covers.length ? html`<div class="acts"><button class="btn" @click=${() => this.call('cover', 'open_cover', { entity_id: covers })}>${tr('Ouvrir')}</button><button class="btn" @click=${() => this.call('cover', 'set_cover_position', { entity_id: covers, position: 50 })}>${tr('Mi-ombre')}</button><button class="btn" @click=${() => this.call('cover', 'close_cover', { entity_id: covers })}>${tr('Fermer')}</button></div>` : nothing;
     const busy = lit > 0 || media.some(id => mediaPlaying(this.state(id)));
@@ -524,7 +560,7 @@ export class MPNexusView extends LitElement {
         ${this.layout === 'phone' && room && this.plan ? this.banner(200, this.viewer({ key: 'area', focus: room.id, quiet: true })) : nothing}
         ${readings.length ? pills : nothing}
         ${section('bulb', tr('Lumières'), tr('{n} sur {total}', { n: lit, total: lights.length }), lights)}
-        ${section('shutter', tr('Ouvrants'), positions.length ? tr('{n} % ouvert', { n: this.format(positions.reduce((a, b) => a + b, 0) / positions.length, 0) }) : '', [...covers, ...openings], coverActions)}
+        ${section('shutter', tr('Ouvrants'), positions.length ? tr('{n} % ouvert', { n: this.format(positions.reduce((a, b) => a + b, 0) / positions.length, 0) }) : '', [...covers, ...openings], coverActions, covers.length && room ? { type: 'covers', id: room.id } : undefined)}
         ${section('thermo', tr('Climat'), '', climate)}
         ${section('music', tr('Multimédia'), '', media)}
         ${section('dots', tr('Autres équipements'), '', others)}
@@ -540,32 +576,220 @@ export class MPNexusView extends LitElement {
     const players = this.players, states = this.hass?.states ?? {};
     return players.find(id => id === this.player) ?? players.find(id => mediaPlaying(states[id])) ?? players.find(id => mediaOn(states[id])) ?? players[0];
   }
+  /** The rooms a player sounds in: its own name, and those of the players grouped with it. */
+  private groupLabel(id: string) { return groupOf(this.hass?.states ?? {}, id).map(p => this.roomOf(p) ?? this.name(p)).join(' + '); }
+  /** A player named by its room, and by its own name too when the room holds several. */
+  private playerLabel(id: string) {
+    const room = this.roomOf(id);
+    if (!room) return this.name(id);
+    return this.players.filter(p => this.roomOf(p) === room).length > 1 ? `${room} · ${this.name(id, room)}` : room;
+  }
+  /** The room of the plan a device sits in, by its name. */
+  private roomOf(id: string) { return this.placedAll.find(p => roomEntityIds(p.room).includes(id))?.room.name; }
+  private mediaTabs(id: string): MediaTab[] {
+    const state = this.state(id), tv = mediaIsTv(state) || Object.keys(remoteRoutes(this.hass, id)).length > 0;
+    return ['play', 'foryou', ...(this.players.length > 1 ? ['rooms' as const] : []), ...(tv ? ['remote' as const] : [])];
+  }
   private mediaMain() {
-    const id = this.currentPlayer, state = id ? this.state(id) : undefined, players = this.players;
+    const id = this.currentPlayer, state = id ? this.state(id) : undefined;
     if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body"><p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p></div></section>`;
-    const position = finite(state?.attributes.media_position), duration = finite(state?.attributes.media_duration);
-    const updated = Date.parse(String(state?.attributes.media_position_updated_at ?? ''));
-    const elapsed = position === undefined ? undefined : position + (mediaPlaying(state) && Number.isFinite(updated) ? (Date.now() - updated) / 1000 : 0);
-    const progress = elapsed !== undefined && duration ? Math.min(100, elapsed / duration * 100) : undefined;
-    const volume = mediaVolume(state), sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
-    const artist = [state?.attributes.media_artist, state?.attributes.app_name ?? state?.attributes.source].filter(Boolean).map(String).join(' · ');
+    const tabs = this.mediaTabs(id), tab = tabs.includes(this.mediaTab) ? this.mediaTab : 'play';
     const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
+    const power = mediaOn(state) && canMedia(state, 'turn_off') ? html`<button class="ib" aria-label=${tr('Éteindre')} title=${tr('Éteindre')} @click=${() => media('turn_off')}>${mpIcon('power', 16)}</button>`
+      : !mediaOn(state) && canMedia(state, 'turn_on') ? html`<button class="ib" aria-label=${tr('Allumer')} title=${tr('Allumer')} @click=${() => media('turn_on')}>${mpIcon('power', 16)}</button>` : nothing;
     return html`<section class="main panel card glass">
-      ${this.head(this.name(id), tr('Multimédia'), html`${mediaOn(state) && canMedia(state, 'turn_off') ? html`<button class="ib" aria-label=${tr('Éteindre')} title=${tr('Éteindre')} @click=${() => media('turn_off')}>${mpIcon('power', 16)}</button>` : !mediaOn(state) && canMedia(state, 'turn_on') ? html`<button class="ib" aria-label=${tr('Allumer')} title=${tr('Allumer')} @click=${() => media('turn_on')}>${mpIcon('power', 16)}</button>` : nothing}<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('dots', 16)}</button>`)}
-      <div class="body player">
-        <div class="cover" style=${this.artwork(state)}></div>
-        <div><div class="serif" style="font-size:26px;line-height:1.15">${nowPlaying(state) ?? stateLabel(id, state)}</div><div class="muted" style="margin-top:4px">${artist || stateLabel(id, state)}</div></div>
-        ${progress === undefined ? nothing : html`<div class="bar" role="progressbar" aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100"><i style=${`width:${progress}%`}></i></div>`}
-        <div class="ctl">
-          <button aria-label=${tr('Précédent')} ?disabled=${!canMedia(state, 'previous_track')} @click=${() => media('media_previous_track')}>${mpIcon('previous', 22)}</button>
-          <button class="play" aria-label=${mediaPlaying(state) ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(mediaPlaying(state) ? 'pause' : 'play', 26)}</button>
-          <button aria-label=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('next', 22)}</button>
-        </div>
-        ${volume !== undefined && canMedia(state, 'volume_set') ? html`<label class="vol">${mpIcon('volume', 18)}<input type="range" min="0" max="100" .value=${String(Math.round(volume))} aria-label=${tr('Volume')} @change=${(e: Event) => media('volume_set', { volume_level: Number((e.target as HTMLInputElement).value) / 100 })}><span class="muted" style="font-size:12px;min-width:34px;text-align:right">${Math.round(volume)} %</span></label>` : nothing}
-        ${sources.length && canMedia(state, 'select_source') ? html`<label class="vol">${mpIcon('tv', 18)}<select aria-label=${tr('Source')} @change=${(e: Event) => media('select_source', { source: (e.target as HTMLSelectElement).value })}>${sources.map(s => html`<option .selected=${s === state?.attributes.source} value=${s}>${s}</option>`)}</select><span></span></label>` : nothing}
-        ${players.length > 1 ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="sg">${players.map(p => { const s = this.state(p); return html`<button class="rw" aria-pressed=${p === id} @click=${() => { this.player = p; }}><span class="ib" style=${p === id ? 'color:var(--accent)' : ''}>${mpIcon(entityIcon(p, s), 16)}</span><div><b>${this.name(p)}</b><small>${[stateLabel(p, s), mediaOn(s) ? nowPlaying(s) : ''].filter(Boolean).join(' · ')}</small></div><span class="end">${p === id ? mpIcon('check', 16) : nothing}</span></button>`; })}</div>` : nothing}
+      ${this.head(this.groupLabel(id), tr('Multimédia'), html`${power}<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('dots', 16)}</button>`)}
+      <div class="body">
+        ${tabs.length > 1 ? html`<div class="layers mtabs" role="tablist" aria-label=${tr('Multimédia')}>${tabs.map(t => html`<button role="tab" aria-selected=${t === tab} aria-pressed=${t === tab} @click=${() => { this.mediaTab = t; mediaTab = t; }}>${mpIcon(MEDIA_TABS[t].icon, 15)}<span>${tr(MEDIA_TABS[t].label)}</span></button>`)}</div>` : nothing}
+        ${tab === 'play' ? this.playing(id) : tab === 'foryou' ? this.forYou(id) : tab === 'rooms' ? this.speakers(id) : this.remote(id)}
       </div>
     </section>`;
+  }
+  /** The immersive player: the cover, the track, where it stands, and its commands. */
+  private playing(id: string) {
+    const state = this.state(id), duration = finite(state?.attributes.media_duration), at = elapsed(state);
+    const progress = at !== undefined && duration ? Math.min(100, at / duration * 100) : undefined;
+    const volume = mediaVolume(state), muted = state?.attributes.is_volume_muted === true;
+    const artist = [state?.attributes.media_artist ?? state?.attributes.media_series_title ?? state?.attributes.media_album_name, state?.attributes.app_name ?? state?.attributes.source].filter(Boolean).map(String).join(' · ');
+    const title = String(state?.attributes.media_title ?? '') || nowPlaying(state) || stateLabel(id, state);
+    const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
+    const shuffle = state?.attributes.shuffle === true, repeat = String(state?.attributes.repeat ?? 'off');
+    const soundModes = Array.isArray(state?.attributes.sound_mode_list) ? (state!.attributes.sound_mode_list as unknown[]).map(String) : [];
+    const seek = (e: Event) => {
+      if (!duration || !canMedia(state, 'seek')) return;
+      const box = (e.currentTarget as HTMLElement).getBoundingClientRect(), x = (e as PointerEvent).clientX;
+      if (box.width) media('media_seek', { seek_position: Math.round(Math.min(1, Math.max(0, (x - box.left) / box.width)) * duration) });
+    };
+    const others = this.players.filter(p => p !== id);
+    return html`<div class="player">
+      <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''}`} style=${this.artwork(state)}></div>
+      <div class="track"><div class="serif">${title}</div><div class="muted">${artist || stateLabel(id, state)}</div></div>
+      ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role="progressbar" aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" @click=${seek}><i style=${`width:${progress}%`}></i></div>
+        <div class="times"><span>${clockTime(at!)}</span><span>${clockTime(duration!)}</span></div></div>`}
+      <div class="ctl">
+        ${canMedia(state, 'shuffle_set') ? html`<button class="sm" aria-label=${tr('Aléatoire')} title=${tr('Aléatoire')} aria-pressed=${shuffle} @click=${() => media('shuffle_set', { shuffle: !shuffle })}>${mpIcon('shuffle', 19)}</button>` : html`<span class="sm"></span>`}
+        <button aria-label=${tr('Précédent')} ?disabled=${!canMedia(state, 'previous_track')} @click=${() => media('media_previous_track')}>${mpIcon('previous', 22)}</button>
+        <button class="play" aria-label=${mediaPlaying(state) ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(mediaPlaying(state) ? 'pause' : 'play', 26)}</button>
+        <button aria-label=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('next', 22)}</button>
+        ${canMedia(state, 'repeat_set') ? html`<button class="sm" aria-label=${tr('Répéter')} title=${repeat === 'one' ? tr('Répéter ce titre') : tr('Répéter')} aria-pressed=${repeat !== 'off'} @click=${() => media('repeat_set', { repeat: nextRepeat(repeat) })}>${mpIcon('repeat', 19)}${repeat === 'one' ? html`<small class="one">1</small>` : nothing}</button>` : html`<span class="sm"></span>`}
+      </div>
+      ${volume !== undefined && canMedia(state, 'volume_set') ? html`<div class="vol">
+        <button class="ib" aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} ?disabled=${!canMedia(state, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 17)}</button>
+        <input type="range" min="0" max="100" .value=${String(Math.round(volume))} aria-label=${tr('Volume')} @change=${(e: Event) => media('volume_set', { volume_level: Number((e.target as HTMLInputElement).value) / 100 })}>
+        <span class="muted" style="font-size:12px;min-width:38px;text-align:right">${Math.round(volume)} %</span></div>` : nothing}
+      ${soundModes.length && canMedia(state, 'select_sound_mode') ? html`<label class="vol">${mpIcon('sliders', 18)}<select aria-label=${tr('Mode sonore')} @change=${(e: Event) => media('select_sound_mode', { sound_mode: (e.target as HTMLSelectElement).value })}>${soundModes.map(m => html`<option .selected=${m === state?.attributes.sound_mode} value=${m}>${m}</option>`)}</select><span></span></label>` : nothing}
+      ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art" style=${this.queue.next.image ? `background-image:url("${this.queue.next.image.replace(/"/g, '%22')}")` : ''}></span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
+      ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
+    </div>`;
+  }
+  /** Sources and apps to start in one touch, then the library the player offers to browse. */
+  private forYou(id: string) {
+    const state = this.state(id), tv = mediaIsTv(state);
+    const sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
+    const browsing = this.browsing, level = browsing?.player === id ? browsing.stack[browsing.stack.length - 1] : undefined;
+    const open = (item: BrowseItem) => {
+      if (item.can_expand) void this.browseInto(id, item);
+      else if (item.can_play) this.call('media_player', 'play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
+    };
+    return html`
+      ${sources.length && canMedia(state, 'select_source') ? html`<div class="rlab">${tv ? tr('Applis et entrées') : tr('Sources')}</div>
+        <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => this.call('media_player', 'select_source', { entity_id: id, source: s })}><span class="ib">${mpIcon(tv ? 'tv' : 'music', 16)}</span><b>${s}</b></button>`)}</div>` : nothing}
+      ${canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
+        ${browsing?.player === id && browsing.state === 'loading' ? html`<p class="empty">${tr('Chargement…')}</p>`
+          : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
+            : level?.children?.length ? html`<div class="lib">${level.children.map(item => html`<button class="li" ?disabled=${!item.can_expand && !item.can_play} @click=${() => open(item)}>
+              <span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>`)}</div>`
+              : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
+  }
+  private async browseInto(player: string, item?: BrowseItem) {
+    const hass = this.hass;
+    if (!hass) return;
+    const stack = item && this.browsing?.player === player ? this.browsing.stack : [];
+    this.browsing = { player, stack, state: 'loading' };
+    try {
+      const level = await browse(hass, player, item);
+      this.browsing = { player, stack: [...stack, level], state: 'ready' };
+    } catch { this.browsing = { player, stack, state: 'error' }; }
+  }
+  /** Every player of the house: its volume, what it plays, and whether it plays with the one chosen. */
+  private speakers(id: string) {
+    const states = this.hass?.states ?? {}, current = states[id], group = groupOf(states, id);
+    const groups = canMedia(current, 'grouping');
+    const playing = this.players.filter(p => mediaPlaying(states[p]) && canMedia(states[p], 'pause'));
+    return html`<div class="sg">${[id, ...this.players.filter(p => p !== id)].map(p => {
+      const s = states[p], volume = mediaVolume(s), joined = group.includes(p), self = p === id;
+      return html`<div class="spk">
+        <button class="rw" @click=${() => { this.player = p; this.mediaTab = 'play'; mediaTab = 'play'; }}><span class="ib" style=${self ? 'color:var(--accent)' : ''}>${mpIcon(entityIcon(p, s), 16)}</span><div><b>${this.playerLabel(p)}</b><small>${[stateLabel(p, s), mediaOn(s) ? nowPlaying(s) : ''].filter(Boolean).join(' · ')}</small></div>
+          <span class="end">${self ? html`<span class="pill">${tr('Ce lecteur')}</span>` : nothing}</span></button>
+        ${groups && !self && canMedia(s, 'grouping') ? html`<button class="end" role="switch" aria-checked=${joined} aria-label=${tr('Jouer ensemble')} title=${tr('Jouer ensemble')} @click=${() => joined ? this.call('media_player', 'unjoin', { entity_id: p }) : this.call('media_player', 'join', { entity_id: id, group_members: [p] })}><span class=${`tgl ${joined ? '' : 'off'}`}></span></button>` : nothing}
+        ${volume !== undefined && canMedia(s, 'volume_set') ? html`<label class="vol mini">${mpIcon('volume', 15)}<input type="range" min="0" max="100" .value=${String(volume)} aria-label=${tr('Volume')} @change=${(e: Event) => this.call('media_player', 'volume_set', { entity_id: p, volume_level: Number((e.target as HTMLInputElement).value) / 100 })}><span class="muted">${volume} %</span></label>` : nothing}
+      </div>`;
+    })}</div>
+    ${groups ? html`<p class="muted" style="font-size:12px;margin:0">${tr('Activez une pièce pour qu’elle joue la même musique que {room}.', { room: this.roomOf(id) ?? this.name(id) })}</p>` : nothing}
+    ${playing.length ? html`<button class="btn" @click=${() => this.call('media_player', 'media_pause', { entity_id: playing })}>${mpIcon('pause', 16)}${tr('Tout mettre en pause')}</button>` : nothing}`;
+  }
+  /** The remote of a television: arrows and OK when its integration takes keys, then volume, channels and power. */
+  private remote(id: string) {
+    const state = this.state(id), routes = remoteRoutes(this.hass, id), muted = state?.attributes.is_volume_muted === true;
+    const send = (key: RemoteKey) => { const route = routes[key]; if (route) this.call(route.domain, route.service, route.data); };
+    const key = (k: RemoteKey, icon: MPIconName | '', label: string, cls = '') => routes[k] ? html`<button class=${`k ${cls}`} aria-label=${label} title=${label} @click=${() => send(k)}>${icon ? mpIcon(icon, 22) : html`<b>${label}</b>`}</button>` : html`<span class=${`k ${cls}`}></span>`;
+    const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
+    const volume = mediaVolume(state), step = (by: number) => canMedia(state, 'volume_step') ? media(by > 0 ? 'volume_up' : 'volume_down') : volume !== undefined ? media('volume_set', { volume_level: Math.min(100, Math.max(0, volume + by)) / 100 }) : undefined;
+    const canStep = canMedia(state, 'volume_step') || (volume !== undefined && canMedia(state, 'volume_set'));
+    return html`
+      ${Object.keys(routes).length ? html`<div class="pad" role="group" aria-label=${tr('Télécommande')}>
+        ${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}
+      </div>
+      <div class="acts">${(['back', 'home', 'menu'] as const).map(k => routes[k] ? html`<button class="btn" @click=${() => send(k)}>${k === 'back' ? mpIcon('back', 16) : k === 'home' ? mpIcon('home', 16) : mpIcon('dots', 16)}${k === 'back' ? tr('Retour') : k === 'home' ? tr('Accueil') : tr('Menu')}</button>` : nothing)}</div>`
+        : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips et Sony.')}</p>`}
+      <div class="rkeys">
+        <div class="rk"><button aria-label=${tr('Monter le volume')} title=${tr('Monter le volume')} ?disabled=${!canStep} @click=${() => step(5)}>${mpIcon('plus', 18)}</button><small>${tr('Volume')}</small><button aria-label=${tr('Baisser le volume')} title=${tr('Baisser le volume')} ?disabled=${!canStep} @click=${() => step(-5)}>${mpIcon('minus', 18)}</button></div>
+        <div class="rc">
+          <button class="ib" aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} ?disabled=${!canMedia(state, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 18)}</button>
+          <button class="ib" aria-label=${mediaPlaying(state) ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(mediaPlaying(state) ? 'pause' : 'play', 18)}</button>
+          <button class="ib" aria-label=${mediaOn(state) ? tr('Éteindre') : tr('Allumer')} ?disabled=${!canMedia(state, mediaOn(state) ? 'turn_off' : 'turn_on')} @click=${() => media(mediaOn(state) ? 'turn_off' : 'turn_on')}>${mpIcon('power', 18)}</button>
+        </div>
+        <div class="rk"><button aria-label=${tr('Suivant')} title=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('up', 18)}</button><small>${tr('Chaîne')}</small><button aria-label=${tr('Précédent')} title=${tr('Précédent')} ?disabled=${!canMedia(state, 'previous_track')} @click=${() => media('media_previous_track')}>${mpIcon('down', 18)}</button></div>
+      </div>`;
+  }
+  /** What Music Assistant plays next on a player, the one integration that tells it. */
+  private loadQueue(id: string) {
+    const state = this.state(id), key = `${id}|${String(state?.attributes.media_title ?? '')}`;
+    if (this.queueKey === key) return;
+    this.queueKey = key;
+    if (this.hass?.entities?.[id]?.platform !== 'music_assistant' || !mediaOn(state)) { this.queue = undefined; return; }
+    this.hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain: 'music_assistant', service: 'get_queue', target: { entity_id: id }, return_response: true })
+      .then(answer => {
+        const next = answer.response?.[id]?.next_item;
+        const image = next?.media_item?.image, path = typeof image === 'string' ? image : (image as { path?: string } | undefined)?.path ?? next?.media_item?.metadata?.images?.[0]?.path;
+        this.queue = next ? { player: id, next: { title: next.media_item?.name ?? next.name ?? '', artist: next.media_item?.artists?.map(a => a.name).filter(Boolean).join(', ') ?? '', image: typeof path === 'string' && /^(https?:|\/)/.test(path) ? path : '' } } : undefined;
+      }).catch(() => { this.queue = undefined; });
+  }
+
+  // ——— Climate and covers, opened over the page ———
+  private climateIds() { return Object.keys(this.hass?.states ?? {}).filter(id => id.startsWith('climate.') && available(this.state(id))).sort((a, b) => this.name(a).localeCompare(this.name(b), locale())); }
+  /** A thermostat as the room uses it: the dial of its setpoint, its modes, its fan and its presets. */
+  private climatePanel(id: string) {
+    const close = () => { this.sub = undefined; };
+    if (!id || !this.state(id)) {
+      const ids = this.climateIds();
+      return html`${this.head(tr('Climat'), tr('Toute la maison'), nothing, close)}<div class="body">
+        ${ids.length ? html`<div class="sg">${ids.map(c => { const s = this.state(c); return html`<button class="rw" @click=${() => { this.sub = { type: 'climate', id: c }; }}><span class="ib">${mpIcon(entityIcon(c, s), 16)}</span><div><b>${this.name(c)}</b><small>${stateLabel(c, s)} · ${stateDetail(c, s)}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`; })}</div>` : html`<p class="empty">${tr('Aucun thermostat détecté pour le moment.')}</p>`}
+      </div>`;
+    }
+    const state = this.state(id)!, a = state.attributes, room = this.placedAll.find(p => roomEntityIds(p.room).includes(id));
+    const num = (v: unknown) => finite(v), target = num(a.temperature), step = num(a.target_temp_step) ?? .5, min = num(a.min_temp) ?? 7, max = num(a.max_temp) ?? 35;
+    const low = num(a.target_temp_low), high = num(a.target_temp_high), current = num(a.current_temperature), humidity = num(a.current_humidity);
+    const modes = Array.isArray(a.hvac_modes) ? a.hvac_modes.map(String) : [], fans = Array.isArray(a.fan_modes) ? a.fan_modes.map(String) : [], presets = Array.isArray(a.preset_modes) ? a.preset_modes.map(String) : [];
+    const call = (service: string, data: Record<string, unknown>) => this.call('climate', service, { entity_id: id, ...data });
+    const clamp = (v: number) => Math.min(max, Math.max(min, Math.round(v / step) * step));
+    const action = climateActionMode(state) ?? state.state, tone = HVAC_TONES[action] ?? 'var(--accent)';
+    const reading = [stateLabel(id, state), current === undefined ? '' : tr('mesurée {n} °', { n: this.format(current) }), humidity === undefined ? '' : `${this.format(humidity, 0)} %`].filter(Boolean).join(' · ');
+    const pair = (label: string, value: number, set: (v: number) => void) => html`<div class="rh"><b>${label}</b><span class="end" style="display:flex;align-items:center;gap:8px"><button class="ib" aria-label=${tr('Baisser la consigne')} @click=${() => set(clamp(value - step))}>${mpIcon('minus', 16)}</button><b class="serif" style="font-size:22px;min-width:56px;text-align:center">${this.format(value)}°</b><button class="ib" aria-label=${tr('Monter la consigne')} @click=${() => set(clamp(value + step))}>${mpIcon('plus', 16)}</button></span></div>`;
+    return html`${this.head(this.name(id, room?.room.name), room?.room.name ?? tr('Climat'), html`<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('tune', 16)}</button>`, close)}
+      <div class="body">
+        ${this.layout === 'phone' && room && this.plan ? this.banner(120, this.viewer({ key: 'clim', focus: room.room.id, quiet: true, layer: 'climate' })) : nothing}
+        ${target !== undefined ? html`<div class="dialrow">
+          <button class="ib round" aria-label=${tr('Baisser la consigne')} ?disabled=${target <= min} @click=${() => call('set_temperature', { temperature: clamp(target - step) })}>${mpIcon('minus', 20)}</button>
+          <mp-glass-dial label=${tr('Consigne')} .min=${min} .max=${max} .step=${step} .value=${target} tone=${tone} reading=${current === undefined ? '' : tr('mesurée {n} °', { n: this.format(current) })}
+            @mp-control-change=${(e: Event) => call('set_temperature', { temperature: clamp((e as CustomEvent<{ value: number }>).detail.value) })}></mp-glass-dial>
+          <button class="ib round" aria-label=${tr('Monter la consigne')} ?disabled=${target >= max} @click=${() => call('set_temperature', { temperature: clamp(target + step) })}>${mpIcon('plus', 20)}</button>
+        </div>` : nothing}
+        ${target === undefined && low !== undefined && high !== undefined ? html`<div class="sg" style="padding:6px 12px">${pair(tr('Minimum'), low, v => call('set_temperature', { target_temp_low: Math.min(v, high), target_temp_high: high }))}${pair(tr('Maximum'), high, v => call('set_temperature', { target_temp_low: low, target_temp_high: Math.max(v, low) }))}</div>` : nothing}
+        <p class="muted" style="text-align:center;margin:0">${reading}</p>
+        ${modes.length ? html`<div class="layers mtabs" role="group" aria-label=${tr('Mode')}>${modes.map(m => html`<button aria-pressed=${m === state.state} @click=${() => call('set_hvac_mode', { hvac_mode: m })}>${mpIcon(m === 'off' ? 'power' : hvacIcon(m), 15)}<span>${stateName(HVAC, m)}</span></button>`)}</div>` : nothing}
+        ${fans.length ? html`<div class="rlab">${tr('Vitesse de ventilation')}</div><div class="houses">${fans.map(f => html`<button class="pill" aria-pressed=${f === a.fan_mode} @click=${() => call('set_fan_mode', { fan_mode: f })}>${mpIcon('fan', 13)}${climateName(f)}</button>`)}</div>` : nothing}
+        ${presets.length ? html`<div class="rlab">${tr('Préréglage')}</div><div class="houses">${presets.map(p => html`<button class="pill" aria-pressed=${p === a.preset_mode} @click=${() => call('set_preset_mode', { preset_mode: p })}>${mpIcon(p === 'eco' ? 'leaf' : p === 'sleep' ? 'moon' : 'sparkle', 13)}${climateName(p)}</button>`)}</div>` : nothing}
+      </div>`;
+  }
+  /** Every shutter, blind and curtain, room by room: where it stands, a bar to move it, and all of them at once. */
+  private coversPanel(roomId: string) {
+    const close = () => { this.sub = undefined; };
+    const rooms = this.placedAll.filter(p => !roomId || p.room.id === roomId), states = this.hass?.states ?? {}, seen = new Set<string>();
+    const groups = rooms.map(p => ({ p, ids: roomEntityIds(p.room).filter(id => id.startsWith('cover.') && states[id] && !seen.has(id) && !!seen.add(id)) })).filter(g => g.ids.length);
+    const rest = roomId ? [] : [...new Set(this.entities)].filter(id => id.startsWith('cover.') && states[id] && !seen.has(id));
+    const all = [...groups.flatMap(g => g.ids), ...rest], together = all.filter(id => groupCover(states[id]));
+    const open = all.filter(id => coverOpen(states[id])).length;
+    const row = (id: string, room = '') => {
+      const s = states[id], position = coverPosition(s), features = finite(s?.attributes.supported_features) ?? 0, cover = (service: string, data: Record<string, unknown> = {}) => this.call('cover', service, { entity_id: id, ...data });
+      return html`<div class="cv">
+        <button class="rw" @click=${() => { this.detail = id; }}><span class="ib">${mpIcon(entityIcon(id, s), 16)}</span><div><b>${this.name(id, room)}</b><small>${stateLabel(id, s)}</small></div></button>
+        <span class="end">${features & 1 ? html`<button class="ib" aria-label=${tr('Ouvrir')} title=${tr('Ouvrir')} @click=${() => cover('open_cover')}>${mpIcon('up', 16)}</button>` : nothing}${features & 8 ? html`<button class="ib" aria-label=${tr('Arrêter')} title=${tr('Arrêter')} @click=${() => cover('stop_cover')}>${mpIcon('stop', 14)}</button>` : nothing}${features & 2 ? html`<button class="ib" aria-label=${tr('Fermer#cover')} title=${tr('Fermer#cover')} @click=${() => cover('close_cover')}>${mpIcon('down', 16)}</button>` : nothing}</span>
+        ${features & 4 && position !== undefined ? html`<mp-glass-bar horizontal icon="shutter" label=${this.name(id, room)} .min=${0} .max=${100} .step=${1} .value=${position} @mp-control-change=${(e: Event) => cover('set_cover_position', { position: Math.round((e as CustomEvent<{ value: number }>).detail.value) })}></mp-glass-bar>` : nothing}
+      </div>`;
+    };
+    const title = roomId ? rooms[0]?.room.name ?? tr('Ouvrants') : tr('Ouvrants');
+    return html`${this.head(title, all.length ? tr('{n} ouvert sur {total}|{n} ouverts sur {total}', { n: open, total: all.length }) : tr('Ouvrants'), nothing, close)}
+      <div class="body">
+        ${together.length > 1 ? html`<div class="acts"><button class="btn" @click=${() => this.call('cover', 'open_cover', { entity_id: together })}>${tr('Tout ouvrir')}</button><button class="btn" @click=${() => this.call('cover', 'set_cover_position', { entity_id: together.filter(id => (finite(states[id]?.attributes.supported_features) ?? 0) & 4), position: 50 })}>${tr('Mi-ombre')}</button><button class="btn" @click=${() => this.call('cover', 'close_cover', { entity_id: together })}>${tr('Tout fermer')}</button></div>` : nothing}
+        ${groups.map(g => html`${roomId ? nothing : html`<div class="rh"><b>${g.p.room.name}</b><small>${(this.spatial?.floors.length ?? 0) > 1 ? g.p.floor.name : ''}</small></div>`}<div class="sg">${g.ids.map(id => row(id, g.p.room.name))}</div>`)}
+        ${rest.length ? html`<div class="rh"><b>${tr('Hors du plan')}</b></div><div class="sg">${rest.map(id => row(id))}</div>` : nothing}
+        ${all.length ? nothing : html`<p class="empty">${tr('Aucun volet ni store détecté pour le moment.')}</p>`}
+      </div>`;
+  }
+  private subPanel() {
+    const sub = this.sub!;
+    return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${sub.type === 'climate' ? this.climatePanel(sub.id) : this.coversPanel(sub.id)}</section>`;
   }
 
   // ——— Plus, info and the other devices ———
@@ -579,6 +803,7 @@ export class MPNexusView extends LitElement {
           ${this.inventory ? row(this.route('inventory'), 'scan', this.inventory.title, tr('{n} équipement|{n} équipements', { n: this.inventory.count })) : nothing}
           ${row(this.route('info'), 'info', tr('Info'), tr('Versions et installation'))}
         </div>
+        ${this.housePanels()}
         <div class="sg">
           ${this.languageMenu('row')}
           ${admin ? row('/mp-glass-settings', 'tune', 'MP Nexus Studio', tr('Apparence, plan 3D et équipements')) : nothing}
@@ -586,6 +811,18 @@ export class MPNexusView extends LitElement {
         </div>
       </div>
     </section>`;
+  }
+  /** The climate and the covers of the whole house, each a touch away. */
+  private housePanels() {
+    const states = this.hass?.states ?? {}, climates = this.climateIds();
+    const covers = [...new Set([...this.entities, ...this.placedAll.flatMap(p => roomEntityIds(p.room))])].filter(id => id.startsWith('cover.') && states[id]);
+    if (!climates.length && !covers.length) return nothing;
+    const running = climates.filter(id => states[id]!.state !== 'off').length;
+    const row = (sub: SubPanel, icon: MPIconName, title: string, text: string) => html`<button class="rw" @click=${() => { this.sub = sub; }}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${text}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`;
+    return html`<div class="sg">
+      ${climates.length ? row({ type: 'climate', id: climates.length === 1 ? climates[0]! : '' }, 'thermo', tr('Climat'), tr('{n} sur {total}', { n: running, total: climates.length })) : nothing}
+      ${covers.length ? row({ type: 'covers', id: '' }, 'shutter', tr('Ouvrants'), tr('{n} ouvert sur {total}|{n} ouverts sur {total}', { n: covers.filter(id => coverOpen(states[id])).length, total: covers.length })) : nothing}
+    </div>`;
   }
   private infoMain() {
     const info = this.info, unknown = tr('Indisponible');
@@ -625,11 +862,12 @@ export class MPNexusView extends LitElement {
     const a = this.appearance;
     const background = `background-image:url(${a.backgroundUrl || MP_GLASS_BACKGROUND});background-position:${a.backgroundPosition ?? 'right'} center`;
     const big = this.layout !== 'phone', placed = this.room ? this.find(this.room) : undefined;
-    const main = this.kind === 'home' ? this.homeMain() : this.kind === 'lights' ? this.lightsMain() : this.kind === 'rooms' ? this.roomsMain()
+    const sub = this.sub ? this.subPanel() : undefined;
+    const main = sub && !big ? sub : this.kind === 'home' ? this.homeMain() : this.kind === 'lights' ? this.lightsMain() : this.kind === 'rooms' ? this.roomsMain()
       : this.kind === 'area' ? this.areaMain() : this.kind === 'media' ? this.mediaMain() : this.kind === 'plus' ? this.plusMain()
         : this.kind === 'info' ? this.infoMain() : this.inventoryMain();
     // On a big screen the home page keeps its plan in the middle: beside it, the room opened or what is going on.
-    const side = !big ? nothing : this.kind === 'home' ? (placed ? html`<section class="side panel card glass">${this.roomCard(placed, 'side')}</section>` : this.now()) : this.plan ? this.planPanel() : nothing;
+    const side = !big ? nothing : sub ?? (this.kind === 'home' ? (placed ? html`<section class="side panel card glass">${this.roomCard(placed, 'side')}</section>` : this.now()) : this.plan ? this.planPanel() : nothing);
     return html`
       <div class="backdrop" style=${background}></div><div class="shade" style=${`opacity:${Math.min(1, (a.backgroundDim ?? .44) + .4)}`}></div>
       <div class="app">${this.layout === 'desk' ? this.navigationBar() : nothing}${main}${side}${this.layout !== 'desk' ? this.navigationBar() : nothing}</div>

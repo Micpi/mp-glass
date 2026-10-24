@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.17.0 — MP Nexus v2 (aperçu), étape 2 : multimédia, climat et volets
+
+- Multimédia en quatre onglets : Lecture, Pour vous, Pièces et Télécommande.
+- Lecture : grande pochette, titre et artiste, progression avec les durées (toucher la barre pour avancer quand le lecteur le permet), aléatoire, répétition, volume avec coupure du son et mode sonore. « À suivre » s’affiche avec Music Assistant.
+- Pour vous : les sources du lecteur (applis et entrées pour un téléviseur) et sa bibliothèque Home Assistant à parcourir (favoris, radios, listes de lecture), lancée d’un toucher.
+- Pièces : tous les lecteurs avec leur volume ; « Jouer ensemble » regroupe les enceintes qui le permettent (Sonos, Music Assistant…) ; « Tout mettre en pause ». Le titre de la page indique les pièces qui jouent ensemble, par exemple « Salon + Cuisine ».
+- Télécommande du téléviseur : pavé directionnel et OK, Retour, Accueil, Menu, volume, chaînes, lecture et marche/arrêt. Les touches fléchées passent par Apple TV, Android TV, Roku, Samsung, LG webOS, Philips et Sony.
+- Climat : toucher un thermostat ouvre son panneau avec le cadran de consigne, les boutons − et +, la mesure de la pièce, les modes, la ventilation et les préréglages traduits. Sur iPhone, le plan zoome sur la pièce avec le calque Climat. Les thermostats à plage (minimum et maximum) sont pris en charge.
+- Ouvrants : un panneau avec chaque volet, store et rideau pièce par pièce, une barre pour le régler, Ouvrir, Stop et Fermer, plus « Tout ouvrir », « Mi-ombre » et « Tout fermer ». Il s’ouvre depuis « Voir tout » sur une pièce, ou depuis Plus pour toute la maison.
+- Sur tablette et ordinateur, le climat et les ouvrants s’ouvrent dans le panneau de droite à la place du plan, et la touche Échap les referme.
+
 ## 0.16.0 — MP Nexus v2 (aperçu), étape 1
 
 - Nouvelle interface MP Nexus v2, à activer dans le Studio (Interface → v2, ou le sélecteur v1/v2 en haut du Studio). La v1 reste l’interface par défaut et on peut y revenir à tout moment ; réglages, plan et équipements sont communs aux deux versions.

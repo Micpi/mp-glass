@@ -38,7 +38,7 @@ export const groupCover=(state?:HAState)=>!['garage','gate','door','damper'].inc
 export function coverOpen(state?:HAState){const closed=coverClosed(state);return closed===undefined?undefined:closed<.995;}
 
 /** Media player features Home Assistant declares in `supported_features`, as the plan uses them. */
-export const mediaFeatures={pause:1,volume_set:4,volume_mute:8,previous_track:16,next_track:32,turn_on:128,turn_off:256,select_source:2048,stop:4096,play:16384} as const;
+export const mediaFeatures={pause:1,seek:2,volume_set:4,volume_mute:8,previous_track:16,next_track:32,turn_on:128,turn_off:256,play_media:512,volume_step:1024,select_source:2048,stop:4096,play:16384,shuffle_set:32768,select_sound_mode:65536,browse_media:131072,repeat_set:262144,grouping:524288} as const;
 export type MediaFeature=keyof typeof mediaFeatures;
 export function canMedia(state:HAState|undefined,feature:MediaFeature){return available(state)&&((finite(state?.attributes.supported_features)??0)&mediaFeatures[feature])!==0;}
 /** Playing, paused, idle or simply on; off and standby are off. */

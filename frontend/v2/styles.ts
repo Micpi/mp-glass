@@ -204,6 +204,45 @@ export const nexusStyles = css`
   .sg>.cv:last-child{border:0}
   .secg .more{margin-left:auto;color:var(--accent);font-size:12px}
 
+  /* Who is home, search and voice, alerts. */
+  .av{display:inline-grid;place-items:center;flex:0 0 auto;border-radius:50%;color:#fff;font-weight:700;background-size:cover;background-position:center;box-shadow:inset 0 0 0 1px rgba(255,255,255,.18)}
+  .who.stack{display:flex;padding-left:8px}.who.stack .av{margin-left:-8px;border:2px solid #0b1d2e}
+  .who.row{display:flex;gap:6px;justify-content:space-around}
+  .who .p{position:relative;display:flex;flex-direction:column;align-items:center;gap:4px;min-width:0;flex:1}
+  .who .p small{font-size:11px;color:var(--t2);max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .who .p i.d{position:absolute;left:calc(50% + 12px);top:32px;width:12px;height:12px;border-radius:50%;background:#52d68a;border:2px solid #0b1d2e}
+  .who .p.away .av{opacity:.45}.who .p.away i.d{background:#888}
+  .bell{position:relative}
+  .bell .bdg{position:absolute;right:-5px;top:-5px;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#e5484d;color:#fff;font-size:10px;font-weight:800;display:grid;place-items:center}
+  .pill.night{border-color:rgba(160,140,255,.5);color:#ddd4ff}
+  .modal{position:absolute;z-index:12;left:50%;top:9%;transform:translateX(-50%);width:min(560px,calc(100% - 32px));max-height:min(82%,720px);border-radius:24px;background:linear-gradient(145deg,rgba(18,52,79,.97),rgba(8,29,48,.99));animation:rise .2s ease-out}
+  :host([layout=phone]) .modal{left:0;right:0;top:auto;bottom:0;transform:none;width:auto;max-height:88%;border-radius:28px 28px 0 0;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .srch .inp{flex:1;min-width:0;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid rgba(213,234,255,.22);background:rgba(5,23,39,.6);color:var(--t2)}
+  .srch .inp input{flex:1;min-width:0;border:0;background:none;color:#fff;font:inherit;font-size:15px;outline:none}
+  .srch .inp:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,white)}
+  .micb{width:44px;height:44px;border-radius:50%;background:linear-gradient(135deg,#65b5ff,#327ccd);border:0;color:#fff}
+  .micb.on{animation:pulse 1.2s ease-out infinite}.micb:disabled{opacity:.4;background:rgba(197,220,243,.1)}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(112,185,255,.6)}100%{box-shadow:0 0 0 18px rgba(112,185,255,0)}}
+  .voice{text-align:center;padding:10px 0}.voice .mic{width:76px;height:76px;border-radius:50%;margin:6px auto 10px;display:grid;place-items:center;background:linear-gradient(135deg,#65b5ff,#327ccd);animation:pulse 1.2s ease-out infinite}
+  .voice .serif{font-size:22px;margin-top:10px;min-height:28px}
+  .live>.end{margin-left:auto}
+  .answer b{white-space:normal;font-size:14px;line-height:1.35}
+  .rw .txt{text-align:left;min-width:0;flex:1}
+  .rw.ask b{white-space:normal}
+  .al{display:flex;gap:10px;align-items:center;padding:10px;border-radius:16px;border:1px solid rgba(213,234,255,.12);background:rgba(5,23,39,.42)}
+  .al>div{min-width:0;flex:1}.al b{font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.al small{font-size:11px;color:var(--t2);display:block}
+  .al .ib{width:34px;height:34px;border-radius:11px}
+  .al.alarm{border-color:rgba(255,120,120,.6);background:rgba(120,20,30,.3)}.al.alarm .ib{color:#ff9d9d}
+  .al.security{border-color:rgba(255,180,180,.4)}.al.security .ib{color:#ffb4b4}
+  .al.house{border-color:rgba(255,212,92,.4)}.al.house .ib{color:var(--warn)}
+  .al.new b::after{content:'';display:inline-block;width:7px;height:7px;margin-left:6px;border-radius:50%;background:#e5484d;vertical-align:middle}
+
+  /* Comfort mode: bigger text and firmer lines, for reading from afar or with tired eyes. */
+  :host([comfort]){--t2:#e2edf8;--border:rgba(230,242,255,.5);--line:rgba(230,242,255,.3)}
+  :host([comfort]) .panel>.hd,:host([comfort]) .body>:not(.plan3d),:host([comfort]) .tabbar,:host([comfort]) .rail{zoom:1.14}
+  :host([comfort]) .panel.card{background:linear-gradient(145deg,rgba(8,26,42,.92),rgba(4,16,28,.96))}
+  :host([comfort][layout=phone]) .main,:host([comfort][layout=portrait]) .main{background:rgba(4,16,28,.72)}
+
   /* A room opened from the plan: a card beside it, a sheet over a phone, a card over the full-screen plan. */
   .scrim{position:absolute;inset:0;z-index:9;background:rgba(2,8,16,.45)}
   .sheet{position:absolute;left:0;right:0;bottom:0;z-index:10;max-height:min(70%,520px);border-radius:28px 28px 0 0;padding-bottom:max(12px,env(safe-area-inset-bottom));background:linear-gradient(145deg,rgba(18,52,79,.97),rgba(8,29,48,.99));animation:rise .22s ease-out}

@@ -69,6 +69,21 @@ export interface BrowseItem {
   title: string; media_class?: string; media_content_id: string; media_content_type: string;
   can_play: boolean; can_expand: boolean; thumbnail?: string | null; children?: BrowseItem[];
 }
+export type MusicLibraryKind = 'albums'|'artists'|'tracks'|'playlists'|'radio'|'podcasts';
+export interface MusicHubItem extends BrowseItem {
+  artist?: string; album?: string; favorite?: boolean; queue_item_id?: string; index?: number; duration?: number;
+}
+export interface MusicBridgeStatus { configured: boolean; connected: boolean; player_count?: number; error?: string }
+
+export const musicStatus = (hass: Hass) => hass.callWS<MusicBridgeStatus>({ type: 'mp_glass/music/status' });
+export async function musicLibrary(hass: Hass, kind: MusicLibraryKind, offset = 0) {
+  return (await hass.callWS<{ items: MusicHubItem[] }>({ type: 'mp_glass/music/library', kind, offset, limit: 60 })).items;
+}
+export async function musicBridgeSearch(hass: Hass, query: string) {
+  return (await hass.callWS<{ items: MusicHubItem[] }>({ type: 'mp_glass/music/search', query, limit: 20 })).items;
+}
+export const musicQueue = (hass: Hass, entity_id: string) => hass.callWS<{ queue_id?: string; current_index?: number; items: MusicHubItem[] }>({ type: 'mp_glass/music/queue', entity_id });
+export const musicAction = (hass: Hass, action: string, data: Record<string, unknown>) => hass.callWS<{ ok: boolean }>({ type: 'mp_glass/music/action', action, data });
 
 /** A device must expose an explicit integration route before it can receive remote gestures. */
 export function trackpadAvailable(routes: Partial<Record<RemoteKey, RemoteRoute>>) {

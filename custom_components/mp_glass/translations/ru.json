@@ -20,6 +20,7 @@
         "title": "Параметры MP Nexus",
         "data": {
           "show_settings": "Показывать панель настроек интегратора",
+          "music_assistant_enabled": "Включить движок Music Assistant в MP Nexus",
           "spatial_backend": "Анализ планов",
           "gemini_api_key": "Ключ API Gemini",
           "gemini_quality": "Модель анализа планов по умолчанию"
@@ -33,10 +34,13 @@
           "spatial_url": "Адрес приложения Spatial (например, http://local-mp-glass-spatial:8099)",
           "spatial_token": "Ключ связи приложения (api_token)"
         }
-      }
+      },
+      "music_assistant": {"title": "Подключение Music Assistant", "description": "Введите прямой адрес сервера Music Assistant и долгосрочный токен из Music Assistant → Настройки → Профиль. Токен хранится только в Home Assistant.", "data": {"music_assistant_url": "Адрес сервера Music Assistant", "music_assistant_token": "Долгосрочный токен Music Assistant (оставьте пустым, чтобы сохранить текущий)"}}
     },
     "error": {
-      "invalid_spatial_url": "Используйте адрес HTTP(S) без учётных данных и параметров запроса."
+      "invalid_spatial_url": "Используйте адрес HTTP(S) без учётных данных и параметров запроса.",
+      "invalid_music_assistant_url": "Используйте прямой HTTP(S)-адрес сервера Music Assistant без учётных данных и параметров.",
+      "music_assistant_token_required": "Требуется долгосрочный токен Music Assistant."
     }
   },
   "selector": {

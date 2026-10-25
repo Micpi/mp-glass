@@ -20,6 +20,7 @@
         "title": "Options MP Nexus",
         "data": {
           "show_settings": "Afficher le panneau de configuration intégrateur",
+          "music_assistant_enabled": "Activer le moteur Music Assistant de MP Nexus",
           "spatial_backend": "Analyse des plans",
           "gemini_api_key": "Clé API Gemini",
           "gemini_quality": "Modèle d’analyse des plans par défaut"
@@ -33,10 +34,13 @@
           "spatial_url": "Adresse de l’add-on Spatial (ex. http://local-mp-glass-spatial:8099)",
           "spatial_token": "Clé de liaison de l’add-on (api_token)"
         }
-      }
+      },
+      "music_assistant": {"title": "Connexion Music Assistant", "description": "Saisissez l’adresse directe du serveur Music Assistant et un jeton longue durée créé dans Music Assistant → Paramètres → Profil. Le jeton reste dans Home Assistant.", "data": {"music_assistant_url": "Adresse du serveur Music Assistant", "music_assistant_token": "Jeton Music Assistant longue durée (laisser vide pour conserver le jeton actuel)"}}
     },
     "error": {
-      "invalid_spatial_url": "Utilisez une adresse HTTP(S) sans identifiants ni paramètres."
+      "invalid_spatial_url": "Utilisez une adresse HTTP(S) sans identifiants ni paramètres.",
+      "invalid_music_assistant_url": "Utilisez l’adresse HTTP(S) directe du serveur Music Assistant, sans identifiants ni paramètres.",
+      "music_assistant_token_required": "Un jeton longue durée Music Assistant est nécessaire."
     }
   },
   "selector": {

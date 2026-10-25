@@ -15,6 +15,7 @@ from .backdrop import prune, referenced, remove_all
 from .guests import async_setup_guests, async_unload_guests
 from .kiosk import async_setup_kiosk
 from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdropView, SpatialRuntime, SpatialUploadView, backdrop_folder, websocket_cancel, websocket_info, websocket_job, websocket_normalize
+from .music import COMMANDS as MUSIC_COMMANDS, KEY as MUSIC_KEY, MusicArtworkView, MusicAssistantRuntime
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -36,6 +37,7 @@ async def async_setup_entry(hass, entry):
             await store.async_save(record)
     hass.data[DOMAIN] = ProjectRepository(store, validator, record)
     hass.data[SPATIAL_KEY] = SpatialRuntime(hass, entry.options)
+    hass.data[MUSIC_KEY] = MusicAssistantRuntime(hass, entry.options)
     if not hass.data.get("mp_glass_ws_registered"):
         websocket_api.async_register_command(hass, websocket_get)
         websocket_api.async_register_command(hass, websocket_save)
@@ -43,9 +45,12 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_cancel)
         websocket_api.async_register_command(hass, websocket_normalize)
         websocket_api.async_register_command(hass, websocket_info)
+        for command in MUSIC_COMMANDS:
+            websocket_api.async_register_command(hass, command)
         hass.http.register_view(SpatialUploadView())
         hass.http.register_view(SpatialBackdropView())
         hass.http.register_view(SpatialBackdropImageView())
+        hass.http.register_view(MusicArtworkView())
         hass.data["mp_glass_ws_registered"] = True
     await async_setup_guests(hass)
     async_setup_kiosk(hass)
@@ -62,6 +67,7 @@ async def async_unload_entry(hass, entry):
     runtime = hass.data.pop(SPATIAL_KEY, None)
     if runtime:
         await runtime.close()
+    hass.data.pop(MUSIC_KEY, None)
     # The strategy module stays for the reload that usually follows; the dashboard waits for the entry meanwhile.
     async_unregister_studio(hass)
     async_unload_guests(hass)

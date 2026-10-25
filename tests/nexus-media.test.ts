@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, displayMediaImage, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
+import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
 import { serviceBrand } from '../frontend/v2/brands';
 import type { Hass } from '../frontend/ha/client';
 
@@ -76,5 +76,19 @@ describe('MP Nexus v2 media', () => {
     };
     await expect(searchMedia(h, 'media_player.ma', 'Moon Song')).resolves.toMatchObject([{ title: 'Moon Song' }]);
     expect(calls[0]).toMatchObject({ type: 'call_service', domain: 'media_player', service: 'search_media', target: { entity_id: 'media_player.ma' }, service_data: { search_query: 'Moon Song' }, return_response: true });
+  });
+  it('keeps the Music Assistant token server-side and uses only the authenticated MP Nexus websocket bridge', async () => {
+    const calls: Record<string, unknown>[] = [];
+    const h = hass([state('media_player.ma')]);
+    h.callWS = async <T>(message: Record<string, unknown>) => {
+      calls.push(message);
+      if (message.type === 'mp_glass/music/status') return { configured: true, connected: true } as T;
+      if (message.type === 'mp_glass/music/queue') return { queue_id: 'living', items: [] } as T;
+      return { items: [{ title: 'Moon Song', media_content_id: 'library://track/42', media_content_type: 'track', can_play: true, can_expand: false }], ok: true } as T;
+    };
+    await musicStatus(h); await musicLibrary(h, 'albums'); await musicBridgeSearch(h, 'Moon Song'); await musicQueue(h, 'media_player.living'); await musicAction(h, 'play_next', { queue_id: 'living', media: 'library://track/42' });
+    expect(calls.map(call => call.type)).toEqual(['mp_glass/music/status', 'mp_glass/music/library', 'mp_glass/music/search', 'mp_glass/music/queue', 'mp_glass/music/action']);
+    expect(calls[3]).toMatchObject({ entity_id: 'media_player.living' });
+    expect(JSON.stringify(calls)).not.toMatch(/token|8095|authorization/i);
   });
 });

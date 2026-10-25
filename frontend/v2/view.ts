@@ -21,7 +21,7 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, displayMediaImage, elapsed, groupOf, isMusicAssistant, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
+import { browse, clockTime, displayMediaImage, elapsed, groupOf, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type NexusFavorite, type RemoteKey } from './media';
 import { serviceBrand } from './brands';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
@@ -148,6 +148,14 @@ export class MPNexusView extends LitElement {
   private mediaResults?: BrowseItem[];
   private mediaSearching = false;
   private mediaSearchRequest = 0;
+  private musicBridge?: MusicBridgeStatus | 'loading';
+  private musicBridgeConnection?: object;
+  private musicKind: MusicLibraryKind = 'albums';
+  private musicItems?: MusicHubItem[];
+  private musicLoading = false;
+  private musicLibraryRequest = 0;
+  private musicQueueData?: { player: string; queue_id?: string; current_index?: number; items: MusicHubItem[] };
+  private musicQueueAt = 0;
   private remotePointer?: { id: number; player: string; x: number; y: number; moved: boolean };
   private imageObserver?: IntersectionObserver;
   private protectedImages = new Map<string, string>();
@@ -259,7 +267,8 @@ export class MPNexusView extends LitElement {
     if (!id) return;
     const favoriteKey = this.mediaFavoriteStorageKey();
     if (favoriteKey !== this.mediaFavoritesKey) { this.mediaFavoritesKey = favoriteKey; this.mediaFavorites = readMediaFavorites(favoriteKey); }
-    if (this.mediaTab === 'play') this.loadQueue(id);
+    if (isMusicAssistant(this.hass?.entities?.[id]?.platform)) this.loadMusicBridge(id);
+    if (this.mediaTab === 'play') { this.loadQueue(id); this.loadMusicQueue(id); }
     if (this.mediaTab === 'foryou' && this.browsing?.player !== id && canMedia(this.state(id), 'browse_media')) void this.browseInto(id);
   }
 
@@ -447,13 +456,58 @@ export class MPNexusView extends LitElement {
   private remoteTouchBoundary = (event: TouchEvent) => { event.stopPropagation(); };
   private remoteClick = (event: MouseEvent) => { event.stopPropagation(); event.preventDefault(); };
   private favoriteItem(item: NexusFavorite) { this.saveMediaFavorites(toggleMediaFavorite(this.mediaFavorites, item)); }
+  private async loadMusicBridge(id: string) {
+    const hass = this.hass;
+    if (!hass || !isMusicAssistant(hass.entities?.[id]?.platform)) return;
+    if (this.musicBridgeConnection !== hass.connection) {
+      this.musicBridgeConnection = hass.connection; this.musicBridge = 'loading'; this.musicItems = undefined;
+      try { this.musicBridge = await musicStatus(hass); } catch { this.musicBridge = { configured: false, connected: false }; }
+      this.requestUpdate();
+    }
+    if (this.musicBridge !== 'loading' && this.musicBridge?.connected && !this.musicItems && !this.musicLoading) void this.loadMusicLibrary(this.musicKind);
+  }
+  private async loadMusicLibrary(kind: MusicLibraryKind) {
+    const hass = this.hass;
+    if (!hass || this.musicBridge === 'loading' || !this.musicBridge?.connected) return;
+    const request = ++this.musicLibraryRequest;
+    this.musicKind = kind; this.musicLoading = true; this.musicItems = undefined;
+    try { const items = await musicLibrary(hass, kind); if (request === this.musicLibraryRequest) this.musicItems = items; }
+    catch { if (request === this.musicLibraryRequest) this.mediaNotice = tr('La bibliothèque Music Assistant ne répond pas.'); }
+    finally { if (request === this.musicLibraryRequest) { this.musicLoading = false; this.requestUpdate(); } }
+  }
+  private async musicItemAction(id: string, item: MusicHubItem, action: 'play_now'|'play_next'|'add') {
+    const hass = this.hass;
+    if (!hass || this.mediaReadOnlyGuest) return;
+    try {
+      const queue = await musicQueue(hass, id);
+      if (!queue.queue_id) throw new Error('queue unavailable');
+      await musicAction(hass, action, { queue_id: queue.queue_id, media: item.media_content_id });
+      this.mediaNotice = action === 'play_now' ? tr('Lecture lancée.') : action === 'play_next' ? tr('Ajouté à la suite.') : tr('Ajouté à la file.');
+      this.musicQueueAt = 0; this.loadMusicQueue(id);
+    } catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); }
+    this.requestUpdate();
+  }
+  private async loadMusicQueue(id: string) {
+    const hass = this.hass;
+    if (!hass || !isMusicAssistant(hass.entities?.[id]?.platform) || this.musicBridge === 'loading' || !this.musicBridge?.connected || Date.now() - this.musicQueueAt < 15_000) return;
+    this.musicQueueAt = Date.now();
+    try { const queue = await musicQueue(hass, id); this.musicQueueData = { player: id, ...queue }; }
+    catch { this.musicQueueData = undefined; }
+    this.requestUpdate();
+  }
+  private async musicQueueAction(action: 'clear'|'delete'|'play_index'|'move', data: Record<string, unknown>) {
+    const hass = this.hass, queue = this.musicQueueData;
+    if (!hass || !queue?.queue_id || this.mediaReadOnlyGuest) return;
+    try { await musicAction(hass, action, { queue_id: queue.queue_id, ...data }); this.musicQueueAt = 0; await this.loadMusicQueue(queue.player); }
+    catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); this.requestUpdate(); }
+  }
   private async searchMusicAssistant(id: string) {
     const query = this.mediaSearch.trim(), hass = this.hass;
     if (!hass || !query || this.mediaReadOnlyGuest) return;
     const request = ++this.mediaSearchRequest;
     this.mediaSearching = true; this.mediaResults = undefined; this.mediaNotice = '';
     try {
-      const results = await searchMedia(hass, id, query);
+      const results = this.musicBridge !== 'loading' && this.musicBridge?.connected ? await musicBridgeSearch(hass, query) : await searchMedia(hass, id, query);
       if (request === this.mediaSearchRequest && this.currentPlayer === id && this.mediaTab === 'foryou') this.mediaResults = results;
     } catch { if (request === this.mediaSearchRequest) this.mediaNotice = tr('La recherche Music Assistant a échoué. Vérifiez les droits et la disponibilité du lecteur.'); }
     finally { if (request === this.mediaSearchRequest) this.mediaSearching = false; }
@@ -854,6 +908,7 @@ export class MPNexusView extends LitElement {
         <span class="muted" style="font-size:12px;min-width:38px;text-align:right">${Math.round(volume)} %</span></div>` : nothing}
       ${soundModes.length && canMedia(state, 'select_sound_mode') ? html`<label class="vol">${mpIcon('sliders', 18)}<select aria-label=${tr('Mode sonore')} @change=${(e: Event) => media('select_sound_mode', { sound_mode: (e.target as HTMLSelectElement).value })}>${soundModes.map(m => html`<option .selected=${m === state?.attributes.sound_mode} value=${m}>${m}</option>`)}</select><span></span></label>` : nothing}
       ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art">${this.mediaImage(this.queue.next.image)}</span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
+      ${this.musicQueueData?.player === id && this.musicQueueData.items.length ? this.musicQueuePanel() : nothing}
       ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; this.requestUpdate(); }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
@@ -873,6 +928,8 @@ export class MPNexusView extends LitElement {
     const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
     return html`
       ${this.mediaAssistantSetup()}
+      ${isMusicAssistant(this.hass?.entities?.[id]?.platform) && this.musicBridge !== 'loading' && !this.musicBridge?.configured && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Moteur Music Assistant MP Nexus')}</b><p class="muted">${tr('Ajoutez l’adresse du serveur et un jeton Music Assistant dans les options de l’intégration MP Nexus pour obtenir la bibliothèque complète, la file et les vraies pochettes.')}</p><a class="btn" href="/config/integrations/integration/mp_glass">${tr('Configurer MP Nexus')}</a></div>` : nothing}
+      ${this.musicBridge !== 'loading' && this.musicBridge?.configured && !this.musicBridge.connected ? html`<p class="note" role="alert">${tr('MP Nexus ne parvient pas à joindre Music Assistant. Vérifiez l’adresse et le jeton dans les options de l’intégration.')}</p>` : nothing}
       ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${isMusicAssistant(this.hass?.entities?.[player]?.platform) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
       ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
       ${isMusicAssistant(this.hass?.entities?.[id]?.platform) ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
@@ -880,6 +937,7 @@ export class MPNexusView extends LitElement {
         <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
       </form>` : nothing}
       ${this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
+      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? this.musicHub(id) : nothing}
       <div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
       ${this.mediaFavorites.length ? html`<div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
         <button class="favorite-play" @click=${() => playItem(item)}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.image || (this.state(item.player)?.attributes.media_content_id === item.media_content_id ? this.state(item.player)?.attributes.entity_picture : undefined))}</span><span><b>${item.title}</b><small>${item.source ? this.mediaSourceBadge(item.source) : nothing}${item.artist || item.media_content_type}</small></span></button>
@@ -887,7 +945,7 @@ export class MPNexusView extends LitElement {
       </div>`)}</div>` : html`<p class="empty">${tr('Gardez ici vos morceaux, albums et playlists préférés.')}</p>`}
       ${sources.length && canMedia(state, 'select_source') ? html`<div class="rlab">${tv ? tr('Applis et entrées') : tr('Sources')}</div>
         <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => void this.mediaCall('select_source', { entity_id: id, source: s })}>${this.mediaSourceBadge(s)}<b>${s}</b></button>`)}</div>` : nothing}
-      ${canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
+      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? nothing : canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
         ${browsing?.player === id && browsing.state === 'loading' ? html`<p class="empty">${tr('Chargement…')}</p>`
           : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
             : level?.children?.length ? html`${!level.children.some(item => displayMediaImage(item.thumbnail)) ? html`<p class="media-art-hint">${tr('Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.')}</p>` : nothing}<div class="lib">${level.children.map(item => html`<div class="li">
@@ -895,6 +953,22 @@ export class MPNexusView extends LitElement {
                 <span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
       ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
               : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
+  }
+  private musicHub(id: string) {
+    const kinds: { kind: MusicLibraryKind; label: Parameters<typeof tr>[0] }[] = [
+      { kind: 'albums', label: 'Albums' }, { kind: 'artists', label: 'Artistes' }, { kind: 'tracks', label: 'Morceaux' },
+      { kind: 'playlists', label: 'Playlists' }, { kind: 'radio', label: 'Radios' }, { kind: 'podcasts', label: 'Podcasts' },
+    ];
+    return html`<div class="sec"><b>${tr('Bibliothèque Music Assistant')}</b><span>${this.musicItems?.length ?? 0}</span></div>
+      <div class="houses music-kinds">${kinds.map(({ kind, label }) => html`<button class="pill" aria-pressed=${this.musicKind === kind} @click=${() => void this.loadMusicLibrary(kind)}>${tr(label)}</button>`)}</div>
+      ${this.musicLoading ? html`<p class="empty">${tr('Chargement…')}</p>` : this.musicItems?.length ? html`<div class="lib music-hub">${this.musicItems.map(item => html`<div class="li music-item">
+        <button class="library-open" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.thumbnail)}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${item.artist || item.album || item.media_content_type}</small></button>
+        <div class="media-item-actions"><button aria-label=${tr('Lire ensuite')} title=${tr('Lire ensuite')} @click=${() => void this.musicItemAction(id, item, 'play_next')}>${mpIcon('next', 13)}</button><button aria-label=${tr('Ajouter à la file')} title=${tr('Ajouter à la file')} @click=${() => void this.musicItemAction(id, item, 'add')}>${mpIcon('plus', 13)}</button></div>
+      </div>`)}</div>` : html`<p class="empty">${tr('Aucun média dans cette section.')}</p>`}`;
+  }
+  private musicQueuePanel() {
+    const queue = this.musicQueueData!;
+    return html`<div class="sec"><b>${tr('File de lecture')}</b><button @click=${() => void this.musicQueueAction('clear', {})}>${tr('Vider')}</button></div><div class="queue-list">${queue.items.map((item, position) => html`<div class=${`queue-row ${item.index === queue.current_index ? 'current' : ''}`}><span class="art">${this.mediaImage(item.thumbnail)}</span><button class="queue-title" @click=${() => void this.musicQueueAction('play_index', { index: item.queue_item_id || (item.index ?? position) })}><b>${item.title}</b><small>${item.artist}</small></button><button class="ib" aria-label=${tr('Retirer de la file')} title=${tr('Retirer de la file')} @click=${() => void this.musicQueueAction('delete', { item_id_or_index: item.queue_item_id || (item.index ?? position) })}>${mpIcon('close', 14)}</button></div>`)}</div>`;
   }
   private async browseInto(player: string, item?: BrowseItem) {
     const hass = this.hass;

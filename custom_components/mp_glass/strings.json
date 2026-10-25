@@ -20,6 +20,7 @@
         "title": "MP Nexus options",
         "data": {
           "show_settings": "Show the integrator settings panel",
+          "music_assistant_enabled": "Enable the MP Nexus Music Assistant engine",
           "spatial_backend": "Plan analysis",
           "gemini_api_key": "Gemini API key",
           "gemini_quality": "Default plan analysis model"
@@ -33,10 +34,17 @@
           "spatial_url": "Spatial app URL (e.g. http://local-mp-glass-spatial:8099)",
           "spatial_token": "App connection key (api_token)"
         }
+      },
+      "music_assistant": {
+        "title": "Music Assistant connection",
+        "description": "Enter the direct Music Assistant server address and a long-lived token created in Music Assistant Settings → Profile. The token stays inside Home Assistant.",
+        "data": {"music_assistant_url": "Music Assistant server URL", "music_assistant_token": "Long-lived Music Assistant token (leave blank to keep the current token)"}
       }
     },
     "error": {
-      "invalid_spatial_url": "Use an HTTP(S) URL without credentials or query parameters."
+      "invalid_spatial_url": "Use an HTTP(S) URL without credentials or query parameters.",
+      "invalid_music_assistant_url": "Use the direct Music Assistant HTTP(S) server URL without credentials or query parameters.",
+      "music_assistant_token_required": "A Music Assistant long-lived token is required."
     }
   },
   "selector": {

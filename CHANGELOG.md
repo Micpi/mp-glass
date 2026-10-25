@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.24.0 — Music Assistant devient une application intégrée
+
+- MP Nexus dispose désormais de son propre pont Music Assistant dans Home Assistant, inspiré du fonctionnement de Homeii Flow sans en reprendre le graphisme. La configuration accepte l'adresse directe du serveur et un jeton longue durée ; le jeton reste exclusivement côté Home Assistant et n'est jamais transmis au navigateur.
+- « Pour vous » charge directement les albums, artistes, morceaux, playlists, radios et podcasts de Music Assistant. La recherche interroge aussi les fournisseurs connectés, avec repli sur l'action officielle Home Assistant lorsque le pont n'est pas configuré.
+- Les vraies pochettes Music Assistant sont résolues depuis leurs métadonnées et servies par un proxy MP Nexus authentifié. Les URL et jetons du serveur restent invisibles dans le navigateur et dans les favoris locaux.
+- Chaque contenu peut être lu immédiatement, placé ensuite ou ajouté en fin de file. L'onglet Lecture montre la file complète et permet de choisir un titre, le retirer ou vider la file ; le volume, la lecture et le multiroom continuent d'utiliser les entités officielles Music Assistant de Home Assistant.
+- Les commandes du pont sont validées côté serveur et refusées aux invités MP Nexus en lecture seule. Les diagnostics n'exposent que l'état de configuration et la dernière classe d'erreur, jamais l'adresse ni le secret.
+- Un guide `docs/MUSIC_ASSISTANT.md` explique l'activation. Les tests couvrent la normalisation des pochettes, le filtrage des URL, l'absence de secret dans les messages navigateur et les parcours multimédias tactiles existants.
+
 ## 0.23.2 — Music Assistant détecté et fond iPhone étendu
 
 - L’intégration Music Assistant est maintenant reconnue sous son véritable domaine Home Assistant `mass` (avec compatibilité pour l’ancien alias). Ses lecteurs sont accessibles même s’ils ne figurent pas parmi les équipements visibles du dashboard. La recherche, le bouton Favoris, la file « À suivre » et le lien de configuration utilisent le bon domaine.

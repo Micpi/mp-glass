@@ -23,6 +23,7 @@ describe('MP Nexus music engine', () => {
     const providers = [
       { instance_id: 'spotify--1', domain: 'spotify', type: 'music' },
       { instance_id: 'builtin', domain: 'builtin', type: 'music' },
+      { instance_id: 'ambient_sounds', domain: 'ambient_sounds', type: 'music' },
       { instance_id: 'sonos--1', domain: 'sonos', type: 'player' },
       { instance_id: 'deezer--1', domain: 'deezer', type: 'music', enabled: false },
     ];

@@ -56,9 +56,11 @@ export function entryVisible(entry: FlowEntry, values: Record<string, unknown>) 
 export function formDefaults(entries: FlowEntry[] = []) {
   return Object.fromEntries(entries.filter(entry => !['label', 'alert', 'divider', 'url', 'image', 'icon'].includes(entry.type)).map(entry => [entry.key, entry.value ?? entry.default_value ?? null]));
 }
+/** Sources Music Assistant sets up by itself, which are not services anyone connected. */
+const ENGINE_SOURCES = ['ambient_sounds', 'builtin'];
 /** Music sources the household connected, without the built-in ones Music Assistant adds by itself. */
 export function connectedServices(providers: ProviderInstance[], manifests: ProviderManifest[]) {
-  const builtin = new Set(manifests.filter(m => m.builtin).map(m => m.domain));
+  const builtin = new Set([...manifests.filter(m => m.builtin).map(m => m.domain), ...ENGINE_SOURCES]);
   return providers.filter(p => p.type === 'music' && !builtin.has(p.domain) && p.enabled !== false);
 }
 

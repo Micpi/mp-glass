@@ -26,6 +26,18 @@ class MusicAssistantRuntime:
     def domain(self):
         return next((domain for domain in SERVICE_DOMAINS if self.hass.services.has_service(domain, "get_library")), None)
 
+    def entry_id(self):
+        """The loaded Music Assistant entry: its library and search actions require it, and an old entry may linger unloaded."""
+        from homeassistant.config_entries import ConfigEntryState
+        domain = self.domain
+        entries = self.hass.config_entries.async_entries(domain) if domain else []
+        return next((entry.entry_id for entry in entries if entry.state is ConfigEntryState.LOADED), None)
+
+    def scope(self):
+        """What the official music_assistant actions need to know which server to ask; the legacy mass domain takes nothing."""
+        entry_id = self.entry_id() if self.domain == "music_assistant" else None
+        return {"config_entry_id": entry_id} if entry_id else {}
+
     @property
     def enabled(self):
         return self.domain is not None
@@ -88,7 +100,7 @@ async def websocket_music_library(hass, connection, msg):
     if not (runtime := _runtime(hass, connection, msg)):
         return
     try:
-        data = {"media_type": MEDIA_TYPES[msg["kind"]], "offset": msg["offset"], "limit": msg["limit"], "order_by": "sort_name"}
+        data = {**runtime.scope(), "media_type": MEDIA_TYPES[msg["kind"]], "offset": msg["offset"], "limit": msg["limit"], "order_by": "sort_name"}
         if "favorite" in msg:
             data["favorite"] = msg["favorite"]
         answer = await runtime.service("get_library", data, _context(connection, msg))
@@ -108,7 +120,7 @@ async def websocket_music_search(hass, connection, msg):
     if not (runtime := _runtime(hass, connection, msg)):
         return
     try:
-        answer = await runtime.service("search", {"name": msg["query"], "limit": msg["limit"], "library_only": False}, _context(connection, msg))
+        answer = await runtime.service("search", {**runtime.scope(), "name": msg["query"], "limit": msg["limit"], "library_only": False}, _context(connection, msg))
         connection.send_result(msg["id"], {"items": runtime.items(search_items(answer))})
     except RuntimeError as err:
         connection.send_error(msg["id"], "music_unavailable", str(err))

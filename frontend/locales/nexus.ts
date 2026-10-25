@@ -285,6 +285,10 @@ export const NEXUS = {
   'Interface Home Assistant': ['Home Assistant interface', 'Интерфейс Home Assistant'],
   'Plein écran, sans barre ni menu': ['Full screen, no bar or menu', 'Во весь экран, без панели и меню'],
   'Barre et menu de Home Assistant sur cet écran': ['Home Assistant bar and menu on this screen', 'Панель и меню Home Assistant на этом экране'],
+  'Orbite': ['Orbit', 'Орбита'],
+  'Main': ['Hand', 'Рука'],
+  'Orbite · un doigt tourne la maison, deux doigts la déplacent': ['Orbit · one finger turns the home, two fingers move it', 'Орбита · один палец вращает дом, два пальца перемещают'],
+  'Main · un doigt déplace la maison, deux doigts la tournent': ['Hand · one finger moves the home, two fingers turn it', 'Рука · один палец перемещает дом, два пальца вращают'],
 } satisfies Messages;
 
 /** German and Italian for MP Nexus v2; anything missing falls back to English. */

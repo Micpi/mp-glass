@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.22.0 — Plan 3D : pincer partout, Orbite et Main
+
+- Le zoom en pinçant fonctionne n’importe où dans la fenêtre du plan 3D, même à côté de la maison. Sur ordinateur, le pincement du pavé tactile zoome lui aussi partout dans la fenêtre. Tourner ou déplacer la maison demande toujours de la toucher.
+- Bande noire en haut en mode kiosque : corrigée aussi quand une ancienne copie de MP Glass est encore chargée comme ressource Lovelace (par exemple `mp-glass-r14.js` ou `mp-glass-bootstrap-r4.js`). Ces anciennes ressources ne servent plus : supprimez-les dans Paramètres → Tableaux de bord → ⋮ → Ressources.
+- Deux nouveaux boutons dans la barre du plan : « Orbite » (par défaut, comme avant : un doigt tourne la maison, deux doigts la déplacent) et « Main » (un doigt ou le clic gauche déplace la maison, deux doigts ou le clic droit la tournent). Le choix est retenu sur chaque écran.
+
 ## 0.21.1 — Mode kiosque sans bande noire
 
 - La bande noire en haut du tableau de bord disparaît : en mode kiosque, la place que Home Assistant gardait pour sa barre (cachée) est rendue à MP Nexus, qui remplit maintenant tout l’écran.

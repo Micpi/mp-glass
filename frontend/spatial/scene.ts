@@ -126,6 +126,8 @@ export class SpatialScene {
   private mode?: 'plan'|'page';
   private pointers = new Map<number,boolean>();
   private touches = 0;
+  /** Two fingers that started beside the house: they still pinch to zoom, without turning or moving it. */
+  private pinch = new Map<number,{x:number;y:number}>();
   private wheelMode?: 'plan'|'page';
   private wheelAt = 0;
   private hover = 0;
@@ -211,33 +213,50 @@ export class SpatialScene {
       if(!this.pointers.size&&!this.touches)this.mode=undefined;
       const plan=this.decide(e.clientX,e.clientY,e.pointerType==='mouse'?0:SLOP)==='plan';
       this.pointers.set(e.pointerId,plan);
-      if(!plan){e.stopImmediatePropagation();return;}
+      if(!plan){
+        e.stopImmediatePropagation();
+        if(e.pointerType==='touch'){this.pinch.set(e.pointerId,{x:e.clientX,y:e.clientY});if(this.pinch.size===2)this.engage();}
+        return;
+      }
       if(e.pointerType==='mouse')this.renderer.domElement.style.cursor='grabbing';
       this.engage();
       return;
     }
     const forwarded=this.pointers.get(e.pointerId);
     if(forwarded===false)e.stopImmediatePropagation();
+    if(e.type==='pointermove'&&this.pinch.has(e.pointerId))this.pinchMove(e);
     if(e.type==='pointerup'||e.type==='pointercancel')this.release(e);
   };
   /** Pointers can be released outside the canvas (mouse); forget them wherever they end. */
   private release=(e:PointerEvent)=>{
+    this.pinch.delete(e.pointerId);
     if(!this.pointers.delete(e.pointerId))return;
     if(e.pointerType==='mouse')this.renderer.domElement.style.cursor=this.onPlan(e.clientX,e.clientY,0)?'grab':'';
     this.settle();
   };
+  /** Zooms by the change in distance between the two fingers of a pinch started beside the house. */
+  private pinchMove(e:PointerEvent){
+    if(this.pinch.size!==2)return void this.pinch.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    const gap=()=>{const [a,b]=[...this.pinch.values()];return Math.hypot(a!.x-b!.x,a!.y-b!.y);};
+    const before=gap();
+    this.pinch.set(e.pointerId,{x:e.clientX,y:e.clientY});
+    const after=gap();
+    if(before>10&&after>10)this.zoom(before/after);
+  }
   private touch=(e:TouchEvent)=>{
     if(e.type==='touchstart'){
       if(!this.pointers.size&&!this.touches)this.mode=undefined;
       const first=e.changedTouches[0];if(first)this.decide(first.clientX,first.clientY,SLOP);
     }
     this.touches=e.targetTouches.length;
-    if((e.type==='touchstart'||e.type==='touchmove')&&this.mode==='plan'&&e.cancelable)e.preventDefault();
+    // Two fingers pinch the plan wherever they are in its window, never the page.
+    if((e.type==='touchstart'||e.type==='touchmove')&&(this.mode==='plan'||e.targetTouches.length>1)&&e.cancelable)e.preventDefault();
     if(e.type==='touchend'||e.type==='touchcancel')this.settle();
   };
   private wheelGate=(e:WheelEvent)=>{
     const now=performance.now();
-    if(!this.wheelMode||now-this.wheelAt>WHEEL_GAP)this.wheelMode=this.onPlan(e.clientX,e.clientY,0)?'plan':'page';
+    // A trackpad pinch comes as a wheel with Ctrl: it zooms the plan wherever it is in its window.
+    if(!this.wheelMode||now-this.wheelAt>WHEEL_GAP)this.wheelMode=e.ctrlKey||this.onPlan(e.clientX,e.clientY,0)?'plan':'page';
     this.wheelAt=now;
     if(this.wheelMode==='page')e.stopImmediatePropagation();else this.engage();
   };
@@ -669,6 +688,14 @@ export class SpatialScene {
   reset(){this.stopTween();this.lens(FOV);this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(.95,1.05,1.3).normalize().multiplyScalar(this.fit()));this.controls.update();this.render();}
   /** Seen from above, as a plan: the narrow lens keeps each wall over its own footprint. */
   top(){this.stopTween();this.lens(TOP_FOV);this.controls.target.copy(this.center);this.camera.position.copy(this.center).add(new T.Vector3(0,this.radius*3.3/Math.min(this.camera.aspect,1)*this.reach,.001));this.controls.update();this.render();}
+  /**
+   * Hand: one finger or the left button moves the house, two fingers or the right button turn it. Orbit, the default:
+   * one finger turns it, two fingers move it. Two fingers always pinch to zoom.
+   */
+  setHand(hand:boolean){
+    this.controls.mouseButtons.LEFT=hand?T.MOUSE.PAN:T.MOUSE.ROTATE;this.controls.mouseButtons.RIGHT=hand?T.MOUSE.ROTATE:T.MOUSE.PAN;
+    this.controls.touches.ONE=hand?T.TOUCH.PAN:T.TOUCH.ROTATE;this.controls.touches.TWO=hand?T.TOUCH.DOLLY_ROTATE:T.TOUCH.DOLLY_PAN;
+  }
   zoom(factor:number){this.stopTween();const offset=this.camera.position.clone().sub(this.controls.target);offset.multiplyScalar(factor).clampLength(this.controls.minDistance,this.controls.maxDistance);this.camera.position.copy(this.controls.target).add(offset);this.controls.update();this.render();}
   /** The camera as it stands, to be saved and framed again later. */
   view():CameraView{

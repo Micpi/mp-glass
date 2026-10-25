@@ -98,7 +98,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -323,6 +323,8 @@ export class MPSpatialViewer extends LitElement {
   private equipmentFilter='';
   private equipment?:{key:string;entityId?:string};
   private walls = true;
+  /** One finger or the left button moves the house instead of turning it. Remembered on this screen. */
+  private hand = (()=>{try{return localStorage.getItem('mp-glass.plan-hand')==='1';}catch{return false;}})();
   private topView = false;
   private engaged = false;
   private busy = false;
@@ -452,6 +454,7 @@ export class MPSpatialViewer extends LitElement {
         const host=this.renderRoot.querySelector<HTMLElement>('.canvas');
         if (!this.isConnected || !host || !this.currentFloor) return;
         this.scene=new SpatialScene(host, (room,floor)=>this.touch(room,floor), (rooms,levels,fixture)=>this.place(rooms,levels,fixture), ()=>{this.engaged=true;}, floor=>{this.pointed=floor;});
+        this.scene.setHand(this.hand);
         this.draw();
       } catch { this.error=tr('La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'); }
       finally { this.loading=false; }
@@ -536,6 +539,10 @@ export class MPSpatialViewer extends LitElement {
   /** A door or a window is open when one of its contact sensors says so. */
   private isOpen(opening: SpatialOpening) {
     return (opening.entityIds??[]).some(id=>id.startsWith('binary_sensor.')&&this.hass?.states[id]?.state==='on');
+  }
+  private handTool(hand:boolean){
+    this.hand=hand;this.scene?.setHand(hand);
+    try{localStorage.setItem('mp-glass.plan-hand',hand?'1':'0');}catch{/* Storage blocked: for this page only. */}
   }
   /** Touching the plan selects a room, or on the whole house opens the floor touched. */
   private touch(room: string, floor: string) {
@@ -915,6 +922,9 @@ export class MPSpatialViewer extends LitElement {
           <button class="zoom" aria-label=${tr('Zoom avant')} title=${tr('Zoom avant')} @click=${()=>this.scene?.zoom(.8)}>${mpIcon('plus',18)}</button>
           <button class="zoom" aria-label=${tr('Zoom arrière')} title=${tr('Zoom arrière')} @click=${()=>this.scene?.zoom(1.25)}>${mpIcon('minus',18)}</button>
           <span class="sep zoom"></span>
+          <button aria-label=${tr('Orbite')} title=${tr('Orbite · un doigt tourne la maison, deux doigts la déplacent')} aria-pressed=${!this.hand} @click=${()=>this.handTool(false)}>${mpIcon('orbit',18)}</button>
+          <button aria-label=${tr('Main')} title=${tr('Main · un doigt déplace la maison, deux doigts la tournent')} aria-pressed=${this.hand} @click=${()=>this.handTool(true)}>${mpIcon('hand',18)}</button>
+          <span class="sep"></span>
           <button class=${this.savedView?'saved':''} aria-label=${this.savedView?tr('Revenir à la vue enregistrée'):tr('Recentrer')}
             title=${this.savedView?tr('Revenir à la vue enregistrée · appui long pour la remplacer'):tr('Recentrer · appui long pour enregistrer la vue')}
             @click=${this.tapRecenter} @pointerdown=${this.startHold} @pointerup=${this.endHold} @pointerleave=${this.endHold} @pointercancel=${this.endHold}

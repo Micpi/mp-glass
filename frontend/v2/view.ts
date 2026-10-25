@@ -1749,8 +1749,8 @@ export class MPNexusView extends LitElement {
         ${range(tr('Flou du fond'), a.backgroundBlur ?? 0, 0, 20, 1, `${a.backgroundBlur ?? 0} px`, v => this.setLook({ backgroundBlur: v }))}
 
         <div class="rlab">${tr('Couleur d’accentuation')}</div>
-        <div class="sws">${ACCENTS.map(([value, name]) => html`<button class="sw" style=${`--sw:${value}`} aria-pressed=${accent.toLowerCase() === value} aria-label=${tr(name)} title=${tr(name)} @click=${() => this.setLook({ accent: value })}></button>`)}
-          <label class="sw custom" aria-pressed=${!ACCENTS.some(([value]) => value === accent.toLowerCase())} title=${tr('Autre couleur')} style=${`--sw:${accent}`}>${mpIcon('palette', 15)}<input type="color" aria-label=${tr('Autre couleur')} .value=${accent} @input=${(e: Event) => this.setLook({ accent: (e.target as HTMLInputElement).value })}></label></div>
+        <div class="sws">${ACCENTS.map(([value, name]) => html`<button class="swatch" style=${`--sw:${value}`} aria-pressed=${accent.toLowerCase() === value} aria-label=${tr(name)} title=${tr(name)} @click=${() => this.setLook({ accent: value })}></button>`)}
+          <label class="swatch custom" aria-pressed=${!ACCENTS.some(([value]) => value === accent.toLowerCase())} title=${tr('Autre couleur')} style=${`--sw:${accent}`}>${mpIcon('palette', 15)}<input type="color" aria-label=${tr('Autre couleur')} .value=${accent} @input=${(e: Event) => this.setLook({ accent: (e.target as HTMLInputElement).value })}></label></div>
         <button class="btn" @click=${() => void this.matchAccent()}>${mpIcon('sparkle', 16)}${tr('Assortir au fond')}</button>
 
         <div class="rlab">${tr('Verre')}</div>

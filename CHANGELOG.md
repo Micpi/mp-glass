@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.27.1 — Écran de veille réparé
+
+- Les vignettes de l'écran de veille (météo, minuteur, musique, alertes, qui est là) s'affichent de nouveau en entier. Depuis 0.27.0, les pastilles de couleur d'accentuation du panneau Apparence utilisaient le même nom de style et les réduisaient à de petits ronds de 34 px, où le texte se chevauchait. Les pastilles ont maintenant leur propre style (`swatch`).
+- Mode Horloge : les vignettes ont toutes la même largeur et sont centrées sous l'heure, au lieu de largeurs inégales qui coupaient « À la maison » sur deux lignes.
+- Test : une même classe ne peut plus être définie deux fois avec des propriétés qui se contredisent dans les styles de MP Nexus v2 (Vitest).
+
 ## 0.27.0 — Personnaliser l'apparence : fonds d'écran, couleur d'accent et ambiances
 
 - Nouveau panneau **Plus → Apparence** dans MP Nexus v2, avec un aperçu en direct sur tout l'écran.

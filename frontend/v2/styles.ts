@@ -282,7 +282,7 @@ export const nexusStyles = css`
   .saver .splan{position:absolute;inset:6% 4% 6% 34%}.saver .splan mp-spatial-viewer{position:absolute;inset:0}
   .saver.clock{background:radial-gradient(ellipse at 30% 40%,#12344f,#02070d 70%)}
   .saver .sl{position:absolute;left:6%;top:50%;transform:translateY(-50%);z-index:2;display:flex;flex-direction:column;gap:14px;max-width:min(440px,88%)}
-  .saver.clock .sl{left:50%;transform:translate(-50%,-50%);align-items:center;text-align:center}
+  .saver.clock .sl{left:50%;transform:translate(-50%,-50%);align-items:center;text-align:center;width:min(360px,88%)}.saver.clock .sw{align-self:stretch}
   .sclock{font:clamp(72px,14vw,168px)/.9 var(--mp-display-font,Georgia,serif);letter-spacing:-.02em;text-shadow:0 10px 40px rgba(0,0,0,.5)}
   .sdate{font-size:clamp(16px,2.2vw,24px);color:#dbe8f5;text-transform:capitalize;margin-bottom:10px}
   .sw{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:18px;background:rgba(5,23,39,.55);border:1px solid rgba(213,234,255,.16);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);text-align:left}
@@ -381,10 +381,10 @@ export const nexusStyles = css`
   .wp-del{position:absolute;top:5px;right:5px;min-width:24px;height:24px;padding:0 6px;display:grid;place-items:center;border-radius:99px;background:rgba(5,23,39,.84);border:1px solid var(--border);font-size:10px}
   .wp-del[data-confirm=true]{background:#c2414b;border-color:#ff8a94;color:#fff}
   .sws{display:flex;flex-wrap:wrap;gap:8px}
-  .sw{position:relative;width:34px;height:34px;border-radius:50%;background:var(--sw);border:2px solid rgba(255,255,255,.18);box-shadow:inset 0 1px rgba(255,255,255,.35);display:grid;place-items:center;cursor:pointer}
-  .sw[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--sw) 45%,transparent),0 0 14px var(--sw)}
-  .sw.custom{background:conic-gradient(#ff6b81,#ffd166,#7ee08a,#4fd1c5,#69b7ff,#a78bfa,#ff6b81);color:#fff;overflow:hidden}.sw.custom .mp-icon{filter:drop-shadow(0 1px 2px #0008)}
-  .sw.custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
+  .swatch{position:relative;width:34px;height:34px;border-radius:50%;background:var(--sw);border:2px solid rgba(255,255,255,.18);box-shadow:inset 0 1px rgba(255,255,255,.35);display:grid;place-items:center;cursor:pointer}
+  .swatch[aria-pressed=true]{border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--sw) 45%,transparent),0 0 14px var(--sw)}
+  .swatch.custom{background:conic-gradient(#ff6b81,#ffd166,#7ee08a,#4fd1c5,#69b7ff,#a78bfa,#ff6b81);color:#fff;overflow:hidden}.swatch.custom .mp-icon{filter:drop-shadow(0 1px 2px #0008)}
+  .swatch.custom input{position:absolute;inset:0;opacity:0;cursor:pointer;width:100%;height:100%}
   .rng{display:flex;flex-direction:column;gap:4px}.rng span{display:flex;justify-content:space-between;align-items:baseline}.rng b{font-size:13px;font-weight:500}.rng small{font-size:11px;color:var(--t2)}
   input.tint{width:40px;height:28px;padding:0;border:1px solid var(--border);border-radius:8px;background:none;cursor:pointer}
   .lnk{color:var(--accent);text-decoration:underline;font-size:12px}

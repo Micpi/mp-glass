@@ -3,6 +3,7 @@ import type { AppearanceConfig, HAState } from '../shared/models';
 import { defaultProject, parseProject } from '../shared/project';
 import { MP_GLASS_BACKGROUND } from '../frontend/background';
 import { projectTemplate } from '../frontend/v2/plus';
+import { nexusStyles } from '../frontend/v2/styles';
 import { accentFromPixels, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, hslHex, isNight, libraryWallpaper, readScreenLook, WALLPAPERS, wallpaperSource, writeScreenLook } from '../frontend/wallpapers';
 
 const PHOTO = '0123456789abcdef0123456789abcdef';
@@ -83,5 +84,19 @@ describe('MP Nexus appearance', () => {
     const template = projectTemplate({ ...project, appearance: { ...project.appearance, wallpaper: PHOTO, nightWallpaper: 'nuit' } });
     expect(template.appearance.wallpaper).toBeUndefined();
     expect(template.appearance.nightWallpaper).toBe('nuit');
+  });
+
+  it('never gives one class two meanings, so a new control cannot restyle the screensaver', () => {
+    const rules = new Map<string, Set<string>>();
+    for (const [, selectors, body] of nexusStyles.cssText.replace(/@[^{]+\{(?:[^{}]*\{[^}]*\})*\s*\}/g, '').matchAll(/([^{}]+)\{([^}]*)\}/g)) {
+      const props = body!.split(';').map(p => p.split(':')[0]!.trim()).filter(Boolean);
+      for (const selector of selectors!.split(',').map(s => s.trim()).filter(s => /^\.[\w-]+$/.test(s))) {
+        const seen = rules.get(selector) ?? new Set<string>();
+        for (const prop of props) expect(seen.has(prop), `${selector} sets ${prop} twice`).toBe(false);
+        props.forEach(prop => seen.add(prop));
+        rules.set(selector, seen);
+      }
+    }
+    expect(rules.get('.sw')?.has('width')).toBe(false);
   });
 });

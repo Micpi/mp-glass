@@ -20,6 +20,7 @@ import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_T
 import { automationId, automationOf, backupName, energySummary, projectTemplate, readSaver, routineReady, SAVER_DELAYS, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPrefs, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
+import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
 import { browse, clockTime, elapsed, groupOf, nextRepeat, remoteRoutes, type BrowseItem, type RemoteKey } from './media';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
@@ -47,9 +48,10 @@ interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
 /** The four faces of the Multimédia page. */
 type MediaTab = 'play'|'foryou'|'rooms'|'remote';
 /** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
-interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'; id: string }
+interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'|'users'|'guest'; id: string }
 interface LogEntry { when: number; entity_id?: string; name?: string; message?: string; state?: string }
 const EXPORT_KEY = 'mp-nexus.last-export';
+const newGuest = (): GuestDraft => ({ name: '', kind: 'temporary', profile: 'read', local_only: true, until: defaultUntil() });
 const newRoutine = (): Routine => ({ name: '', when: { kind: 'sunset', offsetMinutes: 0 }, then: { kind: 'covers-close', entities: [] } });
 /** The browser's dictation, under the name each browser gives it. */
 interface SpeechEvent { results: ArrayLike<ArrayLike<{ transcript: string }> & { isFinal: boolean }> }
@@ -96,7 +98,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -136,7 +138,7 @@ export class MPNexusView extends LitElement {
   private queueKey = '';
   private sub?: SubPanel;
   private prefs: NexusPrefs = readPrefs();
-  private overlay: ''|'search'|'alerts' = '';
+  private overlay: ''|'search'|'alerts'|'invite' = '';
   private query = '';
   private answer?: { text: string };
   private listening = false;
@@ -150,6 +152,15 @@ export class MPNexusView extends LitElement {
   private lastExport = (() => { try { return Number(localStorage.getItem(EXPORT_KEY)) || 0; } catch { return 0; } })();
   private saver: SaverPrefs = readSaver();
   private saving = false;
+  private guests?: Guest[] | 'error';
+  private guestsAsked = false;
+  private guestDraft: GuestDraft = newGuest();
+  private guestNote?: { ok: boolean; text: string };
+  /** The invitation or the password just made, shown once: nothing keeps it after the window closes. */
+  private invitation?: { guest: string; invitation?: Invitation; qr?: string; password?: { username: string; password: string }; copied?: boolean };
+  private network: 'trusted'|'proxy'|'unknown' = 'unknown';
+  private access?: { guest: boolean; profile?: Guest['profile']; until?: number | null };
+  private accessAsked = false;
   private saverSince = 0;
   private lastActivity = Date.now();
   private header?: Element;
@@ -212,6 +223,8 @@ export class MPNexusView extends LitElement {
     this.watchConnection();
     if (this.saving) this.checkIdle();
     if (this.sub?.type === 'history') this.loadLogbook(); else if (this.logbookAsked) { this.logbookAsked = false; this.logbook = undefined; }
+    if (this.sub?.type === 'users' || this.sub?.type === 'guest') this.loadGuests(); else if (this.guestsAsked) { this.guestsAsked = false; this.guests = undefined; }
+    if (this.hass && !this.accessAsked && !this.hass.user?.is_admin) { this.accessAsked = true; myAccess(this.hass).then(a => { this.access = a; }).catch(() => undefined); }
     if (this.kind !== 'media') return;
     const id = this.currentPlayer;
     if (!id) return;
@@ -834,7 +847,7 @@ export class MPNexusView extends LitElement {
   private subPanel() {
     const sub = this.sub!;
     const body = sub.type === 'climate' ? this.climatePanel(sub.id) : sub.type === 'covers' ? this.coversPanel(sub.id) : sub.type === 'routines' ? this.routinesPanel() : sub.type === 'routine' ? this.routinePanel()
-      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : this.saverPanel();
+      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : sub.type === 'users' ? this.usersPanel() : sub.type === 'guest' ? this.guestPanel() : this.saverPanel();
     return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${body}</section>`;
   }
 
@@ -873,7 +886,7 @@ export class MPNexusView extends LitElement {
     this.overlay = which; this.query = ''; this.answer = undefined;
     if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
   }
-  private closeOverlay = () => { this.overlay = ''; this.stopListening(); };
+  private closeOverlay = () => { this.overlay = ''; this.invitation = undefined; this.stopListening(); };
   /** The rooms, devices and actions whose name holds what was typed, then Assist for anything else. */
   private searchPanel() {
     const q = fold(this.query.trim()), states = this.hass?.states ?? {};
@@ -944,7 +957,7 @@ export class MPNexusView extends LitElement {
       </div>`;
   }
   private overlayPanel() {
-    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.alertsPanel()}</section>`;
+    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.alertsPanel()}</section>`;
   }
   /** The choices this screen keeps for itself: who is home, comfort mode, silent night. */
   private screenPrefs() {
@@ -1184,6 +1197,108 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— Plus, info and the other devices ———
+  // ——— Users: guests invited by a link or a QR code ———
+  private when(seconds: number) { return new Intl.DateTimeFormat(locale(), { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }).format(seconds * 1000); }
+  private loadGuests(force = false) {
+    const hass = this.hass;
+    if (!hass || (this.guestsAsked && !force)) return;
+    this.guestsAsked = true;
+    listGuests(hass).then(list => { this.guests = list; }).catch(() => { this.guests = 'error'; });
+    if (!force) void networkCheck(hass).then(result => { this.network = result; });
+  }
+  private async guestAction(work: () => Promise<unknown>, failure: string) {
+    this.guestNote = undefined;
+    try { await work(); } catch { this.guestNote = { ok: false, text: failure }; }
+    this.loadGuests(true);
+  }
+  private async showInvitation(guest: Guest | { id: string; name: string }, mode: Invitation['mode']) {
+    const hass = this.hass;
+    if (!hass) return;
+    await this.guestAction(async () => {
+      const invitation = await invite(hass, guest.id, mode);
+      this.invitation = { guest: guest.name, invitation, qr: mode === 'qr' ? await qrCode(invitation.url) : undefined };
+      this.overlay = 'invite';
+    }, tr('L’invitation n’a pas pu être créée.'));
+  }
+  private async showPassword(guest: Guest) {
+    const hass = this.hass;
+    if (!hass) return;
+    await this.guestAction(async () => {
+      const password = await guestPassword(hass, guest.id);
+      this.invitation = { guest: guest.name, password, qr: await qrCode(location.origin) };
+      this.overlay = 'invite';
+    }, tr('Le mot de passe n’a pas pu être créé.'));
+  }
+  private usersPanel() {
+    const hass = this.hass, list = this.guests, now = Date.now() / 1000;
+    const live = Array.isArray(list) ? list.filter(g => guestStatus(g, now) !== 'ended').length : 0;
+    const describe = (g: Guest) => [g.profile === 'read' ? tr('Lecture seule') : tr('Peut commander'), g.kind === 'temporary' && g.until ? tr('jusqu’au {when}', { when: this.when(g.until) }) : tr('Permanent'), g.local_only ? tr('Wi-Fi de la maison') : ''].filter(Boolean).join(' · ');
+    const status = (g: Guest) => { const st = guestStatus(g, now); return st === 'ended' ? tr('Accès terminé') : st === 'invited' ? tr('Invitation en attente jusqu’à {time}', { time: new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(g.invite!.expires * 1000) }) : st === 'active' ? tr('Connecté sur {n} appareil|Connecté sur {n} appareils', { n: g.sessions }) : tr('Pas encore connecté'); };
+    const pill = (icon: MPIconName, label: string, act: () => void, danger = false) => html`<button class=${`pill ${danger ? 'danger' : ''}`} @click=${act}>${mpIcon(icon, 13)}${label}</button>`;
+    const row = (g: Guest) => {
+      const ended = guestStatus(g, now) === 'ended';
+      return html`<div class=${`guest ${ended ? 'ended' : ''}`}><div class="rw"><span class="av" style="width:36px;height:36px;font-size:15px;background:linear-gradient(135deg,#65b5ff,#327ccd)">${g.name.trim().charAt(0).toLocaleUpperCase(locale())}</span><div><b>${g.name}</b><small>${describe(g)}</small><small class=${`st ${guestStatus(g, now)}`}>${status(g)}</small></div></div>
+        <div class="houses wrap">${ended ? pill('close', tr('Supprimer'), () => { if (hass) void this.guestAction(() => removeGuest(hass, g.id), tr('Home Assistant a refusé.')); }, true)
+          : html`${pill('qr', tr('QR code'), () => void this.showInvitation(g, 'qr'))}${pill('link', tr('Lien'), () => void this.showInvitation(g, 'link'))}${pill('key', tr('Mot de passe'), () => void this.showPassword(g))}${pill('stop', tr('Arrêter l’accès'), () => { if (hass) void this.guestAction(() => endGuest(hass, g.id), tr('Home Assistant a refusé.')); }, true)}`}</div></div>`;
+    };
+    return html`${this.head(tr('Utilisateurs'), Array.isArray(list) ? tr('{n} invité actif|{n} invités actifs', { n: live }) : tr('Invités par lien ou QR code'), html`<button class="btn primary sm" @click=${() => { this.guestDraft = newGuest(); this.guestNote = undefined; this.sub = { type: 'guest', id: '' }; }}>${mpIcon('plus', 15)}${tr('Inviter')}</button>`, this.back)}
+      <div class="body">
+        ${this.network === 'proxy' ? html`<p class="note">${tr('Home Assistant vous voit comme connecté depuis la maison alors que vous passez par une adresse publique : « Wi-Fi de la maison seulement » ne protège pas ici. Réglez use_x_forwarded_for et trusted_proxies dans Home Assistant.')}</p>` : nothing}
+        ${this.guestNote ? html`<p class=${`note ${this.guestNote.ok ? 'ok' : ''}`}>${this.guestNote.text}</p>` : nothing}
+        ${list === undefined ? html`<p class="empty">${tr('Chargement…')}</p>` : list === 'error' ? html`<p class="empty">${tr('Les invités ne répondent pas. Mettez MP Nexus à jour dans HACS puis redémarrez Home Assistant.')}</p>`
+          : list.length ? html`<div class="sg guests">${list.map(row)}</div>` : html`<p class="empty">${tr('Aucun invité pour le moment. Invitez une personne : elle scanne le QR code et arrive sur MP Nexus, sans mot de passe.')}</p>`}
+        <p class="note info">${tr('Chaque invité est un utilisateur Home Assistant, jamais administrateur. Une invitation ne sert qu’une fois : 15 minutes pour un QR code, 24 heures pour un lien. « Arrêter l’accès » le déconnecte partout.')}</p>
+      </div>`;
+  }
+  private guestPanel() {
+    const hass = this.hass, draft = this.guestDraft, set = (change: Partial<GuestDraft>) => { this.guestDraft = { ...draft, ...change }; };
+    const chip = (on: boolean, icon: MPIconName, label: string, pick: () => void) => html`<button class="pill" aria-pressed=${on} @click=${pick}>${mpIcon(icon, 13)}${label}</button>`;
+    const ready = !!draft.name.trim() && (draft.kind === 'permanent' || (draft.until ?? 0) > Date.now() / 1000);
+    const create = () => { if (!hass || !ready) return; void this.guestAction(async () => { const guest = await createGuest(hass, { ...draft, name: draft.name.trim() }); this.sub = { type: 'users', id: '' }; await this.showInvitation(guest, 'qr'); }, tr('Home Assistant a refusé la création de l’invité.')); };
+    return html`${this.head(tr('Inviter quelqu’un'), tr('Jamais administrateur'), nothing, () => { this.sub = { type: 'users', id: '' }; })}
+      <div class="body">
+        <label class="inp wide">${mpIcon('user', 16)}<input .value=${draft.name} maxlength="40" placeholder=${tr('Prénom ou nom')} aria-label=${tr('Prénom ou nom')} @input=${(e: Event) => set({ name: (e.target as HTMLInputElement).value })}></label>
+        <div class="rlab">${tr('Durée')}</div>
+        <div class="houses wrap">
+          ${chip(draft.kind === 'temporary', 'moon', tr('Temporaire'), () => set({ kind: 'temporary', until: draft.until ?? defaultUntil(), profile: 'read', local_only: true }))}
+          ${chip(draft.kind === 'permanent', 'home', tr('Permanent'), () => set({ kind: 'permanent' }))}
+        </div>
+        ${draft.kind === 'temporary' ? html`<label class="vol">${mpIcon('sun', 16)}<input type="datetime-local" .value=${localInput(draft.until ?? defaultUntil())} aria-label=${tr('Fin de l’accès')} @change=${(e: Event) => { const at = Date.parse((e.target as HTMLInputElement).value); if (Number.isFinite(at)) set({ until: at / 1000 }); }}><span></span></label>` : nothing}
+        <div class="rlab">${tr('Ce que la personne peut faire')}</div>
+        <div class="houses wrap">
+          ${chip(draft.profile === 'read', 'scan', tr('Lecture seule'), () => set({ profile: 'read' }))}
+          ${chip(draft.profile === 'user', 'power', tr('Peut commander'), () => set({ profile: 'user' }))}
+        </div>
+        ${draft.profile === 'user' ? html`<p class="note">${tr('Home Assistant n’a pas de droits par appareil : cette personne pourra tout commander, y compris ouvrir la serrure et couper l’alarme, même ce que MP Nexus masque.')}</p>` : html`<p class="note info">${tr('Voit l’état de la maison, ne peut rien commander.')}</p>`}
+        <div class="sg"><div class="rw"><span class="ib">${mpIcon('home', 16)}</span><div><b>${tr('Wi-Fi de la maison seulement')}</b><small>${tr('Refuse toute connexion depuis l’extérieur')}</small></div>
+          <button class="end" role="switch" aria-checked=${draft.local_only} aria-label=${tr('Wi-Fi de la maison seulement')} @click=${() => set({ local_only: !draft.local_only })}><span class=${`tgl ${draft.local_only ? '' : 'off'}`}></span></button></div></div>
+        ${this.network === 'proxy' && draft.local_only ? html`<p class="note">${tr('Attention : derrière votre proxy, Home Assistant voit toutes les connexions comme locales.')}</p>` : nothing}
+        ${this.guestNote ? html`<p class=${`note ${this.guestNote.ok ? 'ok' : ''}`}>${this.guestNote.text}</p>` : nothing}
+        <button class="btn primary" ?disabled=${!ready} @click=${create}>${mpIcon('qr', 16)}${tr('Créer et inviter')}</button>
+      </div>`;
+  }
+  private invitePanel() {
+    const shown = this.invitation;
+    if (!shown) return nothing;
+    const copy = async (text: string) => { try { await navigator.clipboard.writeText(text); this.invitation = { ...shown, copied: true }; } catch { /* The text stays selectable. */ } };
+    const close = html`<button class="ib" aria-label=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>`;
+    if (shown.password) return html`${this.head(shown.guest, tr('Identifiants, affichés une seule fois'), close)}
+      <div class="body invite">
+        ${shown.qr ? html`<img class="qr" src=${shown.qr} alt=${tr('QR code de l’adresse de Home Assistant')}>` : nothing}
+        <div class="sg"><div class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><small>${tr('Nom d’utilisateur')}</small><b class="mono">${shown.password.username}</b></div></div>
+          <div class="rw"><span class="ib">${mpIcon('key', 16)}</span><div><small>${tr('Mot de passe')}</small><b class="mono">${shown.password.password}</b></div><button class="end pill" @click=${() => void copy(shown.password!.password)}>${mpIcon('copy', 13)}${shown.copied ? tr('Copié') : tr('Copier')}</button></div></div>
+        <p class="note info">${tr('Le QR code ouvre Home Assistant ; la personne s’y connecte avec ces identifiants. Un nouveau mot de passe remplace celui-ci.')}</p>
+      </div>`;
+    const invitation = shown.invitation!, time = new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(invitation.expires * 1000);
+    const share = typeof navigator.share === 'function' ? html`<button class="btn" @click=${() => { void navigator.share({ title: 'MP Nexus', url: invitation.url }).catch(() => undefined); }}>${mpIcon('link', 16)}${tr('Partager')}</button>` : nothing;
+    return html`${this.head(shown.guest, tr('Valable une fois, jusqu’à {time}', { time }), close)}
+      <div class="body invite">
+        ${shown.qr ? html`<img class="qr" src=${shown.qr} alt=${tr('QR code d’invitation')}><p class="muted center">${tr('À scanner avec l’appareil photo du téléphone de l’invité.')}</p>` : nothing}
+        <label class="inp wide">${mpIcon('link', 16)}<input readonly .value=${invitation.url} aria-label=${tr('Lien d’invitation')} @focus=${(e: Event) => (e.target as HTMLInputElement).select()}></label>
+        <div class="acts"><button class="btn primary" @click=${() => void copy(invitation.url)}>${mpIcon('copy', 16)}${shown.copied ? tr('Copié') : tr('Copier le lien')}</button>${share}</div>
+        <p class="note info">${tr('Après usage, ce lien ne sert plus : une photo du QR code prise ensuite n’ouvre rien. Envoyez le lien seulement à cette personne.')}</p>
+      </div>`;
+  }
   private plusMain() {
     const admin = !!this.hass?.user?.is_admin, states = this.hass?.states ?? {};
     const link = (href: string, icon: MPIconName, title: string, sub: string) => html`<a class="rw" href=${href}><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div><span class="end">${mpIcon('arrow', 16)}</span></a>`;
@@ -1194,6 +1309,7 @@ export class MPNexusView extends LitElement {
     return html`<section class="main panel card glass">
       ${this.head(tr('Plus'), tr('Toute la maison'))}
       <div class="body">
+        ${this.access?.guest ? html`<div class="live glass"><span class="ib" style="color:#9fd0ff">${mpIcon('user', 18)}</span><div><b>${tr('Accès invité')}</b><small>${[this.access.profile === 'read' ? tr('Lecture seule') : tr('Peut commander'), this.access.until ? tr('jusqu’au {when}', { when: this.when(this.access.until) }) : ''].filter(Boolean).join(' · ')}</small></div></div>` : nothing}
         <div class="sg">
           ${open('routines', 'sparkle', tr('Routines « Si… alors… »'), tr('{n} active|{n} actives', { n: automations }))}
           ${open('energy', 'gauge', tr('Énergie'), power[0] ? tr('En ce moment · {value}', { value: power[0].watts >= 1000 ? `${this.format(power[0].watts / 1000, 2)} kW` : `${this.format(power[0].watts, 0)} W` }) : tr('Puissance et consommation'))}
@@ -1205,6 +1321,7 @@ export class MPNexusView extends LitElement {
         ${this.screenPrefs()}
         <div class="sg">
           ${open('saver', 'moon', tr('Écran de veille'), saver.enabled ? tr('{content} · après {n} min', { content: tr(saver.content === 'photos' ? 'Photos' : saver.content === 'plan' ? 'Plan 3D' : 'Horloge'), n: saver.delayMinutes }) : tr('Désactivé sur cet écran'))}
+          ${admin ? open('users', 'user', tr('Utilisateurs'), tr('Invités par lien ou QR code')) : nothing}
           ${admin ? open('backup', 'layers', tr('Sauvegarde & partage'), this.lastExport ? tr('Dernière exportation : {when}', { when: new Intl.DateTimeFormat(locale(), { dateStyle: 'short' }).format(this.lastExport) }) : tr('Exporter, restaurer, partager')) : nothing}
         </div>
         <div class="sg">

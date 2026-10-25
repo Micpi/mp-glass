@@ -217,6 +217,9 @@ export const nexusStyles = css`
   .pill.night{border-color:rgba(160,140,255,.5);color:#ddd4ff}
   .modal{position:absolute;z-index:12;left:50%;top:9%;transform:translateX(-50%);width:min(560px,calc(100% - 32px));max-height:min(82%,720px);border-radius:24px;background:linear-gradient(145deg,rgba(18,52,79,.97),rgba(8,29,48,.99));animation:rise .2s ease-out}
   :host([layout=phone]) .modal{left:0;right:0;top:auto;bottom:0;transform:none;width:auto;max-height:88%;border-radius:28px 28px 0 0;padding-bottom:max(10px,env(safe-area-inset-bottom))}
+  .guests .guest{padding:10px 0 12px;border-bottom:1px solid var(--line)}.guests .guest:last-child{border:0}.guest .rw{border:0;padding:0 0 8px}.guest .av{flex:none}.guest.ended{opacity:.62}
+  .guest small.st{color:#9fd0ff}.guest small.st.active{color:#79e6ae}.guest small.st.ended{color:rgba(219,232,245,.6)}.pill.danger{border-color:rgba(255,140,140,.4);color:#ffc2c2}
+  .invite img.qr{display:block;width:min(240px,70%);aspect-ratio:1;margin:4px auto 0;border-radius:18px;background:#fff;padding:10px;box-shadow:0 14px 40px rgba(0,0,0,.35)}.invite .center{text-align:center;margin:0;font-size:12px}.mono{font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;letter-spacing:.02em;user-select:all}
   .srch .inp{flex:1;min-width:0;display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid rgba(213,234,255,.22);background:rgba(5,23,39,.6);color:var(--t2)}
   .srch .inp input{flex:1;min-width:0;border:0;background:none;color:#fff;font:inherit;font-size:15px;outline:none}
   .srch .inp:focus-within{border-color:color-mix(in srgb,var(--accent) 70%,white)}
@@ -248,7 +251,7 @@ export const nexusStyles = css`
   .houses.wrap{flex-wrap:wrap;overflow:visible}
   .inp.wide{display:flex;align-items:center;gap:8px;min-height:44px;padding:0 14px;border-radius:14px;border:1px solid rgba(213,234,255,.22);background:rgba(5,23,39,.6);color:var(--t2)}
   .inp.wide input{flex:1;min-width:0;border:0;background:none;color:#fff;font:inherit;outline:none}
-  input[type=time]{min-height:38px;padding:0 10px;border-radius:12px;border:1px solid rgba(213,234,255,.2);background:rgba(5,23,39,.6);color:inherit;font:inherit;color-scheme:dark}
+  input[type=time],input[type=datetime-local]{min-height:38px;padding:0 10px;border-radius:12px;border:1px solid rgba(213,234,255,.2);background:rgba(5,23,39,.6);color:inherit;font:inherit;color-scheme:dark}
   .summary{border-color:rgba(255,212,92,.4)}.summary b{white-space:normal;font-size:14px;line-height:1.35}
   .note.ok{border-color:rgba(121,230,174,.5);background:rgba(121,230,174,.1)}
   .note.info{border-color:rgba(255,255,255,.16);background:rgba(10,20,40,.55);color:rgba(255,255,255,.82);font-size:12px}

@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.20.0 — MP Nexus v2 (aperçu), étape 5 : invités par lien et QR code
+
+- Plus → Utilisateurs (administrateurs) : inviter une personne de façon permanente ou jusqu’à une date. Elle scanne le QR code ou ouvre le lien et arrive sur MP Nexus, connectée, sans mot de passe.
+- Chaque invité est un vrai utilisateur Home Assistant, jamais administrateur. Il est en « Lecture seule » (il voit la maison et ne commande rien) ou « Peut commander », avec un avertissement : Home Assistant n’a pas de droits par appareil, donc un invité qui commande peut aussi ouvrir la serrure ou couper l’alarme. Les invités temporaires sont en lecture seule et limités au Wi-Fi de la maison par défaut.
+- L’invitation ne sert qu’une fois et expire vite : 15 minutes pour un QR code, 24 heures pour un lien, jamais après la fin de l’accès. Seule son empreinte est enregistrée. Elle voyage après le « # » de l’adresse, que les navigateurs n’envoient jamais au serveur ni aux proxys.
+- La liste montre où en est chaque invité : invitation en attente, connecté sur combien d’appareils, accès terminé. « Arrêter l’accès » le déconnecte partout ; un accès temporaire s’arrête seul à sa date, même après un redémarrage. Une notification Home Assistant signale chaque connexion par invitation.
+- Repli : « Mot de passe » donne un nom d’utilisateur et un mot de passe générés, affichés une seule fois, pour la page de connexion habituelle de Home Assistant.
+- L’écran prévient si un proxy ou un tunnel fait passer toutes les connexions pour locales : « Wi-Fi de la maison seulement » ne protège alors pas.
+- Un invité voit son accès dans Plus (lecture seule, jusqu’à quand). Le tableau de bord MP Nexus doit être visible des utilisateurs non administrateurs dans Home Assistant.
+- Détails de sécurité : docs/SECURITY.md.
+
 ## 0.19.0 — MP Nexus v2 (aperçu), étape 4 : Plus
 
 - Plus est réorganisé en groupes : la maison (routines, énergie, extérieur, accès, historique), le confort (climat, ouvrants), les alertes et la recherche, puis ce qui est propre à cet écran.

@@ -279,8 +279,27 @@ if (params.has('v2') && spatial) {
     if(service==='unjoin')states[leader]={...states[leader]!,attributes:{...states[leader]!.attributes,group_members:[]}};
     hass.states=states;view.hass={...hass};
   };
+  // Guests invited by a link or a QR code, kept in this page only.
+  const now=Date.now()/1000;
+  const guests:Record<string,unknown>[]=[
+    {id:'g1',name:'Marie',kind:'temporary',profile:'read',local_only:true,until:now+2*86400,created:now-86400,ended:null,exists:true,sessions:1,last_used:now-3600,username:null,invite:null},
+    {id:'g2',name:'Paul',kind:'permanent',profile:'user',local_only:false,until:null,created:now-600,ended:null,exists:true,sessions:0,last_used:null,username:null,invite:{mode:'link',expires:now+23*3600}},
+    {id:'g3',name:'Baby-sitter',kind:'temporary',profile:'read',local_only:true,until:now-86400,created:now-5*86400,ended:now-86400,exists:true,sessions:0,last_used:now-2*86400,username:null,invite:null},
+  ];
+  const guestWS=(message:Record<string,unknown>)=>{
+    const id=String(message.user_id??''),guest=guests.find(g=>g.id===id);
+    if(message.type==='mp_glass/guests/list')return {guests:[...guests]};
+    if(message.type==='mp_glass/guests/create'){const created={id:`g${guests.length+1}`,name:message.name,kind:message.kind,profile:message.profile,local_only:message.local_only,until:message.until??null,created:Date.now()/1000,ended:null,exists:true,sessions:0,last_used:null,username:null,invite:null};guests.unshift(created);return created;}
+    if(message.type==='mp_glass/guests/invite'){const expires=Date.now()/1000+(message.mode==='qr'?900:86400);if(guest)guest.invite={mode:message.mode,expires};return {path:'/mp-nexus-invite',secret:'Q3x9-demo-invitation-pas-une-vraie-cle-7Kd2',expires};}
+    if(message.type==='mp_glass/guests/password'){if(guest)guest.username=`${String(guest.name).toLowerCase()}.4821`;return {username:guest?.username,password:'k7mp-x2qd-9fha-t4wn'};}
+    if(message.type==='mp_glass/guests/end'){if(guest){guest.ended=Date.now()/1000;guest.invite=null;guest.sessions=0;}return null;}
+    if(message.type==='mp_glass/guests/remove'){guests.splice(guests.indexOf(guest!),1);return null;}
+    return undefined;
+  };
+  const fetchDemo=hass.fetchWithAuth;
+  hass.fetchWithAuth=async(path:string,init?:RequestInit)=>path==='/api/mp_glass/guests/probe'?new Response('{"local":true,"secure":false}',{status:200}):fetchDemo!(path,init);
   const callWS=hass.callWS;
-  hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
+  hass.callWS=async<T>(message:Record<string,unknown>)=>String(message.type).startsWith('mp_glass/guests/')?guestWS(message) as T:message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
     :message.type==='logbook/get_events'?[{when:Date.now()/1000-3600,entity_id:'light.circuit_0',state:'on'},{when:Date.now()/1000-1800,entity_id:'cover.salon',state:'open'},{when:Date.now()/1000-600,entity_id:'binary_sensor.chambre_fenetre',state:'on'}] as T
     :message.type==='mp_glass/project/get'?{revision:1,project} as T
     :message.type==='conversation/process'?{response:{response_type:'action_done',speech:{plain:{speech:`Il fait 21,5 °C au salon et 26,8 °C dans la cuisine.`}}}} as T:callWS<T>(message);

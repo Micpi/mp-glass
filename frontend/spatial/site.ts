@@ -34,8 +34,8 @@ export class MPSitePlan extends LitElement {
   static properties = { site: { attribute: false }, houses: { attribute: false }, selected: {}, picking: { type: Boolean, reflect: true }, pending: { attribute: false }, view: { state: true }, engaged: { state: true }, size: { state: true } };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff)}
-    *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible{outline:2px solid #a2d7ff;outline-offset:2px}
-    .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 55%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.58),rgba(3,16,29,.82));border:1px solid rgba(214,236,255,.1);box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18);touch-action:none;cursor:grab;user-select:none}
+    *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:focus-visible{outline:2px solid var(--mp-accent,#69b7ff);outline-offset:2px}
+    .stage{position:relative;height:var(--mp-stage-height,clamp(300px,min(62cqw,72vh),620px));overflow:hidden;border-radius:var(--mp-radius,22px);background:radial-gradient(ellipse 65% 55% at 50% 55%,color-mix(in srgb,var(--accent) 12%,transparent),transparent 72%),linear-gradient(180deg,rgba(3,16,29,.58),rgba(3,16,29,.82));border:1px solid var(--mp-control-border,rgba(213,234,255,.12));box-shadow:inset 0 1px rgba(255,255,255,.07),0 24px 60px rgba(0,8,18,.18);touch-action:none;cursor:grab;user-select:none}
     .stage:active{cursor:grabbing}:host([picking]) .stage{cursor:crosshair}
     svg{position:absolute;inset:0;width:100%;height:100%;display:block}
     path{vector-effect:non-scaling-stroke;stroke-linejoin:round;stroke-linecap:round}
@@ -53,17 +53,17 @@ export class MPSitePlan extends LitElement {
     .outline.on{fill:color-mix(in srgb,var(--accent) 34%,transparent);stroke:#fff;stroke-width:2.2}
     .label{fill:#cfe0ef;opacity:.7;paint-order:stroke;stroke:rgba(3,16,29,.8);stroke-width:3px;stroke-linejoin:round;text-anchor:middle}
     .pending{fill:var(--accent);stroke:#fff;stroke-width:2;vector-effect:non-scaling-stroke}
-    .glass{background:rgba(5,20,34,.62);border:1px solid rgba(214,236,255,.16);backdrop-filter:blur(14px) saturate(140%);box-shadow:0 8px 22px rgba(0,8,18,.3)}
+    .glass{background:rgba(5,20,34,.62);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));backdrop-filter:blur(14px) saturate(140%);box-shadow:0 8px 22px rgba(0,8,18,.3)}
     .house{position:absolute;z-index:1;transform:translate(-50%,-50%);display:inline-flex;align-items:center;gap:6px;min-height:32px;max-width:220px;padding:0 12px 0 9px;border-radius:999px;font-size:12px;white-space:nowrap}
     .house span{overflow:hidden;text-overflow:ellipsis}.house .mp-icon{flex:none;color:var(--accent)}
     .house:hover,.house[aria-pressed=true]{border-color:color-mix(in srgb,var(--accent) 80%,white);background:color-mix(in srgb,var(--accent) 34%,rgba(5,20,34,.8))}
     .house small{display:inline-flex;align-items:center;gap:2px;padding:1px 6px;border-radius:999px;background:rgba(255,213,108,.16);color:#ffe39a;font-size:10.5px}
     :host([picking]) .house{pointer-events:none;opacity:.55}
-    .rail{position:absolute;z-index:2;top:12px;right:12px;display:grid;gap:4px;padding:4px;border-radius:14px}
-    .rail button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:10px;background:transparent}.rail button:hover{background:rgba(255,255,255,.1)}
+    .rail{position:absolute;z-index:2;top:12px;right:12px;display:grid;gap:4px;padding:4px;border-radius:calc(var(--mp-radius,22px) * 14 / 22)}
+    .rail button{display:grid;place-items:center;width:34px;height:34px;border:0;border-radius:calc(var(--mp-radius,22px) * 10 / 22);background:transparent}.rail button:hover{background:rgba(255,255,255,.1)}
     .north{position:absolute;z-index:1;left:14px;bottom:12px;font-size:11px;letter-spacing:.14em;color:#b7c9da;pointer-events:none}
     /* Beside the zoom buttons, on two lines on a phone rather than under them. */
-    .hint{position:absolute;z-index:1;left:12px;top:12px;max-width:calc(100% - 84px);padding:6px 12px;border-radius:16px;font-size:11.5px;line-height:1.35;color:#cfe0ef;pointer-events:none}
+    .hint{position:absolute;z-index:1;left:12px;top:12px;max-width:calc(100% - 84px);padding:6px 12px;border-radius:calc(var(--mp-radius,22px) * 16 / 22);font-size:11.5px;line-height:1.35;color:#cfe0ef;pointer-events:none}
   `;
   site?: SpatialSite;
   houses: SiteHouse[] = [];

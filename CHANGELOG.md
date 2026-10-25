@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.28.1 — Apparence cohérente sur les pages et les commandes
+
+- Centralisation des couleurs et de la matière pour MP Nexus v2, le dashboard classique, Nexus Studio et les cartes autonomes. L'accent, la teinte, l'opacité, le flou, les bordures et les arrondis sont transmis aux commandes et aux fenêtres de détail.
+- La force des bordures configurée dans Studio s'applique aussi à v2. Les fonds des commandes, les panneaux de dialogue et les contrôles du plan suivent la teinte choisie ; les coins des boutons et des cartes suivent les arrondis en gardant leurs proportions et les éléments circulaires.
+- Les boutons principaux, les commandes vocales, les contours du focus clavier et les sélections du Studio utilisent la couleur d'accentuation choisie. Les libellés des boutons principaux passent au texte clair ou sombre selon la luminosité de l'accent.
+- Le réglage « Effets animés » désactive également les animations CSS de v2 et des cartes classiques. Les couleurs métier (lumière allumée, chauffage, froid, alertes, marques musicales) restent reconnaissables.
+- Vérifications : contraste des accents clairs et sombres et cohérence des variables (Vitest) ; navigation entre les six pages v2 sur téléphone et ordinateur, modification puis conservation de l'accent après rechargement, transmission du verre et des bordures à la fenêtre d'une carte autonome (Playwright).
+- Limite de validation : neuf scénarios historiques Playwright du plan restent en échec (sélection dans la liste, anciens contrôles Gemini et anciennes lectures sur les marqueurs). Ces mêmes échecs sont reproduits sur la version 0.28.0 sans les modifications d'apparence.
+
 ## 0.28.0 — Écran de veille animé : diaporama et plan qui tourne
 
 - **Diaporama photo** (Plus → Écran de veille → Photos) : les photos défilent l'une après l'autre au lieu d'une seule image fixe. On choisit lesquelles (« Toutes les photos », « Mes photos » importées dans Apparence, ou « La bibliothèque » des 13 fonds MP Nexus) et le rythme (8 s, 15 s, 30 s, 1 min ou 5 min). Sans photo importée, « Mes photos » montre la bibliothèque.

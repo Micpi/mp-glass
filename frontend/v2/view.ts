@@ -1,3 +1,4 @@
+import { applyAppearance } from '../appearance';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { repeat } from 'lit/directives/repeat.js';
@@ -244,10 +245,9 @@ export class MPNexusView extends LitElement {
   /** The look shown: the house's (or its draft while an administrator edits it), then what this screen sets for itself. */
   private applyLook() {
     this.appearance = { ...(this.houseDraft ?? this.houseLook), ...this.screenLook };
-    this.toggleAttribute('motion', this.appearance.motion !== false);
+    applyAppearance(this, this.appearance);
     const a = this.appearance;
-    const vars: Record<string, string> = { accent: a.accent ?? '#69b7ff', tint: a.glassTint ?? '#12344f', opacity: String(a.glassOpacity ?? .62), blur: `${a.glassBlur ?? 22}px`, shadow: String(a.shadowStrength ?? .35), radius: `${a.radius ?? 24}px`, 'max-width': `${Math.max(1200, a.maxWidth ?? 1560)}px`, 'bg-blur': `${a.backgroundBlur ?? 0}px`, 'bg-saturation': String(a.backgroundSaturation ?? 1),
-      'display-font': a.fontStyle === 'modern' ? 'Inter,system-ui,sans-serif' : a.fontStyle === 'soft' ? 'ui-rounded,system-ui,sans-serif' : 'Georgia,serif' };
+    const vars: Record<string, string> = { 'max-width': `${Math.max(1200, a.maxWidth ?? 1560)}px`, 'bg-blur': `${a.backgroundBlur ?? 0}px`, 'bg-saturation': String(a.backgroundSaturation ?? 1) };
     for (const [name, value] of Object.entries(vars)) this.style.setProperty(`--mp-${name}`, value);
     this.requestUpdate();
   }
@@ -1768,7 +1768,7 @@ export class MPNexusView extends LitElement {
         <div class="rlab">${tr('Verre')}</div>
         ${range(tr('Opacité'), Math.round((a.glassOpacity ?? .62) * 100), 25, 90, 1, `${Math.round((a.glassOpacity ?? .62) * 100)} %`, v => this.setLook({ glassOpacity: v / 100 }))}
         ${range(tr('Flou du verre'), a.glassBlur ?? 22, 0, 40, 1, `${a.glassBlur ?? 22} px`, v => this.setLook({ glassBlur: v }))}
-        ${range(tr('Arrondis'), a.radius ?? 24, 10, 38, 1, `${a.radius ?? 24} px`, v => this.setLook({ radius: v }))}
+        ${range(tr('Arrondis'), a.radius ?? 22, 10, 38, 1, `${a.radius ?? 22} px`, v => this.setLook({ radius: v }))}
         <div class="sg"><div class="rw"><span class="ib">${mpIcon('palette', 16)}</span><div><b>${tr('Teinte du verre')}</b><small>${a.glassTint ?? '#12344f'}</small></div><span class="end"><input class="tint" type="color" aria-label=${tr('Teinte du verre')} .value=${a.glassTint ?? '#12344f'} @input=${(e: Event) => this.setLook({ glassTint: (e.target as HTMLInputElement).value })}></span></div>
           <div class="rw"><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Effets animés')}</b><small>${tr('Transitions et mouvements doux')}</small></div><button class="end" role="switch" aria-checked=${a.motion !== false} aria-label=${tr('Effets animés')} @click=${() => this.setLook({ motion: a.motion === false })}><span class=${`tgl ${a.motion !== false ? '' : 'off'}`}></span></button></div></div>
 

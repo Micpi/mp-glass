@@ -9,7 +9,7 @@ export const glassStyles = css`
     --mp-border-strength: .2;
     --mp-shadow-strength: .35;
     --mp-glass-background:
-      linear-gradient(145deg, rgb(from var(--mp-tint) r g b / var(--mp-opacity)), rgba(8, 29, 48, calc(var(--mp-opacity) + .02)) 72%),
+      linear-gradient(145deg, rgb(from var(--mp-tint) r g b / var(--mp-opacity)), rgb(from var(--mp-tint,#12344f) r g b / calc(var(--mp-opacity) + .02)) 72%),
       linear-gradient(180deg, rgba(255, 255, 255, .08), transparent 28%);
     --mp-glass-border: color-mix(in srgb, var(--mp-accent) calc(var(--mp-border-strength) * 100%), rgba(220, 237, 255, .38));
     --mp-accent: #70b9ff;
@@ -50,9 +50,9 @@ export const glassStyles = css`
   p, small { color:var(--mp-text-secondary); }
   button, input, select, a { font: inherit; }
   button { border:0; color:inherit; cursor:pointer; transition:transform .18s ease,background .18s ease,box-shadow .18s ease,border-color .18s ease; }
-  button:not(.icon-button):not(.power-button), input:not([type=range]):not([type=checkbox]), select { min-height:46px; border:1px solid var(--mp-glass-border); border-radius:14px; background:rgba(8,28,48,.38); color:inherit; padding:8px 14px; max-width:100%; }
+  button:not(.icon-button):not(.power-button), input:not([type=range]):not([type=checkbox]), select { min-height:46px; border:1px solid var(--mp-glass-border); border-radius:calc(var(--mp-radius,22px) * 14 / 22); background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 61.29%),100%),transparent); color:inherit; padding:8px 14px; max-width:100%; }
   input:not([type=range]):not([type=checkbox]), select { width:100%; }
-  button.primary { background:linear-gradient(135deg,#65b5ff,#327ccd); color:white; border-color:#86c7ff; box-shadow:0 0 24px rgba(58,157,255,.27); font-weight:650; }
+  button.primary { background:var(--mp-primary-background,var(--mp-accent)); color:var(--mp-on-accent,#061421); border-color:var(--mp-accent); box-shadow:0 0 24px color-mix(in srgb,var(--mp-accent) 27%,transparent); font-weight:650; }
   input[type=checkbox] { width:22px; min-height:22px; accent-color:var(--mp-accent); }
   select option { background:var(--mp-background); color:#fff; }
   label { display:grid; gap:8px; margin:18px 0 0; }
@@ -66,21 +66,21 @@ export const glassStyles = css`
   .device-card[data-on='true'] { border-color:color-mix(in srgb,var(--mp-warning) 46%,rgba(255,255,255,.3)); background:radial-gradient(circle at 10% 5%,rgba(255,210,75,.18),transparent 40%),var(--mp-glass-background); box-shadow:0 20px 52px rgba(0,8,18,.28),0 0 32px rgba(255,194,47,.1),inset 0 1px rgba(255,255,255,.15); }
   .device-card[data-available='false'] { filter:saturate(.55); opacity:.72; }
   .card-head { display:flex; align-items:center; gap:12px; min-width:0; }
-  .device-icon { display:grid; place-items:center; width:44px; height:44px; flex:0 0 auto; border-radius:14px; color:#dbe8f5; background:rgba(197,220,243,.1); border:1px solid rgba(220,237,255,.12); box-shadow:inset 0 1px rgba(255,255,255,.06); transition:.25s ease; }
+  .device-icon { display:grid; place-items:center; width:44px; height:44px; flex:0 0 auto; border-radius:calc(var(--mp-radius,22px) * 14 / 22); color:#dbe8f5; background:rgba(197,220,243,.1); border:1px solid var(--mp-control-border,rgba(213,234,255,.12)); box-shadow:inset 0 1px rgba(255,255,255,.06); transition:.25s ease; }
   .device-icon.on { color:#ffe175; background:radial-gradient(circle,rgba(255,216,89,.3),rgba(255,180,29,.09)); border-color:rgba(255,225,138,.3); box-shadow:0 0 28px rgba(255,192,45,.28),inset 0 1px rgba(255,255,255,.14); }
   :host([icon-style=orb]) .device-icon { border-radius:50%; }
-  :host([icon-style=minimal]) .device-icon { border-radius:6px; background:transparent; border-color:transparent; box-shadow:none; }
+  :host([icon-style=minimal]) .device-icon { border-radius:calc(var(--mp-radius,22px) * 6 / 22); background:transparent; border-color:transparent; box-shadow:none; }
   :host([card-style=compact]) .device-card { min-height:128px; padding:14px; gap:8px; }
   :host([card-style=spacious]) .device-card { min-height:178px; padding:23px; gap:18px; }
   .identity { min-width:0; margin-right:auto; }
   .identity h2 { font-size:16px; line-height:1.2; font-weight:650; letter-spacing:-.01em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .identity p { color:var(--mp-text-secondary); font-size:12px; margin-top:5px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .icon-button { display:grid; place-items:center; width:38px; height:38px; min-height:38px; padding:0; flex:0 0 auto; border-radius:12px; background:rgba(5,23,39,.3); border:1px solid rgba(213,234,255,.13); color:#c7d8e8; }
+  .icon-button { display:grid; place-items:center; width:38px; height:38px; min-height:38px; padding:0; flex:0 0 auto; border-radius:calc(var(--mp-radius,22px) * 12 / 22); background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 48.39%),100%),transparent); border:1px solid var(--mp-control-border,rgba(213,234,255,.12)); color:#c7d8e8; }
   .icon-button:hover { background:rgba(81,132,179,.22); color:white; }
   .control-row { display:flex; align-items:center; justify-content:space-between; gap:14px; }
   .state-copy strong { display:block; font:22px/1 Georgia,serif; font-weight:400; }
   .state-copy small { color:var(--mp-text-secondary); font-size:11px; }
-  .power-button { min-height:42px; min-width:106px; padding:0 14px; border-radius:14px; display:flex; align-items:center; justify-content:center; gap:8px; background:rgba(8,29,48,.44); border:1px solid rgba(202,228,255,.16); color:#dae7f3; font-weight:650; }
+  .power-button { min-height:42px; min-width:106px; padding:0 14px; border-radius:calc(var(--mp-radius,22px) * 14 / 22); display:flex; align-items:center; justify-content:center; gap:8px; background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 70.97%),100%),transparent); border:1px solid var(--mp-control-border,rgba(213,234,255,.12)); color:#dae7f3; font-weight:650; }
   .power-button.on { color:#0a2338; background:linear-gradient(135deg,#ffe481,#ffc540); border-color:#ffea9d; box-shadow:0 8px 22px rgba(255,192,45,.2),inset 0 1px rgba(255,255,255,.55); }
   .dimmer { display:grid; grid-template-columns:auto 1fr; align-items:center; gap:10px; color:var(--mp-text-secondary); font-size:12px; }
   input[type=range] { appearance:none; width:100%; height:18px; margin:0; background:transparent; cursor:pointer; }
@@ -93,5 +93,6 @@ export const glassStyles = css`
   pre { white-space:pre-wrap; font-size:12px; }
   :host([motion]) .device-icon.on { animation:lampPulse 3s ease-in-out infinite; }
   @keyframes lampPulse { 50% { filter:brightness(1.15); box-shadow:0 0 38px rgba(255,192,45,.44),inset 0 1px rgba(255,255,255,.22); } }
+  :host(:not([motion])) * { animation:none!important; transition:none!important; }
   @media (prefers-reduced-motion:reduce) { * { animation:none!important; transition:none!important; } }
 `;

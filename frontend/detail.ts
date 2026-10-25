@@ -41,15 +41,15 @@ const released = (event:Event) => (event as CustomEvent<{value:number}>).detail.
 export class MPGlassDetail extends LitElement {
   static properties = { hass:{attribute:false}, entity:{attribute:false}, busy:{state:true}, error:{state:true} };
   static styles = css`
-    :host{display:contents;--accent:var(--mp-accent,#69b7ff);--line:rgba(206,230,255,.12);--warm:#f5c66b;--muted:#9eb1c3;--control-font:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif)}
+    :host{display:contents;--accent:var(--mp-accent,#69b7ff);--line:var(--mp-control-border,rgba(213,234,255,.12));--warm:#f5c66b;--muted:#9eb1c3;--control-font:var(--mp-body-font,Inter,ui-sans-serif,system-ui,sans-serif)}
     *{box-sizing:border-box}
-    dialog{width:600px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);padding:0;overflow:hidden;color:#eef4fa;font-family:var(--control-font);font-size:13px;line-height:1.45;border:1px solid rgba(206,230,255,.2);border-radius:24px;background:linear-gradient(155deg,color-mix(in srgb,var(--mp-tint,#12344f) 48%,#101d2b),#0a1623 80%);box-shadow:0 32px 100px rgba(0,4,12,.55),inset 0 1px rgba(255,255,255,.05);animation:rise .2s cubic-bezier(.2,.8,.3,1)}
+    dialog{width:600px;max-width:calc(100vw - 24px);max-height:calc(100dvh - 32px);padding:0;overflow:hidden;color:#eef4fa;font-family:var(--control-font);font-size:13px;line-height:1.45;border:1px solid var(--mp-control-border,rgba(213,234,255,.12));border-radius:calc(var(--mp-radius,22px) * 24 / 22);background:var(--mp-panel-background,#101d2b);backdrop-filter:blur(var(--mp-blur,22px));box-shadow:0 32px 100px rgba(0,4,12,var(--mp-shadow,.35)),inset 0 1px rgba(255,255,255,.05);animation:rise .2s cubic-bezier(.2,.8,.3,1)}
     dialog::backdrop{background:rgba(2,8,16,.64);backdrop-filter:blur(8px);animation:fade .2s ease}
     .sheet{display:flex;flex-direction:column;max-height:calc(100dvh - 34px)}
     header{display:flex;align-items:center;gap:14px;min-width:0;flex:0 0 auto;padding:22px 24px;border-bottom:1px solid var(--line)}
-    .body{display:flex;flex-direction:column;gap:22px;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:22px 24px;scrollbar-width:thin;scrollbar-color:rgba(206,230,255,.22) transparent}
+    .body{display:flex;flex-direction:column;gap:22px;min-height:0;overflow-y:auto;overscroll-behavior:contain;padding:22px 24px;scrollbar-width:thin;scrollbar-color:var(--mp-control-border,rgba(213,234,255,.12)) transparent}
     .body>*{flex-shrink:0}
-    .orb{display:grid;place-items:center;width:46px;height:46px;flex:0 0 auto;border-radius:14px;color:#b6c9db;background:rgba(206,230,255,.06);border:1px solid var(--line);transition:background .2s ease,color .2s ease}
+    .orb{display:grid;place-items:center;width:46px;height:46px;flex:0 0 auto;border-radius:calc(var(--mp-radius,22px) * 14 / 22);color:#b6c9db;background:var(--mp-control-border,rgba(213,234,255,.12));border:1px solid var(--line);transition:background .2s ease,color .2s ease}
     .orb.on{color:var(--device-tone);background:color-mix(in srgb,var(--device-tone) 12%,transparent);border-color:color-mix(in srgb,var(--device-tone) 24%,transparent)}
     .title{min-width:0;margin-right:auto}
     .title small{display:block;color:var(--muted);font-size:10px;font-weight:600;letter-spacing:.12em;text-transform:uppercase}
@@ -58,8 +58,8 @@ export class MPGlassDetail extends LitElement {
     button:active:not(:disabled){transform:scale(.98)}
     button:disabled,input:disabled,select:disabled{opacity:.45;cursor:default;transform:none}
     button:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
-    .close{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;padding:0;border-radius:12px;border:1px solid transparent;background:transparent;color:var(--muted)}
-    .close:hover{background:rgba(206,230,255,.08);color:#fff}
+    .close{display:grid;place-items:center;width:40px;height:40px;flex:0 0 auto;padding:0;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid transparent;background:transparent;color:var(--muted)}
+    .close:hover{background:var(--mp-control-border,rgba(213,234,255,.12));color:#fff}
     .hero{display:flex;align-items:center;justify-content:space-between;gap:12px}
     .state-copy{display:grid;gap:5px;min-width:0}
     .state-value{display:flex;align-items:center;gap:9px;min-width:0}
@@ -68,7 +68,7 @@ export class MPGlassDetail extends LitElement {
     .hero strong{font:600 23px/1.2 var(--control-font);letter-spacing:-.03em;overflow-wrap:anywhere;font-variant-numeric:tabular-nums}
     .hero small{color:var(--muted);font-size:12px}
     .hero .when{max-width:40%;color:var(--muted);font-size:11px;text-align:right}
-    .group{display:grid;gap:16px;min-width:0;padding:16px;border-radius:18px;border:1px solid var(--line);background:rgba(206,230,255,.025);--accent:var(--device-tone)}
+    .group{display:grid;gap:16px;min-width:0;padding:16px;border-radius:calc(var(--mp-radius,22px) * 18 / 22);border:1px solid var(--line);background:var(--mp-control-border,rgba(213,234,255,.12));--accent:var(--device-tone)}
     .group mp-glass-bar{--mp-accent:var(--device-tone)}
     /* Vertical level bars keep their controls alongside; a light uses a full-width brightness bar. */
     .stage{display:grid;grid-template-columns:104px minmax(0,1fr);gap:12px;align-items:stretch;min-height:188px}
@@ -82,28 +82,28 @@ export class MPGlassDetail extends LitElement {
     .control-heading .power{min-height:38px;padding:0 14px;font-size:12px}
     .light-options{display:grid;gap:18px;padding-top:4px}
     .color-field{display:grid;gap:10px}
-    .power{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:12px;border:1px solid var(--line);background:rgba(206,230,255,.055);color:#e5eef7;font-weight:600}
-    .power:hover:not(:disabled){background:rgba(206,230,255,.1);border-color:rgba(206,230,255,.24)}
+    .power{display:flex;align-items:center;justify-content:center;gap:8px;min-height:44px;padding:0 16px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid var(--line);background:var(--mp-control-border,rgba(213,234,255,.12));color:#e5eef7;font-weight:600}
+    .power:hover:not(:disabled){background:var(--mp-control-border,rgba(213,234,255,.12));border-color:var(--mp-control-border,rgba(213,234,255,.12))}
     .power.on{color:var(--warm);background:color-mix(in srgb,var(--warm) 12%,transparent);border-color:color-mix(in srgb,var(--warm) 30%,transparent)}
     .power.cool.on{color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);border-color:color-mix(in srgb,var(--accent) 30%,transparent)}
     .pair{display:grid;grid-template-columns:repeat(auto-fit,minmax(92px,1fr));gap:8px}
-    .pair button,.modes button,.stepper button,.transport button,.volume button,.stack button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(206,230,255,.04);font-size:12px;font-weight:600}
-    .pair button:hover:not(:disabled),.modes button:hover:not(:disabled),.stack button:hover:not(:disabled){border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:rgba(20,53,77,.62)}
+    .pair button,.modes button,.stepper button,.transport button,.volume button,.stack button{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid var(--line);background:var(--mp-control-border,rgba(213,234,255,.12));font-size:12px;font-weight:600}
+    .pair button:hover:not(:disabled),.modes button:hover:not(:disabled),.stack button:hover:not(:disabled){border-color:color-mix(in srgb,var(--accent) 55%,transparent);background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 100.00%),100%),transparent)}
     /* The three commands of a shutter, stacked beside its bar. */
     .stack{display:grid;grid-template-rows:repeat(3,1fr);gap:8px;height:100%}
     .stack button{height:100%;font-size:13px}
     .stack button b{font:17px/1 system-ui,sans-serif}
-    .modes{display:flex;flex-wrap:nowrap;gap:4px;padding:3px;overflow-x:auto;border-radius:13px;background:rgba(0,8,18,.2);scrollbar-width:thin;scrollbar-color:rgba(206,230,255,.2) transparent}
-    .modes button{flex:1 0 auto;min-width:0;min-height:40px;padding:0 6px;gap:4px;font-size:11px;white-space:nowrap;border-color:transparent;background:transparent;border-radius:10px;color:var(--muted)}
+    .modes{display:flex;flex-wrap:nowrap;gap:4px;padding:3px;overflow-x:auto;border-radius:calc(var(--mp-radius,22px) * 13 / 22);background:rgba(0,8,18,.2);scrollbar-width:thin;scrollbar-color:var(--mp-control-border,rgba(213,234,255,.12)) transparent}
+    .modes button{flex:1 0 auto;min-width:0;min-height:40px;padding:0 6px;gap:4px;font-size:11px;white-space:nowrap;border-color:transparent;background:transparent;border-radius:calc(var(--mp-radius,22px) * 10 / 22);color:var(--muted)}
     .climate-options{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));align-items:end;gap:12px}
-    .program{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(206,230,255,.04);font-size:12px;font-weight:600}
+    .program{display:flex;align-items:center;justify-content:center;gap:7px;min-height:44px;padding:0 12px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid var(--line);background:var(--mp-control-border,rgba(213,234,255,.12));font-size:12px;font-weight:600}
     .program[aria-pressed=true],.modes button[aria-pressed=true]{color:#eef6ff;background:color-mix(in srgb,var(--accent) 16%,transparent);border-color:color-mix(in srgb,var(--accent) 28%,transparent)}
     .modes button[aria-pressed=true][data-mode=heat]{color:#ffc29d;background:color-mix(in srgb,#ff9a5c 14%,transparent);border-color:color-mix(in srgb,#ff9a5c 28%,transparent)}
     .modes button[aria-pressed=true][data-mode=cool]{color:#9be8ff;background:color-mix(in srgb,#5cd8ff 12%,transparent);border-color:color-mix(in srgb,#5cd8ff 28%,transparent)}
     /* The dial of a thermostat, one step at a time on either side. */
     .dial-row{display:grid;grid-template-columns:44px minmax(0,1fr) 44px;align-items:center;gap:12px}
-    .dial-row button{display:grid;place-items:center;height:44px;border-radius:50%;border:1px solid var(--line);background:rgba(206,230,255,.04);color:#dae7f3}
-    .dial-row button:hover:not(:disabled){background:rgba(20,53,77,.7);border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
+    .dial-row button{display:grid;place-items:center;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--mp-control-border,rgba(213,234,255,.12));color:#dae7f3}
+    .dial-row button:hover:not(:disabled){background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 112.90%),100%),transparent);border-color:color-mix(in srgb,var(--accent) 55%,transparent)}
     label.slider{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:10px;font-size:11.5px;color:#cfe0ef}
     label.slider output{min-width:46px;text-align:right;color:#eef6ff;font-weight:600}
     label.slider.named{grid-template-columns:minmax(0,1fr) auto;gap:6px 10px}
@@ -122,27 +122,27 @@ export class MPGlassDetail extends LitElement {
     .colors{display:grid;grid-template-columns:repeat(8,minmax(0,1fr));align-items:center;gap:8px;max-width:344px}
     .colors button{width:100%;max-width:36px;aspect-ratio:1;padding:0;border-radius:50%;border:3px solid rgba(10,22,35,.4);box-shadow:0 0 0 1px rgba(255,255,255,.16)}
     .colors button[aria-pressed=true]{outline:2px solid #fff;outline-offset:2px}
-    .colors input[type=color]{width:100%;max-width:36px;height:auto;aspect-ratio:1;padding:0;border:1px dashed rgba(206,230,255,.5);border-radius:50%;background:transparent;cursor:pointer;overflow:hidden}
+    .colors input[type=color]{width:100%;max-width:36px;height:auto;aspect-ratio:1;padding:0;border:1px dashed var(--mp-control-border,rgba(213,234,255,.12));border-radius:50%;background:transparent;cursor:pointer;overflow:hidden}
     .colors input[type=color]::-webkit-color-swatch-wrapper{padding:2px}
     .colors input[type=color]::-webkit-color-swatch{border:0;border-radius:50%}
     /* What a player is playing, with its artwork when it gives one. */
     .playing{display:flex;align-items:center;gap:14px;min-width:0;padding:4px 0 12px;border-bottom:1px solid var(--line)}
-    .playing img{width:66px;height:66px;flex:0 0 auto;border-radius:14px;object-fit:cover;background:rgba(255,255,255,.06);box-shadow:0 8px 22px rgba(0,8,18,.5)}
-    .playing .artwork{display:grid;place-items:center;width:60px;height:60px;flex:0 0 auto;border-radius:14px;background:color-mix(in srgb,var(--device-tone) 10%,transparent);color:var(--device-tone)}
+    .playing img{width:66px;height:66px;flex:0 0 auto;border-radius:calc(var(--mp-radius,22px) * 14 / 22);object-fit:cover;background:rgba(255,255,255,.06);box-shadow:0 8px 22px rgba(0,8,18,.5)}
+    .playing .artwork{display:grid;place-items:center;width:60px;height:60px;flex:0 0 auto;border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:color-mix(in srgb,var(--device-tone) 10%,transparent);color:var(--device-tone)}
     .playing div{min-width:0}
     .playing strong{display:block;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .playing small{display:block;margin-top:4px;color:#a9bdd0;font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .transport{display:flex;align-items:center;justify-content:center;gap:12px}
     .transport button{min-width:54px;min-height:48px}
-    .transport button.play{min-width:60px;min-height:52px;border-radius:16px;background:color-mix(in srgb,var(--device-tone) 16%,transparent);border-color:color-mix(in srgb,var(--device-tone) 30%,transparent);color:var(--device-tone)}
+    .transport button.play{min-width:60px;min-height:52px;border-radius:calc(var(--mp-radius,22px) * 16 / 22);background:color-mix(in srgb,var(--device-tone) 16%,transparent);border-color:color-mix(in srgb,var(--device-tone) 30%,transparent);color:var(--device-tone)}
     .volume{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:9px;font-size:11.5px;color:#dfe9f3}
     .volume button{min-width:44px}
     .volume button[aria-pressed=true]{color:#ffbda9;border-color:rgba(255,189,169,.4)}
     .volume output{min-width:44px;text-align:right;font-weight:600}
     label.pick{display:grid;gap:7px;min-width:0;font-size:12px;color:var(--muted)}
-    select{min-height:44px;width:100%;min-width:0;padding:0 12px;border-radius:12px;border:1px solid var(--line);background:rgba(0,8,18,.22);color:#eef7ff;font:inherit}
+    select{min-height:44px;width:100%;min-width:0;padding:0 12px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid var(--line);background:rgba(0,8,18,.22);color:#eef7ff;font:inherit}
     select option{background:#0b2237;color:#fff}
-    .error{margin:0;padding:11px 14px;border-radius:14px;color:#ffc3ad;background:rgba(80,20,10,.35);border:1px solid rgba(255,170,140,.25);font-size:12.5px}
+    .error{margin:0;padding:11px 14px;border-radius:calc(var(--mp-radius,22px) * 14 / 22);color:#ffc3ad;background:rgba(80,20,10,.35);border:1px solid rgba(255,170,140,.25);font-size:12.5px}
     mp-glass-history{min-width:0;--accent:var(--device-tone)}
     details{border-top:1px solid var(--line);padding-top:8px}
     summary{min-height:40px;display:flex;align-items:center;gap:8px;list-style:none;font-size:12px;font-weight:500;color:var(--muted);cursor:pointer}
@@ -153,10 +153,10 @@ export class MPGlassDetail extends LitElement {
     dt{color:#9db1c4;overflow-wrap:anywhere}
     dd{margin:0;text-align:right;overflow-wrap:anywhere}
     footer{display:flex;flex:0 0 auto;padding:10px 24px;border-top:1px solid var(--line);background:rgba(0,8,18,.12)}
-    .native{display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:0;border-radius:8px;border:0;background:transparent;color:var(--muted);font-size:12px;text-align:left}
+    .native{display:flex;align-items:center;gap:9px;width:100%;min-height:40px;padding:0;border-radius:calc(var(--mp-radius,22px) * 8 / 22);border:0;background:transparent;color:var(--muted);font-size:12px;text-align:left}
     .native>.mp-icon:last-child{margin-left:auto}
     .native:hover{color:#eef6ff}
-    @media (max-width:430px){dialog{max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:20px}.sheet{max-height:calc(100dvh - 18px)}header{padding:18px 16px;gap:11px}.body{padding:18px 16px;gap:18px}footer{padding:8px 16px}.stage{grid-template-columns:88px minmax(0,1fr)}.title h2{font-size:17px}.hero strong{font-size:21px}.hero{flex-wrap:wrap}.hero .when{max-width:100%;text-align:left}.group{padding:14px}.climate-options{grid-template-columns:repeat(2,minmax(0,1fr))}.program{grid-column:1/-1}.colors{gap:10px}.dial-row{gap:6px}}
+    @media (max-width:430px){dialog{max-width:calc(100vw - 16px);max-height:calc(100dvh - 16px);border-radius:calc(var(--mp-radius,22px) * 20 / 22)}.sheet{max-height:calc(100dvh - 18px)}header{padding:18px 16px;gap:11px}.body{padding:18px 16px;gap:18px}footer{padding:8px 16px}.stage{grid-template-columns:88px minmax(0,1fr)}.title h2{font-size:17px}.hero strong{font-size:21px}.hero{flex-wrap:wrap}.hero .when{max-width:100%;text-align:left}.group{padding:14px}.climate-options{grid-template-columns:repeat(2,minmax(0,1fr))}.program{grid-column:1/-1}.colors{gap:10px}.dial-row{gap:6px}}
     @keyframes rise{from{opacity:0;transform:translateY(12px) scale(.98)}}
     @keyframes fade{from{opacity:0}}
     @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}

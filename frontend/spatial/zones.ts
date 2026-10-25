@@ -316,15 +316,15 @@ export class MPPlanZones extends LitElement {
     selected:{state:true},vertex:{state:true},side:{state:true},pending:{state:true},mode:{state:true},drag:{state:true},draft:{state:true},trace:{state:true},notice:{state:true},frame:{state:true},zoomLevel:{state:true},panning:{state:true},magnet:{state:true}};
   static styles=css`
     :host{display:block;color:#eef6ff;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
-    button{font:inherit;color:inherit;cursor:pointer;min-height:36px;padding:0 12px;border:1px solid #b2d7f23b;border-radius:10px;background:#0b253d;display:inline-flex;align-items:center;gap:6px}
-    button:disabled{opacity:.45;cursor:default}button[aria-pressed=true]{background:#2a648e;border-color:#8acbff}
+    button{font:inherit;color:inherit;cursor:pointer;min-height:36px;padding:0 12px;border:1px solid #b2d7f23b;border-radius:calc(var(--mp-radius,22px) * 10 / 22);background:#0b253d;display:inline-flex;align-items:center;gap:6px}
+    button:disabled{opacity:.45;cursor:default}button[aria-pressed=true]{background:#2a648e;border-color:var(--mp-accent,#69b7ff)}
     .tools{display:flex;flex-wrap:wrap;align-items:center;gap:6px;margin:12px 0 6px}
-    .viewport{overflow:auto;overscroll-behavior:contain;margin:8px auto;border-radius:14px;background:#fff;max-width:calc(100% - 16px)}
+    .viewport{overflow:auto;overscroll-behavior:contain;margin:8px auto;border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:#fff;max-width:calc(100% - 16px)}
     .viewport figure{max-width:none;margin:0;border-radius:0;box-shadow:none}.viewport figure.panning,.panning polygon{cursor:grab;touch-action:none}
     .zoom-tools output{min-width:46px;text-align:center;font-variant-numeric:tabular-nums}.zoom-tools{margin-bottom:8px}
     /* Same buttons and room for two lines of help in every mode: the plan does not jump under the pointer. */
     .hint{margin:0;min-height:2.9em;color:#9fb6ca;font-size:12px}@media (max-width:600px){.hint{min-height:4.3em}}
-    figure{position:relative;max-width:calc(100% - 16px);margin:8px auto;border-radius:14px;background:#fff;box-shadow:0 10px 30px #0006;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:3px}
+    figure{position:relative;max-width:calc(100% - 16px);margin:8px auto;border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:#fff;box-shadow:0 10px 30px #0006;touch-action:pan-y;user-select:none;-webkit-user-select:none;outline-offset:3px}
     figure.adding{cursor:crosshair;touch-action:none}figure.busy{opacity:.85}
     img{display:block;width:100%;height:100%;border-radius:inherit;pointer-events:none}
     /* The plan a saved level was drawn from, where it lies under the rooms. */
@@ -337,37 +337,37 @@ export class MPPlanZones extends LitElement {
     svg,.names{overflow:hidden}
     polygon{fill-opacity:.3;stroke-opacity:.95;stroke-width:2;vector-effect:non-scaling-stroke;stroke-linejoin:round;cursor:move;touch-action:none}
     polygon.selected{fill-opacity:.42;stroke-width:3}.box{fill:none;stroke:#fff;stroke-width:2;stroke-dasharray:6 4;vector-effect:non-scaling-stroke;pointer-events:none}
-    .draft{fill:#69b7ff33;stroke:#69b7ff;stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}.trace{fill:none;stroke:#69b7ff;stroke-width:2;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:none}
+    .draft{fill:color-mix(in srgb,var(--mp-accent,#69b7ff) 20%,transparent);stroke:var(--mp-accent,#69b7ff);stroke-width:2;vector-effect:non-scaling-stroke;pointer-events:none}.trace{fill:none;stroke:var(--mp-accent,#69b7ff);stroke-width:2;stroke-dasharray:5 4;vector-effect:non-scaling-stroke;pointer-events:none}
     .label{position:absolute;transform:translate(-50%,-50%);max-width:30%;overflow:hidden;white-space:nowrap;text-overflow:ellipsis;color:#fff;font-weight:650;paint-order:stroke;-webkit-text-stroke:3px #061421;text-shadow:0 1px 2px #0009}
     .label.number{min-width:20px;height:20px;padding:0 5px;border-radius:99px;display:grid;place-items:center;font-size:11px;-webkit-text-stroke:0;background:#061421cc;border:2px solid currentColor}
     .handle{position:absolute;width:16px;height:16px;margin:-8px 0 0 -8px;border-radius:5px;background:#fff;border:2px solid #2a648e;box-shadow:0 2px 6px #0008;pointer-events:auto;touch-action:none}
     /* A larger target than the square itself, for a finger. */
-    .handle::before{content:'';position:absolute;inset:-9px}@media (pointer:coarse){.handle{width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:6px}.handle::before{inset:-12px}}
+    .handle::before{content:'';position:absolute;inset:-9px}@media (pointer:coarse){.handle{width:20px;height:20px;margin:-10px 0 0 -10px;border-radius:calc(var(--mp-radius,22px) * 6 / 22)}.handle::before{inset:-12px}}
     .handle[data-handle=n],.handle[data-handle=s]{cursor:ns-resize}.handle[data-handle=e],.handle[data-handle=w]{cursor:ew-resize}.handle[data-handle=nw],.handle[data-handle=se]{cursor:nwse-resize}.handle[data-handle=ne],.handle[data-handle=sw]{cursor:nesw-resize}
     /* Corners of an outline, the one last touched highlighted; a + in the middle of each side adds a corner. */
-    .vertex{border-radius:50%;cursor:move}.vertex.active{background:#8acbff;border-color:#fff;box-shadow:0 0 0 3px #8acbff66}
+    .vertex{border-radius:50%;cursor:move}.vertex.active{background:var(--mp-accent,#69b7ff);border-color:#fff;box-shadow:0 0 0 3px color-mix(in srgb,var(--mp-accent,#69b7ff) 40%,transparent)}
     .mid{width:13px;height:13px;margin:-6.5px 0 0 -6.5px;border-radius:50%;background:#2a648e;border:2px solid #fff;cursor:copy}
     .mid::after{content:'+';position:absolute;inset:-2px;display:grid;place-items:center;color:#fff;font:700 11px/1 system-ui,sans-serif}
     @media (pointer:coarse){.mid{width:17px;height:17px;margin:-8.5px 0 0 -8.5px}}
     /* Sides of the selected outline: wide enough for a finger to catch, highlighted once touched. */
     .side{fill:none;stroke:#ffffff01;stroke-width:16;vector-effect:non-scaling-stroke;cursor:move;touch-action:none}
-    .side.active{stroke:#8acbff66}
+    .side.active{stroke:color-mix(in srgb,var(--mp-accent,#69b7ff) 40%,transparent)}
     /* Waiting for the side to curve or the corner to round: those that can be touched stand out. */
-    .picking-curve .side{stroke:#8acbff38;cursor:pointer}.picking-curve .side:hover{stroke:#8acbffaa}
-    .picking-round .vertex{background:#8acbff;border-color:#fff;box-shadow:0 0 0 4px #8acbff55;cursor:pointer}
+    .picking-curve .side{stroke:color-mix(in srgb,var(--mp-accent,#69b7ff) 22%,transparent);cursor:pointer}.picking-curve .side:hover{stroke:color-mix(in srgb,var(--mp-accent,#69b7ff) 67%,transparent)}
+    .picking-round .vertex{background:var(--mp-accent,#69b7ff);border-color:#fff;box-shadow:0 0 0 4px color-mix(in srgb,var(--mp-accent,#69b7ff) 33%,transparent);cursor:pointer}
     /* The middle of the side last touched bends it; the mark above the room turns it. Neither is a resize handle. */
     .bend,.rotate{position:absolute;pointer-events:auto;touch-action:none;box-shadow:0 2px 6px #0008;cursor:grab}
     .bend::before,.rotate::before{content:'';position:absolute;inset:-9px}
-    .bend{width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;background:#8acbff;border:2px solid #fff}
+    .bend{width:15px;height:15px;margin:-7.5px 0 0 -7.5px;border-radius:50%;background:var(--mp-accent,#69b7ff);border:2px solid #fff}
     .bend::after{content:'';position:absolute;inset:3px;border-radius:50%;background:#0b253d}
-    .rotate{width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#0b253d;border:2px solid #8acbff}
-    .rotate::after{content:'⟳';position:absolute;inset:-1px;display:grid;place-items:center;color:#8acbff;font:700 12px/1 system-ui,sans-serif}
+    .rotate{width:18px;height:18px;margin:-9px 0 0 -9px;border-radius:50%;background:#0b253d;border:2px solid var(--mp-accent,#69b7ff)}
+    .rotate::after{content:'⟳';position:absolute;inset:-1px;display:grid;place-items:center;color:var(--mp-accent,#69b7ff);font:700 12px/1 system-ui,sans-serif}
     @media (pointer:coarse){.bend{width:19px;height:19px;margin:-9.5px 0 0 -9.5px}.rotate{width:22px;height:22px;margin:-11px 0 0 -11px}.bend::before,.rotate::before{inset:-12px}}
-    .point{width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:#69b7ff;border:2px solid #fff;pointer-events:none}.point.first{width:18px;height:18px;margin:-9px 0 0 -9px;background:#fff;border:3px solid #69b7ff}
+    .point{width:10px;height:10px;margin:-5px 0 0 -5px;border-radius:50%;background:var(--mp-accent,#69b7ff);border:2px solid #fff;pointer-events:none}.point.first{width:18px;height:18px;margin:-9px 0 0 -9px;background:#fff;border:3px solid var(--mp-accent,#69b7ff)}
     ul{list-style:none;margin:12px 0 0;padding:0;display:grid;grid-template-columns:repeat(auto-fill,minmax(230px,1fr));gap:6px}
-    li{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 8px;border-radius:10px;background:#ffffff08;border:1px solid #d6ecff14}li.selected{border-color:#8acbff;background:#69b7ff1a}
-    .swatch{display:grid;place-items:center;min-width:22px;height:22px;border-radius:7px;color:#061421;font-size:11px;font-weight:700}
-    input{flex:1;min-width:0;min-height:32px;padding:4px 8px;font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:8px;background:#0b253d}small{color:#9fb6ca;white-space:nowrap}
+    li{display:flex;align-items:center;gap:8px;padding:4px 6px 4px 8px;border-radius:calc(var(--mp-radius,22px) * 10 / 22);background:#ffffff08;border:1px solid #d6ecff14}li.selected{border-color:var(--mp-accent,#69b7ff);background:color-mix(in srgb,var(--mp-accent,#69b7ff) 10%,transparent)}
+    .swatch{display:grid;place-items:center;min-width:22px;height:22px;border-radius:calc(var(--mp-radius,22px) * 7 / 22);color:#061421;font-size:11px;font-weight:700}
+    input{flex:1;min-width:0;min-height:32px;padding:4px 8px;font:inherit;color:inherit;border:1px solid #b2d7f23b;border-radius:calc(var(--mp-radius,22px) * 8 / 22);background:#0b253d}small{color:#9fb6ca;white-space:nowrap}
     li button{min-height:30px;width:30px;padding:0;justify-content:center;border-color:transparent;background:transparent}li button:hover{background:#ff8a6a22}
     /* Doors, windows, televisions and speakers: a thick stroke along the wall, a round mark to move them, apart from the rooms. */
     .place{margin-top:2px}.place>span{color:#9fb6ca;font-size:12px}

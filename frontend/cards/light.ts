@@ -1,3 +1,4 @@
+import { applyAppearance } from '../appearance';
 import { LitElement, html, nothing } from 'lit';
 import { available, brightnessPercent, MPCapabilityEngine } from '../../shared/capabilities';
 import type { CardConfig } from '../../shared/models';
@@ -28,15 +29,7 @@ export class MPGlassLight extends LitElement {
     if (typeof config.entity !== 'string' || !config.entity.includes('.')) throw new Error('invalid_entity');
     this.config = { ...config }; this.setAttribute('preset', config.preset ?? 'glass-blue');
     const a = config.appearance;
-    this.style.setProperty('--mp-accent', a?.accent ?? '#72b9ff');
-    this.style.setProperty('--mp-secondary', a?.secondaryAccent ?? '#efbd8b');
-    this.style.setProperty('--mp-tint', a?.glassTint ?? '#12344f');
-    this.style.setProperty('--mp-opacity', String(a?.glassOpacity ?? .62));
-    this.style.setProperty('--mp-blur', `${a?.glassBlur ?? 22}px`);
-    this.style.setProperty('--mp-glass-radius', `${a?.radius ?? 22}px`);
-    this.style.setProperty('--mp-border-strength', String(a?.borderStrength ?? .2));
-    this.style.setProperty('--mp-shadow-strength', String(a?.shadowStrength ?? .35));
-    this.toggleAttribute('motion', a?.motion !== false);
+    applyAppearance(this, a);
     this.setAttribute('card-style', a?.cardStyle ?? 'standard');
     this.setAttribute('icon-style', a?.iconStyle ?? 'tile');
   }

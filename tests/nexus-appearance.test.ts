@@ -4,6 +4,7 @@ import { defaultProject, parseProject } from '../shared/project';
 import { MP_GLASS_BACKGROUND } from '../frontend/background';
 import { projectTemplate } from '../frontend/v2/plus';
 import { nexusStyles } from '../frontend/v2/styles';
+import { appearanceVariables } from '../frontend/appearance';
 import { accentFromPixels, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, hslHex, isNight, libraryWallpaper, readScreenLook, WALLPAPERS, wallpaperSource, writeScreenLook } from '../frontend/wallpapers';
 
 const PHOTO = '0123456789abcdef0123456789abcdef';
@@ -11,6 +12,14 @@ const sun = (state: string): Record<string, HAState> => ({ 'sun.sun': { entity_i
 const look = (change: Partial<AppearanceConfig>): AppearanceConfig => ({ preset: 'glass-blue', ...change });
 
 describe('MP Nexus appearance', () => {
+  it('keeps primary labels readable for light and dark custom accents', () => {
+    expect(appearanceVariables({ accent: '#ff9f6e' })['--mp-on-accent']).toBe('#061421');
+    expect(appearanceVariables({ accent: '#173177' })['--mp-on-accent']).toBe('#ffffff');
+    const material = appearanceVariables({ borderStrength: .6, radius: 36, glassBlur: 8 });
+    expect(material['--mp-border']).toBe(material['--mp-border-strength']);
+    expect(material['--mp-radius']).toBe(material['--mp-glass-radius']);
+    expect(material['--mp-blur']).toBe('8px');
+  });
   beforeEach(() => {
     const store = new Map<string, string>();
     vi.stubGlobal('localStorage', { getItem: (key: string) => store.get(key) ?? null, setItem: (key: string, value: string) => { store.set(key, value); }, removeItem: (key: string) => { store.delete(key); } });

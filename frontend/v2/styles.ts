@@ -288,6 +288,14 @@ export const nexusStyles = css`
   .sw{display:flex;align-items:center;gap:12px;padding:12px 16px;border-radius:18px;background:rgba(5,23,39,.55);border:1px solid rgba(213,234,255,.16);backdrop-filter:blur(16px);-webkit-backdrop-filter:blur(16px);text-align:left}
   .sw b{display:block;font-size:15px}.sw small{color:var(--t2);font-size:12px}.sw.warn{border-color:rgba(255,180,180,.45)}.sw.warn .mp-icon{color:#ffb4b4}
   .sw .ring{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;border:3px solid var(--warn)}
+  /* The plan beside the clock and widgets, never under them; on a screen held upright, below them. */
+  .saver.plan .splan{left:max(34%,calc(6% + min(440px,40vw) + 24px))}
+  :host([layout=phone]) .saver.plan .sl,:host([layout=portrait]) .saver.plan .sl{top:6%;right:6%;transform:none;max-width:none;display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}
+  :host([layout=phone]) .saver.plan .sclock,:host([layout=portrait]) .saver.plan .sclock,:host([layout=phone]) .saver.plan .sdate,:host([layout=portrait]) .saver.plan .sdate{grid-column:1/-1}
+  :host([layout=phone]) .saver.plan .sw,:host([layout=portrait]) .saver.plan .sw{padding:9px 11px;gap:9px;min-width:0}
+  :host([layout=phone]) .saver.plan .sw b{font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}:host([layout=phone]) .saver.plan .sw>div{min-width:0}
+  :host([layout=phone]) .saver.plan .sw .ring{width:40px;height:40px;font-size:10px}
+  :host([layout=phone]) .saver.plan .splan,:host([layout=portrait]) .saver.plan .splan{inset:auto 4% 6% 4%;height:38%}
   .shint{position:absolute;left:0;right:0;bottom:22px;text-align:center;font-size:12px;color:rgba(219,232,245,.55);z-index:2}
   .sdim{position:absolute;inset:0;z-index:3;background:#000;opacity:.85;pointer-events:none}
 

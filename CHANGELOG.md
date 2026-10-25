@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.26.2 — Pochettes de la bibliothèque musicale
+
+- Les pochettes de « Ma bibliothèque », de la recherche et de la file s'affichent. Elles sont servies par la route authentifiée MP Nexus `/api/mp_glass/music/artwork/…`, qu'une balise image ne peut pas appeler seule : MP Nexus les charge maintenant avec la session Home Assistant, comme les pochettes du proxy des lecteurs.
+- Le cache des pochettes chargées ainsi passe de 48 à 240 images, pour qu'une bibliothèque entière reste affichée sans se vider en défilant.
+
 ## 0.26.1 — Bibliothèque et services Music Assistant fiables
 
 - La bibliothèque et la recherche passent maintenant l'identifiant de l'entrée Music Assistant chargée, exigé par les actions officielles `get_library` et `search`. Sans lui, « Ma bibliothèque » restait vide et la recherche échouait (« Music Assistant is unavailable »), en particulier quand une ancienne entrée non chargée subsiste.

@@ -5,10 +5,18 @@
  * page; the MP Nexus header names the page and navigates. Edit mode keeps the Home Assistant bar.
  * Hidden rather than transparent: a theme may paint the bar, its toolbar or a pseudo-element, even with !important.
  * hui-root is Home Assistant internals: elsewhere, or if its structure changes, the bar stays as it is.
+ *
+ * Kiosk: while an MP Nexus view is on screen, the bar goes entirely and so does the sidebar, through Home
+ * Assistant's own kiosk mode, as the browser_mod and kiosk-mode cards ask for it. An administrator can leave it for
+ * this tab from the Plus page; everyone else is kept on MP Nexus by frontend/ha/kiosk.ts.
  */
 const ATTRIBUTE = 'mp-glass';
 const BAR = `:host([${ATTRIBUTE}]) div:not(.edit-mode)>.header`;
-const STYLE = `${BAR}{visibility:hidden!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}${BAR} :is(.action-items,ha-menu-button){visibility:visible}`;
+const KIOSK = 'mp-glass-kiosk';
+const STYLE = `${BAR}{visibility:hidden!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}:host([${ATTRIBUTE}]:not([${KIOSK}])) div:not(.edit-mode)>.header :is(.action-items,ha-menu-button){visibility:visible}`;
+/** For a frontend that ignores the kiosk event: the sidebar and the room it keeps go all the same. */
+const MAIN_STYLE = `:host([${KIOSK}]){--ha-sidebar-width:0px!important;--ha-top-app-bar-width:100%!important;--mdc-drawer-width:0px!important}:host([${KIOSK}]) ha-sidebar{display:none!important}`;
+const LEFT = 'mp-glass.kiosk';
 /** MP Nexus views on screen in each hui-root. */
 const views = new WeakMap<Element, Set<Element>>();
 
@@ -19,6 +27,49 @@ function huiRoot(view: Element) {
   }
   return undefined;
 }
+
+/** Whether an administrator left the kiosk in this tab. */
+export function kioskLeft() {
+  try { return sessionStorage.getItem(LEFT) === 'left'; } catch { return false; }
+}
+function main() {
+  return document.querySelector('home-assistant')?.shadowRoot?.querySelector('home-assistant-main') ?? undefined;
+}
+let kioskOn = false;
+/**
+ * On a touch screen, the browser goes full screen at the first touch, and again after each way out: browsers allow
+ * it only from a touch. Never on a computer, nor in an app or a page added to the home screen, already full screen.
+ */
+function fullScreen() {
+  if (!kioskOn || document.fullscreenElement || !document.fullscreenEnabled) return;
+  if (!matchMedia('(pointer: coarse)').matches || matchMedia('(display-mode: standalone), (display-mode: fullscreen)').matches) return;
+  document.documentElement.requestFullscreen?.({ navigationUI: 'hide' }).catch(() => undefined);
+}
+function kiosk(enable: boolean, host?: Element) {
+  if (enable && !kioskOn) addEventListener('pointerup', fullScreen, { passive: true });
+  if (!enable && kioskOn) {
+    removeEventListener('pointerup', fullScreen);
+    if (document.fullscreenElement) document.exitFullscreen?.().catch(() => undefined);
+  }
+  kioskOn = enable;
+  window.dispatchEvent(new CustomEvent('hass-kiosk-mode', { detail: { enable } }));
+  const shell = main();
+  if (shell?.shadowRoot && !shell.shadowRoot.querySelector('style[data-mp-glass-kiosk]')) {
+    const style = document.createElement('style');
+    style.setAttribute('data-mp-glass-kiosk', '');
+    style.textContent = MAIN_STYLE;
+    shell.shadowRoot.append(style);
+  }
+  shell?.toggleAttribute(KIOSK, enable);
+  host?.toggleAttribute(KIOSK, enable);
+}
+/** Leaves the kiosk in this tab, or comes back to it. Administrators only: the others are kept in it. */
+export function leaveKiosk(left: boolean) {
+  try { if (left) sessionStorage.setItem(LEFT, 'left'); else sessionStorage.removeItem(LEFT); } catch { /* Storage blocked: for this page only. */ }
+  for (const host of claimed) if (views.get(host)?.size) kiosk(!left, host);
+}
+/** hui-roots holding MP Nexus views, to switch the kiosk on all of them. */
+const claimed = new Set<Element>();
 
 /** Makes the bar transparent while the view is on screen; returns the hui-root to release. */
 export function claimHeader(view: Element) {
@@ -33,11 +84,17 @@ export function claimHeader(view: Element) {
   }
   views.set(root.host, (views.get(root.host) ?? new Set()).add(view));
   root.host.setAttribute(ATTRIBUTE, '');
+  claimed.add(root.host);
+  kiosk(!kioskLeft(), root.host);
   return root.host;
 }
 
 export function releaseHeader(host: Element, view: Element) {
   const shown = views.get(host);
   shown?.delete(view);
-  if (!shown?.size) host.removeAttribute(ATTRIBUTE);
+  if (shown?.size) return;
+  host.removeAttribute(ATTRIBUTE);
+  claimed.delete(host);
+  // Another MP Nexus view takes over at once when the dashboard changes page: the kiosk ends only if none does.
+  setTimeout(() => { if (![...claimed].some(h => views.get(h)?.size)) kiosk(false, host); }, 500);
 }

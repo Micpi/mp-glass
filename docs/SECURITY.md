@@ -10,6 +10,12 @@ Protection de concurrence : révision attendue + verrou serveur + sauvegarde ava
 
 Limites de validation : les permissions effectives doivent être testées avec comptes HA réel admin/non-admin ; l'absence de contournement dans l'architecture ne constitue pas une preuve d'exécution.
 
+## Mode kiosque
+
+MP Nexus s’affiche en plein écran, sans la barre ni le menu de Home Assistant. Les utilisateurs non administrateurs sont ramenés sur le tableau de bord MP Nexus depuis toute autre page de l’interface ; la commande `mp_glass/kiosk` leur donne seulement l’adresse de ce tableau de bord (jamais un tableau réservé aux administrateurs). Les administrateurs ne sont jamais redirigés et peuvent quitter le kiosque pour l’onglet en cours.
+
+C’est une règle d’interface, pas une frontière de sécurité : un utilisateur connecté garde l’accès que Home Assistant lui donne par son API (WebSocket, REST). Pour limiter ce qu’une personne peut faire, utilisez ses droits : « Lecture seule » pour un invité, jamais administrateur pour un écran partagé.
+
 ## Invités par lien ou QR code
 
 **Plus → Utilisateurs** (administrateurs) crée des invités permanents ou temporaires. Chaque invité est un utilisateur Home Assistant ordinaire, du groupe Lecture seule ou Utilisateurs, jamais administrateur ni propriétaire. Home Assistant n'a pas de droits par appareil : un invité « Peut commander » peut tout commander, y compris ce que MP Nexus masque. Un invité temporaire est en lecture seule et limité au réseau de la maison (`local_only`) par défaut.

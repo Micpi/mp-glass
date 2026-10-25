@@ -7,7 +7,7 @@ import { buildingPlan, planBuildings, type SpatialFloor, type SpatialPlan, type 
 import { canMedia, contactSensor, coverOpen, coverPosition, finite, groupCover, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, roomEntityIds, roomTemperature, type PlanMode } from '../../shared/spatial-state';
 import { available } from '../../shared/capabilities';
 import type { Hass } from '../ha/client';
-import { claimHeader, releaseHeader } from '../ha/header';
+import { claimHeader, kioskLeft, leaveKiosk, releaseHeader } from '../ha/header';
 import '../spatial/viewer';
 import { PLAN_LAYERS, roomIcon } from '../spatial/viewer';
 import { climateActionMode, domainOf, entityIcon, HVAC, hvacIcon, kindOf, RUN_SERVICES, since, stateDetail, stateLabel, stateName, TOGGLE_DOMAINS } from '../entities';
@@ -1330,9 +1330,15 @@ export class MPNexusView extends LitElement {
           ${this.languageMenu('row')}
           ${admin ? link('/mp-glass-settings', 'tune', 'MP Nexus Studio', tr('Apparence, plan 3D et équipements')) : nothing}
           ${admin ? link('/mp-glass-settings', 'sparkle', tr('Interface MP Nexus v2 (aperçu)'), tr('Revenir à la v1 depuis le Studio')) : nothing}
+          ${admin ? this.kioskRow() : nothing}
         </div>
       </div>
     </section>`;
+  }
+  /** Administrators only: the Home Assistant interface in this tab, or back to the kiosk. */
+  private kioskRow() {
+    const left = kioskLeft();
+    return html`<button class="rw" @click=${() => { leaveKiosk(!left); this.requestUpdate(); }}><span class="ib">${mpIcon(left ? 'expand' : 'grid', 16)}</span><div><b>${left ? tr('Revenir au mode kiosque') : tr('Interface Home Assistant')}</b><small>${left ? tr('Plein écran, sans barre ni menu') : tr('Barre et menu de Home Assistant sur cet écran')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`;
   }
   /** The climate and the covers of the whole house, each a touch away. */
   private housePanels() {

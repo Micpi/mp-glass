@@ -42,14 +42,25 @@ async function barPixel(page:Page){
   },png);
 }
 
-test('on an MP Nexus subview the Home Assistant bar is hidden but for its actions',async({page})=>{
+test('on an MP Nexus subview the whole Home Assistant bar is hidden, in kiosk mode',async({page})=>{
+  await page.addInitScript(()=>addEventListener('hass-kiosk-mode',e=>{(window as unknown as {kiosk:boolean[]}).kiosk=[...((window as unknown as {kiosk?:boolean[]}).kiosk??[]),(e as CustomEvent<{enable:boolean}>).detail.enable];}));
+  await subview(page);
+  expect(await bar(page)).toEqual({bar:'hidden',arrow:'hidden',title:'hidden',actions:'hidden',shadow:'none'});
+  expect(await page.evaluate(()=>(window as unknown as {kiosk:boolean[]}).kiosk.at(-1))).toBe(true);
+  await page.evaluate(()=>document.querySelector('hui-root')!.toggleAttribute('scrolled',true));
+  expect((await bar(page)).shadow).toBe('none');
+  // Away from MP Nexus, Home Assistant's interface comes back.
+  await page.evaluate(()=>document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view')!.replaceChildren());
+  await expect.poll(()=>page.evaluate(()=>(window as unknown as {kiosk:boolean[]}).kiosk.at(-1))).toBe(false);
+});
+
+test('an administrator who left the kiosk keeps the actions of the bar',async({page})=>{
+  await page.addInitScript(()=>sessionStorage.setItem('mp-glass.kiosk','left'));
   await subview(page);
   const actions=await page.evaluate(()=>document.querySelector('hui-root')!.shadowRoot!.querySelector('.action-items')!.getBoundingClientRect().right);
   expect(await bar(page)).toEqual({bar:'hidden',arrow:'hidden',title:'hidden',actions:'visible',shadow:'none'});
   // The hidden title keeps its place: the actions stay on the right.
   expect(actions).toBeGreaterThan(page.viewportSize()!.width-40);
-  await page.evaluate(()=>document.querySelector('hui-root')!.toggleAttribute('scrolled',true));
-  expect((await bar(page)).shadow).toBe('none');
 });
 
 test('no band even when a theme paints the bar, its toolbar and a pseudo-element with !important',async({page})=>{

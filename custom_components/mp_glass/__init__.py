@@ -13,6 +13,7 @@ from .frontend import async_register_module, async_register_studio, async_unregi
 from .project import ProjectRepository, RevisionConflict, default_project, load_validator, migrate_project
 from .backdrop import prune, referenced, remove_all
 from .guests import async_setup_guests, async_unload_guests
+from .kiosk import async_setup_kiosk
 from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdropView, SpatialRuntime, SpatialUploadView, backdrop_folder, websocket_cancel, websocket_info, websocket_job, websocket_normalize
 
 _LOGGER = logging.getLogger(__name__)
@@ -47,6 +48,7 @@ async def async_setup_entry(hass, entry):
         hass.http.register_view(SpatialBackdropImageView())
         hass.data["mp_glass_ws_registered"] = True
     await async_setup_guests(hass)
+    async_setup_kiosk(hass)
     await async_register_studio(hass, entry.options.get("show_settings", True))
     entry.async_on_unload(entry.add_update_listener(async_reload))
     return True

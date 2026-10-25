@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.21.0 — Mode kiosque
+
+- MP Nexus s’affiche toujours en plein écran, v1 comme v2 : plus de barre ni de menu latéral de Home Assistant sur le tableau de bord, y compris ses boutons (recherche, Assist, modifier). Le mode kiosque de Home Assistant est utilisé, avec un repli pour les versions qui ne le connaissent pas.
+- Sur une tablette ou un téléphone, le navigateur passe en plein écran au premier toucher, et y revient après chaque sortie. Les navigateurs ne le permettent qu’après un toucher ; dans l’application Home Assistant ou une page ajoutée à l’écran d’accueil, c’est déjà plein écran.
+- Les utilisateurs non administrateurs, invités compris, restent sur MP Nexus : toute autre page de Home Assistant (paramètres, historique, autre tableau de bord, adresse tapée à la main) les y ramène.
+- Les administrateurs ne sont jamais bloqués : Plus → « Interface Home Assistant » (v2) ou Info (v1) rend la barre et le menu sur cet onglet, et « Revenir au mode kiosque » les retire.
+- C’est une règle d’interface, pas une permission : ce qu’un utilisateur peut faire reste ce que Home Assistant lui permet (voir docs/SECURITY.md). Redémarrez Home Assistant après la mise à jour.
+
 ## 0.20.0 — MP Nexus v2 (aperçu), étape 5 : invités par lien et QR code
 
 - Plus → Utilisateurs (administrateurs) : inviter une personne de façon permanente ou jusqu’à une date. Elle scanne le QR code ou ouvre le lien et arrive sur MP Nexus, connectée, sans mot de passe.

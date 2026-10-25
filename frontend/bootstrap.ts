@@ -1,4 +1,6 @@
 import type { Hass } from './ha/client';
+// Inlined in this file at build time: it is imported by nothing else.
+import { startKiosk } from './ha/kiosk';
 
 interface MPGlassModule {
   generateMPGlassDashboard(config: { debug?: boolean }, hass: Hass): Promise<unknown>;
@@ -109,3 +111,5 @@ const strategies = window.customStrategies || (window.customStrategies = []);
 if (!strategies.some(strategy => strategy.type === 'mp-glass')) {
   strategies.push({ type: 'mp-glass', strategyType: 'dashboard', name: 'MP Nexus Dashboard' });
 }
+
+startKiosk(log);

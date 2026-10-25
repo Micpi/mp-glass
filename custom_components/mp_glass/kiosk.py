@@ -11,7 +11,7 @@ STRATEGY = "custom:mp-glass"
 
 async def dashboard_path(hass, admin: bool) -> str | None:
     """The url path of the dashboard running the MP Nexus strategy, a dashboard of its own before the overview."""
-    # Imported here: Lovelace may load after MP Nexus, and its data is only read on demand.
+    # Imported here: read on demand, Lovelace being only an after_dependency.
     from homeassistant.components.lovelace.const import LOVELACE_DATA
 
     data = hass.data.get(LOVELACE_DATA)

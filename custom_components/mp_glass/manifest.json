@@ -4,6 +4,9 @@
   "codeowners": [
     "@Micpi"
   ],
+  "after_dependencies": [
+    "lovelace"
+  ],
   "config_flow": true,
   "dependencies": [
     "frontend",

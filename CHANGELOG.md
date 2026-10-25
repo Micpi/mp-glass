@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.23.1 — Vraies pochettes et logos, gestes isolés, affichage iPhone
+
+- Les sources reconnues affichent désormais treize véritables logos SVG fournis avec MP Nexus (Spotify, Radio France, YouTube, YouTube Music, Netflix, Plex, Apple Music, Apple TV, Tidal, Deezer, Sonos, SoundCloud et AirPlay). La provenance et les conditions de distribution sont indiquées dans `docs/media-assets.md`; les sources inconnues gardent un repli lisible.
+- Les pochettes réelles renvoyées par Home Assistant ou Music Assistant s’affichent en images dans Lecture, bibliothèque, recherche, favoris et À suivre, avec repli si une image manque ou échoue. Le logo du service reste distinct de la pochette. Pour les favoris provenant du proxy Home Assistant, le jeton est retiré avant stockage, puis l’image est chargée à la demande avec la session authentifiée.
+- Le Trackpad arrête les événements tactiles, pointeur, clic et clavier dans sa surface pour empêcher qu’un geste soit interprété comme une navigation du tableau de bord. Un glissement envoie toujours une seule touche; le toucher court reste OK.
+- La vue iPhone suit la hauteur réellement visible de l’application Home Assistant et ses rotations, sans imposer une hauteur minimale qui dépassait en paysage. Les marges respectent l’encoche. `docs/ios-fullscreen.md` explique le réglage kiosque natif nécessaire pour masquer aussi la barre d’état iOS.
+
 ## 0.23.0 — Multimédia enrichi et Trackpad
 
 - MP Nexus v2 présente des repères visuels pour les sources audio/vidéo, les favoris locaux par utilisateur et écran, et les morceaux à suivre. Les raccourcis locaux gardent l’identifiant et le type Home Assistant nécessaires à la lecture, sans inclure les images ou identifiants URL qui contiennent des paramètres d’authentification.

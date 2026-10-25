@@ -21,7 +21,8 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
+import { browse, clockTime, displayMediaImage, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
+import { serviceBrand } from './brands';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
 /** The four ways MP Nexus v2 lays itself out: phone, tablet held upright, tablet held sideways, computer. */
@@ -148,6 +149,9 @@ export class MPNexusView extends LitElement {
   private mediaSearching = false;
   private mediaSearchRequest = 0;
   private remotePointer?: { id: number; player: string; x: number; y: number; moved: boolean };
+  private imageObserver?: IntersectionObserver;
+  private protectedImages = new Map<string, string>();
+  private protectedImageRequests = new Map<string, Promise<string | undefined>>();
   private sub?: SubPanel;
   private prefs: NexusPrefs = readPrefs();
   private overlay: ''|'search'|'alerts'|'invite' = '';
@@ -212,6 +216,8 @@ export class MPNexusView extends LitElement {
     this.toggleAttribute('comfort', this.prefs.comfort);
     this.addEventListener('hass-more-info', this.interceptMoreInfo);
     addEventListener('resize', this.measure);
+    window.visualViewport?.addEventListener('resize', this.measure);
+    window.visualViewport?.addEventListener('scroll', this.measure);
     addEventListener('keydown', this.escape);
     addEventListener('pointerdown', this.outside);
     this.resize.observe(this);
@@ -225,10 +231,16 @@ export class MPNexusView extends LitElement {
     this.header = undefined;
     this.removeEventListener('hass-more-info', this.interceptMoreInfo);
     removeEventListener('resize', this.measure);
+    window.visualViewport?.removeEventListener('resize', this.measure);
+    window.visualViewport?.removeEventListener('scroll', this.measure);
     removeEventListener('keydown', this.escape);
     removeEventListener('pointerdown', this.outside);
     for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
     this.resize.disconnect();
+    this.imageObserver?.disconnect();
+    this.imageObserver = undefined;
+    for (const url of this.protectedImages.values()) URL.revokeObjectURL(url);
+    this.protectedImages.clear();
     clearInterval(this.clock);
     this.remotePointer = undefined;
     this.browseRequest++;
@@ -237,6 +249,7 @@ export class MPNexusView extends LitElement {
   }
   protected updated() {
     this.watchConnection();
+    this.observeProtectedImages();
     if (this.saving) this.checkIdle();
     if (this.sub?.type === 'history') this.loadLogbook(); else if (this.logbookAsked) { this.logbookAsked = false; this.logbook = undefined; }
     if (this.sub?.type === 'users' || this.sub?.type === 'guest') this.loadGuests(); else if (this.guestsAsked) { this.guestsAsked = false; this.guests = undefined; }
@@ -250,9 +263,12 @@ export class MPNexusView extends LitElement {
     if (this.mediaTab === 'foryou' && this.browsing?.player !== id && canMedia(this.state(id), 'browse_media')) void this.browseInto(id);
   }
 
-  /** The app fills the screen below Home Assistant's bar; its layout follows the width and the way the screen is held. */
+  /** The app fills the visible HA WebView, including after iPhone rotation or a native inset change. */
   private measure = () => {
-    const top = Math.max(0, this.getBoundingClientRect().top), height = Math.max(380, innerHeight - top), width = this.clientWidth || innerWidth;
+    const viewport = window.visualViewport;
+    const top = Math.max(0, this.getBoundingClientRect().top - (viewport?.offsetTop ?? 0));
+    const height = Math.max(1, Math.floor((viewport?.height ?? innerHeight) - top));
+    const width = this.clientWidth || viewport?.width || innerWidth;
     this.style.setProperty('--mp-app-height', `${height}px`);
     const layout: Layout = width < 700 || (height < 520 && width < 1000) ? 'phone' : width >= 1200 ? 'desk' : height > width ? 'portrait' : 'rail';
     if (layout !== this.layout || this.getAttribute('layout') !== layout) { this.layout = layout; this.setAttribute('layout', layout); }
@@ -400,15 +416,20 @@ export class MPNexusView extends LitElement {
   private remoteTrackpad(player: string) { try { return localStorage.getItem(this.remoteModeKey(player)) === 'on'; } catch { return false; } }
   private toggleRemoteTrackpad(player: string, enabled: boolean) { this.remotePointer = undefined; try { localStorage.setItem(this.remoteModeKey(player), enabled ? 'on' : 'off'); } catch { /* Current page choice still takes effect below. */ } this.requestUpdate(); }
   private remotePointerDown = (event: PointerEvent, player: string) => {
+    event.stopPropagation();
+    this.activity();
     if (!event.isPrimary || event.button !== 0) return;
     (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
     this.remotePointer = { id: event.pointerId, player, x: event.clientX, y: event.clientY, moved: false };
   };
   private remotePointerMove = (event: PointerEvent) => {
+    event.stopPropagation();
+    if (event.cancelable) event.preventDefault();
     const pointer = this.remotePointer;
     if (pointer?.id === event.pointerId && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) >= 12) pointer.moved = true;
   };
   private remotePointerUp = (event: PointerEvent, player: string, send: (key: RemoteKey) => void) => {
+    event.stopPropagation();
     const pointer = this.remotePointer;
     this.remotePointer = undefined;
     if (!pointer || pointer.id !== event.pointerId || pointer.player !== player || this.currentPlayer !== player || this.mediaTab !== 'remote' || !this.remoteTrackpad(player)) return;
@@ -416,7 +437,10 @@ export class MPNexusView extends LitElement {
     if (Math.hypot(dx, dy) < 28) { if (!pointer.moved) send('select'); return; }
     send(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 'right' : 'left' : dy > 0 ? 'down' : 'up');
   };
-  private remotePointerCancel = (event: PointerEvent) => { if (this.remotePointer?.id === event.pointerId) this.remotePointer = undefined; };
+  private remotePointerCancel = (event: PointerEvent) => { event.stopPropagation(); if (this.remotePointer?.id === event.pointerId) this.remotePointer = undefined; };
+  private remoteTouchMove = (event: TouchEvent) => { event.stopPropagation(); if (event.cancelable) event.preventDefault(); };
+  private remoteTouchBoundary = (event: TouchEvent) => { event.stopPropagation(); };
+  private remoteClick = (event: MouseEvent) => { event.stopPropagation(); event.preventDefault(); };
   private favoriteItem(item: NexusFavorite) { this.saveMediaFavorites(toggleMediaFavorite(this.mediaFavorites, item)); }
   private async searchMusicAssistant(id: string) {
     const query = this.mediaSearch.trim(), hass = this.hass;
@@ -430,15 +454,8 @@ export class MPNexusView extends LitElement {
     finally { if (request === this.mediaSearchRequest) this.mediaSearching = false; }
   }
   private mediaSourceBadge(name: string) {
-    const brand = name.toLowerCase();
-    const known: Record<string, { mark: string; tone: string }> = {
-      netflix: { mark: 'N', tone: 'netflix' }, spotify: { mark: 'S', tone: 'spotify' }, 'youtube': { mark: '▶', tone: 'youtube' }, 'youtube music': { mark: 'Y', tone: 'youtube' },
-      'apple tv': { mark: 'tv', tone: 'apple' }, 'apple tv+': { mark: 'tv+', tone: 'apple' }, 'amazon prime video': { mark: 'prime', tone: 'prime' }, 'prime video': { mark: 'prime', tone: 'prime' },
-      plex: { mark: 'plex', tone: 'plex' }, disney: { mark: 'D+', tone: 'disney' }, 'disney+': { mark: 'D+', tone: 'disney' }, tidal: { mark: 'T', tone: 'tidal' }, deezer: { mark: 'D', tone: 'deezer' },
-      airplay: { mark: 'air', tone: 'airplay' }, chromecast: { mark: 'cast', tone: 'cast' },
-    };
-    const item = known[brand] ?? { mark: name.trim().slice(0, 2).toUpperCase() || '♪', tone: 'generic' };
-    return html`<span class=${`source-logo ${item.tone}`} aria-hidden="true">${item.mark}</span>`;
+    const brand = serviceBrand(name);
+    return html`<span class=${`source-logo ${brand?.tone ?? 'generic'}`} aria-hidden="true">${brand ? html`<img src=${brand.image} alt="" loading="lazy" decoding="async">` : name.trim().slice(0, 2).toUpperCase() || '♪'}</span>`;
   }
   /** A touch: a light, a shutter or a switch changes; a scene runs; a player pauses or plays; the rest opens its window. */
   private act(id: string) {
@@ -599,13 +616,57 @@ export class MPNexusView extends LitElement {
       </div>
     </section>`;
   }
-  private artwork(state?: HAState) {
-    const picture = String(state?.attributes.entity_picture ?? '');
-    return picture ? `background-image:url("${picture.replace(/"/g, '%22')}")` : '';
+  private mediaImage(value: unknown, eager = false) {
+    const url = displayMediaImage(value);
+    if (!url) return nothing;
+    const protectedPath = url.startsWith('/api/media_player_proxy/') && !new URL(url, location.origin).searchParams.has('token') && !!this.hass?.fetchWithAuth;
+    const cached = protectedPath ? this.protectedImages.get(url) : undefined;
+    return html`<img class="media-image" src=${protectedPath ? cached ?? nothing : url} data-auth-src=${protectedPath && !cached ? url : nothing} alt="" loading=${eager ? 'eager' : 'lazy'} decoding="async" @error=${(e: Event) => { (e.currentTarget as HTMLImageElement).hidden = true; }} @load=${(e: Event) => { (e.currentTarget as HTMLImageElement).hidden = false; }}>`;
+  }
+  private observeProtectedImages() {
+    const images = this.renderRoot.querySelectorAll<HTMLImageElement>('img[data-auth-src]');
+    if (!images.length || !this.hass?.fetchWithAuth) return;
+    if (!this.imageObserver && typeof IntersectionObserver !== 'undefined') this.imageObserver = new IntersectionObserver(entries => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) continue;
+        const image = entry.target as HTMLImageElement, path = image.dataset.authSrc;
+        this.imageObserver?.unobserve(image);
+        if (path) void this.loadProtectedImage(path).then(url => { if (url && image.isConnected && image.dataset.authSrc === path) image.src = url; });
+      }
+    }, { rootMargin: '180px' });
+    for (const image of images) {
+      const path = image.dataset.authSrc;
+      if (!path || image.dataset.authObserved === path) continue;
+      image.dataset.authObserved = path;
+      if (this.imageObserver) this.imageObserver.observe(image);
+      else void this.loadProtectedImage(path).then(url => { if (url && image.isConnected && image.dataset.authSrc === path) image.src = url; });
+    }
+  }
+  private loadProtectedImage(path: string): Promise<string | undefined> {
+    const cached = this.protectedImages.get(path);
+    if (cached) return Promise.resolve(cached);
+    const pending = this.protectedImageRequests.get(path);
+    if (pending) return pending;
+    const hass = this.hass, connection = hass?.connection;
+    const request = hass?.fetchWithAuth?.(path).then(async response => {
+      if (!response.ok || !response.headers.get('content-type')?.startsWith('image/')) return undefined;
+      const blob = await response.blob();
+      if (blob.size > 10_000_000 || !this.isConnected || this.hass?.connection !== connection) return undefined;
+      const url = URL.createObjectURL(blob);
+      this.protectedImages.set(path, url);
+      if (this.protectedImages.size > 48) {
+        const oldest = this.protectedImages.keys().next().value;
+        if (oldest) { URL.revokeObjectURL(this.protectedImages.get(oldest)!); this.protectedImages.delete(oldest); }
+      }
+      return url;
+    }).catch(() => undefined).finally(() => { this.protectedImageRequests.delete(path); });
+    if (!request) return Promise.resolve(undefined);
+    this.protectedImageRequests.set(path, request);
+    return request;
   }
   private nowPlayingRow(id: string) {
     const state = this.state(id);
-    return html`<div class="live glass"><a class="art" href=${this.route('media')} style=${this.artwork(state)} aria-label=${tr('Multimédia')}></a><div><b>${nowPlaying(state) ?? this.name(id)}</b><small>${this.name(id)}</small></div>
+    return html`<div class="live glass"><a class="art" href=${this.route('media')} aria-label=${tr('Multimédia')}>${this.mediaImage(state?.attributes.entity_picture)}</a><div><b>${nowPlaying(state) ?? this.name(id)}</b><small>${this.name(id)}</small></div>
       <span class="rgt" style="margin-left:auto;display:flex;gap:4px">${canMedia(state, 'pause') ? html`<button class="ib" aria-label=${tr('Pause')} @click=${() => this.call('media_player', 'media_play_pause', { entity_id: id })}>${mpIcon('pause', 16)}</button>` : nothing}${canMedia(state, 'next_track') ? html`<button class="ib" aria-label=${tr('Suivant')} @click=${() => this.call('media_player', 'media_next_track', { entity_id: id })}>${mpIcon('next', 16)}</button>` : nothing}</span></div>`;
   }
 
@@ -746,7 +807,8 @@ export class MPNexusView extends LitElement {
     const state = this.state(id), duration = finite(state?.attributes.media_duration), at = elapsed(state);
     const progress = at !== undefined && duration ? Math.min(100, at / duration * 100) : undefined;
     const volume = mediaVolume(state), muted = state?.attributes.is_volume_muted === true;
-    const artist = [state?.attributes.media_artist ?? state?.attributes.media_series_title ?? state?.attributes.media_album_name, state?.attributes.app_name ?? state?.attributes.source].filter(Boolean).map(String).join(' · ');
+    const artist = String(state?.attributes.media_artist ?? state?.attributes.media_series_title ?? state?.attributes.media_album_name ?? '');
+    const sourceName = String(state?.attributes.app_name ?? state?.attributes.source ?? '');
     const title = String(state?.attributes.media_title ?? '') || nowPlaying(state) || stateLabel(id, state);
     const media = (service: string, data: Record<string, unknown> = {}) => void this.mediaCall(service, { entity_id: id, ...data });
     const favoriteButton = musicAssistantFavoriteButton(this.hass, id), contentId = String(state?.attributes.media_content_id ?? title);
@@ -762,8 +824,9 @@ export class MPNexusView extends LitElement {
     };
     const others = this.players.filter(p => p !== id);
     return html`<div class="player">
-      <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''}`} style=${this.artwork(state)}></div>
+      <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''}`}>${this.mediaImage(state?.attributes.entity_picture, true)}</div>
       <div class="track"><div class="serif">${title}</div><div class="muted">${artist || stateLabel(id, state)}</div></div>
+      ${sourceName ? html`<div class="playing-source">${this.mediaSourceBadge(sourceName)}<span>${sourceName}</span></div>` : nothing}
       ${this.hass?.entities?.[id]?.platform === 'music_assistant' && favoriteButton ? html`<button class="btn favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('sparkle', 15)}${tr('Favoris Music Assistant')}</button>` : nothing}
       ${title && safeContentId ? html`<button class="btn favorite-current" aria-pressed=${saved} @click=${() => this.favoriteItem(favorite)}>${mpIcon(saved ? 'check' : 'plus', 15)}${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')}</button>` : nothing}
       ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role=${canMedia(state, 'seek') ? 'slider' : 'progressbar'} tabindex=${canMedia(state, 'seek') ? 0 : -1} aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" aria-valuetext=${`${clockTime(at!)} / ${clockTime(duration!)}`} @click=${seek} @keydown=${(e: KeyboardEvent) => { if (!canMedia(state, 'seek') || duration === undefined) return; const delta = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 5 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -5 : 0; if (delta || e.key === 'Home' || e.key === 'End') { e.preventDefault(); media('media_seek', { seek_position: e.key === 'Home' ? 0 : e.key === 'End' ? duration : Math.max(0, Math.min(duration, (at ?? 0) + delta)) }); } }}><i style=${`width:${progress}%`}></i></div>
@@ -780,7 +843,7 @@ export class MPNexusView extends LitElement {
         <input type="range" min="0" max="100" .value=${String(Math.round(volume))} aria-label=${tr('Volume')} @change=${(e: Event) => media('volume_set', { volume_level: Number((e.target as HTMLInputElement).value) / 100 })}>
         <span class="muted" style="font-size:12px;min-width:38px;text-align:right">${Math.round(volume)} %</span></div>` : nothing}
       ${soundModes.length && canMedia(state, 'select_sound_mode') ? html`<label class="vol">${mpIcon('sliders', 18)}<select aria-label=${tr('Mode sonore')} @change=${(e: Event) => media('select_sound_mode', { sound_mode: (e.target as HTMLSelectElement).value })}>${soundModes.map(m => html`<option .selected=${m === state?.attributes.sound_mode} value=${m}>${m}</option>`)}</select><span></span></label>` : nothing}
-      ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art" style=${this.queue.next.image ? `background-image:url("${this.queue.next.image.replace(/"/g, '%22')}")` : ''}></span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
+      ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art">${this.mediaImage(this.queue.next.image)}</span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
       ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
@@ -801,10 +864,10 @@ export class MPNexusView extends LitElement {
         <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label><input id="mp-ma-search" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
         <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
       </form>` : nothing}
-      ${this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
+      ${this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
       <div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
       ${this.mediaFavorites.length ? html`<div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
-        <button class="favorite-play" @click=${() => playItem(item)}><span class="th" style=${item.image ? `background-image:url("${item.image.replace(/"/g, '%22')}")` : ''}>${item.image ? nothing : mpIcon('music', 20)}</span><span><b>${item.title}</b><small>${item.artist || item.media_content_type}</small></span></button>
+        <button class="favorite-play" @click=${() => playItem(item)}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.image || (this.state(item.player)?.attributes.media_content_id === item.media_content_id ? this.state(item.player)?.attributes.entity_picture : undefined))}</span><span><b>${item.title}</b><small>${item.source ? this.mediaSourceBadge(item.source) : nothing}${item.artist || item.media_content_type}</small></span></button>
         <button class="ib" aria-label=${tr('Retirer des favoris')} title=${tr('Retirer des favoris')} @click=${() => this.favoriteItem(item)}>${mpIcon('close', 15)}</button>
       </div>`)}</div>` : html`<p class="empty">${tr('Gardez ici vos morceaux, albums et playlists préférés.')}</p>`}
       ${sources.length && canMedia(state, 'select_source') ? html`<div class="rlab">${tv ? tr('Applis et entrées') : tr('Sources')}</div>
@@ -814,7 +877,7 @@ export class MPNexusView extends LitElement {
           : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
             : level?.children?.length ? html`<div class="lib">${level.children.map(item => html`<div class="li">
               <button class="library-open" ?disabled=${!item.can_expand && !item.can_play} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}>
-                <span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
+                <span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
       ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
               : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
   }
@@ -859,7 +922,7 @@ export class MPNexusView extends LitElement {
     return html`
       ${mediaIsTv(state) || Object.keys(routes).length ? html`<div class="remote-mode"><span>${tr('Trackpad')}</span><button role="switch" aria-checked=${trackpad} aria-label=${tr('Trackpad')} ?disabled=${!canTrackpad || this.mediaReadOnlyGuest} title=${canTrackpad ? tr('Trackpad') : tr('Le trackpad n’est pas pris en charge par ce lecteur.')} @click=${() => this.toggleRemoteTrackpad(id, !trackpad)}><span class=${`tgl ${trackpad ? '' : 'off'}`}></span></button></div>` : nothing}
       ${Object.keys(routes).length ? html`<div class="pad" role="group" aria-label=${tr('Télécommande')}>
-      ${trackpad ? html`<div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); if (!e.repeat) send(key); } }}><span>${mpIcon('hand', 22)}</span><b>${tr('Glissez pour naviguer · Touchez pour OK')}</b></div>` : html`${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}`}
+        ${trackpad ? html`<div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}><span>${mpIcon('hand', 22)}</span><b>${tr('Glissez pour naviguer · Touchez pour OK')}</b></div>` : html`${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}`}
       </div>
       <div class="acts">${(['back', 'home', 'menu'] as const).map(k => routes[k] ? html`<button class="btn" @click=${() => send(k)}>${k === 'back' ? mpIcon('back', 16) : k === 'home' ? mpIcon('home', 16) : mpIcon('dots', 16)}${k === 'back' ? tr('Retour') : k === 'home' ? tr('Accueil') : tr('Menu')}</button>` : nothing)}</div>`
         : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips et Sony.')}</p>`}
@@ -1287,7 +1350,7 @@ export class MPNexusView extends LitElement {
         ${has('clock') || saver.content === 'clock' ? html`<div class="sclock">${new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(now)}</div><div class="sdate">${new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(now)}</div>` : nothing}
         ${has('weather') && weather ? html`<div class="sw">${mpIcon('sun', 22)}<div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)}°`}</b><small>${weatherName(weather.state)}</small></div></div>` : nothing}
         ${has('timer') && timer && left !== undefined ? html`<div class="sw"><span class="ring">${clockTime(left)}</span><div><b>${tr('Minuteur')}</b><small>${this.name(timer.entity_id)}</small></div></div>` : nothing}
-        ${has('music') && playing ? html`<div class="sw"><span class="art" style=${this.artwork(states[playing])}></span><div><b>${nowPlaying(states[playing]) ?? ''}</b><small>${this.playerLabel(playing)}</small></div></div>` : nothing}
+        ${has('music') && playing ? html`<div class="sw"><span class="art">${this.mediaImage(states[playing]?.attributes.entity_picture)}</span><div><b>${nowPlaying(states[playing]) ?? ''}</b><small>${this.playerLabel(playing)}</small></div></div>` : nothing}
         ${has('alerts') && alerts.length ? html`<div class="sw warn">${mpIcon('bell', 22)}<div><b>${this.name(alerts[0]!.entity)}</b><small>${tr('{n} alerte|{n} alertes', { n: alerts.length })}</small></div></div>` : nothing}
         ${has('people') && home.length ? html`<div class="sw"><span class="who stack">${home.slice(0, 4).map(p => this.avatar(p, 30, this.persons.indexOf(p)))}</span><div><b>${tr('À la maison')}</b><small>${home.map(p => p.name).join(', ')}</small></div></div>` : nothing}
       </div>

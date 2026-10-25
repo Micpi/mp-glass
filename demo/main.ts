@@ -262,6 +262,7 @@ if (params.has('v2') && spatial) {
     'update.mp_nexus':{entity_id:'update.mp_nexus',state:'on',attributes:{friendly_name:'MP Nexus',installed_version:'0.17.0',latest_version:'0.18.0'}},
   };
   hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'},'media_player.salon_sonos':{entity_id:'media_player.salon_sonos',device_id:'ma_sonos',platform:'music_assistant'},'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',device_id:'ma_sonos',platform:'music_assistant'}};
+  if(params.has('proxy-cover'))hass.states['media_player.salon_sonos']!.attributes.entity_picture='/api/media_player_proxy/media_player.salon_sonos?token=temporary-demo-token';
   hass.states={...hass.states,'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',state:'unknown',attributes:{friendly_name:'Salon · Favoriser le titre actuel'}}};
   const item=(title:string,id:string,colors:[string,string],play=true)=>({title,media_content_id:id,media_content_type:play?'music':'directory',can_play:play,can_expand:!play,thumbnail:art(...colors)});
   const library:Record<string,unknown>={
@@ -298,7 +299,7 @@ if (params.has('v2') && spatial) {
     return undefined;
   };
   const fetchDemo=hass.fetchWithAuth;
-  hass.fetchWithAuth=async(path:string,init?:RequestInit)=>path==='/api/mp_glass/guests/probe'?new Response('{"local":true,"secure":false}',{status:200}):fetchDemo!(path,init);
+  hass.fetchWithAuth=async(path:string,init?:RequestInit)=>path==='/api/mp_glass/guests/probe'?new Response('{"local":true,"secure":false}',{status:200}):params.has('proxy-cover')&&path==='/api/media_player_proxy/media_player.salon_sonos'?new Response('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" fill="#cc4f76"/><circle cx="32" cy="32" r="18" fill="#ffd2a6"/></svg>',{status:200,headers:{'content-type':'image/svg+xml'}}):fetchDemo!(path,init);
   const callWS=hass.callWS;
   hass.callWS=async<T>(message:Record<string,unknown>)=>String(message.type).startsWith('mp_glass/guests/')?guestWS(message) as T:message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
     :message.type==='call_service'&&message.domain==='media_player'&&message.service==='search_media'?{response:{'media_player.salon_sonos':{title:'Résultats',media_content_id:'search',media_content_type:'music',can_play:false,can_expand:true,children:[item('Moon Song','search-moon',['#a476d8','#345d9b'])]}}} as T

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
+import { clockTime, displayMediaImage, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
+import { serviceBrand } from '../frontend/v2/brands';
 import type { Hass } from '../frontend/ha/client';
 
 const state = (entity_id: string, attributes: Record<string, unknown> = {}, value = 'playing'): HAState => ({ entity_id, state: value, attributes });
@@ -57,6 +58,12 @@ describe('MP Nexus v2 media', () => {
     expect(safeFavoriteContentId('spotify://track/123')).toBe('spotify://track/123');
     expect(safeFavoriteImage('/local/cover.jpg?token=secret')).toBeUndefined();
     expect(safeFavoriteImage('/local/cover.jpg')).toBe('/local/cover.jpg');
+    expect(safeFavoriteImage('/api/media_player_proxy/media_player.a?token=secret&size=large')).toBe('/api/media_player_proxy/media_player.a?size=large');
+    expect(displayMediaImage('/api/media_player_proxy/media_player.a?token=secret')).toContain('media_player.a');
+    expect(displayMediaImage('javascript:alert(1)')).toBeUndefined();
+    expect(serviceBrand('Spotify Connect')?.image).toBeTruthy();
+    expect(serviceBrand('Radio France')?.image).toBeTruthy();
+    expect(serviceBrand('unknown source')).toBeUndefined();
     const storage = { getItem: () => JSON.stringify([fav, { ...fav, key: 'bad', media_content_id: 'https://x.test/?auth_token=secret' }]) };
     expect(readMediaFavorites('f', storage)).toEqual([fav]);
   });

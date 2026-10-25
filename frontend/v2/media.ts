@@ -119,9 +119,27 @@ export function safeFavoriteContentId(value: unknown): string | undefined {
 /** Keep remote service artwork URLs out of persistence; only same-origin HA paths are stored. */
 export function safeFavoriteImage(value: unknown, origin = ''): string | undefined {
   if (typeof value !== 'string' || !value || value.length > 2048 || /[\r\n]/.test(value)) return undefined;
-  if (value.startsWith('/') && !value.startsWith('//')) { try { if ([...new URL(value, origin || 'http://localhost').searchParams.keys()].some(key => /token|auth|secret|signature|credential|api.?key/i.test(key))) return undefined; } catch { return undefined; } return value; }
-  try { const url = new URL(value); return !!origin && url.origin === origin && ![...url.searchParams.keys()].some(key => /token|auth|secret|signature|credential|api.?key/i.test(key)) ? `${url.pathname}${url.search}` : undefined; }
+  if (!value.startsWith('/') && !origin) return undefined;
+  try {
+    const url = new URL(value, origin || 'http://localhost');
+    if (url.username || url.password || (origin && url.origin !== origin) || (!origin && !value.startsWith('/')) || value.startsWith('//')) return undefined;
+    for (const key of [...url.searchParams.keys()]) {
+      if (!/token|auth|secret|signature|credential|api.?key/i.test(key)) continue;
+      if (!url.pathname.startsWith('/api/media_player_proxy/')) return undefined;
+      url.searchParams.delete(key);
+    }
+    return `${url.pathname}${url.search}`;
+  }
   catch { return undefined; }
+}
+
+/** Artwork supplied by HA or MA is displayed only from image-capable URL schemes. It is never persisted here. */
+export function displayMediaImage(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value || value.length > 8192 || /[\r\n]/.test(value)) return undefined;
+  if (value.startsWith('/') && !value.startsWith('//')) return value;
+  if (/^https?:\/\//i.test(value)) return value;
+  if (/^data:image\/(?:png|jpeg|jpg|webp|gif|svg\+xml)(?:;[^,]*)?,/i.test(value)) return value;
+  return undefined;
 }
 
 export function browse(hass: Hass, playerId: string, item?: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) {

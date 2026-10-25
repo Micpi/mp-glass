@@ -1,0 +1,5 @@
+# Logos des services multimédias
+
+Les SVG de `frontend/v2/brand-icons/` proviennent du paquet [Simple Icons 16.35.0](https://github.com/simple-icons/simple-icons/tree/16.35.0/icons), distribué sous [CC0 1.0](https://github.com/simple-icons/simple-icons/blob/develop/LICENSE.md). Ils correspondent aux fichiers `airplayaudio`, `applemusic`, `appletv`, `deezer`, `netflix`, `plex`, `radiofrance`, `sonos`, `soundcloud`, `spotify`, `tidal`, `youtube` et `youtubemusic` de ce paquet. Les liens vers les sources de chaque marque figurent dans [`data/simple-icons.json`](https://cdn.jsdelivr.net/npm/simple-icons@16.35.0/data/simple-icons.json).
+
+Ces marques restent la propriété de leurs titulaires. MP Nexus affiche leurs logos uniquement pour identifier la source que Home Assistant signale; leur présence ne signifie aucune affiliation. Les pochettes des morceaux, albums, radios et playlists proviennent exclusivement des lecteurs et de leur bibliothèque Home Assistant ou Music Assistant. MP Nexus ne fournit pas de pochette de substitution présentée comme celle d'un morceau réel.

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.24.1 — Configuration Music Assistant toujours visible
+
+- Le bloc « Moteur Music Assistant MP Nexus » apparaît maintenant dans Multimédia → Pour vous même lorsqu'aucune entité Music Assistant n'est encore installée dans Home Assistant. Il conduit directement aux options MP Nexus : les nouveautés de la 0.24 ne sont plus cachées derrière un lecteur déjà configuré.
+- MP Nexus distingue explicitement l'add-on Music Assistant visible dans la barre latérale, l'intégration Home Assistant qui fournit les lecteurs, et son pont API qui fournit la bibliothèque, la file et les pochettes.
+- La détection des lecteurs accepte aussi les attributs officiels `mass_player_type` et `active_queue`. Elle reste fiable lorsque le registre d'entités n'est pas encore disponible dans le navigateur ou lorsqu'une entité a été renommée.
+
 ## 0.24.0 — Music Assistant devient une application intégrée
 
 - MP Nexus dispose désormais de son propre pont Music Assistant dans Home Assistant, inspiré du fonctionnement de Homeii Flow sans en reprendre le graphisme. La configuration accepte l'adresse directe du serveur et un jeton longue durée ; le jeton reste exclusivement côté Home Assistant et n'est jamais transmis au navigateur.

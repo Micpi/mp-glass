@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.26.0 — Connecter son service musical en quelques touches
+
+- Multimédia → Pour vous propose désormais un bouton « Activer la musique » aux administrateurs. MP Nexus installe l'application Music Assistant par le Superviseur (en ajoutant son dépôt si besoin), la démarre, puis confirme lui-même la découverte de l'intégration Home Assistant. L'écran suit chaque étape et peut être quitté ; les enceintes Sonos, Google Cast, AirPlay et DLNA sont trouvées par le moteur lui-même.
+- Une grille de services (Spotify, Deezer, Apple Music, Tidal, YouTube Music, Qobuz, SoundCloud, Plex, Radios) indique la façon réelle de se connecter : « 1 touche » pour une page de connexion officielle, « e-mail », « guidé » pour une clé à coller, « inclus » pour les radios.
+- La connexion pilote les assistants de configuration de Music Assistant 2.10 et suivants depuis l'interface MP Nexus : page officielle du service ouverte par un bouton (aucun mot de passe ne transite par MP Nexus), formulaires rendus dans le style MP Nexus et dans la langue de l'utilisateur, attente et confirmation « Spotify est connecté ». Deezer affiche un guide en trois étapes pour sa clé ARL.
+- Le moteur est joint comme le panneau officiel de Music Assistant, par une session d'ingress Home Assistant de l'administrateur : ni adresse, ni port, ni jeton à saisir ou à stocker. Les commandes d'installation sont réservées aux administrateurs côté serveur.
+- « Mes services » liste les comptes connectés, signale une reconnexion nécessaire et la relance en une touche. « Ajouter » rouvre la grille.
+- La recherche et la bibliothèque (« Ma bibliothèque ») sont proposées dès que la musique est prête, même depuis une enceinte vue par une autre intégration : MP Nexus joue alors sur l'enceinte Music Assistant du même nom et l'indique.
+- Une installation sans Superviseur (Docker, Core) affiche un guide d'installation de Music Assistant ; MP Nexus reprend ensuite l'intégration automatiquement.
+- Tests : états du moteur (Python), formulaires et services connectés (Vitest), parcours complet activation → Spotify → Deezer dans la démo (Playwright, `?v2&music`).
+
 ## 0.25.0 — Music Assistant zéro configuration
 
 - MP Nexus utilise maintenant directement l'intégration Music Assistant officielle déjà configurée dans Home Assistant. L'adresse du serveur, le port 8095, le jeton longue durée et le second moteur à activer disparaissent entièrement du parcours.

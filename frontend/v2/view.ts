@@ -23,6 +23,7 @@ import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
 import { browse, clockTime, displayMediaImage, elapsed, groupOf, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type NexusFavorite, type RemoteKey } from './media';
 import { serviceBrand } from './brands';
+import { connectedServices, engineSetup, engineStatus, entryVisible, formDefaults, MUSIC_SERVICES, MusicEngineSession, serviceLogo, type EngineStatus, type FlowEntry, type FlowStep, type MusicService, type ProviderInstance, type ProviderManifest } from './music-engine';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
 /** The four ways MP Nexus v2 lays itself out: phone, tablet held upright, tablet held sideways, computer. */
@@ -99,7 +100,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -156,6 +157,16 @@ export class MPNexusView extends LitElement {
   private musicLibraryRequest = 0;
   private musicQueueData?: { player: string; queue_id?: string; current_index?: number; items: MusicHubItem[] };
   private musicQueueAt = 0;
+  /** The household music engine, as an administrator sees it; members never ask. */
+  private engine?: EngineStatus | 'loading' | 'error';
+  private engineConnection?: object;
+  private engineTimer?: number;
+  private engineSession?: { entry: string; session: MusicEngineSession };
+  private musicSources?: { providers: ProviderInstance[]; manifests: ProviderManifest[] } | 'loading' | 'error';
+  /** The service being connected, and the step of its sign-in the person is at. */
+  private musicFlow?: { service: MusicService; step?: FlowStep; values: Record<string, unknown>; busy: boolean; error?: string; reconnect?: string };
+  private flowTimer?: number;
+  private musicServicesOpen = false;
   private remotePointer?: { id: number; player: string; x: number; y: number; moved: boolean };
   private imageObserver?: IntersectionObserver;
   private protectedImages = new Map<string, string>();
@@ -243,6 +254,8 @@ export class MPNexusView extends LitElement {
     window.visualViewport?.removeEventListener('scroll', this.measure);
     removeEventListener('keydown', this.escape);
     removeEventListener('pointerdown', this.outside);
+    clearTimeout(this.engineTimer); clearTimeout(this.flowTimer);
+    this.engineSession?.session.close(); this.engineSession = undefined;
     for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
     this.resize.disconnect();
     this.imageObserver?.disconnect();
@@ -263,6 +276,7 @@ export class MPNexusView extends LitElement {
     if (this.sub?.type === 'users' || this.sub?.type === 'guest') this.loadGuests(); else if (this.guestsAsked) { this.guestsAsked = false; this.guests = undefined; }
     if (this.hass && !this.accessAsked && !this.hass.user?.is_admin) { this.accessAsked = true; myAccess(this.hass).then(a => { this.access = a; }).catch(() => undefined); }
     if (this.kind !== 'media') return;
+    this.loadEngine();
     const id = this.currentPlayer;
     if (!id) return;
     const favoriteKey = this.mediaFavoriteStorageKey();
@@ -854,7 +868,7 @@ export class MPNexusView extends LitElement {
   }
   private mediaMain() {
     const id = this.currentPlayer, state = id ? this.state(id) : undefined;
-    if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body"><p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p>${this.mediaAssistantSetup()}</div></section>`;
+    if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body">${this.hass?.user?.is_admin && this.engine !== undefined && this.engine !== 'error' && (this.engine === 'loading' || this.engine.phase !== 'unsupported') ? nothing : html`<p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p>`}${this.musicSetup()}</div></section>`;
     const tabs = this.mediaTabs(id), tab = tabs.includes(this.mediaTab) ? this.mediaTab : 'play';
     const media = (service: string, data: Record<string, unknown> = {}) => void this.mediaCall(service, { entity_id: id, ...data });
     const power = mediaOn(state) && canMedia(state, 'turn_off') ? html`<button class="ib" aria-label=${tr('Éteindre')} title=${tr('Éteindre')} @click=${() => media('turn_off')}>${mpIcon('power', 16)}</button>`
@@ -914,9 +928,180 @@ export class MPNexusView extends LitElement {
       ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; this.requestUpdate(); }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
-  private mediaAssistantSetup() {
-    const ready = this.players.some(player => this.isMusicAssistantPlayer(player));
-    return !ready && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Music Assistant')}</b><p class="muted">${tr('Connectez Music Assistant dans Home Assistant pour parcourir ses lecteurs, sa bibliothèque et ses favoris.')}</p><a class="btn" href="/config/integrations/integration/mass">${tr('Configurer dans Home Assistant')}</a></div>` : nothing;
+  // ——— Music: the household engine, then the services connected to it ———
+  private loadEngine(force = false) {
+    const hass = this.hass;
+    if (!hass?.user?.is_admin || (!force && this.engineConnection === hass.connection)) return;
+    this.engineConnection = hass.connection;
+    if (!this.engine) this.engine = 'loading';
+    engineStatus(hass).then(status => {
+      if (!status?.phase) throw new Error('no engine');
+      const was = this.engine;
+      this.engine = status;
+      clearTimeout(this.engineTimer);
+      if (status.phase === 'preparing') this.engineTimer = window.setTimeout(() => this.loadEngine(true), 3000);
+      if (status.phase === 'ready' && (typeof was !== 'object' || was.phase !== 'ready')) { this.musicBridgeConnection = undefined; void this.loadMusicBridge(); }
+      if (status.phase === 'ready' && status.ingress_entry && (!this.musicSources || this.musicSources === 'error')) void this.loadMusicSources();
+    }).catch(() => { this.engine = 'error'; });
+  }
+  private musicSession() {
+    const hass = this.hass, entry = typeof this.engine === 'object' ? this.engine.ingress_entry : null;
+    if (!hass || !entry) return undefined;
+    if (this.engineSession?.entry !== entry) { this.engineSession?.session.close(); this.engineSession = { entry, session: new MusicEngineSession(hass, entry, language()) }; }
+    return this.engineSession.session;
+  }
+  private async loadMusicSources() {
+    const session = this.musicSession();
+    if (!session) return;
+    if (!this.musicSources || this.musicSources === 'error') this.musicSources = 'loading';
+    try { const [providers, manifests] = await Promise.all([session.providers(), session.manifests()]); this.musicSources = { providers, manifests }; }
+    catch { this.musicSources = 'error'; }
+  }
+  private async startMusicEngine() {
+    const hass = this.hass;
+    if (!hass) return;
+    try { this.engine = await engineSetup(hass); } catch { this.engine = 'error'; return; }
+    this.loadEngine(true);
+  }
+  private async connectService(service: MusicService, reconnect?: string) {
+    const session = this.musicSession();
+    if (!session) return;
+    this.musicServicesOpen = false;
+    this.musicFlow = { service, values: {}, busy: true, ...(reconnect ? { reconnect } : {}) };
+    try { this.showFlowStep(await (reconnect ? session.reconfigure(reconnect) : session.setup(service.domain))); }
+    catch { if (this.musicFlow?.service === service) this.musicFlow = { ...this.musicFlow, busy: false, error: tr('{name} ne répond pas pour le moment. Réessayez dans quelques instants.', { name: service.name }) }; }
+  }
+  private showFlowStep(step: FlowStep) {
+    const flow = this.musicFlow;
+    if (!flow) return;
+    const same = flow.step?.flow_id === step.flow_id && flow.step.step_id === step.step_id && flow.step.type === step.type;
+    this.musicFlow = { ...flow, step, values: step.type === 'form' && !same ? formDefaults(step.entries) : flow.values, busy: false, error: undefined };
+    clearTimeout(this.flowTimer);
+    // An outside page or a long wait ends on the server: MP Nexus looks again until the next step shows.
+    if (step.type === 'external' || step.type === 'progress') this.flowTimer = window.setTimeout(() => void this.pollFlow(step.flow_id), 2000);
+    if (step.type === 'finish') { void this.loadMusicSources(); this.musicItems = undefined; void this.loadMusicBridge(); }
+  }
+  private async pollFlow(flowId: string) {
+    const session = this.musicSession(), flow = this.musicFlow;
+    if (!session || flow?.step?.flow_id !== flowId) return;
+    try { const step = await session.step(flowId); if (this.musicFlow?.step?.flow_id === flowId) this.showFlowStep(step); }
+    catch {
+      // A flow that ended is no longer on the server: its service is there if it succeeded.
+      await this.loadMusicSources();
+      const sources = this.musicSources, done = typeof sources === 'object' && sources.providers.some(p => p.domain === flow.service.domain);
+      if (this.musicFlow?.step?.flow_id === flowId) this.musicFlow = done ? { ...this.musicFlow, step: { ...this.musicFlow.step, type: 'finish' } } : { ...this.musicFlow, busy: false, error: tr('La connexion à {name} n’a pas abouti. Réessayez.', { name: flow.service.name }) };
+    }
+  }
+  private async submitFlow() {
+    const session = this.musicSession(), flow = this.musicFlow;
+    if (!session || !flow?.step || flow.busy) return;
+    this.musicFlow = { ...flow, busy: true };
+    try { this.showFlowStep(await session.submit(flow.step.flow_id, flow.values)); }
+    catch { if (this.musicFlow) this.musicFlow = { ...this.musicFlow, busy: false, error: tr('La connexion à {name} n’a pas abouti. Réessayez.', { name: flow.service.name }) }; }
+  }
+  private closeFlow() {
+    const flow = this.musicFlow;
+    clearTimeout(this.flowTimer);
+    if (flow?.step && !['finish', 'abort'].includes(flow.step.type)) void this.musicSession()?.abort(flow.step.flow_id).catch(() => undefined);
+    this.musicFlow = undefined;
+  }
+  private serviceMark(service: Pick<MusicService, 'name'|'tone'|'glyph'>, size = 44) {
+    const logo = serviceLogo(service);
+    return html`<span class=${`svc-logo ${service.tone}`} style=${`--size:${size}px`}>${logo ? html`<img src=${logo} alt="">` : service.glyph ? service.glyph : mpIcon('music', Math.round(size / 2))}</span>`;
+  }
+  private serviceOf(provider: ProviderInstance): MusicService {
+    const manifest = typeof this.musicSources === 'object' ? this.musicSources.manifests.find(m => m.domain === provider.domain) : undefined;
+    return MUSIC_SERVICES.find(service => service.domain === provider.domain) ?? { domain: provider.domain, name: manifest?.name ?? provider.default_name ?? provider.domain, access: 'login', tone: 'other', glyph: '' };
+  }
+  /** The music block on top of "Pour vous", for administrators: switch the engine on, then connect and look after services. */
+  private musicSetup() {
+    if (!this.hass?.user?.is_admin) return nothing;
+    const engine = this.engine;
+    if (!engine || engine === 'loading') return nothing;
+    if (engine === 'error') return html`<div class="music-setup glass"><p class="muted">${tr('MP Nexus ne parvient pas à joindre le moteur musical.')}</p><button class="btn" @click=${() => this.loadEngine(true)}>${tr('Réessayer')}</button></div>`;
+    if (engine.phase === 'unsupported') return html`<div class="music-setup glass"><b>${tr('Musique')}</b><p class="muted">${tr('Cette installation de Home Assistant ne peut pas ajouter d’application. Installez Music Assistant à part, puis ajoutez son intégration : MP Nexus la reprendra automatiquement.')}</p><a class="btn" href="https://music-assistant.io/installation/" target="_blank" rel="noopener noreferrer">${tr('Guide d’installation')}</a></div>`;
+    if (engine.phase === 'preparing') return this.enginePreparing(engine);
+    if (engine.phase !== 'ready') return html`<div class="music-hero glass">
+      <span class="svc-logo radio" style="--size:60px">${mpIcon('music', 28)}</span>
+      <b class="serif">${tr('Votre musique, dans toute la maison')}</b>
+      <p class="muted">${tr('Spotify, Deezer, Apple Music, radios… sur toutes vos enceintes, en quelques touches.')}</p>
+      ${engine.phase === 'failed' ? html`<p class="note" role="alert">${tr('La préparation s’est arrêtée. Vérifiez la connexion Internet de Home Assistant, puis réessayez.')}</p>` : nothing}
+      <button class="btn primary big" @click=${() => void this.startMusicEngine()}>${mpIcon('sparkle', 17)}${engine.phase === 'failed' ? tr('Réessayer') : tr('Activer la musique')}</button>
+      <small class="muted">${tr('Gratuit · environ 1 minute · rien à configurer')}</small>
+    </div>`;
+    if (!engine.ingress_entry) return nothing;
+    if (this.musicFlow) return this.musicFlowPanel(this.musicFlow);
+    const sources = this.musicSources;
+    if (!sources || sources === 'loading') return nothing;
+    if (sources === 'error') return html`<div class="music-setup glass"><p class="muted">${tr('Les services de musique ne répondent pas pour le moment.')}</p><button class="btn" @click=${() => void this.loadMusicSources()}>${tr('Réessayer')}</button></div>`;
+    const connected = connectedServices(sources.providers, sources.manifests);
+    if (!connected.length || this.musicServicesOpen) return this.musicServiceGrid(connected);
+    return html`<div class="sec"><b>${tr('Mes services')}</b><button @click=${() => { this.musicServicesOpen = true; }}>${tr('Ajouter')}</button></div>
+      <div class="svc-rows">${connected.map(provider => {
+        const service = this.serviceOf(provider), lost = provider.status === 'auth_required';
+        return html`<div class=${`svc-row ${lost ? 'lost' : ''}`}>${this.serviceMark(service, 32)}<span><b>${provider.name || service.name}</b><small>${lost ? tr('Reconnexion nécessaire') : provider.status === 'loading' ? tr('Connexion…') : provider.last_error ? tr('Indisponible pour le moment') : tr('Connecté')}</small></span>
+          ${lost ? html`<button class="btn gold sm" @click=${() => void this.connectService(service, provider.instance_id)}>${tr('Reconnecter')}</button>` : nothing}</div>`;
+      })}</div>`;
+  }
+  private enginePreparing(engine: EngineStatus) {
+    const order = ['repository', 'install', 'start', 'link', 'done'] as const, at = order.indexOf(engine.step ?? 'repository');
+    const steps: [number, Parameters<typeof tr>[0], Parameters<typeof tr>[0]][] = [
+      [1, 'Moteur musical installé', 'Music Assistant, géré par MP Nexus'],
+      [2, 'Moteur démarré', 'Il trouve vos enceintes tout seul'],
+      [3, 'Relié à Home Assistant', 'Automatiquement, sans jeton'],
+    ];
+    return html`<div class="music-setup glass"><b>${tr('Préparation de la musique')}</b>
+      <p class="muted">${tr('MP Nexus installe et relie le moteur musical. Vous pouvez quitter cet écran.')}</p>
+      ${steps.map(([index, title, detail]) => html`<div class=${`stp ${at > index ? 'ok' : at === index || (index === 1 && at === 0) ? 'run' : ''}`}><span class="o">${at > index ? mpIcon('check', 14) : nothing}</span><span><b>${tr(title)}</b><small>${tr(detail)}</small></span></div>`)}
+      <div class="bar"><i style=${`width:${Math.round(Math.max(8, at / 4 * 100))}%`}></i></div>
+    </div>`;
+  }
+  private musicServiceGrid(connected: ProviderInstance[]) {
+    const has = new Set(connected.map(p => p.domain));
+    const badge = (service: MusicService) => has.has(service.domain) ? tr('connecté') : service.access === 'free' ? tr('inclus') : service.access === 'oauth' ? tr('1 touche') : service.access === 'login' ? tr('e-mail') : tr('guidé');
+    return html`<div class="sec"><b>${tr('Ajouter un service')}</b>${connected.length ? html`<button @click=${() => { this.musicServicesOpen = false; }}>${tr('Fermer')}</button>` : nothing}</div>
+      <p class="muted svc-hint">${tr('Touchez votre service : la connexion se fait sur sa propre page.')}</p>
+      <div class="svc-grid">${MUSIC_SERVICES.map(service => html`<button class=${has.has(service.domain) ? 'on' : ''} ?disabled=${has.has(service.domain) && service.access === 'free'} @click=${() => void this.connectService(service)}>
+        <i class=${`svc-badge ${has.has(service.domain) ? 'ok' : service.access}`}>${badge(service)}</i>${this.serviceMark(service)}<span>${service.name}</span></button>`)}</div>`;
+  }
+  private flowField(entry: FlowEntry, flow: NonNullable<typeof this.musicFlow>) {
+    const value = flow.values[entry.key], set = (next: unknown) => { if (this.musicFlow) this.musicFlow = { ...this.musicFlow, values: { ...this.musicFlow.values, [entry.key]: next } }; };
+    const label = entry.label || entry.key, error = flow.step?.errors?.[entry.key];
+    if (entry.type === 'label') return html`<p class="muted flow-text">${label}</p>`;
+    if (entry.type === 'alert') return html`<p class="note">${label}</p>`;
+    if (entry.type === 'url' || entry.help_link && entry.type === 'action') return html`<a class="btn" href=${String(entry.value ?? entry.default_value ?? entry.help_link ?? '')} target="_blank" rel="noopener noreferrer">${mpIcon('link', 15)}${label}</a>`;
+    if (['image', 'icon', 'action', 'divider'].includes(entry.type)) return nothing;
+    if (entry.type === 'boolean') return html`<label class="flow-check"><input type="checkbox" .checked=${Boolean(value)} ?disabled=${entry.read_only} @change=${(event: Event) => set((event.target as HTMLInputElement).checked)}><span><b>${label}</b>${entry.description ? html`<small>${entry.description}</small>` : nothing}</span></label>`;
+    const input = entry.options?.length
+      ? html`<select ?disabled=${entry.read_only} @change=${(event: Event) => set(entry.options![(event.target as HTMLSelectElement).selectedIndex]?.value)}>${entry.options.map(option => html`<option .selected=${option.value === value}>${option.title}</option>`)}</select>`
+      : html`<input type=${entry.type === 'secure_string' ? 'password' : entry.type === 'integer' || entry.type === 'float' ? 'number' : 'text'} autocomplete=${entry.type === 'secure_string' ? 'current-password' : 'off'} .value=${value === null || value === undefined ? '' : String(value)} ?readonly=${entry.read_only} ?required=${entry.required} @input=${(event: Event) => { const raw = (event.target as HTMLInputElement).value; set(entry.type === 'integer' ? parseInt(raw, 10) : entry.type === 'float' ? parseFloat(raw) : raw); }}>`;
+    return html`<label class="flow-field"><span>${label}${entry.required ? nothing : html` <small>${tr('facultatif')}</small>`}</span>${input}${entry.description ? html`<small>${entry.description}</small>` : nothing}${error ? html`<small class="err">${error}</small>` : nothing}${entry.help_link ? html`<a href=${entry.help_link} target="_blank" rel="noopener noreferrer">${tr('Où trouver cette information ?')}</a>` : nothing}</label>`;
+  }
+  private musicFlowPanel(flow: NonNullable<typeof this.musicFlow>) {
+    const { service, step } = flow;
+    const head = html`<div class="flow-head">${this.serviceMark(service, 36)}<b>${service.name}</b><button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${() => this.closeFlow()}>${mpIcon('close', 15)}</button></div>`;
+    let body: TemplateResult;
+    if (flow.error) body = html`<p class="note" role="alert">${flow.error}</p><button class="btn primary big" @click=${() => void this.connectService(service, flow.reconnect)}>${tr('Réessayer')}</button>`;
+    else if (!step) body = html`<p class="muted">${tr('Ouverture de {name}…', { name: service.name })}</p><div class="bar busy"><i></i></div>`;
+    else if (step.type === 'form') {
+      const entries = (step.entries ?? []).filter(entry => entryVisible(entry, flow.values));
+      body = html`<form class="flow-form" @submit=${(event: Event) => { event.preventDefault(); void this.submitFlow(); }}>
+        ${step.description ? html`<p class="muted flow-text">${step.description}</p>` : nothing}
+        ${service.domain === 'deezer' && step.entries?.some(entry => entry.type === 'secure_string') ? html`<ol class="flow-guide"><li>${tr('Ouvrez deezer.com sur un ordinateur et connectez-vous.')}</li><li>${tr('Ouvrez les outils de développement (F12), onglet Application, puis Cookies de deezer.com.')}</li><li>${tr('Copiez la valeur « arl » et collez-la ci-dessous. Elle reste dans votre Home Assistant.')}</li></ol>` : nothing}
+        ${entries.map(entry => this.flowField(entry, flow))}
+        ${step.errors?.base ? html`<p class="note" role="alert">${step.errors.base}</p>` : nothing}
+        <button class="btn primary big" type="submit" ?disabled=${flow.busy}>${flow.busy ? tr('Connexion…') : step.last_step === false ? tr('Continuer') : tr('Connecter {name}', { name: service.name })}</button></form>`;
+    } else if (step.type === 'external') body = html`
+      <p class="muted flow-text">${step.description || tr('La connexion se fait sur la page officielle de {name}. Aucun mot de passe ne passe par MP Nexus.', { name: service.name })}</p>
+      ${step.url ? html`<a class="btn primary big" href=${step.url} target="_blank" rel="noopener noreferrer">${mpIcon('link', 16)}${tr('Se connecter avec {name}', { name: service.name })}</a>` : nothing}
+      ${step.copy_text ? html`<button class="btn" @click=${() => void navigator.clipboard?.writeText(step.copy_text!)}>${mpIcon('copy', 15)}${step.copy_text}</button>` : nothing}
+      <small class="muted">${tr('Revenez ici une fois connecté : MP Nexus continue tout seul.')}</small><div class="bar busy"><i></i></div>`;
+    else if (step.type === 'progress') body = html`<p class="muted flow-text">${step.progress_text || step.description || tr('Un instant…')}</p>${step.image ? html`<img class="flow-qr" src=${step.image} alt="">` : nothing}<div class="bar ${typeof step.progress === 'number' ? '' : 'busy'}"><i style=${typeof step.progress === 'number' ? `width:${Math.round(step.progress * 100)}%` : ''}></i></div>`;
+    else if (step.type === 'finish') body = html`<div class="flow-done">${mpIcon('check', 22)}<b class="serif">${tr('{name} est connecté', { name: service.name })}</b><small class="muted">${tr('Votre bibliothèque arrive dans quelques minutes, vous pouvez déjà écouter.')}</small></div>
+      <button class="btn primary big" @click=${() => { this.closeFlow(); }}>${mpIcon('play', 16)}${tr('Commencer à écouter')}</button>
+      <button class="btn" @click=${() => { this.closeFlow(); this.musicServicesOpen = true; }}>${mpIcon('plus', 15)}${tr('Ajouter un autre service')}</button>`;
+    else body = html`<p class="note" role="alert">${step.reason || tr('La connexion à {name} n’a pas abouti. Réessayez.', { name: service.name })}</p><button class="btn" @click=${() => this.closeFlow()}>${tr('Fermer')}</button>`;
+    return html`<div class="music-flow glass">${head}${body}</div>`;
   }
   /** Sources and apps to start in one touch, then the library the player offers to browse. */
   private forYou(id: string) {
@@ -927,18 +1112,21 @@ export class MPNexusView extends LitElement {
     const sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
     const browsing = this.browsing, level = browsing?.player === id ? browsing.stack[browsing.stack.length - 1] : undefined;
     const playItem = (item: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) => void this.mediaCall('play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
+    const target = this.musicTarget(id);
     const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
     return html`
-      ${this.mediaAssistantSetup()}
-      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? html`<div class="music-connected">${mpIcon('check', 16)}<span><b>Music Assistant</b><small>${tr('Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs', { n: this.musicBridge.player_count ?? this.players.filter(player => this.isMusicAssistantPlayer(player)).length })}</small></span></div>` : nothing}
-      ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${this.isMusicAssistantPlayer(player) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
-      ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
-      ${this.isMusicAssistantPlayer(id) ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
+      ${this.musicSetup()}
+      ${target && target !== id ? html`<p class="muted music-target">${mpIcon('speaker', 13)}${tr('La musique choisie ici joue sur {player}.', { player: this.playerLabel(target) })}</p>` : nothing}
+      ${this.isMusicAssistantPlayer(id) || target ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
         <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label><input id="mp-ma-search" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
         <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
       </form>` : nothing}
-      ${this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
-      ${this.isMusicAssistantPlayer(id) && this.musicBridge !== 'loading' && this.musicBridge?.connected ? this.musicHub(id) : nothing}
+      ${this.mediaResults && target ? html`<div class="rlab">${tr('Résultats')}</div>${this.mediaResults.length ? this.musicList(target, this.mediaResults) : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}`
+        : this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
+      ${target ? this.musicHub(target) : nothing}
+      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? html`<div class="music-connected">${mpIcon('check', 16)}<span><b>${tr('Musique')}</b><small>${tr('Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs', { n: this.musicBridge.player_count ?? this.players.filter(player => this.isMusicAssistantPlayer(player)).length })}</small></span></div>` : nothing}
+      ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${this.isMusicAssistantPlayer(player) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
+      ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
       <div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
       ${this.mediaFavorites.length ? html`<div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
         <button class="favorite-play" @click=${() => playItem(item)}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.image || (this.state(item.player)?.attributes.media_content_id === item.media_content_id ? this.state(item.player)?.attributes.entity_picture : undefined))}</span><span><b>${item.title}</b><small>${item.source ? this.mediaSourceBadge(item.source) : nothing}${item.artist || item.media_content_type}</small></span></button>
@@ -955,17 +1143,31 @@ export class MPNexusView extends LitElement {
       ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
               : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
   }
+  /**
+   * The Music Assistant player that plays what is picked on this one: itself, else the Music Assistant twin of the
+   * same speaker (same name), else the first one. Music from the services only plays through Music Assistant.
+   */
+  private musicTarget(id: string) {
+    if (this.musicBridge === 'loading' || !this.musicBridge?.connected) return undefined;
+    if (this.isMusicAssistantPlayer(id)) return id;
+    const own = Object.keys(this.hass?.states ?? {}).filter(player => player.startsWith('media_player.') && this.isMusicAssistantPlayer(player));
+    const name = this.playerLabel(id).trim().toLowerCase();
+    return own.find(player => this.playerLabel(player).trim().toLowerCase() === name) ?? own.find(player => this.hass?.entities?.[player]?.device_id && this.hass?.entities?.[player]?.device_id === this.hass?.entities?.[id]?.device_id) ?? own[0];
+  }
+  private musicList(id: string, items: MusicHubItem[]) {
+    return html`<div class="lib music-hub">${items.map(item => html`<div class="li music-item">
+        <button class="library-open" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.thumbnail)}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${item.artist || item.album || item.media_content_type}</small></button>
+        <div class="media-item-actions"><button aria-label=${tr('Lire ensuite')} title=${tr('Lire ensuite')} @click=${() => void this.musicItemAction(id, item, 'play_next')}>${mpIcon('next', 13)}</button><button aria-label=${tr('Ajouter à la file')} title=${tr('Ajouter à la file')} @click=${() => void this.musicItemAction(id, item, 'add')}>${mpIcon('plus', 13)}</button></div>
+      </div>`)}</div>`;
+  }
   private musicHub(id: string) {
     const kinds: { kind: MusicLibraryKind; label: Parameters<typeof tr>[0] }[] = [
       { kind: 'albums', label: 'Albums' }, { kind: 'artists', label: 'Artistes' }, { kind: 'tracks', label: 'Morceaux' },
       { kind: 'playlists', label: 'Playlists' }, { kind: 'radio', label: 'Radios' }, { kind: 'podcasts', label: 'Podcasts' },
     ];
-    return html`<div class="sec"><b>${tr('Bibliothèque Music Assistant')}</b><span>${this.musicItems?.length ?? 0}</span></div>
+    return html`<div class="sec"><b>${tr('Ma bibliothèque')}</b><span>${this.musicItems?.length ?? 0}</span></div>
       <div class="houses music-kinds">${kinds.map(({ kind, label }) => html`<button class="pill" aria-pressed=${this.musicKind === kind} @click=${() => void this.loadMusicLibrary(kind)}>${tr(label)}</button>`)}</div>
-      ${this.musicLoading ? html`<p class="empty">${tr('Chargement…')}</p>` : this.musicItems?.length ? html`<div class="lib music-hub">${this.musicItems.map(item => html`<div class="li music-item">
-        <button class="library-open" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.thumbnail)}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${item.artist || item.album || item.media_content_type}</small></button>
-        <div class="media-item-actions"><button aria-label=${tr('Lire ensuite')} title=${tr('Lire ensuite')} @click=${() => void this.musicItemAction(id, item, 'play_next')}>${mpIcon('next', 13)}</button><button aria-label=${tr('Ajouter à la file')} title=${tr('Ajouter à la file')} @click=${() => void this.musicItemAction(id, item, 'add')}>${mpIcon('plus', 13)}</button></div>
-      </div>`)}</div>` : html`<p class="empty">${tr('Aucun média dans cette section.')}</p>`}`;
+      ${this.musicLoading ? html`<p class="empty">${tr('Chargement…')}</p>` : this.musicItems?.length ? this.musicList(id, this.musicItems) : html`<p class="empty">${tr('Aucun média dans cette section.')}</p>`}`;
   }
   private musicQueuePanel() {
     const queue = this.musicQueueData!;

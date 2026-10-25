@@ -311,6 +311,29 @@ if (params.has('v2') && spatial) {
   const salon=(selectedView.mp_spatial as {floors?:{rooms:{entityIds?:string[];media?:{entityId?:string}[]}[]}[]}|undefined)?.floors?.flatMap(f=>f.rooms).find(r=>r.media?.some(m=>m.entityId==='media_player.salon_tv'));
   if(salon)salon.entityIds=[...(salon.entityIds??[]),'media_player.salon_sonos'];
 }
+if (params.has('v2') && params.has('music')) {
+  // The music engine as an administrator meets it: off, prepared in a few seconds, then services connected through a fake Music Assistant.
+  let phase=params.get('music')==='ready'?'ready':'off',started=0;const providers:{instance_id:string;domain:string;type:string;name:string;status:string}[]=[];
+  const engine=()=>{if(phase==='preparing'){const at=Math.floor((Date.now()-started)/1200);if(at>=4)phase='ready';else return {supervisor:true,phase,step:['repository','install','start','link'][at],error:null,ingress_entry:null,version:null};}
+    return {supervisor:true,phase,step:null,error:null,ingress_entry:phase==='ready'?'/api/hassio_ingress/demo':null,version:phase==='ready'?'2.10.8':null};};
+  const wrapped=hass.callWS;
+  hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='mp_glass/music/engine'?engine() as T:message.type==='mp_glass/music/engine/setup'?(phase='preparing',started=Date.now(),engine()) as T
+    :message.type==='supervisor/api'?{session:'demo'} as T:wrapped<T>(message);
+  const flows=new Map<string,{domain:string;step:number}>();
+  const step=(id:string)=>{const flow=flows.get(id)!;const name=flow.domain==='deezer'?'Deezer':'Spotify';
+    if(flow.domain==='deezer')return flow.step?{flow_id:id,step_id:'finish',type:'finish',result:{instance_id:'deezer--1'}}:{flow_id:id,step_id:'user',type:'form',title:name,entries:[{key:'arl_token',type:'secure_string',label:'Clé ARL',required:true}],last_step:true};
+    return flow.step?{flow_id:id,step_id:'finish',type:'finish',result:{instance_id:'spotify--1'}}:{flow_id:id,step_id:'authenticate',type:'external',url:'https://accounts.spotify.com/authorize?demo'};};
+  class FakeMusicAssistant extends EventTarget{readyState=0;constructor(){super();setTimeout(()=>{this.readyState=1;this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({server_version:'2.10.8'})}));},50);}
+    send(text:string){const {message_id,command,args}=JSON.parse(text) as {message_id:string;command:string;args:Record<string,string>};let result:unknown=null;
+      if(command==='config/providers')result=providers;else if(command==='providers/manifests')result=[{domain:'spotify',name:'Spotify',type:'music'},{domain:'deezer',name:'Deezer',type:'music'},{domain:'builtin',name:'Music Assistant',type:'music',builtin:true}];
+      else if(command==='config/providers/setup'){const id=`flow-${flows.size+1}`;flows.set(id,{domain:args.provider_domain!,step:0});if(args.provider_domain==='spotify')setTimeout(()=>{flows.get(id)!.step=1;providers.push({instance_id:'spotify--1',domain:'spotify',type:'music',name:'Spotify',status:'loaded'});},4000);result=step(id);}
+      else if(command==='config/flows/get')result=step(args.flow_id!);
+      else if(command==='config/flows/submit'){flows.get(args.flow_id!)!.step=1;providers.push({instance_id:'deezer--1',domain:'deezer',type:'music',name:'Deezer',status:'loaded'});result=step(args.flow_id!);}
+      setTimeout(()=>this.dispatchEvent(new MessageEvent('message',{data:JSON.stringify({message_id,result})})),120);}
+    close(){this.readyState=3;}}
+  Object.assign(FakeMusicAssistant,{OPEN:1});
+  (window as unknown as {WebSocket:unknown}).WebSocket=FakeMusicAssistant;
+}
 if(spatial&&params.has('studio')){
   const editor=document.createElement('mp-spatial-editor') as MPSpatialEditor;
   editor.plan=project.spatial;editor.hass=hass;editor.areas=snapshot.areas;editor.floors=snapshot.floors;

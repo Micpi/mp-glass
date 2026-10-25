@@ -34,5 +34,15 @@ class MusicBridgeTests(unittest.TestCase):
         self.assertEqual(music.search_items({"albums": [album], "tracks": [track], "unknown": [1]}), [album, track])
 
 
+    def test_engine_phase_tells_the_setup_screen_where_music_stands(self):
+        self.assertEqual(music.engine_phase(True, None, True, False, None), "ready")
+        self.assertEqual(music.engine_phase(True, {"installed": False}, False, True, None), "preparing")
+        self.assertEqual(music.engine_phase(True, {"installed": True, "state": "started"}, False, False, "install"), "failed")
+        self.assertEqual(music.engine_phase(False, None, False, False, None), "unsupported")
+        self.assertEqual(music.engine_phase(True, {"installed": False, "available": True}, False, False, None), "off")
+        self.assertEqual(music.engine_phase(True, {"installed": True, "state": "started"}, False, False, None), "linking")
+        self.assertTrue(music.ADDON_SLUG.endswith("_music_assistant"))
+
+
 if __name__ == "__main__":
     unittest.main()

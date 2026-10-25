@@ -696,7 +696,8 @@ export class MPNexusView extends LitElement {
   private mediaImage(value: unknown, eager = false) {
     const url = displayMediaImage(value);
     if (!url) return nothing;
-    const protectedPath = url.startsWith('/api/media_player_proxy/') && !new URL(url, location.origin).searchParams.has('token') && !!this.hass?.fetchWithAuth;
+    // Home Assistant proxies and MP Nexus' own artwork route both want the session token, which an <img> cannot send.
+    const protectedPath = (url.startsWith('/api/media_player_proxy/') && !new URL(url, location.origin).searchParams.has('token') || url.startsWith('/api/mp_glass/music/artwork/')) && !!this.hass?.fetchWithAuth;
     const cached = protectedPath ? this.protectedImages.get(url) : undefined;
     return html`<img class="media-image" src=${protectedPath ? cached ?? nothing : url} data-auth-src=${protectedPath && !cached ? url : nothing} alt="" loading=${eager ? 'eager' : 'lazy'} decoding="async" @error=${(e: Event) => { (e.currentTarget as HTMLImageElement).hidden = true; }} @load=${(e: Event) => { (e.currentTarget as HTMLImageElement).hidden = false; }}>`;
   }
@@ -731,7 +732,7 @@ export class MPNexusView extends LitElement {
       if (blob.size > 10_000_000 || !this.isConnected || this.hass?.connection !== connection) return undefined;
       const url = URL.createObjectURL(blob);
       this.protectedImages.set(path, url);
-      if (this.protectedImages.size > 48) {
+      if (this.protectedImages.size > 240) {
         const oldest = this.protectedImages.keys().next().value;
         if (oldest) { URL.revokeObjectURL(this.protectedImages.get(oldest)!); this.protectedImages.delete(oldest); }
       }

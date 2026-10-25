@@ -56,6 +56,18 @@ test('on an MP Nexus subview the whole Home Assistant bar is hidden, in kiosk mo
   await expect.poll(()=>page.evaluate(()=>(window as unknown as {kiosk:boolean[]}).kiosk.at(-1))).toBe(false);
 });
 
+test('the rules of an older copy of MP Nexus, loaded as a resource, give way to these',async({page})=>{
+  await subview(page);
+  await page.evaluate(()=>{
+    const root=document.querySelector('hui-root')!.shadowRoot!,hui=root.querySelector('hui-view')!,view=hui.firstElementChild!;
+    view.remove();
+    // What an old copy leaves in hui-root when it claims the bar first: its own style, without the kiosk rules.
+    root.querySelector('style[data-mp-glass-header]')!.textContent=':host([mp-glass]) .header{visibility:hidden}';
+    hui.append(view);
+  });
+  expect(await page.evaluate(()=>getComputedStyle(document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view-container')!).paddingTop)).toBe('0px');
+});
+
 test('an administrator who left the kiosk keeps the actions of the bar',async({page})=>{
   await page.addInitScript(()=>sessionStorage.setItem('mp-glass.kiosk','left'));
   await subview(page);

@@ -55,11 +55,14 @@ function kiosk(enable: boolean, host?: Element) {
   kioskOn = enable;
   window.dispatchEvent(new CustomEvent('hass-kiosk-mode', { detail: { enable } }));
   const shell = main();
-  if (shell?.shadowRoot && !shell.shadowRoot.querySelector('style[data-mp-glass-kiosk]')) {
-    const style = document.createElement('style');
-    style.setAttribute('data-mp-glass-kiosk', '');
-    style.textContent = MAIN_STYLE;
-    shell.shadowRoot.append(style);
+  if (shell?.shadowRoot) {
+    let style = shell.shadowRoot.querySelector('style[data-mp-glass-kiosk]');
+    if (!style) {
+      style = document.createElement('style');
+      style.setAttribute('data-mp-glass-kiosk', '');
+      shell.shadowRoot.append(style);
+    }
+    if (style.textContent !== MAIN_STYLE) style.textContent = MAIN_STYLE;
   }
   shell?.toggleAttribute(KIOSK, enable);
   host?.toggleAttribute(KIOSK, enable);
@@ -78,13 +81,15 @@ const claimed = new Set<Element>();
 export function claimHeader(view: Element) {
   const root = huiRoot(view);
   if (!root) return undefined;
-  if (!root.querySelector('style[data-mp-glass-header]')) {
-    const style = document.createElement('style');
+  let style = root.querySelector('style[data-mp-glass-header]');
+  if (!style) {
+    style = document.createElement('style');
     style.setAttribute('data-mp-glass-header', '');
-    style.textContent = STYLE;
     // Before the content Lit renders there, which it never clears.
     root.prepend(style);
   }
+  // Rewritten even when found: an older copy of MP Nexus loaded as a Lovelace resource may have put its own rules there.
+  if (style.textContent !== STYLE) style.textContent = STYLE;
   views.set(root.host, (views.get(root.host) ?? new Set()).add(view));
   root.host.setAttribute(ATTRIBUTE, '');
   claimed.add(root.host);

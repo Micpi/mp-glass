@@ -94,6 +94,8 @@ const labelOffset=async(page:Page,room:string)=>{
   const viewer=page.locator('mp-spatial-viewer');const [label,canvas]=await Promise.all([viewer.locator(`[data-room="${room}"]`).boundingBox(),viewer.locator('canvas').boundingBox()]);
   return {x:Math.round(label!.x-canvas!.x),y:Math.round(label!.y-canvas!.y)};
 };
+/** A room other than the living room whose label is on screen. */
+const shownRoom=(page:Page)=>page.locator('mp-spatial-viewer .room-marker').evaluateAll(markers=>markers.find(m=>m.getAttribute('data-room')!=='living'&&getComputedStyle(m).visibility!=='hidden')!.getAttribute('data-room')!);
 
 test('3D rotates, zooms, pans, resets and controls a bound light',async({page})=>{
   await page.setViewportSize({width:1440,height:1050});
@@ -218,6 +220,45 @@ test.describe('touch',()=>{
     await swipe(beside,0,-160);
     await expect.poll(()=>page.evaluate(()=>scrollY)).toBeGreaterThan(40);
     expect(await labelOffset(page,'living')).toEqual(rotated);
+  });
+  test('two fingers pinch the plan to zoom anywhere in its window, even beside the house',async({page})=>{
+    await page.goto('/?spatial');await expect(page.locator('mp-spatial-viewer [data-room="living"]')).toBeVisible();
+    const cdp=await page.context().newCDPSession(page);
+    const other=await shownRoom(page);
+    const gap=async()=>{const [a,b]=await Promise.all([labelOffset(page,'living'),labelOffset(page,other)]);return Math.hypot(a.x-b.x,a.y-b.y);};
+    // Beside the house, where nothing covers the canvas: under the floor name, on the left.
+    const {x,y}=await page.evaluate(()=>{
+      const root=document.querySelector('mp-glass-view-v4')!.shadowRoot!.querySelector('mp-spatial-viewer')!.shadowRoot!,canvas=root.querySelector('canvas')!,r=canvas.getBoundingClientRect();
+      const free=(x:number,y:number)=>[-60,-30,0,30,60].every(d=>root.elementFromPoint(x+d,y)===canvas);
+      for(let y=r.y+70;y<r.bottom-70;y+=10)if(free(r.x+80,y))return {x:r.x+80,y};
+      throw Error('no free place beside the house');
+    });
+    const before=await gap();
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:x-20,y,id:1},{x:x+20,y,id:2}]});
+    for(let d=25;d<=60;d+=5)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:x-d,y,id:1},{x:x+d,y,id:2}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await expect.poll(gap).toBeGreaterThan(before*1.3);
+    expect(await page.evaluate(()=>scrollY)).toBe(0);
+  });
+  test('with the hand, one finger on the house moves it instead of turning it',async({page})=>{
+    await page.goto('/?spatial');await expect(page.locator('mp-spatial-viewer [data-room="living"]')).toBeVisible();
+    const viewer=page.locator('mp-spatial-viewer'),other=await shownRoom(page);
+    await expect(viewer.getByRole('button',{name:'Orbite',exact:true})).toHaveAttribute('aria-pressed','true');
+    await viewer.getByRole('button',{name:'Main',exact:true}).tap();
+    await expect(viewer.getByRole('button',{name:'Main',exact:true})).toHaveAttribute('aria-pressed','true');
+    const cdp=await page.context().newCDPSession(page);
+    const {house}=await planPoints(page);
+    const [a0,b0]=await Promise.all([labelOffset(page,'living'),labelOffset(page,other)]);
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchStart',touchPoints:[{x:house.x,y:house.y}]});
+    for(let i=1;i<=10;i++)await cdp.send('Input.dispatchTouchEvent',{type:'touchMove',touchPoints:[{x:house.x+6*i,y:house.y+4*i}]});
+    await cdp.send('Input.dispatchTouchEvent',{type:'touchEnd',touchPoints:[]});
+    await expect.poll(()=>labelOffset(page,'living')).not.toEqual(a0);
+    const [a1,b1]=await Promise.all([labelOffset(page,'living'),labelOffset(page,other)]);
+    // Moved, not turned: both rooms shift by about the same step, give or take the perspective.
+    const step=Math.hypot(a1.x-a0.x,a1.y-a0.y);
+    expect(step).toBeGreaterThan(30);
+    expect(Math.hypot((a1.x-a0.x)-(b1.x-b0.x),(a1.y-a0.y)-(b1.y-b0.y))).toBeLessThan(step*.25);
+    expect(await page.evaluate(()=>localStorage.getItem('mp-glass.plan-hand'))).toBe('1');
   });
   test('on a phone a finger on a handle resizes the room, elsewhere it scrolls the result window',async({page})=>{
     await mountEditor(page,true,false,{source:true});await choosePlanImage(page);await consentAndGenerate(page);

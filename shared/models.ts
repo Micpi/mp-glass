@@ -20,6 +20,10 @@ export interface AppearanceConfig {
   backgroundDim?: number;
   backgroundPosition?: 'left' | 'center' | 'right';
   backgroundUrl?: string;
+  /** A wallpaper of the MP Nexus library by name, or one imported into Home Assistant by its identifier. */
+  wallpaper?: string;
+  /** The wallpaper once the sun has set; unset keeps the day one. */
+  nightWallpaper?: string;
   density?: 'compact' | 'comfortable';
   motion?: boolean;
   showHero?: boolean;

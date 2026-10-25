@@ -1,7 +1,7 @@
 import { LitElement, html, css, nothing } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import type { AppearanceConfig, NavigationConfig, NavigationItem } from '../shared/models';
-import { MP_GLASS_BACKGROUND } from './background';
+import { activeWallpaper, cssImage, isNight, libraryWallpaper, wallpaperSource } from './wallpapers';
 import { mpIcon, type MPIconName } from './icons';
 import { buildingPlan, planBuildings, type SpatialFloor, type SpatialPlan } from '../shared/spatial';
 import { ambianceEntities, coverOpen, coverPosition, finite, mediaIsTv, mediaOn, nowPlaying, roomEntityIds, type PlanMode } from '../shared/spatial-state';
@@ -429,7 +429,7 @@ export class MPGlassView extends LitElement {
   render() {
     const now = new Date();
     const a = this.appearance;
-    const bg = a.backgroundUrl || MP_GLASS_BACKGROUND;
+    const night = isNight(this.hass?.states), bg = cssImage(wallpaperSource(a, this.hass, night, () => this.requestUpdate()));
     const fonts = a.fontStyle === 'modern' ? '--mp-display-font:Inter,system-ui,sans-serif' : a.fontStyle === 'soft' ? '--mp-display-font:ui-rounded,system-ui,sans-serif' : '--mp-display-font:Georgia,serif';
     const style = `--mp-accent:${a.accent ?? '#69b7ff'};--mp-secondary:${a.secondaryAccent ?? '#efbd8b'};--mp-tint:${a.glassTint ?? '#12344f'};--mp-opacity:${a.glassOpacity ?? .66};--mp-blur:${a.glassBlur ?? 24}px;--mp-border:${a.borderStrength ?? .2};--mp-shadow:${a.shadowStrength ?? .35};--mp-radius:${a.radius ?? 22}px;--mp-columns:${a.cardColumns ?? 4};--mp-gap:${a.cardGap ?? 12}px;--mp-max-width:${a.maxWidth ?? 1560}px;--mp-hero-height:${a.heroHeight ?? 455}px;--mp-bg-blur:${a.backgroundBlur ?? 0}px;--mp-bg-saturation:${a.backgroundSaturation ?? 1};${fonts}`;
     const total = this.cards.length;
@@ -441,7 +441,7 @@ export class MPGlassView extends LitElement {
     // On a domain, the plan and the section below it show one house at a time.
     const house = this.shownHouse(spatial), domain = this.siteShown(spatial);
     return html`
-      <div class="backdrop" style=${`background-image:url(${bg});background-position:${a.backgroundPosition ?? 'right'} center`}></div>
+      <div class="backdrop" style=${`background-image:${bg};background-position:${a.backgroundPosition ?? libraryWallpaper(activeWallpaper(a, night))?.position ?? 'right'} center`}></div>
       <div class="shade" style=${`opacity:${a.backgroundDim ?? .44}`}></div><div class="ambient"></div>
       <div class="shell" style=${style}>
         <header class="glass">

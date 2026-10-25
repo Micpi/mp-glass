@@ -104,6 +104,14 @@
           "maxLength": 2048,
           "pattern": "^/(local|api/image)/"
         },
+        "wallpaper": {
+          "type": "string",
+          "pattern": "^([a-z]{2,20}|[a-f0-9]{32})$"
+        },
+        "nightWallpaper": {
+          "type": "string",
+          "pattern": "^([a-z]{2,20}|[a-f0-9]{32})$"
+        },
         "backgroundBlur": {
           "type": "integer",
           "minimum": 0,

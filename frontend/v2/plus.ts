@@ -1,6 +1,7 @@
 import type { HAState, ProjectConfig } from '../../shared/models';
 import { available } from '../../shared/capabilities';
 import { finite } from '../../shared/spatial-state';
+import { isImported } from '../wallpapers';
 
 // ——— Routines « Si… alors… » ———
 /** What starts a routine, in words a household uses. */
@@ -55,7 +56,11 @@ export function projectTemplate(project: ProjectConfig): ProjectConfig {
   const strip = (value: unknown): unknown => Array.isArray(value) ? value.map(strip)
     : value && typeof value === 'object' ? Object.fromEntries(Object.entries(value).filter(([key]) => !PRIVATE_KEYS.has(key)).map(([key, inner]) => [key, strip(inner)])) : value;
   const template = strip(project) as ProjectConfig;
-  return { ...template, project: { name: 'MP Nexus' }, appearance: { ...template.appearance, logoMark: 'MP' }, roles: {}, overrides: {} };
+  // A wallpaper imported into this home is one of its photos; those of the library travel with the look.
+  const appearance = { ...template.appearance, logoMark: 'MP' };
+  if (isImported(appearance.wallpaper)) delete appearance.wallpaper;
+  if (isImported(appearance.nightWallpaper)) delete appearance.nightWallpaper;
+  return { ...template, project: { name: 'MP Nexus' }, appearance, roles: {}, overrides: {} };
 }
 export const backupName = (date = new Date()) => `mp-nexus-${date.toISOString().slice(0, 10)}.json`;
 

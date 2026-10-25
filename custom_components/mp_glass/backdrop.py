@@ -1,4 +1,5 @@
-"""Plans kept under the rooms of their level in the Studio: private files in Home Assistant's storage, never under www.
+"""Plans kept under the rooms of their level in the Studio, and wallpapers imported from the dashboard: private files in
+Home Assistant's storage, never under www.
 
 No Home Assistant import: the views in spatial.py call these, and the tests run them as they are.
 """
@@ -69,6 +70,32 @@ def prune(folder, keep, now=None, grace=GRACE):
         path.unlink()
         removed.append(path.name)
     return sorted(removed)
+
+
+# A household keeps a few photos of its own, not an album: past this, one has to go before another comes in.
+MAX_WALLPAPERS = 24
+
+
+def listing(folder):
+    """The images of a folder, newest first: identifier, size in bytes and time of import."""
+    folder = Path(folder)
+    if not folder.is_dir():
+        return []
+    found = []
+    for path in folder.iterdir():
+        if path.is_file() and IDENTIFIER.match(path.stem) and path.suffix[1:] in CONTENT_TYPES:
+            stat = path.stat()
+            found.append({"id": path.stem, "size": stat.st_size, "modified": int(stat.st_mtime)})
+    return sorted(found, key=lambda item: (-item["modified"], item["id"]))
+
+
+def remove(folder, identifier):
+    """Removes one image, only for a well-formed identifier; True when a file went."""
+    path = find(folder, identifier)
+    if path is None:
+        return False
+    path.unlink()
+    return True
 
 
 def remove_all(folder):

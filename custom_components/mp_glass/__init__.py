@@ -17,6 +17,7 @@ from .kiosk import async_setup_kiosk
 from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdropView, SpatialRuntime, SpatialUploadView, backdrop_folder, websocket_cancel, websocket_info, websocket_job, websocket_normalize
 from .music import COMMANDS as MUSIC_COMMANDS, KEY as MUSIC_KEY, MusicArtworkView, MusicAssistantRuntime
 from .music_engine import COMMANDS as ENGINE_COMMANDS
+from .wallpaper import COMMANDS as WALLPAPER_COMMANDS, VIEWS as WALLPAPER_VIEWS, wallpaper_folder
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -49,12 +50,14 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_cancel)
         websocket_api.async_register_command(hass, websocket_normalize)
         websocket_api.async_register_command(hass, websocket_info)
-        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS):
+        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS, *WALLPAPER_COMMANDS):
             websocket_api.async_register_command(hass, command)
         hass.http.register_view(SpatialUploadView())
         hass.http.register_view(SpatialBackdropView())
         hass.http.register_view(SpatialBackdropImageView())
         hass.http.register_view(MusicArtworkView())
+        for view in WALLPAPER_VIEWS:
+            hass.http.register_view(view())
         hass.data["mp_glass_ws_registered"] = True
     await async_setup_guests(hass)
     async_setup_kiosk(hass)
@@ -82,6 +85,7 @@ async def async_unload_entry(hass, entry):
 async def async_remove_entry(hass, entry):
     async_unregister_module(hass)
     await hass.async_add_executor_job(remove_all, backdrop_folder(hass))
+    await hass.async_add_executor_job(remove_all, wallpaper_folder(hass))
 
 
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/project/get"})

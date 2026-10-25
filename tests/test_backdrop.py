@@ -74,6 +74,27 @@ class BackdropTest(unittest.TestCase):
             with self.assertRaises(Exception):
                 project.validate_project(project.load_validator(), project.default_project() | {"spatial": {"version": 1, "enabled": True, "floors": [floor | {"backdrop": wrong}]}})
 
+    def test_wallpapers_are_listed_newest_first_and_removed_one_by_one(self):
+        older, newer = "a" * 32, "b" * 32
+        backdrop.store(self.folder, older, PNG, "png")
+        os.utime(self.folder / f"{older}.png", (time.time() - 60, time.time() - 60))
+        backdrop.store(self.folder, newer, b"RIFF\0\0\0\0WEBPVP8 ", "webp")
+        (self.folder / "notes.txt").write_text("not a wallpaper")
+        self.assertEqual([item["id"] for item in backdrop.listing(self.folder)], [newer, older])
+        self.assertFalse(backdrop.remove(self.folder, "../notes"))
+        self.assertTrue(backdrop.remove(self.folder, older))
+        self.assertFalse(backdrop.remove(self.folder, older))
+        self.assertEqual([item["id"] for item in backdrop.listing(self.folder)], [newer])
+        self.assertEqual(backdrop.listing(self.folder / "missing"), [])
+
+    def test_the_contract_names_a_wallpaper_from_the_library_or_by_identifier_only(self):
+        validator = project.load_validator()
+        for good in ({"wallpaper": "aurore"}, {"wallpaper": ID, "nightWallpaper": "nuit"}):
+            project.validate_project(validator, project.default_project() | {"appearance": project.default_project()["appearance"] | good})
+        for wrong in ({"wallpaper": "../x"}, {"wallpaper": "https://example.com/a.jpg"}, {"nightWallpaper": "A" * 32}):
+            with self.assertRaises(Exception):
+                project.validate_project(validator, project.default_project() | {"appearance": project.default_project()["appearance"] | wrong})
+
 
 if __name__ == "__main__":
     unittest.main()

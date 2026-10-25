@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.27.0 — Personnaliser l'apparence : fonds d'écran, couleur d'accent et ambiances
+
+- Nouveau panneau **Plus → Apparence** dans MP Nexus v2, avec un aperçu en direct sur tout l'écran.
+- **Ambiances** : neuf looks complets en une touche (Nuit bleue, Aurore, Coucher de soleil, Forêt, Désert, Minuit, Lagon, Loft, OLED). Chacun règle ensemble le fond, l'accent, la teinte et l'opacité du verre, l'assombrissement et la typographie.
+- **Bibliothèque de fonds d'écran** : treize images livrées avec MP Nexus. Il y a la villa d'origine, le loft, le yacht et dix fonds créés pour MP Nexus : aurore boréale, crépuscule, océan, forêt, dunes, nuit étoilée, brume, lagon, graphite, ambre. Elles sont servies par le bundle de l'intégration, sans fichier à copier dans `/local`.
+- **Importer une photo** (administrateurs) depuis le téléphone, la tablette ou l'ordinateur. Le navigateur la réduit à 2560 px en WebP (ou JPEG sur Safari) avant l'envoi. Home Assistant la garde dans son stockage privé (`.storage/mp_glass_wallpapers`, inclus dans ses sauvegardes) et ne la sert qu'aux utilisateurs connectés. On peut garder 24 photos au plus, et les supprimer depuis la galerie.
+- **Fond de nuit** : un second fond peut remplacer celui du jour du coucher au lever du soleil (`sun.sun`, ou de 21 h à 7 h sans lui).
+- **Couleur d'accentuation** : dix teintes prêtes, un sélecteur libre, et « Assortir au fond ». Pour un fond de la bibliothèque, ce bouton reprend l'accent prévu pour lui. Pour une photo, il prend la couleur vive la plus présente dans l'image.
+- **Verre et texte** : opacité, flou, arrondis, teinte du verre, typographie (élégante, moderne, douce) et effets animés. Pour le fond : cadrage, assombrissement et flou.
+- **Cet écran ou toute la maison** : chaque écran peut garder son propre look (enregistré dans le navigateur). Par exemple, la tablette de la cuisine peut avoir un autre fond que le salon. Un administrateur peut aussi enregistrer le look pour toute la maison. « Reprendre le style de la maison » efface les réglages propres à un écran.
+- Studio → Arrière-plan : même galerie et même import. Un chemin `/local/…` reste possible.
+- Le modèle partagé (Plus → Sauvegarde & partage) garde un fond de la bibliothèque, mais jamais une photo importée.
+- MP Nexus v1 affiche aussi le fond choisi.
+- Projet : nouveaux champs `appearance.wallpaper` et `appearance.nightWallpaper` (nom d'un fond de la bibliothèque, ou identifiant d'une photo importée). Nouvelles routes authentifiées `/api/mp_glass/wallpaper` et commandes `mp_glass/wallpaper/list|delete`.
+- Tests : stockage, liste et suppression des photos, contrat du projet (Python), choix du fond jour et nuit, réglages d'écran, couleur tirée d'une image et modèle sans photo privée (Vitest).
+
 ## 0.26.2 — Pochettes de la bibliothèque musicale
 
 - Les pochettes de « Ma bibliothèque », de la recherche et de la file s'affichent. Elles sont servies par la route authentifiée MP Nexus `/api/mp_glass/music/artwork/…`, qu'une balise image ne peut pas appeler seule : MP Nexus les charge maintenant avec la session Home Assistant, comme les pochettes du proxy des lecteurs.

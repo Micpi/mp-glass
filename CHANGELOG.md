@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.25.0 — Music Assistant zéro configuration
+
+- MP Nexus utilise maintenant directement l'intégration Music Assistant officielle déjà configurée dans Home Assistant. L'adresse du serveur, le port 8095, le jeton longue durée et le second moteur à activer disparaissent entièrement du parcours.
+- L'intégration actuelle `music_assistant` et l'ancien domaine `mass` sont détectés automatiquement. Bibliothèque, recherche, file et lancement des médias passent par les actions Home Assistant officielles avec la session et les droits de l'utilisateur.
+- L'écran « Pour vous » confirme la liaison par un indicateur compact « Connecté automatiquement » et le nombre de lecteurs. Si l'intégration manque, un seul bouton conduit à son ajout dans Home Assistant.
+- Les lecteurs Music Assistant de l'installation réelle, y compris les entités renommées, sont détectés par leur plateforme ou leurs attributs officiels. L'appel de file utilise le domaine réel de l'intégration au lieu de l'ancien domaine codé en dur.
+- Les commandes Lecture, Lire ensuite, Ajouter et Vider ciblent directement l'entité choisie. Les anciens secrets Music Assistant éventuellement enregistrés dans les options MP Nexus sont supprimés automatiquement au chargement.
+- Le proxy authentifié continue de servir les vraies pochettes renvoyées par Music Assistant, y compris celles issues des actions officielles Home Assistant, sans conserver de secret supplémentaire.
+
 ## 0.24.1 — Configuration Music Assistant toujours visible
 
 - Le bloc « Moteur Music Assistant MP Nexus » apparaît maintenant dans Multimédia → Pour vous même lorsqu'aucune entité Music Assistant n'est encore installée dans Home Assistant. Il conduit directement aux options MP Nexus : les nouveautés de la 0.24 ne sont plus cachées derrière un lecteur déjà configuré.

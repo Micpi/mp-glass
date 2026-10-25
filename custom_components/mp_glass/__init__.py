@@ -35,6 +35,9 @@ async def async_setup_entry(hass, entry):
         if migrated != record["project"]:
             record = {"revision": record["revision"] + 1, "project": migrated}
             await store.async_save(record)
+    legacy_music = {"music_assistant_enabled", "music_assistant_url", "music_assistant_token"}
+    if legacy_music.intersection(entry.options):
+        hass.config_entries.async_update_entry(entry, options={key: value for key, value in entry.options.items() if key not in legacy_music})
     hass.data[DOMAIN] = ProjectRepository(store, validator, record)
     hass.data[SPATIAL_KEY] = SpatialRuntime(hass, entry.options)
     hass.data[MUSIC_KEY] = MusicAssistantRuntime(hass, entry.options)

@@ -7,7 +7,6 @@ from homeassistant.helpers import selector
 from urllib.parse import urlsplit
 from .const import DOMAIN
 from .spatial_gemini import QUALITIES, selected_backend
-from .music_core import valid_server_url
 
 
 class MPGlassConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -32,36 +31,15 @@ class MPGlassOptionsFlow(config_entries.OptionsFlow):
             self._pending = {**self.config_entry.options, **user_input}
             if user_input.get("spatial_backend") == "addon":
                 return await self.async_step_spatial_addon()
-            if user_input.get("music_assistant_enabled"):
-                return await self.async_step_music_assistant()
             return self.async_create_entry(title="", data=self._pending)
         options = self.config_entry.options
         return self.async_show_form(step_id="init", data_schema=vol.Schema({
             vol.Optional("show_settings", default=options.get("show_settings", True)): bool,
-            vol.Optional("music_assistant_enabled", default=options.get("music_assistant_enabled", False)): bool,
             vol.Required("spatial_backend", default=selected_backend(options)): selector.SelectSelector(selector.SelectSelectorConfig(
                 options=["gemini", "addon"], translation_key="spatial_backend", mode=selector.SelectSelectorMode.DROPDOWN)),
             vol.Optional("gemini_api_key", default=options.get("gemini_api_key", "")): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Required("gemini_quality", default=options.get("gemini_quality", "precise") if options.get("gemini_quality") in QUALITIES else "precise"): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=list(QUALITIES), translation_key="gemini_quality", mode=selector.SelectSelectorMode.DROPDOWN)),
-        }))
-
-    async def async_step_music_assistant(self, user_input=None):
-        errors = {}
-        options = getattr(self, "_pending", self.config_entry.options)
-        if user_input is not None:
-            url = user_input.get("music_assistant_url", "").rstrip("/")
-            token = user_input.get("music_assistant_token", "") or options.get("music_assistant_token", "")
-            if not valid_server_url(url):
-                errors["music_assistant_url"] = "invalid_music_assistant_url"
-            elif not token:
-                errors["music_assistant_token"] = "music_assistant_token_required"
-            else:
-                return self.async_create_entry(title="", data={**self._pending, **user_input, "music_assistant_url": url, "music_assistant_token": token})
-        values = user_input or options
-        return self.async_show_form(step_id="music_assistant", errors=errors, data_schema=vol.Schema({
-            vol.Required("music_assistant_url", default=values.get("music_assistant_url", "http://homeassistant.local:8095")): str,
-            vol.Optional("music_assistant_token", default=""): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
         }))
 
     async def async_step_spatial_addon(self, user_input=None):
@@ -78,8 +56,6 @@ class MPGlassOptionsFlow(config_entries.OptionsFlow):
                 errors["spatial_url"] = "invalid_spatial_url"
             else:
                 self._pending = {**self._pending, **user_input}
-                if self._pending.get("music_assistant_enabled"):
-                    return await self.async_step_music_assistant()
                 return self.async_create_entry(title="", data=self._pending)
         options = user_input or self.config_entry.options
         return self.async_show_form(step_id="spatial_addon", errors=errors, data_schema=vol.Schema({

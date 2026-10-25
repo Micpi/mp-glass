@@ -19,11 +19,19 @@ class MusicBridgeTests(unittest.TestCase):
         self.assertEqual(len(artwork), 1)
         self.assertIn("http://music.local:8095/imageproxy", next(iter(artwork.values())))
 
-    def test_accepts_only_plain_http_server_addresses(self):
-        self.assertTrue(music.valid_server_url("http://music.local:8095"))
-        self.assertFalse(music.valid_server_url("http://user:secret@music.local:8095"))
-        self.assertFalse(music.valid_server_url("http://music.local:8095/?token=secret"))
-        self.assertFalse(music.valid_server_url("file:///tmp/music"))
+    def test_normalizes_remote_artwork_from_the_official_ha_action_without_server_settings(self):
+        artwork = {}
+        item = {"uri": "library://album/7", "name": "Blue", "media_type": "album", "metadata": {"images": [{"path": "https://i.example.test/blue.jpg", "remotely_accessible": True}]}}
+        result = music.normalize_item("", item, artwork)
+        self.assertTrue(result["thumbnail"].startswith("/api/mp_glass/music/artwork/"))
+        self.assertEqual(next(iter(artwork.values())), "https://i.example.test/blue.jpg")
+
+    def test_reads_official_home_assistant_action_responses(self):
+        album = {"uri": "library://album/7"}
+        track = {"uri": "library://track/42"}
+        self.assertEqual(music.service_items({"items": [album]}), [album])
+        self.assertEqual(music.service_items({"media_player.salon": {"items": [track]}}, "media_player.salon"), [track])
+        self.assertEqual(music.search_items({"albums": [album], "tracks": [track], "unknown": [1]}), [album, track])
 
 
 if __name__ == "__main__":

@@ -12,6 +12,26 @@ LIBRARY_COMMANDS = {
 }
 
 
+def service_items(answer, entity_id=None):
+    """Read item arrays returned by current and legacy HA Music Assistant actions."""
+    if not isinstance(answer, dict):
+        return []
+    value = answer.get(entity_id, answer) if entity_id else answer
+    return value.get("items", []) if isinstance(value, dict) and isinstance(value.get("items"), list) else []
+
+
+def search_items(answer):
+    """Flatten the typed result groups of the official search action."""
+    if not isinstance(answer, dict):
+        return []
+    result = []
+    for kind in ("artists", "albums", "tracks", "playlists", "radio", "podcasts"):
+        values = answer.get(kind)
+        if isinstance(values, list):
+            result.extend(values)
+    return result
+
+
 def image_source(base_url, item, size=400):
     """Return one MA image URL from a media or queue item."""
     media = item.get("media_item") if isinstance(item, dict) else None
@@ -25,8 +45,10 @@ def image_source(base_url, item, size=400):
     path = image.get("path")
     if not isinstance(path, str) or not path:
         return None
-    if image.get("remotely_accessible") and path.startswith(("http://", "https://")):
+    if path.startswith(("http://", "https://")) and (image.get("remotely_accessible") or not base_url):
         return path
+    if not base_url:
+        return None
     if image.get("proxy_id"):
         return f"{base_url.rstrip('/')}/imageproxy/{quote(str(image['proxy_id']), safe='')}?size={size}"
     provider = image.get("provider") or source.get("provider") or "builtin"
@@ -70,13 +92,3 @@ def normalize_item(base_url, item, artwork):
         "can_play": True,
         "can_expand": False,
     }
-
-
-def valid_server_url(value):
-    from urllib.parse import urlsplit
-    try:
-        parts = urlsplit(value)
-        _ = parts.port
-        return bool(parts.scheme in {"http", "https"} and parts.hostname and not (parts.username or parts.password or parts.query or parts.fragment))
-    except (TypeError, ValueError):
-        return False

@@ -1,6 +1,6 @@
 # Music Assistant dans MP Nexus
 
-MP Nexus peut maintenant dialoguer directement avec le serveur Music Assistant tout en gardant l'intégration officielle Home Assistant pour les lecteurs, les volumes et le multiroom.
+MP Nexus utilise directement l'intégration officielle Music Assistant de Home Assistant. Il n'y a ni adresse de serveur ni jeton à saisir dans MP Nexus.
 
 ## Fonctions
 
@@ -14,13 +14,9 @@ MP Nexus peut maintenant dialoguer directement avec le serveur Music Assistant t
 ## Configuration
 
 1. Installer et configurer Music Assistant ainsi que son intégration officielle dans Home Assistant.
-2. Dans Music Assistant, ouvrir le profil utilisateur et créer un jeton longue durée.
-3. Dans Home Assistant, ouvrir **Paramètres → Appareils et services → MP Nexus → Configurer**.
-4. Activer **Moteur Music Assistant intégré**.
-5. Indiquer l'adresse directe du serveur Music Assistant, par exemple `http://homeassistant.local:8095`, puis coller le jeton.
-
-L'adresse de la page latérale Home Assistant ou une adresse `ingress` ne convient pas : MP Nexus doit joindre l'API Music Assistant depuis Home Assistant.
+2. Dans Home Assistant, ouvrir **Paramètres → Appareils et services**. Music Assistant est normalement proposé dans les découvertes : toucher **Configurer**. Sinon, choisir **Ajouter une intégration**, rechercher Music Assistant et indiquer l'adresse locale du serveur.
+3. Ouvrir MP Nexus : les lecteurs et la bibliothèque apparaissent automatiquement dans **Multimédia**.
 
 ## Sécurité
 
-Le jeton reste dans les options de l'intégration et n'est jamais envoyé au navigateur. Les pochettes passent par une route Home Assistant authentifiée. Un invité MP Nexus en lecture seule peut consulter les médias, mais les commandes de lecture et de file sont aussi refusées côté serveur.
+MP Nexus ne stocke plus aucun jeton Music Assistant. Les requêtes passent par les actions authentifiées de Home Assistant et les pochettes par une route Home Assistant authentifiée. Un invité MP Nexus en lecture seule peut consulter les médias, mais les commandes sont aussi refusées côté serveur.

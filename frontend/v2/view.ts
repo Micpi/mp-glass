@@ -485,7 +485,7 @@ export class MPNexusView extends LitElement {
     try {
       const queue = await musicQueue(hass, id);
       if (!queue.queue_id) throw new Error('queue unavailable');
-      await musicAction(hass, action, { queue_id: queue.queue_id, media: item.media_content_id });
+      await musicAction(hass, action, { entity_id: id, media: item.media_content_id, media_type: item.media_content_type });
       this.mediaNotice = action === 'play_now' ? tr('Lecture lancée.') : action === 'play_next' ? tr('Ajouté à la suite.') : tr('Ajouté à la file.');
       this.musicQueueAt = 0; this.loadMusicQueue(id);
     } catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); }
@@ -499,10 +499,10 @@ export class MPNexusView extends LitElement {
     catch { this.musicQueueData = undefined; }
     this.requestUpdate();
   }
-  private async musicQueueAction(action: 'clear'|'delete'|'play_index'|'move', data: Record<string, unknown>) {
+  private async musicQueueAction(action: 'clear', data: Record<string, unknown>) {
     const hass = this.hass, queue = this.musicQueueData;
     if (!hass || !queue?.queue_id || this.mediaReadOnlyGuest) return;
-    try { await musicAction(hass, action, { queue_id: queue.queue_id, ...data }); this.musicQueueAt = 0; await this.loadMusicQueue(queue.player); }
+    try { await musicAction(hass, action, { entity_id: queue.player, ...data }); this.musicQueueAt = 0; await this.loadMusicQueue(queue.player); }
     catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); this.requestUpdate(); }
   }
   private async searchMusicAssistant(id: string) {
@@ -930,8 +930,7 @@ export class MPNexusView extends LitElement {
     const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
     return html`
       ${this.mediaAssistantSetup()}
-      ${this.musicBridge !== 'loading' && !this.musicBridge?.configured && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Moteur Music Assistant MP Nexus')}</b><p class="muted">${tr('Ajoutez l’adresse du serveur et un jeton Music Assistant dans les options de l’intégration MP Nexus pour obtenir la bibliothèque complète, la file et les vraies pochettes.')}</p><a class="btn" href="/config/integrations/integration/mp_glass">${tr('Configurer MP Nexus')}</a></div>` : nothing}
-      ${this.musicBridge !== 'loading' && this.musicBridge?.configured && !this.musicBridge.connected ? html`<p class="note" role="alert">${tr('MP Nexus ne parvient pas à joindre Music Assistant. Vérifiez l’adresse et le jeton dans les options de l’intégration.')}</p>` : nothing}
+      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? html`<div class="music-connected">${mpIcon('check', 16)}<span><b>Music Assistant</b><small>${tr('Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs', { n: this.musicBridge.player_count ?? this.players.filter(player => this.isMusicAssistantPlayer(player)).length })}</small></span></div>` : nothing}
       ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${this.isMusicAssistantPlayer(player) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
       ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
       ${this.isMusicAssistantPlayer(id) ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
@@ -970,7 +969,7 @@ export class MPNexusView extends LitElement {
   }
   private musicQueuePanel() {
     const queue = this.musicQueueData!;
-    return html`<div class="sec"><b>${tr('File de lecture')}</b><button @click=${() => void this.musicQueueAction('clear', {})}>${tr('Vider')}</button></div><div class="queue-list">${queue.items.map((item, position) => html`<div class=${`queue-row ${item.index === queue.current_index ? 'current' : ''}`}><span class="art">${this.mediaImage(item.thumbnail)}</span><button class="queue-title" @click=${() => void this.musicQueueAction('play_index', { index: item.queue_item_id || (item.index ?? position) })}><b>${item.title}</b><small>${item.artist}</small></button><button class="ib" aria-label=${tr('Retirer de la file')} title=${tr('Retirer de la file')} @click=${() => void this.musicQueueAction('delete', { item_id_or_index: item.queue_item_id || (item.index ?? position) })}>${mpIcon('close', 14)}</button></div>`)}</div>`;
+    return html`<div class="sec"><b>${tr('File de lecture')}</b><button @click=${() => void this.musicQueueAction('clear', {})}>${tr('Vider')}</button></div><div class="queue-list">${queue.items.map(item => html`<div class=${`queue-row ${item.index === queue.current_index ? 'current' : ''}`}><span class="art">${this.mediaImage(item.thumbnail)}</span><button class="queue-title" @click=${() => void this.musicItemAction(queue.player, item, 'play_now')}><b>${item.title}</b><small>${item.artist}</small></button></div>`)}</div>`;
   }
   private async browseInto(player: string, item?: BrowseItem) {
     const hass = this.hass;
@@ -1035,7 +1034,8 @@ export class MPNexusView extends LitElement {
     if (this.queueLoading || now - this.queueFetchedAt < 15_000) return;
     const request = ++this.queueRequest;
     this.queueLoading = true;
-    hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain: 'mass', service: 'get_queue', target: { entity_id: id }, return_response: true })
+    const domain = this.hass?.entities?.[id]?.platform === 'mass' ? 'mass' : 'music_assistant';
+    hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain, service: 'get_queue', target: { entity_id: id }, return_response: true })
       .then(answer => {
         if (request !== this.queueRequest || this.currentPlayer !== id || this.mediaTab !== 'play') return;
         const next = answer.response?.[id]?.next_item;

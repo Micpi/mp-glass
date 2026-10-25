@@ -1,6 +1,5 @@
-"""Authenticated Music Assistant bridge kept entirely inside Home Assistant."""
+"""Zero-configuration Music Assistant bridge through its official HA integration."""
 import asyncio
-import uuid
 
 import voluptuous as vol
 from aiohttp import ClientError, ClientTimeout, web
@@ -9,54 +8,49 @@ from homeassistant.components.http import HomeAssistantView
 from homeassistant.components.http.const import KEY_HASS
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .music_core import LIBRARY_COMMANDS, normalize_item
 from .guests import KEY as GUESTS_KEY
+from .music_core import LIBRARY_COMMANDS, normalize_item, search_items, service_items
 
 KEY = "mp_glass_music"
+SERVICE_DOMAINS = ("music_assistant", "mass")
+MEDIA_TYPES = {"albums": "album", "artists": "artist", "tracks": "track", "playlists": "playlist", "radio": "radio", "podcasts": "podcast"}
 
 
 class MusicAssistantRuntime:
-    def __init__(self, hass, options):
+    def __init__(self, hass, _options):
         self.hass = hass
-        self.url = str(options.get("music_assistant_url", "")).rstrip("/")
-        self.token = str(options.get("music_assistant_token", ""))
-        self.enabled = bool(options.get("music_assistant_enabled") and self.url and self.token)
         self.artwork = {}
         self.last_error = None
-        self.schema = None
 
-    async def call(self, command, **args):
-        if not self.enabled:
-            raise RuntimeError("Music Assistant is not configured")
-        session = async_get_clientsession(self.hass)
-        payload = {"message_id": uuid.uuid4().hex, "command": command, "args": args}
+    @property
+    def domain(self):
+        return next((domain for domain in SERVICE_DOMAINS if self.hass.services.has_service(domain, "get_library")), None)
+
+    @property
+    def enabled(self):
+        return self.domain is not None
+
+    async def service(self, service, data, context=None, response=True):
+        domain = self.domain
+        if not domain or not self.hass.services.has_service(domain, service):
+            raise RuntimeError("Music Assistant is not connected to Home Assistant")
         try:
-            async with session.post(f"{self.url}/api", json=payload, headers={"Authorization": f"Bearer {self.token}"}, timeout=ClientTimeout(total=20)) as response:
-                data = await response.json(content_type=None)
-                if response.status >= 400:
-                    raise RuntimeError(f"HTTP {response.status}")
-        except (ClientError, asyncio.TimeoutError, ValueError) as err:
+            answer = await self.hass.services.async_call(domain, service, data, blocking=True, context=context, return_response=response)
+        except Exception as err:  # HA exposes integration failures through several exception types.
             self.last_error = type(err).__name__
             raise RuntimeError("Music Assistant is unavailable") from err
-        if not isinstance(data, dict) or data.get("error_code") is not None or data.get("error_message"):
-            self.last_error = str(data.get("error_message", "invalid_response")) if isinstance(data, dict) else "invalid_response"
-            raise RuntimeError(self.last_error)
         self.last_error = None
-        return data.get("result")
+        return answer or {}
 
     async def status(self):
-        if not self.enabled:
-            return {"configured": False, "connected": False}
-        try:
-            players = await self.call("players/all")
-            return {"configured": True, "connected": True, "player_count": len(players or []), "url": self.url}
-        except RuntimeError:
-            return {"configured": True, "connected": False, "error": self.last_error or "unavailable"}
+        domain = self.domain
+        players = [state for state in self.hass.states.async_all({"media_player"}) if state.attributes.get("mass_player_type") or state.attributes.get("active_queue")]
+        return {"configured": bool(domain), "connected": bool(domain), "player_count": len(players), "domain": domain}
 
     def items(self, values):
         result = []
         for value in values or []:
-            item = normalize_item(self.url, value, self.artwork)
+            item = normalize_item("", value, self.artwork)
             if item:
                 result.append(item)
         if len(self.artwork) > 800:
@@ -64,18 +58,21 @@ class MusicAssistantRuntime:
         return result
 
 
-async def _runtime(hass, connection, msg):
+def _runtime(hass, connection, msg):
     runtime = hass.data.get(KEY)
     if runtime is None:
         connection.send_error(msg["id"], "not_loaded", "Music Assistant bridge is not loaded")
     return runtime
 
 
+def _context(connection, msg):
+    return connection.context(msg) if hasattr(connection, "context") else None
+
+
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/music/status"})
 @websocket_api.async_response
 async def websocket_music_status(hass, connection, msg):
-    runtime = await _runtime(hass, connection, msg)
-    if runtime:
+    if runtime := _runtime(hass, connection, msg):
         connection.send_result(msg["id"], await runtime.status())
 
 
@@ -88,14 +85,14 @@ async def websocket_music_status(hass, connection, msg):
 })
 @websocket_api.async_response
 async def websocket_music_library(hass, connection, msg):
-    runtime = await _runtime(hass, connection, msg)
-    if not runtime:
+    if not (runtime := _runtime(hass, connection, msg)):
         return
     try:
-        args = {"offset": msg["offset"], "limit": msg["limit"], "order_by": "sort_name"}
+        data = {"media_type": MEDIA_TYPES[msg["kind"]], "offset": msg["offset"], "limit": msg["limit"], "order_by": "sort_name"}
         if "favorite" in msg:
-            args["favorite"] = msg["favorite"]
-        values = await runtime.call(LIBRARY_COMMANDS[msg["kind"]], **args)
+            data["favorite"] = msg["favorite"]
+        answer = await runtime.service("get_library", data, _context(connection, msg))
+        values = service_items(answer)
         connection.send_result(msg["id"], {"kind": msg["kind"], "offset": msg["offset"], "items": runtime.items(values)})
     except RuntimeError as err:
         connection.send_error(msg["id"], "music_unavailable", str(err))
@@ -108,84 +105,56 @@ async def websocket_music_library(hass, connection, msg):
 })
 @websocket_api.async_response
 async def websocket_music_search(hass, connection, msg):
-    runtime = await _runtime(hass, connection, msg)
-    if not runtime:
+    if not (runtime := _runtime(hass, connection, msg)):
         return
     try:
-        answer = await runtime.call("music/search", search_query=msg["query"], media_types=["artist", "album", "track", "playlist", "radio", "podcast"], limit=msg["limit"], library_only=False)
-        groups = []
-        for kind in ("artists", "albums", "tracks", "playlists", "radio", "podcasts"):
-            groups.extend((answer or {}).get(kind, []) if isinstance(answer, dict) else [])
-        connection.send_result(msg["id"], {"items": runtime.items(groups)})
+        answer = await runtime.service("search", {"name": msg["query"], "limit": msg["limit"], "library_only": False}, _context(connection, msg))
+        connection.send_result(msg["id"], {"items": runtime.items(search_items(answer))})
     except RuntimeError as err:
         connection.send_error(msg["id"], "music_unavailable", str(err))
 
 
-@websocket_api.websocket_command({
-    vol.Required("type"): "mp_glass/music/queue",
-    vol.Required("entity_id"): vol.Match(r"^media_player\.[a-z0-9_]+$"),
-})
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/music/queue", vol.Required("entity_id"): vol.Match(r"^media_player\.[a-z0-9_]+$")})
 @websocket_api.async_response
 async def websocket_music_queue(hass, connection, msg):
-    runtime = await _runtime(hass, connection, msg)
-    if not runtime:
+    if not (runtime := _runtime(hass, connection, msg)):
         return
     try:
-        state = hass.states.get(msg["entity_id"])
-        queue_id = state.attributes.get("active_queue") if state else None
-        if not isinstance(queue_id, str) or not queue_id:
-            connection.send_result(msg["id"], {"queue_id": None, "items": [], "current_index": None})
-            return
-        queue = await runtime.call("player_queues/get", queue_id=queue_id)
-        if isinstance(queue, dict):
-            queue_id = queue.get("queue_id") or queue_id
-        values = await runtime.call("player_queues/items", queue_id=queue_id, limit=500, offset=0) if queue_id else []
-        connection.send_result(msg["id"], {"queue_id": queue_id, "items": runtime.items(values), "current_index": queue.get("current_index") if isinstance(queue, dict) else None})
+        answer = await runtime.service("get_queue", {"entity_id": msg["entity_id"]}, _context(connection, msg))
+        queue = answer.get(msg["entity_id"], answer) if isinstance(answer, dict) else {}
+        values = service_items(answer, msg["entity_id"])
+        connection.send_result(msg["id"], {"queue_id": queue.get("queue_id") if isinstance(queue, dict) else None, "items": runtime.items(values), "current_index": queue.get("current_index") if isinstance(queue, dict) else None})
     except RuntimeError as err:
         connection.send_error(msg["id"], "music_unavailable", str(err))
 
 
-_ACTIONS = {
-    "play_now": ("player_queues/play_media", ("queue_id", "media")),
-    "play_next": ("player_queues/play_media", ("queue_id", "media")),
-    "add": ("player_queues/play_media", ("queue_id", "media")),
-    "clear": ("player_queues/clear", ("queue_id",)),
-    "delete": ("player_queues/delete_item", ("queue_id", "item_id_or_index")),
-    "play_index": ("player_queues/play_index", ("queue_id", "index")),
-    "move": ("player_queues/move_item", ("queue_id", "queue_item_id", "pos_shift")),
-    "transfer": ("player_queues/transfer", ("source_queue_id", "target_queue_id", "auto_play")),
-}
-
-
-@websocket_api.websocket_command({
-    vol.Required("type"): "mp_glass/music/action",
-    vol.Required("action"): vol.In(tuple(_ACTIONS)),
-    vol.Required("data"): dict,
-})
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/music/action", vol.Required("action"): vol.In(("play_now", "play_next", "add", "clear")), vol.Required("data"): dict})
 @websocket_api.async_response
 async def websocket_music_action(hass, connection, msg):
-    runtime = await _runtime(hass, connection, msg)
-    if not runtime:
+    if not (runtime := _runtime(hass, connection, msg)):
         return
     guests = hass.data.get(GUESTS_KEY)
     guest = guests.book.guests.get(connection.user.id) if guests else None
     if guest and guest.get("profile") == "read":
         connection.send_error(msg["id"], "not_allowed", "This guest has read-only access")
         return
-    command, allowed = _ACTIONS[msg["action"]]
-    missing = [key for key in allowed if key not in msg["data"]]
-    if missing:
-        connection.send_error(msg["id"], "invalid_format", "Missing action data")
+    entity_id = msg["data"].get("entity_id")
+    if not isinstance(entity_id, str) or not entity_id.startswith("media_player."):
+        connection.send_error(msg["id"], "invalid_format", "Missing player entity")
         return
-    data = {key: msg["data"][key] for key in allowed if key in msg["data"]}
-    if msg["action"] in {"play_now", "play_next", "add"}:
-        data["option"] = {"play_now": "replace", "play_next": "next", "add": "add"}[msg["action"]]
-        data["radio_mode"] = False
     try:
-        await runtime.call(command, **data)
+        if msg["action"] == "clear":
+            await hass.services.async_call("media_player", "clear_playlist", {"entity_id": entity_id}, blocking=True, context=_context(connection, msg))
+        else:
+            media = msg["data"].get("media")
+            if not isinstance(media, str) or not media:
+                connection.send_error(msg["id"], "invalid_format", "Missing media")
+                return
+            await runtime.service("play_media", {"entity_id": entity_id, "media_id": media, "media_type": msg["data"].get("media_type", "music"), "enqueue": {"play_now": "replace", "play_next": "next", "add": "add"}[msg["action"]], "radio_mode": False}, _context(connection, msg), response=False)
         connection.send_result(msg["id"], {"ok": True})
-    except RuntimeError as err:
-        connection.send_error(msg["id"], "music_unavailable", str(err))
+    except Exception as err:
+        runtime.last_error = type(err).__name__
+        connection.send_error(msg["id"], "music_unavailable", "Music Assistant is unavailable")
 
 
 class MusicArtworkView(HomeAssistantView):
@@ -200,9 +169,8 @@ class MusicArtworkView(HomeAssistantView):
         if not url:
             raise web.HTTPNotFound()
         session = async_get_clientsession(hass)
-        headers = {"Authorization": f"Bearer {runtime.token}"} if url.startswith(runtime.url) else {}
         try:
-            async with session.get(url, headers=headers, timeout=ClientTimeout(total=20)) as response:
+            async with session.get(url, timeout=ClientTimeout(total=20)) as response:
                 content_type = response.headers.get("Content-Type", "")
                 if response.status != 200 or not content_type.startswith("image/"):
                     raise web.HTTPBadGateway()

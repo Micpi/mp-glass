@@ -21,7 +21,7 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, elapsed, groupOf, nextRepeat, remoteRoutes, type BrowseItem, type RemoteKey } from './media';
+import { browse, clockTime, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
 /** The four ways MP Nexus v2 lays itself out: phone, tablet held upright, tablet held sideways, computer. */
@@ -98,7 +98,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -136,6 +136,18 @@ export class MPNexusView extends LitElement {
   private browsing?: Browsing;
   private queue?: { player: string; next: { title: string; artist: string; image: string } };
   private queueKey = '';
+  private queueRequest = 0;
+  private queueFetchedAt = 0;
+  private queueLoading = false;
+  private browseRequest = 0;
+  private mediaFavorites: NexusFavorite[] = [];
+  private mediaFavoritesKey = '';
+  private mediaNotice = '';
+  private mediaSearch = '';
+  private mediaResults?: BrowseItem[];
+  private mediaSearching = false;
+  private mediaSearchRequest = 0;
+  private remotePointer?: { id: number; player: string; x: number; y: number; moved: boolean };
   private sub?: SubPanel;
   private prefs: NexusPrefs = readPrefs();
   private overlay: ''|'search'|'alerts'|'invite' = '';
@@ -218,6 +230,10 @@ export class MPNexusView extends LitElement {
     for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
     this.resize.disconnect();
     clearInterval(this.clock);
+    this.remotePointer = undefined;
+    this.browseRequest++;
+    this.queueRequest++;
+    this.queueLoading = false;
   }
   protected updated() {
     this.watchConnection();
@@ -228,7 +244,9 @@ export class MPNexusView extends LitElement {
     if (this.kind !== 'media') return;
     const id = this.currentPlayer;
     if (!id) return;
-    this.loadQueue(id);
+    const favoriteKey = this.mediaFavoriteStorageKey();
+    if (favoriteKey !== this.mediaFavoritesKey) { this.mediaFavoritesKey = favoriteKey; this.mediaFavorites = readMediaFavorites(favoriteKey); }
+    if (this.mediaTab === 'play') this.loadQueue(id);
     if (this.mediaTab === 'foryou' && this.browsing?.player !== id && canMedia(this.state(id), 'browse_media')) void this.browseInto(id);
   }
 
@@ -362,6 +380,66 @@ export class MPNexusView extends LitElement {
     return rest.replace(/^[\s·:|/–—-]+/, '') || name;
   }
   private call(domain: string, service: string, data: Record<string, unknown>) { void this.hass?.callService(domain, service, data); }
+  private mediaFavoriteStorageKey() { return `mp-nexus.media-favorites:${this.hass?.user?.id ?? 'browser'}:${location.pathname}`; }
+  private saveMediaFavorites(items: NexusFavorite[]) {
+    this.mediaFavorites = items;
+    try { localStorage.setItem(this.mediaFavoriteStorageKey(), JSON.stringify(items)); } catch { this.mediaNotice = tr('Les favoris ne peuvent pas être enregistrés sur cet appareil.'); }
+  }
+  private async mediaCall(service: string, data: Record<string, unknown>) {
+    this.mediaNotice = '';
+    if (this.mediaReadOnlyGuest) { this.mediaNotice = tr('Cet accès invité est en lecture seule.'); return false; }
+    try { await this.hass?.callService('media_player', service, data); return true; }
+    catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); return false; }
+  }
+  private async remoteCall(route: { domain: string; service: string; data: Record<string, unknown> }) {
+    try { await this.hass?.callService(route.domain, route.service, route.data); this.mediaNotice = ''; }
+    catch { this.mediaNotice = tr('La commande multimédia a échoué. Vérifiez les droits et la disponibilité du lecteur.'); }
+  }
+  private get mediaReadOnlyGuest() { return this.access?.guest === true && this.access.profile === 'read'; }
+  private remoteModeKey(player: string) { return `mp-nexus.trackpad:${this.hass?.user?.id ?? 'browser'}:${location.pathname}:${player}`; }
+  private remoteTrackpad(player: string) { try { return localStorage.getItem(this.remoteModeKey(player)) === 'on'; } catch { return false; } }
+  private toggleRemoteTrackpad(player: string, enabled: boolean) { this.remotePointer = undefined; try { localStorage.setItem(this.remoteModeKey(player), enabled ? 'on' : 'off'); } catch { /* Current page choice still takes effect below. */ } this.requestUpdate(); }
+  private remotePointerDown = (event: PointerEvent, player: string) => {
+    if (!event.isPrimary || event.button !== 0) return;
+    (event.currentTarget as HTMLElement).setPointerCapture(event.pointerId);
+    this.remotePointer = { id: event.pointerId, player, x: event.clientX, y: event.clientY, moved: false };
+  };
+  private remotePointerMove = (event: PointerEvent) => {
+    const pointer = this.remotePointer;
+    if (pointer?.id === event.pointerId && Math.hypot(event.clientX - pointer.x, event.clientY - pointer.y) >= 12) pointer.moved = true;
+  };
+  private remotePointerUp = (event: PointerEvent, player: string, send: (key: RemoteKey) => void) => {
+    const pointer = this.remotePointer;
+    this.remotePointer = undefined;
+    if (!pointer || pointer.id !== event.pointerId || pointer.player !== player || this.currentPlayer !== player || this.mediaTab !== 'remote' || !this.remoteTrackpad(player)) return;
+    const dx = event.clientX - pointer.x, dy = event.clientY - pointer.y;
+    if (Math.hypot(dx, dy) < 28) { if (!pointer.moved) send('select'); return; }
+    send(Math.abs(dx) > Math.abs(dy) ? dx > 0 ? 'right' : 'left' : dy > 0 ? 'down' : 'up');
+  };
+  private remotePointerCancel = (event: PointerEvent) => { if (this.remotePointer?.id === event.pointerId) this.remotePointer = undefined; };
+  private favoriteItem(item: NexusFavorite) { this.saveMediaFavorites(toggleMediaFavorite(this.mediaFavorites, item)); }
+  private async searchMusicAssistant(id: string) {
+    const query = this.mediaSearch.trim(), hass = this.hass;
+    if (!hass || !query || this.mediaReadOnlyGuest) return;
+    const request = ++this.mediaSearchRequest;
+    this.mediaSearching = true; this.mediaResults = undefined; this.mediaNotice = '';
+    try {
+      const results = await searchMedia(hass, id, query);
+      if (request === this.mediaSearchRequest && this.currentPlayer === id && this.mediaTab === 'foryou') this.mediaResults = results;
+    } catch { if (request === this.mediaSearchRequest) this.mediaNotice = tr('La recherche Music Assistant a échoué. Vérifiez les droits et la disponibilité du lecteur.'); }
+    finally { if (request === this.mediaSearchRequest) this.mediaSearching = false; }
+  }
+  private mediaSourceBadge(name: string) {
+    const brand = name.toLowerCase();
+    const known: Record<string, { mark: string; tone: string }> = {
+      netflix: { mark: 'N', tone: 'netflix' }, spotify: { mark: 'S', tone: 'spotify' }, 'youtube': { mark: '▶', tone: 'youtube' }, 'youtube music': { mark: 'Y', tone: 'youtube' },
+      'apple tv': { mark: 'tv', tone: 'apple' }, 'apple tv+': { mark: 'tv+', tone: 'apple' }, 'amazon prime video': { mark: 'prime', tone: 'prime' }, 'prime video': { mark: 'prime', tone: 'prime' },
+      plex: { mark: 'plex', tone: 'plex' }, disney: { mark: 'D+', tone: 'disney' }, 'disney+': { mark: 'D+', tone: 'disney' }, tidal: { mark: 'T', tone: 'tidal' }, deezer: { mark: 'D', tone: 'deezer' },
+      airplay: { mark: 'air', tone: 'airplay' }, chromecast: { mark: 'cast', tone: 'cast' },
+    };
+    const item = known[brand] ?? { mark: name.trim().slice(0, 2).toUpperCase() || '♪', tone: 'generic' };
+    return html`<span class=${`source-logo ${item.tone}`} aria-hidden="true">${item.mark}</span>`;
+  }
   /** A touch: a light, a shutter or a switch changes; a scene runs; a player pauses or plays; the rest opens its window. */
   private act(id: string) {
     if (this.held) { this.held = false; return; }
@@ -649,16 +727,17 @@ export class MPNexusView extends LitElement {
   }
   private mediaMain() {
     const id = this.currentPlayer, state = id ? this.state(id) : undefined;
-    if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body"><p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p></div></section>`;
+    if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body"><p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p>${this.mediaAssistantSetup()}</div></section>`;
     const tabs = this.mediaTabs(id), tab = tabs.includes(this.mediaTab) ? this.mediaTab : 'play';
-    const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
+    const media = (service: string, data: Record<string, unknown> = {}) => void this.mediaCall(service, { entity_id: id, ...data });
     const power = mediaOn(state) && canMedia(state, 'turn_off') ? html`<button class="ib" aria-label=${tr('Éteindre')} title=${tr('Éteindre')} @click=${() => media('turn_off')}>${mpIcon('power', 16)}</button>`
       : !mediaOn(state) && canMedia(state, 'turn_on') ? html`<button class="ib" aria-label=${tr('Allumer')} title=${tr('Allumer')} @click=${() => media('turn_on')}>${mpIcon('power', 16)}</button>` : nothing;
     return html`<section class="main panel card glass">
       ${this.head(this.groupLabel(id), tr('Multimédia'), html`${power}<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('dots', 16)}</button>`)}
       <div class="body">
-        ${tabs.length > 1 ? html`<div class="layers mtabs" role="tablist" aria-label=${tr('Multimédia')}>${tabs.map(t => html`<button role="tab" aria-selected=${t === tab} aria-pressed=${t === tab} @click=${() => { this.mediaTab = t; mediaTab = t; }}>${mpIcon(MEDIA_TABS[t].icon, 15)}<span>${tr(MEDIA_TABS[t].label)}</span></button>`)}</div>` : nothing}
+        ${tabs.length > 1 ? html`<div class="layers mtabs" role="tablist" aria-label=${tr('Multimédia')}>${tabs.map(t => html`<button role="tab" aria-selected=${t === tab} aria-pressed=${t === tab} @click=${() => { this.remotePointer = undefined; if (this.mediaTab === 'foryou' && t !== 'foryou') { this.browseRequest++; this.mediaSearchRequest++; this.browsing = undefined; this.mediaResults = undefined; } this.mediaTab = t; mediaTab = t; }}>${mpIcon(MEDIA_TABS[t].icon, 15)}<span>${tr(MEDIA_TABS[t].label)}</span></button>`)}</div>` : nothing}
         ${tab === 'play' ? this.playing(id) : tab === 'foryou' ? this.forYou(id) : tab === 'rooms' ? this.speakers(id) : this.remote(id)}
+        ${this.mediaNotice ? html`<p class="note" role="alert">${this.mediaNotice}</p>` : nothing}
       </div>
     </section>`;
   }
@@ -669,7 +748,11 @@ export class MPNexusView extends LitElement {
     const volume = mediaVolume(state), muted = state?.attributes.is_volume_muted === true;
     const artist = [state?.attributes.media_artist ?? state?.attributes.media_series_title ?? state?.attributes.media_album_name, state?.attributes.app_name ?? state?.attributes.source].filter(Boolean).map(String).join(' · ');
     const title = String(state?.attributes.media_title ?? '') || nowPlaying(state) || stateLabel(id, state);
-    const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
+    const media = (service: string, data: Record<string, unknown> = {}) => void this.mediaCall(service, { entity_id: id, ...data });
+    const favoriteButton = musicAssistantFavoriteButton(this.hass, id), contentId = String(state?.attributes.media_content_id ?? title);
+    const safeContentId = safeFavoriteContentId(contentId);
+    const favorite: NexusFavorite = { key: `${id}|${contentId}|${title}`, title, artist, media_content_id: safeContentId ?? '', media_content_type: String(state?.attributes.media_content_type ?? 'music'), ...(safeFavoriteImage(state?.attributes.entity_picture, location.origin) ? { image: safeFavoriteImage(state?.attributes.entity_picture, location.origin) } : {}), source: String(state?.attributes.source ?? state?.attributes.app_name ?? ''), player: id };
+    const saved = this.mediaFavorites.some(item => item.key === favorite.key);
     const shuffle = state?.attributes.shuffle === true, repeat = String(state?.attributes.repeat ?? 'off');
     const soundModes = Array.isArray(state?.attributes.sound_mode_list) ? (state!.attributes.sound_mode_list as unknown[]).map(String) : [];
     const seek = (e: Event) => {
@@ -681,7 +764,9 @@ export class MPNexusView extends LitElement {
     return html`<div class="player">
       <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''}`} style=${this.artwork(state)}></div>
       <div class="track"><div class="serif">${title}</div><div class="muted">${artist || stateLabel(id, state)}</div></div>
-      ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role="progressbar" aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" @click=${seek}><i style=${`width:${progress}%`}></i></div>
+      ${this.hass?.entities?.[id]?.platform === 'music_assistant' && favoriteButton ? html`<button class="btn favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('sparkle', 15)}${tr('Favoris Music Assistant')}</button>` : nothing}
+      ${title && safeContentId ? html`<button class="btn favorite-current" aria-pressed=${saved} @click=${() => this.favoriteItem(favorite)}>${mpIcon(saved ? 'check' : 'plus', 15)}${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')}</button>` : nothing}
+      ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role=${canMedia(state, 'seek') ? 'slider' : 'progressbar'} tabindex=${canMedia(state, 'seek') ? 0 : -1} aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" aria-valuetext=${`${clockTime(at!)} / ${clockTime(duration!)}`} @click=${seek} @keydown=${(e: KeyboardEvent) => { if (!canMedia(state, 'seek') || duration === undefined) return; const delta = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 5 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -5 : 0; if (delta || e.key === 'Home' || e.key === 'End') { e.preventDefault(); media('media_seek', { seek_position: e.key === 'Home' ? 0 : e.key === 'End' ? duration : Math.max(0, Math.min(duration, (at ?? 0) + delta)) }); } }}><i style=${`width:${progress}%`}></i></div>
         <div class="times"><span>${clockTime(at!)}</span><span>${clockTime(duration!)}</span></div></div>`}
       <div class="ctl">
         ${canMedia(state, 'shuffle_set') ? html`<button class="sm" aria-label=${tr('Aléatoire')} title=${tr('Aléatoire')} aria-pressed=${shuffle} @click=${() => media('shuffle_set', { shuffle: !shuffle })}>${mpIcon('shuffle', 19)}</button>` : html`<span class="sm"></span>`}
@@ -699,34 +784,51 @@ export class MPNexusView extends LitElement {
       ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
+  private mediaAssistantSetup() {
+    const ready = this.players.some(player => this.hass?.entities?.[player]?.platform === 'music_assistant');
+    return !ready && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Music Assistant')}</b><p class="muted">${tr('Connectez Music Assistant dans Home Assistant pour parcourir ses lecteurs, sa bibliothèque et ses favoris.')}</p><a class="btn" href="/config/integrations/integration/music_assistant">${tr('Configurer dans Home Assistant')}</a></div>` : nothing;
+  }
   /** Sources and apps to start in one touch, then the library the player offers to browse. */
   private forYou(id: string) {
     const state = this.state(id), tv = mediaIsTv(state);
     const sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
     const browsing = this.browsing, level = browsing?.player === id ? browsing.stack[browsing.stack.length - 1] : undefined;
-    const open = (item: BrowseItem) => {
-      if (item.can_expand) void this.browseInto(id, item);
-      else if (item.can_play) this.call('media_player', 'play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
-    };
+    const playItem = (item: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) => void this.mediaCall('play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
+    const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
     return html`
+      ${this.mediaAssistantSetup()}
+      ${this.hass?.entities?.[id]?.platform === 'music_assistant' ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
+        <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label><input id="mp-ma-search" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
+        <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
+      </form>` : nothing}
+      ${this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
+      <div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
+      ${this.mediaFavorites.length ? html`<div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
+        <button class="favorite-play" @click=${() => playItem(item)}><span class="th" style=${item.image ? `background-image:url("${item.image.replace(/"/g, '%22')}")` : ''}>${item.image ? nothing : mpIcon('music', 20)}</span><span><b>${item.title}</b><small>${item.artist || item.media_content_type}</small></span></button>
+        <button class="ib" aria-label=${tr('Retirer des favoris')} title=${tr('Retirer des favoris')} @click=${() => this.favoriteItem(item)}>${mpIcon('close', 15)}</button>
+      </div>`)}</div>` : html`<p class="empty">${tr('Gardez ici vos morceaux, albums et playlists préférés.')}</p>`}
       ${sources.length && canMedia(state, 'select_source') ? html`<div class="rlab">${tv ? tr('Applis et entrées') : tr('Sources')}</div>
-        <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => this.call('media_player', 'select_source', { entity_id: id, source: s })}><span class="ib">${mpIcon(tv ? 'tv' : 'music', 16)}</span><b>${s}</b></button>`)}</div>` : nothing}
+        <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => void this.mediaCall('select_source', { entity_id: id, source: s })}>${this.mediaSourceBadge(s)}<b>${s}</b></button>`)}</div>` : nothing}
       ${canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
         ${browsing?.player === id && browsing.state === 'loading' ? html`<p class="empty">${tr('Chargement…')}</p>`
           : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
-            : level?.children?.length ? html`<div class="lib">${level.children.map(item => html`<button class="li" ?disabled=${!item.can_expand && !item.can_play} @click=${() => open(item)}>
-              <span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>`)}</div>`
+            : level?.children?.length ? html`<div class="lib">${level.children.map(item => html`<div class="li">
+              <button class="library-open" ?disabled=${!item.can_expand && !item.can_play} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}>
+                <span class="th" style=${item.thumbnail ? `background-image:url("${item.thumbnail.replace(/"/g, '%22')}")` : ''}>${item.thumbnail ? nothing : mpIcon(item.can_expand ? 'grid' : 'music', 20)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
+      ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
               : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
   }
   private async browseInto(player: string, item?: BrowseItem) {
     const hass = this.hass;
     if (!hass) return;
+    const request = ++this.browseRequest;
     const stack = item && this.browsing?.player === player ? this.browsing.stack : [];
     this.browsing = { player, stack, state: 'loading' };
     try {
       const level = await browse(hass, player, item);
+      if (request !== this.browseRequest || player !== this.currentPlayer) return;
       this.browsing = { player, stack: [...stack, level], state: 'ready' };
-    } catch { this.browsing = { player, stack, state: 'error' }; }
+    } catch { if (request === this.browseRequest && player === this.currentPlayer) this.browsing = { player, stack, state: 'error' }; }
   }
   /** Every player of the house: its volume, what it plays, and whether it plays with the one chosen. */
   private speakers(id: string) {
@@ -748,14 +850,16 @@ export class MPNexusView extends LitElement {
   /** The remote of a television: arrows and OK when its integration takes keys, then volume, channels and power. */
   private remote(id: string) {
     const state = this.state(id), routes = remoteRoutes(this.hass, id), muted = state?.attributes.is_volume_muted === true;
-    const send = (key: RemoteKey) => { const route = routes[key]; if (route) this.call(route.domain, route.service, route.data); };
+    const send = (key: RemoteKey) => { const route = routes[key]; if (route && !this.mediaReadOnlyGuest) void this.remoteCall(route); else if (this.mediaReadOnlyGuest) { this.mediaNotice = tr('Cet accès invité est en lecture seule.'); this.requestUpdate(); } };
+    const canTrackpad = trackpadAvailable(routes), trackpad = canTrackpad && this.remoteTrackpad(id);
     const key = (k: RemoteKey, icon: MPIconName | '', label: string, cls = '') => routes[k] ? html`<button class=${`k ${cls}`} aria-label=${label} title=${label} @click=${() => send(k)}>${icon ? mpIcon(icon, 22) : html`<b>${label}</b>`}</button>` : html`<span class=${`k ${cls}`}></span>`;
     const media = (service: string, data: Record<string, unknown> = {}) => this.call('media_player', service, { entity_id: id, ...data });
     const volume = mediaVolume(state), step = (by: number) => canMedia(state, 'volume_step') ? media(by > 0 ? 'volume_up' : 'volume_down') : volume !== undefined ? media('volume_set', { volume_level: Math.min(100, Math.max(0, volume + by)) / 100 }) : undefined;
     const canStep = canMedia(state, 'volume_step') || (volume !== undefined && canMedia(state, 'volume_set'));
     return html`
+      ${mediaIsTv(state) || Object.keys(routes).length ? html`<div class="remote-mode"><span>${tr('Trackpad')}</span><button role="switch" aria-checked=${trackpad} aria-label=${tr('Trackpad')} ?disabled=${!canTrackpad || this.mediaReadOnlyGuest} title=${canTrackpad ? tr('Trackpad') : tr('Le trackpad n’est pas pris en charge par ce lecteur.')} @click=${() => this.toggleRemoteTrackpad(id, !trackpad)}><span class=${`tgl ${trackpad ? '' : 'off'}`}></span></button></div>` : nothing}
       ${Object.keys(routes).length ? html`<div class="pad" role="group" aria-label=${tr('Télécommande')}>
-        ${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}
+      ${trackpad ? html`<div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); if (!e.repeat) send(key); } }}><span>${mpIcon('hand', 22)}</span><b>${tr('Glissez pour naviguer · Touchez pour OK')}</b></div>` : html`${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}`}
       </div>
       <div class="acts">${(['back', 'home', 'menu'] as const).map(k => routes[k] ? html`<button class="btn" @click=${() => send(k)}>${k === 'back' ? mpIcon('back', 16) : k === 'home' ? mpIcon('home', 16) : mpIcon('dots', 16)}${k === 'back' ? tr('Retour') : k === 'home' ? tr('Accueil') : tr('Menu')}</button>` : nothing)}</div>`
         : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips et Sony.')}</p>`}
@@ -771,16 +875,20 @@ export class MPNexusView extends LitElement {
   }
   /** What Music Assistant plays next on a player, the one integration that tells it. */
   private loadQueue(id: string) {
-    const state = this.state(id), key = `${id}|${String(state?.attributes.media_title ?? '')}`;
-    if (this.queueKey === key) return;
-    this.queueKey = key;
+    const state = this.state(id), key = queueSignature(id, state), now = Date.now();
+    if (this.queueKey !== key) { this.queueKey = key; this.queue = undefined; this.queueFetchedAt = 0; this.queueRequest++; this.queueLoading = false; }
     if (this.hass?.entities?.[id]?.platform !== 'music_assistant' || !mediaOn(state)) { this.queue = undefined; return; }
+    if (this.queueLoading || now - this.queueFetchedAt < 15_000) return;
+    const request = ++this.queueRequest;
+    this.queueLoading = true;
     this.hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain: 'music_assistant', service: 'get_queue', target: { entity_id: id }, return_response: true })
       .then(answer => {
+        if (request !== this.queueRequest || this.currentPlayer !== id || this.mediaTab !== 'play') return;
         const next = answer.response?.[id]?.next_item;
         const image = next?.media_item?.image, path = typeof image === 'string' ? image : (image as { path?: string } | undefined)?.path ?? next?.media_item?.metadata?.images?.[0]?.path;
         this.queue = next ? { player: id, next: { title: next.media_item?.name ?? next.name ?? '', artist: next.media_item?.artists?.map(a => a.name).filter(Boolean).join(', ') ?? '', image: typeof path === 'string' && /^(https?:|\/)/.test(path) ? path : '' } } : undefined;
-      }).catch(() => { this.queue = undefined; });
+        this.queueFetchedAt = Date.now();
+      }).catch(() => { if (request === this.queueRequest) { this.queue = undefined; this.queueFetchedAt = 0; this.mediaNotice = tr('La file Music Assistant ne répond pas. Réessayez dans quelques instants.'); } }).finally(() => { if (request === this.queueRequest) this.queueLoading = false; });
   }
 
   // ——— Climate and covers, opened over the page ———

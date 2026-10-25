@@ -1,10 +1,12 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, elapsed, groupOf, nextRepeat, remoteRoutes } from '../frontend/v2/media';
+import { clockTime, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
 import type { Hass } from '../frontend/ha/client';
 
 const state = (entity_id: string, attributes: Record<string, unknown> = {}, value = 'playing'): HAState => ({ entity_id, state: value, attributes });
 const hass = (states: HAState[], entities: Hass['entities'] = {}): Hass => ({ states: Object.fromEntries(states.map(s => [s.entity_id, s])), entities, connection: {}, callWS: async () => undefined as never, callService: async () => undefined });
+beforeEach(() => vi.stubGlobal('localStorage', { getItem: () => null, setItem: () => undefined }));
+afterEach(() => vi.unstubAllGlobals());
 
 describe('MP Nexus v2 media', () => {
   it('lists a group with the chosen player first and only players that exist', () => {
@@ -30,6 +32,42 @@ describe('MP Nexus v2 media', () => {
     const lg = hass([state('media_player.lg')], { 'media_player.lg': { entity_id: 'media_player.lg', platform: 'webostv' } });
     expect(remoteRoutes(lg, 'media_player.lg').up).toEqual({ domain: 'webostv', service: 'button', data: { entity_id: 'media_player.lg', button: 'UP' } });
     expect(remoteRoutes(hass([state('media_player.sonos')]), 'media_player.sonos')).toEqual({});
-    expect(remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')]), 'media_player.tv').back?.data).toEqual({ entity_id: 'remote.tv', command: 'back' });
+    expect(remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'remote.tv': { entity_id: 'remote.tv', platform: 'apple_tv' } }), 'media_player.tv').back?.data).toEqual({ entity_id: 'remote.tv', command: 'menu' });
+    expect(remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')]), 'media_player.tv')).toEqual({});
+  });
+  it('enables the trackpad only when all four directions and select have a known route', () => {
+    const routes = remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', platform: 'androidtv_remote' }, 'remote.tv': { entity_id: 'remote.tv', platform: 'androidtv_remote' } }), 'media_player.tv');
+    expect(trackpadAvailable(routes)).toBe(true);
+    expect(trackpadAvailable({ up: routes.up, down: routes.down, left: routes.left, select: routes.select })).toBe(false);
+  });
+  it('finds only a Music Assistant favorite button attached to this player device', () => {
+    const h = hass([state('media_player.ma'), state('button.ma_favorite', {}, 'unknown')], { 'media_player.ma': { entity_id: 'media_player.ma', device_id: 'ma-device', platform: 'music_assistant' }, 'button.ma_favorite': { entity_id: 'button.ma_favorite', device_id: 'ma-device', platform: 'music_assistant' } });
+    expect(musicAssistantFavoriteButton(h, 'media_player.ma')).toBe('button.ma_favorite');
+    expect(musicAssistantFavoriteButton(h, 'media_player.ma2')).toBeUndefined();
+  });
+  it('signs queue requests with track identity so same-titled items remain distinct', () => {
+    expect(queueSignature('media_player.a', state('media_player.a', { media_title: 'Same', media_content_id: 'radio://one' })))
+      .not.toBe(queueSignature('media_player.a', state('media_player.a', { media_title: 'Same', media_content_id: 'radio://two' })));
+  });
+  it('keeps media favorites local, bounded, de-duplicated, and free of credential URLs', () => {
+    const fav = { key: 'a', title: 'Track', artist: '', media_content_id: 'library://track/1', media_content_type: 'music', player: 'media_player.a' };
+    expect(toggleMediaFavorite([], fav)).toEqual([fav]);
+    expect(toggleMediaFavorite([fav], fav)).toEqual([]);
+    expect(safeFavoriteContentId('https://provider.example/song?token=secret')).toBeUndefined();
+    expect(safeFavoriteContentId('spotify://track/123')).toBe('spotify://track/123');
+    expect(safeFavoriteImage('/local/cover.jpg?token=secret')).toBeUndefined();
+    expect(safeFavoriteImage('/local/cover.jpg')).toBe('/local/cover.jpg');
+    const storage = { getItem: () => JSON.stringify([fav, { ...fav, key: 'bad', media_content_id: 'https://x.test/?auth_token=secret' }]) };
+    expect(readMediaFavorites('f', storage)).toEqual([fav]);
+  });
+  it('uses Home Assistant media search and returns the actual result tree children', async () => {
+    const calls: Record<string, unknown>[] = [];
+    const h = hass([state('media_player.ma')]);
+    h.callWS = async <T>(message: Record<string, unknown>) => {
+      calls.push(message);
+      return { response: { 'media_player.ma': { title: 'Results', children: [{ title: 'Moon Song', media_content_id: 'library://track/42', media_content_type: 'music', can_play: true, can_expand: false }] } } } as T;
+    };
+    await expect(searchMedia(h, 'media_player.ma', 'Moon Song')).resolves.toMatchObject([{ title: 'Moon Song' }]);
+    expect(calls[0]).toMatchObject({ type: 'call_service', domain: 'media_player', service: 'search_media', target: { entity_id: 'media_player.ma' }, service_data: { search_query: 'Moon Song' }, return_response: true });
   });
 });

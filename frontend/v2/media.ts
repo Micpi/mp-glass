@@ -16,7 +16,6 @@ const REMOTE_COMMANDS: Record<string, Partial<Record<RemoteKey, string>>> = {
   philips_js: { up: 'CursorUp', down: 'CursorDown', left: 'CursorLeft', right: 'CursorRight', select: 'Confirm', back: 'Back', home: 'Home', menu: 'Options' },
   braviatv: { up: 'Up', down: 'Down', left: 'Left', right: 'Right', select: 'Confirm', back: 'Return', home: 'Home', menu: 'Options' },
 };
-const GENERIC: Partial<Record<RemoteKey, string>> = { up: 'up', down: 'down', left: 'left', right: 'right', select: 'select', back: 'back', home: 'home', menu: 'menu' };
 /** Players that take their keys on themselves, without a remote entity. */
 const PLAYER_BUTTONS: Record<string, { domain: string; service: string; field: string; keys: Partial<Record<RemoteKey, string>> }> = {
   webostv: { domain: 'webostv', service: 'button', field: 'button', keys: { up: 'UP', down: 'DOWN', left: 'LEFT', right: 'RIGHT', select: 'ENTER', back: 'BACK', home: 'HOME', menu: 'MENU' } },
@@ -36,7 +35,8 @@ export function remoteRoutes(hass: Hass | undefined, playerId: string): Partial<
   if (own) return Object.fromEntries(Object.entries(own.keys).map(([key, value]) => [key, { domain: own.domain, service: own.service, data: { entity_id: playerId, [own.field]: value } }]));
   const remote = remoteOf(hass, playerId);
   if (!remote) return {};
-  const keys = REMOTE_COMMANDS[hass?.entities?.[remote]?.platform ?? platform] ?? GENERIC;
+  const keys = REMOTE_COMMANDS[hass?.entities?.[remote]?.platform ?? platform];
+  if (!keys) return {};
   return Object.fromEntries(Object.entries(keys).map(([key, value]) => [key, { domain: 'remote', service: 'send_command', data: { entity_id: remote, command: value } }]));
 }
 
@@ -69,6 +69,71 @@ export interface BrowseItem {
   title: string; media_class?: string; media_content_id: string; media_content_type: string;
   can_play: boolean; can_expand: boolean; thumbnail?: string | null; children?: BrowseItem[];
 }
+
+/** A device must expose an explicit integration route before it can receive remote gestures. */
+export function trackpadAvailable(routes: Partial<Record<RemoteKey, RemoteRoute>>) {
+  return !!(routes.up && routes.down && routes.left && routes.right && routes.select);
+}
+
+/** A stable signature for one selected queue item, including the identity fields HA exposes. */
+export function queueSignature(player: string, state: HAState | undefined) {
+  const a = state?.attributes ?? {};
+  return [player, a.media_content_id, a.media_title, a.media_artist, a.media_album_name, a.media_position_updated_at, state?.last_changed].map(v => String(v ?? '')).join('|');
+}
+
+/** The Music Assistant integration's add-current-track button, when the registry links it to this player. */
+export function musicAssistantFavoriteButton(hass: Hass | undefined, playerId: string) {
+  const device = hass?.entities?.[playerId]?.device_id;
+  if (!device || hass?.entities?.[playerId]?.platform !== 'music_assistant') return undefined;
+  return Object.keys(hass?.states ?? {}).find(id => id.startsWith('button.') && hass?.entities?.[id]?.device_id === device && hass?.entities?.[id]?.platform === 'music_assistant' && hass.states[id]?.state !== 'unavailable');
+}
+
+export interface NexusFavorite {
+  key: string; title: string; artist: string; media_content_id: string; media_content_type: string;
+  image?: string; source?: string; player: string;
+}
+/** Per-user, per-dashboard shortcuts stay in this browser and never enter the shared project backup. */
+export function readMediaFavorites(storageKey: string, storage: Pick<Storage, 'getItem'> = localStorage): NexusFavorite[] {
+  try {
+    const value: unknown = JSON.parse(storage.getItem(storageKey) ?? '[]');
+    if (!Array.isArray(value)) return [];
+    const seen = new Set<string>();
+    return value.filter((item): item is NexusFavorite => !!item && typeof item === 'object' && typeof item.key === 'string' && typeof item.title === 'string' && !!safeFavoriteContentId(item.media_content_id) && typeof item.media_content_type === 'string' && typeof item.player === 'string')
+      .filter(item => { if (seen.has(item.key)) return false; seen.add(item.key); return true; })
+      .map(item => ({ ...item, media_content_id: safeFavoriteContentId(item.media_content_id)!, artist: typeof item.artist === 'string' ? item.artist : '', ...(safeFavoriteImage(item.image) ? { image: safeFavoriteImage(item.image) } : { image: undefined }), ...(typeof item.source === 'string' ? { source: item.source.slice(0, 80) } : {}) })).slice(0, 100);
+  } catch { return []; }
+}
+export function toggleMediaFavorite(items: NexusFavorite[], item: NexusFavorite) {
+  return items.some(saved => saved.key === item.key) ? items.filter(saved => saved.key !== item.key) : [item, ...items].slice(0, 100);
+}
+/** Reject credential-bearing URLs before a content ID is written to persistent browser storage. */
+export function safeFavoriteContentId(value: unknown): string | undefined {
+  if (typeof value !== 'string' || !value.trim() || value.length > 2048 || /[\r\n]/.test(value)) return undefined;
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(value)) return value;
+  try {
+    const url = new URL(value);
+    if (url.username || url.password || [...url.searchParams.keys()].some(key => /token|auth|secret|signature|credential|api.?key/i.test(key))) return undefined;
+    return value;
+  } catch { return undefined; }
+}
+/** Keep remote service artwork URLs out of persistence; only same-origin HA paths are stored. */
+export function safeFavoriteImage(value: unknown, origin = ''): string | undefined {
+  if (typeof value !== 'string' || !value || value.length > 2048 || /[\r\n]/.test(value)) return undefined;
+  if (value.startsWith('/') && !value.startsWith('//')) { try { if ([...new URL(value, origin || 'http://localhost').searchParams.keys()].some(key => /token|auth|secret|signature|credential|api.?key/i.test(key))) return undefined; } catch { return undefined; } return value; }
+  try { const url = new URL(value); return !!origin && url.origin === origin && ![...url.searchParams.keys()].some(key => /token|auth|secret|signature|credential|api.?key/i.test(key)) ? `${url.pathname}${url.search}` : undefined; }
+  catch { return undefined; }
+}
+
 export function browse(hass: Hass, playerId: string, item?: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) {
   return hass.callWS<BrowseItem>({ type: 'media_player/browse_media', entity_id: playerId, ...(item ? { media_content_id: item.media_content_id, media_content_type: item.media_content_type } : {}) });
+}
+
+/** Home Assistant's response-capable `media_player.search_media` action, available on Music Assistant players. */
+export async function searchMedia(hass: Hass, playerId: string, query: string) {
+  const answer = await hass.callWS<{ response?: Record<string, BrowseItem> }>({
+    type: 'call_service', domain: 'media_player', service: 'search_media', target: { entity_id: playerId },
+    service_data: { search_query: query }, return_response: true,
+  });
+  const result = answer.response?.[playerId];
+  return Array.isArray(result?.children) ? result.children : [];
 }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.23.0 — Multimédia enrichi et Trackpad
+
+- MP Nexus v2 présente des repères visuels pour les sources audio/vidéo, les favoris locaux par utilisateur et écran, et les morceaux à suivre. Les raccourcis locaux gardent l’identifiant et le type Home Assistant nécessaires à la lecture, sans inclure les images ou identifiants URL qui contiennent des paramètres d’authentification.
+- Music Assistant utilise l’intégration Home Assistant déjà configurée : recherche officielle dans le lecteur choisi, navigation de sa bibliothèque et bouton HA lié au lecteur pour ajouter le titre courant aux favoris. La file « À suivre » reste limitée au prochain titre, capacité fournie par `get_queue`; aucune réorganisation de file ni suppression de favoris MA n’est annoncée.
+- Un switch « Trackpad » dans Télécommande échange le pavé directionnel avec une surface gestuelle; toucher court = OK, glissement = une direction. Le choix est mémorisé par utilisateur, écran et lecteur, et l’option est inactive si les routes de touches nécessaires ne sont pas exposées.
+- Les commandes multimédias et gestes affichent les erreurs Home Assistant; les commandes sont bloquées pour un invité en lecture seule. Les réponses de recherche/bibliothèque/file devenues obsolètes sont ignorées.
+- Les nouvelles chaînes sont traduites en anglais, russe, allemand et italien. La v1 et les configurations de projet existantes ne changent pas.
+
 ## 0.22.1 — Bande noire avec kiosk-mode
 
 - La bande noire en haut en mode kiosque disparaît aussi quand la carte kiosk-mode (ou un module du même genre) est installée : sa règle gardait la place de la barre de Home Assistant au-dessus de la vue et l’emportait sur celle de MP Nexus.

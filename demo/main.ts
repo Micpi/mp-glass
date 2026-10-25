@@ -261,7 +261,8 @@ if (params.has('v2') && spatial) {
     'timer.cuisine':{entity_id:'timer.cuisine',state:'active',attributes:{friendly_name:'Pâtes · cuisine',finishes_at:new Date(Date.now()+10*60_000).toISOString()}},
     'update.mp_nexus':{entity_id:'update.mp_nexus',state:'on',attributes:{friendly_name:'MP Nexus',installed_version:'0.17.0',latest_version:'0.18.0'}},
   };
-  hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'}};
+  hass.entities={'media_player.salon_tv':{entity_id:'media_player.salon_tv',device_id:'tv',platform:'apple_tv'},'remote.salon_tv':{entity_id:'remote.salon_tv',device_id:'tv',platform:'apple_tv'},'media_player.salon_sonos':{entity_id:'media_player.salon_sonos',device_id:'ma_sonos',platform:'music_assistant'},'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',device_id:'ma_sonos',platform:'music_assistant'}};
+  hass.states={...hass.states,'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',state:'unknown',attributes:{friendly_name:'Salon · Favoriser le titre actuel'}}};
   const item=(title:string,id:string,colors:[string,string],play=true)=>({title,media_content_id:id,media_content_type:play?'music':'directory',can_play:play,can_expand:!play,thumbnail:art(...colors)});
   const library:Record<string,unknown>={
     '':{title:'Bibliothèque',media_content_id:'',media_content_type:'',can_play:false,can_expand:true,children:[item('Favoris','fav',['#65b5ff','#327ccd'],false),item('Radios','radio',['#ffe481','#ff9f40'],false),item('Golden Hour','p1',['#ff9fb6','#c14d7a']),item('Slow Tide','p2',['#7be0c4','#2c7f8f']),item('Paper Lights','p3',['#b9a4ff','#5a3fb0']),item('Riviera','p4',['#ffd38a','#d9734a'])]},
@@ -300,10 +301,12 @@ if (params.has('v2') && spatial) {
   hass.fetchWithAuth=async(path:string,init?:RequestInit)=>path==='/api/mp_glass/guests/probe'?new Response('{"local":true,"secure":false}',{status:200}):fetchDemo!(path,init);
   const callWS=hass.callWS;
   hass.callWS=async<T>(message:Record<string,unknown>)=>String(message.type).startsWith('mp_glass/guests/')?guestWS(message) as T:message.type==='media_player/browse_media'?library[String(message.media_content_id??'')] as T
+    :message.type==='call_service'&&message.domain==='media_player'&&message.service==='search_media'?{response:{'media_player.salon_sonos':{title:'Résultats',media_content_id:'search',media_content_type:'music',can_play:false,can_expand:true,children:[item('Moon Song','search-moon',['#a476d8','#345d9b'])]}}} as T
+    :message.type==='call_service'&&message.domain==='music_assistant'&&message.service==='get_queue'?{response:{'media_player.salon_sonos':{next_item:{name:'Moon Song',media_item:{name:'Moon Song',artists:[{name:'Lumen Drift'}],image:art('#a476d8','#345d9b')}}}}} as T
     :message.type==='logbook/get_events'?[{when:Date.now()/1000-3600,entity_id:'light.circuit_0',state:'on'},{when:Date.now()/1000-1800,entity_id:'cover.salon',state:'open'},{when:Date.now()/1000-600,entity_id:'binary_sensor.chambre_fenetre',state:'on'}] as T
     :message.type==='mp_glass/project/get'?{revision:1,project} as T
     :message.type==='conversation/process'?{response:{response_type:'action_done',speech:{plain:{speech:`Il fait 21,5 °C au salon et 26,8 °C dans la cuisine.`}}}} as T:callWS<T>(message);
-  for(const entityId of ['media_player.salon_sonos','media_player.terrasse'])selectedView.mp_media=[...(selectedView.mp_media??[]),entityId];
+  for(const entityId of ['media_player.salon_sonos','media_player.terrasse','media_player.salon_tv'])selectedView.mp_media=[...(selectedView.mp_media??[]),entityId];
   const salon=(selectedView.mp_spatial as {floors?:{rooms:{entityIds?:string[];media?:{entityId?:string}[]}[]}[]}|undefined)?.floors?.flatMap(f=>f.rooms).find(r=>r.media?.some(m=>m.entityId==='media_player.salon_tv'));
   if(salon)salon.entityIds=[...(salon.entityIds??[]),'media_player.salon_sonos'];
 }

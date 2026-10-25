@@ -327,4 +327,41 @@ export const nexusStyles = css`
   :host([motion]) .tl,:host([motion]) .rm,:host([motion]) .btn{transition:background .18s,border-color .18s,transform .18s}
   :host([motion]) .tl:active,:host([motion]) .rm:active{transform:scale(.97)}
   @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+  /* Music: the household engine, the services grid and their sign-in */
+  .music-hero{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;padding:22px 16px;margin:6px 0 12px;border-radius:24px}
+  .music-hero .serif{font-size:24px;line-height:1.15}.music-hero p{font-size:13px;line-height:1.5;margin:0;max-width:340px}
+  .btn.big{width:100%;min-height:50px;font-size:15px;border-radius:16px}
+  .music-setup,.music-flow{display:flex;flex-direction:column;gap:10px;padding:14px;margin:6px 0 12px;border-radius:20px}
+  .music-setup p,.music-flow p{margin:0;font-size:12px;line-height:1.5}
+  .stp{display:flex;align-items:center;gap:11px;padding:10px;border-radius:14px;background:rgba(5,23,39,.38);border:1px solid rgba(213,234,255,.1)}
+  .stp .o{width:24px;height:24px;flex:0 0 auto;border-radius:50%;display:grid;place-items:center;border:1.5px solid rgba(213,234,255,.35)}
+  .stp.ok .o{background:#3ccf7d;border-color:#3ccf7d;color:#062312}.stp.run .o{border-color:var(--accent);border-top-color:transparent;animation:mpspin 1s linear infinite}
+  .stp b,.stp small{display:block}.stp b{font-size:13px}.stp small{font-size:11px;color:var(--t2)}
+  .bar.busy{overflow:hidden}.bar.busy i{width:35%;animation:mpslide 1.4s ease-in-out infinite}
+  @keyframes mpspin{to{transform:rotate(360deg)}}@keyframes mpslide{0%{left:-35%}100%{left:100%}}
+  .svc-logo{width:var(--size);height:var(--size);flex:0 0 auto;border-radius:calc(var(--size) * .3);display:grid;place-items:center;font-weight:900;font-size:calc(var(--size) * .42);color:#fff;background:#2b3b52;box-shadow:0 6px 16px rgba(0,0,0,.28)}
+  .svc-logo img{width:58%;height:58%;filter:invert(1)}
+  .svc-logo.spotify{background:#1ed760}.svc-logo.spotify img{filter:none}.svc-logo.deezer{background:linear-gradient(135deg,#a238ff,#ef5466)}.svc-logo.apple{background:linear-gradient(135deg,#fb5c74,#fa233b)}
+  .svc-logo.tidal{background:#000;border:1px solid #444}.svc-logo.youtube{background:#ff0033}.svc-logo.qobuz{background:#0070ef}.svc-logo.soundcloud{background:#ff5500}.svc-logo.plex{background:#e5a00d}.svc-logo.plex img{filter:none}
+  .svc-logo.radio{background:linear-gradient(135deg,#ffc540,#ff8a3d);color:#2a1600}
+  .svc-hint{font-size:12px;margin:0 0 2px}
+  .svc-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:9px;margin-bottom:12px}
+  .svc-grid button{position:relative;display:flex;flex-direction:column;align-items:center;gap:7px;padding:14px 4px 10px;border-radius:18px;border:1px solid rgba(213,234,255,.12);background:rgba(5,23,39,.42);color:#dbe8f5;font-size:11px;font-weight:600}
+  .svc-grid button:hover{background:rgba(20,52,82,.55)}.svc-grid button.on{border-color:color-mix(in srgb,#55d995 45%,var(--line))}
+  .svc-badge{position:absolute;top:5px;right:5px;font-style:normal;font-size:9px;font-weight:700;padding:1px 6px;border-radius:9px;background:rgba(116,231,160,.16);color:#8ff0b4;border:1px solid rgba(116,231,160,.35)}
+  .svc-badge.key{background:rgba(255,212,92,.14);color:#ffd45c;border-color:rgba(255,212,92,.4)}.svc-badge.login{background:rgba(134,199,255,.14);color:#a9d4ff;border-color:rgba(134,199,255,.35)}.svc-badge.free{background:rgba(255,197,64,.16);color:#ffd45c;border-color:rgba(255,197,64,.4)}
+  .svc-rows{display:flex;flex-direction:column;gap:8px;margin:4px 0 12px}
+  .svc-row{display:flex;align-items:center;gap:11px;padding:9px 10px;border-radius:16px;border:1px solid rgba(213,234,255,.1);background:rgba(5,23,39,.38)}
+  .svc-row span:not(.svc-logo){min-width:0;flex:1}.svc-row b,.svc-row small{display:block}.svc-row b{font-size:13px}.svc-row small{font-size:11px;color:#8ff0b4}
+  .svc-row.lost{border-color:rgba(255,212,92,.45)}.svc-row.lost small{color:#ffd45c}
+  .music-target{display:flex;align-items:center;gap:6px;font-size:12px;margin:0 0 8px}
+  .flow-head{display:flex;align-items:center;gap:10px}.flow-head b{font-size:16px;flex:1}
+  .flow-form{display:flex;flex-direction:column;gap:10px}
+  .flow-text{white-space:pre-line}
+  .flow-field{display:flex;flex-direction:column;gap:5px;font-size:12px}.flow-field>span{font-weight:700}.flow-field small{color:var(--t2);font-weight:400}.flow-field small.err{color:#ffb4b4}.flow-field a{color:var(--accent);font-size:11px}
+  .flow-field input,.flow-field select{min-height:42px;padding:0 12px;border-radius:12px;border:1px solid rgba(134,199,255,.35);background:rgba(5,23,39,.55);color:#fff;font:inherit;font-size:14px}
+  .flow-check{display:flex;gap:10px;align-items:flex-start;font-size:12px}.flow-check input{margin-top:2px;width:18px;height:18px;accent-color:var(--accent)}.flow-check b,.flow-check small{display:block}.flow-check small{color:var(--t2)}
+  .flow-guide{margin:0;padding-left:20px;font-size:12px;line-height:1.55;color:#dbe8f5}
+  .flow-qr{width:180px;max-width:100%;align-self:center;border-radius:12px;background:#fff;padding:6px}
+  .flow-done{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center;padding:10px 0;color:#8ff0b4}.flow-done .serif{font-size:22px;color:#fff}
 `;

@@ -1,22 +1,34 @@
-# Music Assistant dans MP Nexus
+# Musique dans MP Nexus
 
-MP Nexus utilise directement l'intégration officielle Music Assistant de Home Assistant. Il n'y a ni adresse de serveur ni jeton à saisir dans MP Nexus.
+MP Nexus s'appuie sur Music Assistant, mais l'utilisateur n'a jamais à le configurer : tout se fait depuis **Multimédia → Pour vous**.
 
-## Fonctions
+## Activer la musique (administrateur, une seule fois)
 
-- albums, artistes, morceaux, playlists, radios et podcasts de la bibliothèque ;
-- recherche dans la bibliothèque et les fournisseurs connectés ;
-- vraies pochettes servies par un proxy authentifié MP Nexus ;
-- lecture immédiate, ajout en suivant ou en fin de file ;
-- file complète, choix d'un morceau, suppression et vidage ;
-- commandes de lecture et groupes multiroom via les entités Music Assistant de Home Assistant.
+1. Toucher **Activer la musique**.
+2. MP Nexus ajoute si besoin le dépôt Music Assistant au Superviseur, installe l'application, la démarre et confirme la découverte de l'intégration Home Assistant. Compter environ une minute ; l'écran peut être quitté.
+3. Les enceintes Sonos, Google Cast, AirPlay et DLNA sont trouvées automatiquement.
 
-## Configuration
+Sur une installation sans Superviseur (Docker, Core), installer Music Assistant à part et ajouter son intégration : MP Nexus la reprend automatiquement.
 
-1. Installer et configurer Music Assistant ainsi que son intégration officielle dans Home Assistant.
-2. Dans Home Assistant, ouvrir **Paramètres → Appareils et services**. Music Assistant est normalement proposé dans les découvertes : toucher **Configurer**. Sinon, choisir **Ajouter une intégration**, rechercher Music Assistant et indiquer l'adresse locale du serveur.
-3. Ouvrir MP Nexus : les lecteurs et la bibliothèque apparaissent automatiquement dans **Multimédia**.
+## Connecter un service
+
+Toucher le service dans la grille :
+
+| Service | Connexion |
+| --- | --- |
+| Spotify (Premium), Apple Music, Tidal, Plex | page de connexion officielle, ouverte par un bouton |
+| Qobuz, SoundCloud | identifiants dans un formulaire MP Nexus |
+| Deezer, YouTube Music | clé à copier depuis le site, guide affiché |
+| Radios | aucune |
+
+La page de connexion revient vers Music Assistant sur le réseau local : connecter les services depuis la maison. « Mes services » signale un compte à reconnecter et le relance en une touche.
+
+## Écouter
+
+La recherche et « Ma bibliothèque » (albums, artistes, morceaux, playlists, radios, podcasts) apparaissent dès que la musique est prête : lecture immédiate, à la suite ou en fin de file, vraies pochettes, file complète.
 
 ## Sécurité
 
-MP Nexus ne stocke plus aucun jeton Music Assistant. Les requêtes passent par les actions authentifiées de Home Assistant et les pochettes par une route Home Assistant authentifiée. Un invité MP Nexus en lecture seule peut consulter les médias, mais les commandes sont aussi refusées côté serveur.
+- MP Nexus ne stocke aucune adresse ni aucun jeton Music Assistant. L'installation passe par le Superviseur avec des commandes réservées aux administrateurs.
+- La connexion des services utilise, comme le panneau officiel de Music Assistant, une session d'ingress Home Assistant : Music Assistant reconnaît l'administrateur Home Assistant. Les mots de passe des services ne transitent pas par MP Nexus pour les connexions par page officielle.
+- Les invités MP Nexus en lecture seule peuvent consulter les médias ; les commandes leur sont refusées côté serveur.

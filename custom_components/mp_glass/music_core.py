@@ -2,6 +2,9 @@
 from hashlib import sha256
 from urllib.parse import quote
 
+ADDON_SLUG = "d5369777_music_assistant"
+ADDON_REPOSITORY = "https://github.com/music-assistant/home-assistant-addon"
+
 LIBRARY_COMMANDS = {
     "albums": "music/albums/library_items",
     "artists": "music/artists/library_items",
@@ -92,3 +95,20 @@ def normalize_item(base_url, item, artwork):
         "can_play": True,
         "can_expand": False,
     }
+
+
+def engine_phase(supervisor, addon, linked, running, error):
+    """Where the household music engine stands, as the setup screen tells it.
+
+    ready: linked to Home Assistant; preparing: MP Nexus is installing or starting it; failed: the last try stopped;
+    unsupported: an installation without apps and without the integration; off: nothing yet, one button away.
+    """
+    if linked:
+        return "ready"
+    if running:
+        return "preparing"
+    if error:
+        return "failed"
+    if not supervisor:
+        return "unsupported"
+    return "off" if not (addon or {}).get("installed") or (addon or {}).get("state") != "started" else "linking"

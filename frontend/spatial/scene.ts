@@ -78,6 +78,7 @@ const SLOP=14;
 const FOV=38,TOP_FOV=5;
 /** A wheel gesture keeps its first target (plan or page) while its events follow each other. */
 const WHEEL_GAP=300;
+const UP=new T.Vector3(0,1,0);
 
 /**
  * Three.js floor renderer. A gesture only drives the camera when it starts on the house (rooms or walls);
@@ -501,6 +502,25 @@ export class SpatialScene {
     if(this.laundryMode&&[...this.laundryParts.values()].some(part=>part.running)&&!this.laundryFrame)this.laundryFrame=requestAnimationFrame(this.spinLaundry);
     if((!this.laundryMode||![...this.laundryParts.values()].some(part=>part.running))&&this.laundryFrame){cancelAnimationFrame(this.laundryFrame);this.laundryFrame=0;this.laundryAt=0;}
   }
+  private spinFrame=0;
+  private spinAt=0;
+  private spinSpeed=0;
+  /** Turns the camera round the house, `degrees` a second, until 0 stops it: the slow turn of a screensaver. */
+  autoSpin(degrees:number){
+    this.spinSpeed=degrees;
+    if(degrees&&!this.spinFrame){this.spinAt=0;this.spinFrame=requestAnimationFrame(this.spinStep);}
+    else if(!degrees&&this.spinFrame){cancelAnimationFrame(this.spinFrame);this.spinFrame=0;}
+  }
+  private spinStep=(time:number)=>{
+    this.spinFrame=0;
+    if(!this.spinSpeed)return;
+    const delta=this.spinAt?Math.min(100,time-this.spinAt):16;this.spinAt=time;
+    if(!this.tween&&!this.pointers.size){
+      const offset=this.camera.position.clone().sub(this.controls.target).applyAxisAngle(UP,this.spinSpeed*Math.PI/180*delta/1000);
+      this.camera.position.copy(this.controls.target).add(offset);this.controls.update();
+    }
+    this.spinFrame=requestAnimationFrame(this.spinStep);
+  };
   setLaundryMode(enabled:boolean){
     if(this.laundryMode===enabled)return false;
     this.laundryMode=enabled;for(const part of this.laundryParts.values())part.root.visible=enabled;this.scheduleLaundry();this.render();return true;
@@ -722,7 +742,7 @@ export class SpatialScene {
     this.project(positions,levels,anchor?{x:(anchor.x+1)*w/2,y:(1-anchor.y)*h/2,visible:anchor.z>=-1&&anchor.z<=1&&Math.abs(anchor.x)<=1&&Math.abs(anchor.y)<=1}:undefined);
   };
   dispose(){
-    this.stopTween();cancelAnimationFrame(this.hover);cancelAnimationFrame(this.laundryFrame);this.observer.disconnect();this.controls.dispose();
+    this.stopTween();cancelAnimationFrame(this.hover);cancelAnimationFrame(this.laundryFrame);cancelAnimationFrame(this.spinFrame);this.spinSpeed=0;this.observer.disconnect();this.controls.dispose();
     const canvas=this.renderer.domElement;
     for(const type of ['pointerdown','pointermove','pointerup','pointercancel'])this.host.removeEventListener(type,this.gate as EventListener,true);
     this.host.removeEventListener('wheel',this.wheelGate,true);

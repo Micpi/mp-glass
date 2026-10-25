@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState, ProjectConfig } from '../shared/models';
 import { defaultProject, parseProject } from '../shared/project';
-import { automationOf, energySummary, projectTemplate, readSaver, routineReady, SAVER_DEFAULTS, timerLeft, writeSaver } from '../frontend/v2/plus';
+import { automationOf, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DEFAULTS, SAVER_TRANSITIONS, slideTransition, timerLeft, writeSaver } from '../frontend/v2/plus';
 
 const s = (entity_id: string, state: string, attributes: Record<string, unknown> = {}): HAState => ({ entity_id, state, attributes });
 const states = (...list: HAState[]) => Object.fromEntries(list.map(x => [x.entity_id, x]));
@@ -60,6 +60,28 @@ describe('MP Nexus v2 Plus', () => {
     expect(readSaver()).toMatchObject({ enabled: true, content: 'clock', widgets: ['clock', 'timer'], delayMinutes: 5 });
     localStorage.setItem('mp-nexus.screensaver', JSON.stringify({ content: 'video', delayMinutes: 7, widgets: ['radar'] }));
     expect(readSaver()).toMatchObject({ content: 'photos', delayMinutes: 2, widgets: [] });
+  });
+
+  it('keeps the slideshow and the turning plan of this screen, and falls back on what it does not know', () => {
+    writeSaver({ ...SAVER_DEFAULTS, photos: 'mine', transition: 'circle', photoSeconds: 60, spin: 'fast', cycleLayers: false, layerSeconds: 30 });
+    expect(readSaver()).toMatchObject({ photos: 'mine', transition: 'circle', photoSeconds: 60, spin: 'fast', cycleLayers: false, layerSeconds: 30 });
+    localStorage.setItem('mp-nexus.screensaver', JSON.stringify({ photos: 'web', transition: 'spiral', photoSeconds: 3, spin: 'wild', layerSeconds: 1 }));
+    expect(readSaver()).toMatchObject({ photos: 'all', transition: 'random', photoSeconds: 15, spin: 'slow', cycleLayers: true, layerSeconds: 20 });
+  });
+
+  it('draws a new transition for each photo, never the same twice in a row', () => {
+    expect(slideTransition('wipe', 7)).toBe('wipe');
+    const drawn = Array.from({ length: 60 }, (_, i) => slideTransition('random', i));
+    for (let i = 1; i < drawn.length; i++) expect(drawn[i]).not.toBe(drawn[i - 1]);
+    expect(new Set(drawn)).toEqual(new Set(SAVER_TRANSITIONS));
+    expect(slideTransition('random', 12)).toBe(drawn[12]);
+  });
+
+  it('moves on one step every period', () => {
+    expect(cycleStep(0, 15)).toBe(0);
+    expect(cycleStep(14_999, 15)).toBe(0);
+    expect(cycleStep(45_000, 15)).toBe(3);
+    expect(cycleStep(-50, 15)).toBe(0);
   });
 
   it('counts down a running timer only', () => {

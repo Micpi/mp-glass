@@ -98,7 +98,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, spin:{type:Number}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:rgba(214,236,255,.14)}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -307,6 +307,8 @@ export class MPSpatialViewer extends LitElement {
   expandable = false;
   /** A small banner of the plan: the house alone, without its floor tabs, controls and hints. */
   quiet = false;
+  /** Degrees a second the camera turns round the house by itself, 0 for none: the screensaver's slow turn. */
+  spin = 0;
   /** The floor shown; '' shows every floor of a house that has several, one above the other. */
   private floor = '';
   /** The house of the domain the plan shows, '' on a single house: each house keeps its own view of all its floors. */
@@ -463,6 +465,7 @@ export class MPSpatialViewer extends LitElement {
       this.draw(!changed.has('walls')&&(changed.has('floor')||this.geometry()!==this.drawnGeometry), changed.get('floor') as string|undefined);
     }
     if(this.scene){this.scene.picking=this.placing?this.picked:undefined;this.scene.equipment=this.equipmentPicked;}
+    this.scene?.autoSpin(this.spin);
     if(this.scene&&this.focusAfter&&this.currentFloor){ this.scene.focus(this.focusAfter); this.focusAfter=''; }
     if(this.scene&&this.currentFloor){
       const floors=this.shownFloors,mode=this.planMode(floors),states=this.hass?.states??{};

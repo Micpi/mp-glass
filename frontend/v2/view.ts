@@ -18,6 +18,8 @@ import '../detail';
 import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController, locale, tr, trPlan, type Language } from '../i18n';
 import { flag } from '../flags';
 import { nexusStyles } from './styles';
+import './scene-editor';
+import { sceneIcon } from './scenes';
 import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
@@ -104,7 +106,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -186,6 +188,7 @@ export class MPNexusView extends LitElement {
   private protectedImages = new Map<string, string>();
   private protectedImageRequests = new Map<string, Promise<string | undefined>>();
   private sub?: SubPanel;
+  private scenesOpen = false;
   private prefs: NexusPrefs = readPrefs();
   private overlay: ''|'search'|'alerts'|'invite' = '';
   private query = '';
@@ -681,11 +684,11 @@ export class MPNexusView extends LitElement {
     </div>`;
   }
   private scenes() {
-    const scenes = Object.values(this.hass?.states ?? {}).filter(s => s.entity_id.startsWith('scene.') && available(s));
-    if (!scenes.length) return nothing;
-    const last = scenes.reduce((a, b) => Date.parse(b.state) > Date.parse(a.state) ? b : a);
-    return html`<div class="sec"><b>${tr('Scènes')}</b>${this.hass?.user?.is_admin ? html`<a href="/config/scene/dashboard">${tr('Modifier')}</a>` : nothing}</div>
-      <div class="houses">${scenes.map(s => html`<button class=${`btn ${s === last && Number.isFinite(Date.parse(s.state)) ? 'gold' : ''}`} @click=${() => this.call('scene', 'turn_on', { entity_id: s.entity_id })}>${mpIcon('sparkle', 16)}${String(s.attributes.friendly_name ?? s.entity_id)}</button>`)}</div>`;
+    const scenes = Object.values(this.hass?.states ?? {}).filter(s => s.entity_id.startsWith('scene.') && s.state !== 'unavailable');
+    const sources = new Set(scenes.map(s => s.attributes.mp_nexus_source).filter(Boolean));
+    return html`<div class="sec"><b>${tr('Scènes')}</b><button @click=${() => { this.scenesOpen = true; }}>${tr('Gérer les scènes')}</button></div>
+      <div class="houses">${scenes.filter(s => !sources.has(s.entity_id)).map(s => html`<button class="btn" @click=${() => this.call('scene', 'turn_on', { entity_id: s.entity_id })}>${mpIcon(sceneIcon(s), 16)}${String(s.attributes.friendly_name ?? s.entity_id)}</button>`)}</div>
+      ${!scenes.length ? html`<p class="muted">${tr('Une scène règle plusieurs appareils d’un seul toucher : cinéma, réveil, départ ou soirée.')}</p>` : nothing}`;
   }
   private homeMain() {
     return html`<section class="main panel card glass">
@@ -1995,6 +1998,7 @@ export class MPNexusView extends LitElement {
           ${open('history', 'scan', tr('Historique'), tr('Dernières 24 heures'))}
         </div>
         ${this.housePanels()}
+        <div class="sg"><button class="rw" @click=${() => { this.scenesOpen = true; }}><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Scènes')}</b><small>${tr('Créer, modifier et personnaliser vos ambiances')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button></div>
         ${this.screenPrefs()}
         <div class="sg">
           ${open('appearance', 'palette', tr('Apparence'), this.lookSummary())}
@@ -2081,6 +2085,7 @@ export class MPNexusView extends LitElement {
       ${!big && placed && !this.full && (this.kind === 'home' || this.kind === 'rooms') ? html`<div class="scrim" @click=${() => { this.room = ''; }}></div><section class="sheet panel">${this.roomCard(placed, 'sheet')}</section>` : nothing}
       ${this.full && this.plan ? this.fullPlan(background) : nothing}
       ${this.overlay ? this.overlayPanel() : nothing}
+      ${this.scenesOpen && this.hass ? html`<mp-nexus-scenes .hass=${this.hass} @mp-scenes-close=${() => { this.scenesOpen = false; }}></mp-nexus-scenes>` : nothing}
       ${this.saving ? this.screensaver(background) : nothing}
       ${this.detail && this.hass ? html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>` : nothing}`;
   }

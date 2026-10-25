@@ -14,6 +14,7 @@ import type { MPNexusView } from '../frontend/v2/view';
 import { officeDemoPlan, officeShadeFixtures, yachtDemoPlan } from './scenarios';
 import officeBackground from './assets/backgrounds/office.webp';
 import yachtBackground from './assets/backgrounds/yacht.webp';
+import { installScenesDemo } from './scenes';
 const snapshot = home();
 // The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
 const suspension = snapshot.states['light.circuit_0']!;
@@ -352,4 +353,5 @@ if(spatial&&params.has('studio')){
   view.cards=cards;
   view.hass=hass;
 }
-Object.assign(window,{demo:{hass,cards,calls,history:historyCalls}});
+const sceneRequests = params.has('v2') ? installScenesDemo(hass, () => { view.hass = { ...hass }; for (const card of cards) card.hass = { ...hass }; }, params.has('scenes'), params.has('readonly')) : [];
+Object.assign(window,{demo:{hass,cards,calls,history:historyCalls,sceneRequests}});

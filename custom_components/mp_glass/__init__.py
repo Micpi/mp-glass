@@ -6,6 +6,7 @@ from jsonschema.exceptions import ValidationError
 
 from homeassistant.components import websocket_api
 from homeassistant.core import callback
+from homeassistant.const import Platform
 from homeassistant.helpers.storage import Store
 
 from .const import DOMAIN, VERSION
@@ -18,6 +19,7 @@ from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdr
 from .music import COMMANDS as MUSIC_COMMANDS, KEY as MUSIC_KEY, MusicArtworkView, MusicAssistantRuntime
 from .music_engine import COMMANDS as ENGINE_COMMANDS
 from .wallpaper import COMMANDS as WALLPAPER_COMMANDS, VIEWS as WALLPAPER_VIEWS, wallpaper_folder
+from .scenes import KEY as SCENES_KEY, async_setup_scenes
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -60,6 +62,8 @@ async def async_setup_entry(hass, entry):
             hass.http.register_view(view())
         hass.data["mp_glass_ws_registered"] = True
     await async_setup_guests(hass)
+    await async_setup_scenes(hass)
+    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SCENE])
     async_setup_kiosk(hass)
     await async_register_studio(hass, entry.options.get("show_settings", True))
     entry.async_on_unload(entry.add_update_listener(async_reload))
@@ -71,6 +75,9 @@ async def async_reload(hass, entry):
 
 
 async def async_unload_entry(hass, entry):
+    if not await hass.config_entries.async_unload_platforms(entry, [Platform.SCENE]):
+        return False
+    hass.data.pop(SCENES_KEY, None)
     runtime = hass.data.pop(SPATIAL_KEY, None)
     if runtime:
         await runtime.close()

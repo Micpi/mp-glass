@@ -28,6 +28,20 @@ Voir [INSTALL](docs/INSTALL.md) et [QUICKSTART](docs/QUICKSTART.md). Minimum cib
 
 Après installation et redémarrage HA : ajouter l'intégration MP Nexus, ouvrir MP Nexus Studio (qui crée le dashboard MP Nexus), analyser, enregistrer. Le module est fourni avec l'intégration. Aucun YAML chantier n'est nécessaire pour ce parcours.
 
+## Créer et modifier ses scènes
+
+Dans MP Nexus v2, ouvrez **Accueil → Gérer les scènes** ou **Plus → Scènes**, puis **Créer une scène** :
+
+1. Donnez-lui un nom et choisissez l’icône de son bouton. L’aperçu montre le résultat sur l’accueil.
+2. Sélectionnez les appareils, avec la recherche ou le filtre par pièce. Leurs états actuels servent de point de départ.
+3. Réglez l’ambiance souhaitée, puis enregistrez. Le brouillon ne commande aucun appareil.
+
+**Essayer** commande réellement les appareils après confirmation. **Revenir aux réglages d’avant** permet d’annuler l’essai ; abandonner un brouillon essayé restaure aussi ces réglages. Les scènes enregistrées sont partagées entre les écrans et retrouvées après redémarrage. Le menu permet de les modifier, les dupliquer ou les supprimer.
+
+Pour une scène fournie par un autre système, **Personnaliser** crée un bouton MP Nexus lié à son fonctionnement d’origine. Vous pouvez aussi choisir **Définir mes propres réglages** pour construire une ambiance indépendante. La scène d’origine est conservée. Les membres autorisés à commander les appareils peuvent utiliser l’éditeur sans droits d’administrateur ; les comptes en lecture seule ne peuvent pas le modifier.
+
+Après la mise à jour HACS vers 0.29.0, redémarrez Home Assistant puis rechargez le dashboard pour charger le nouveau moteur de scènes.
+
 ## Développement
 
 ```sh

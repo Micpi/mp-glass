@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.22.1 — Bande noire avec kiosk-mode
+
+- La bande noire en haut en mode kiosque disparaît aussi quand la carte kiosk-mode (ou un module du même genre) est installée : sa règle gardait la place de la barre de Home Assistant au-dessus de la vue et l’emportait sur celle de MP Nexus.
+
 ## 0.22.0 — Plan 3D : pincer partout, Orbite et Main
 
 - Le zoom en pinçant fonctionne n’importe où dans la fenêtre du plan 3D, même à côté de la maison. Sur ordinateur, le pincement du pavé tactile zoome lui aussi partout dans la fenêtre. Tourner ou déplacer la maison demande toujours de la toucher.

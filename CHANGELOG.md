@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.26.1 — Bibliothèque et services Music Assistant fiables
+
+- La bibliothèque et la recherche passent maintenant l'identifiant de l'entrée Music Assistant chargée, exigé par les actions officielles `get_library` et `search`. Sans lui, « Ma bibliothèque » restait vide et la recherche échouait (« Music Assistant is unavailable »), en particulier quand une ancienne entrée non chargée subsiste.
+- « Mes services » réessaie automatiquement la connexion au moteur (jusqu'à trois fois, sur une nouvelle connexion) au lieu d'afficher « Les services de musique ne répondent pas » au premier aléa d'ouverture de la session.
+- Les sources ajoutées d'office par Music Assistant (Ambient Sounds) n'apparaissent plus comme un service connecté.
+
 ## 0.26.0 — Connecter son service musical en quelques touches
 
 - Multimédia → Pour vous propose désormais un bouton « Activer la musique » aux administrateurs. MP Nexus installe l'application Music Assistant par le Superviseur (en ajoutant son dépôt si besoin), la démarre, puis confirme lui-même la découverte de l'intégration Home Assistant. L'écran suit chaque étape et peut être quitté ; les enceintes Sonos, Google Cast, AirPlay et DLNA sont trouvées par le moteur lui-même.

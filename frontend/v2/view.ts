@@ -954,8 +954,12 @@ export class MPNexusView extends LitElement {
     const session = this.musicSession();
     if (!session) return;
     if (!this.musicSources || this.musicSources === 'error') this.musicSources = 'loading';
-    try { const [providers, manifests] = await Promise.all([session.providers(), session.manifests()]); this.musicSources = { providers, manifests }; }
-    catch { this.musicSources = 'error'; }
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try { const [providers, manifests] = await Promise.all([session.providers(), session.manifests()]); this.musicSources = { providers, manifests }; return; }
+      // The first connection can race the ingress session cookie: start over on a fresh socket.
+      catch { session.close(); await new Promise(resolve => setTimeout(resolve, 1500 * (attempt + 1))); }
+    }
+    this.musicSources = 'error';
   }
   private async startMusicEngine() {
     const hass = this.hass;

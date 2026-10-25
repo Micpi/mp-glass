@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.21.1 — Mode kiosque sans bande noire
+
+- La bande noire en haut du tableau de bord disparaît : en mode kiosque, la place que Home Assistant gardait pour sa barre (cachée) est rendue à MP Nexus, qui remplit maintenant tout l’écran.
+
 ## 0.21.0 — Mode kiosque
 
 - MP Nexus s’affiche toujours en plein écran, v1 comme v2 : plus de barre ni de menu latéral de Home Assistant sur le tableau de bord, y compris ses boutons (recherche, Assist, modifier). Le mode kiosque de Home Assistant est utilisé, avec un repli pour les versions qui ne le connaissent pas.

@@ -47,6 +47,8 @@ test('on an MP Nexus subview the whole Home Assistant bar is hidden, in kiosk mo
   await subview(page);
   expect(await bar(page)).toEqual({bar:'hidden',arrow:'hidden',title:'hidden',actions:'hidden',shadow:'none'});
   expect(await page.evaluate(()=>(window as unknown as {kiosk:boolean[]}).kiosk.at(-1))).toBe(true);
+  // Nor the room it kept above the view, which showed as a black band.
+  expect(await page.evaluate(()=>getComputedStyle(document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view-container')!).paddingTop)).toBe('0px');
   await page.evaluate(()=>document.querySelector('hui-root')!.toggleAttribute('scrolled',true));
   expect((await bar(page)).shadow).toBe('none');
   // Away from MP Nexus, Home Assistant's interface comes back.
@@ -61,6 +63,7 @@ test('an administrator who left the kiosk keeps the actions of the bar',async({p
   expect(await bar(page)).toEqual({bar:'hidden',arrow:'hidden',title:'hidden',actions:'visible',shadow:'none'});
   // The hidden title keeps its place: the actions stay on the right.
   expect(actions).toBeGreaterThan(page.viewportSize()!.width-40);
+  expect(await page.evaluate(()=>getComputedStyle(document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view-container')!).paddingTop)).toBe('56px');
 });
 
 test('no band even when a theme paints the bar, its toolbar and a pseudo-element with !important',async({page})=>{

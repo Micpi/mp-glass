@@ -13,7 +13,8 @@
 const ATTRIBUTE = 'mp-glass';
 const BAR = `:host([${ATTRIBUTE}]) div:not(.edit-mode)>.header`;
 const KIOSK = 'mp-glass-kiosk';
-const STYLE = `${BAR}{visibility:hidden!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}:host([${ATTRIBUTE}]:not([${KIOSK}])) div:not(.edit-mode)>.header :is(.action-items,ha-menu-button){visibility:visible}`;
+// In kiosk mode the room the bar keeps above the view goes too: left empty, it showed as a black band.
+const STYLE = `:host([${KIOSK}]) div:not(.edit-mode)>hui-view-container{padding-top:var(--safe-area-inset-top,0px)!important}${BAR}{visibility:hidden!important;box-shadow:none!important;-webkit-backdrop-filter:none!important;backdrop-filter:none!important}:host([${ATTRIBUTE}]:not([${KIOSK}])) div:not(.edit-mode)>.header :is(.action-items,ha-menu-button){visibility:visible}`;
 /** For a frontend that ignores the kiosk event: the sidebar and the room it keeps go all the same. */
 const MAIN_STYLE = `:host([${KIOSK}]){--ha-sidebar-width:0px!important;--ha-top-app-bar-width:100%!important;--mdc-drawer-width:0px!important}:host([${KIOSK}]) ha-sidebar{display:none!important}`;
 const LEFT = 'mp-glass.kiosk';
@@ -62,6 +63,8 @@ function kiosk(enable: boolean, host?: Element) {
   }
   shell?.toggleAttribute(KIOSK, enable);
   host?.toggleAttribute(KIOSK, enable);
+  // The views measure the room left to them on resize.
+  window.dispatchEvent(new Event('resize'));
 }
 /** Leaves the kiosk in this tab, or comes back to it. Administrators only: the others are kept in it. */
 export function leaveKiosk(left: boolean) {

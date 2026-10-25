@@ -1,11 +1,11 @@
 {
   "domain": "mp_glass",
   "name": "MP Nexus",
-  "codeowners": [
-    "@Micpi"
-  ],
   "after_dependencies": [
     "lovelace"
+  ],
+  "codeowners": [
+    "@Micpi"
   ],
   "config_flow": true,
   "dependencies": [

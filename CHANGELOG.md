@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.23.2 — Music Assistant détecté et fond iPhone étendu
+
+- L’intégration Music Assistant est maintenant reconnue sous son véritable domaine Home Assistant `mass` (avec compatibilité pour l’ancien alias). Ses lecteurs sont accessibles même s’ils ne figurent pas parmi les équipements visibles du dashboard. La recherche, le bouton Favoris, la file « À suivre » et le lien de configuration utilisent le bon domaine.
+- « Pour vous » permet de choisir directement le lecteur musical. La pochette du titre en lecture y apparaît lorsqu’elle est fournie. Quand un dossier ne fournit aucune miniature, l’écran l’indique et invite à ouvrir un album ou à choisir Music Assistant ; les pochettes des éléments parcourus restent celles fournies par l’intégration.
+- Sur iPhone, MP Nexus ne conserve plus le padding haut de la vue Home Assistant en mode kiosque et utilise la hauteur complète du WebView lorsque `visualViewport` retire seulement la zone de l’indicateur d’accueil. Les commandes conservent l’espace nécessaire autour des zones de sécurité ; une ouverture du clavier garde la hauteur visible.
+
 ## 0.23.1 — Vraies pochettes et logos, gestes isolés, affichage iPhone
 
 - Les sources reconnues affichent désormais treize véritables logos SVG fournis avec MP Nexus (Spotify, Radio France, YouTube, YouTube Music, Netflix, Plex, Apple Music, Apple TV, Tidal, Deezer, Sonos, SoundCloud et AirPlay). La provenance et les conditions de distribution sont indiquées dans `docs/media-assets.md`; les sources inconnues gardent un repli lisible.

@@ -21,7 +21,7 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, displayMediaImage, elapsed, groupOf, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
+import { browse, clockTime, displayMediaImage, elapsed, groupOf, isMusicAssistant, musicAssistantFavoriteButton, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type NexusFavorite, type RemoteKey } from './media';
 import { serviceBrand } from './brands';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
@@ -267,7 +267,12 @@ export class MPNexusView extends LitElement {
   private measure = () => {
     const viewport = window.visualViewport;
     const top = Math.max(0, this.getBoundingClientRect().top - (viewport?.offsetTop ?? 0));
-    const height = Math.max(1, Math.floor((viewport?.height ?? innerHeight) - top));
+    // WKWebView can report a visual viewport shortened by the home-indicator inset.
+    // Only follow that shorter height when a keyboard or another large obstruction is open.
+    const visible = viewport?.height ?? innerHeight;
+    const screen = Math.max(innerHeight, document.documentElement.clientHeight);
+    const viewportHeight = screen - visible > 100 ? visible : Math.max(visible, screen);
+    const height = Math.max(1, Math.floor(viewportHeight - top));
     const width = this.clientWidth || viewport?.width || innerWidth;
     this.style.setProperty('--mp-app-height', `${height}px`);
     const layout: Layout = width < 700 || (height < 520 && width < 1000) ? 'phone' : width >= 1200 ? 'desk' : height > width ? 'portrait' : 'rail';
@@ -767,7 +772,12 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— Multimédia ———
-  private get players() { return this.media.filter(id => this.state(id)); }
+  private get players() {
+    const musicAssistant = Object.entries(this.hass?.entities ?? {})
+      .filter(([id, entity]) => id.startsWith('media_player.') && isMusicAssistant(entity.platform) && this.state(id))
+      .map(([id]) => id);
+    return [...new Set([...this.media, ...musicAssistant])].filter(id => this.state(id));
+  }
   private get currentPlayer() {
     const players = this.players, states = this.hass?.states ?? {};
     return players.find(id => id === this.player) ?? players.find(id => mediaPlaying(states[id])) ?? players.find(id => mediaOn(states[id])) ?? players[0];
@@ -827,7 +837,7 @@ export class MPNexusView extends LitElement {
       <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''}`}>${this.mediaImage(state?.attributes.entity_picture, true)}</div>
       <div class="track"><div class="serif">${title}</div><div class="muted">${artist || stateLabel(id, state)}</div></div>
       ${sourceName ? html`<div class="playing-source">${this.mediaSourceBadge(sourceName)}<span>${sourceName}</span></div>` : nothing}
-      ${this.hass?.entities?.[id]?.platform === 'music_assistant' && favoriteButton ? html`<button class="btn favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('sparkle', 15)}${tr('Favoris Music Assistant')}</button>` : nothing}
+      ${isMusicAssistant(this.hass?.entities?.[id]?.platform) && favoriteButton ? html`<button class="btn favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('sparkle', 15)}${tr('Favoris Music Assistant')}</button>` : nothing}
       ${title && safeContentId ? html`<button class="btn favorite-current" aria-pressed=${saved} @click=${() => this.favoriteItem(favorite)}>${mpIcon(saved ? 'check' : 'plus', 15)}${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')}</button>` : nothing}
       ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role=${canMedia(state, 'seek') ? 'slider' : 'progressbar'} tabindex=${canMedia(state, 'seek') ? 0 : -1} aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" aria-valuetext=${`${clockTime(at!)} / ${clockTime(duration!)}`} @click=${seek} @keydown=${(e: KeyboardEvent) => { if (!canMedia(state, 'seek') || duration === undefined) return; const delta = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 5 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -5 : 0; if (delta || e.key === 'Home' || e.key === 'End') { e.preventDefault(); media('media_seek', { seek_position: e.key === 'Home' ? 0 : e.key === 'End' ? duration : Math.max(0, Math.min(duration, (at ?? 0) + delta)) }); } }}><i style=${`width:${progress}%`}></i></div>
         <div class="times"><span>${clockTime(at!)}</span><span>${clockTime(duration!)}</span></div></div>`}
@@ -844,23 +854,28 @@ export class MPNexusView extends LitElement {
         <span class="muted" style="font-size:12px;min-width:38px;text-align:right">${Math.round(volume)} %</span></div>` : nothing}
       ${soundModes.length && canMedia(state, 'select_sound_mode') ? html`<label class="vol">${mpIcon('sliders', 18)}<select aria-label=${tr('Mode sonore')} @change=${(e: Event) => media('select_sound_mode', { sound_mode: (e.target as HTMLSelectElement).value })}>${soundModes.map(m => html`<option .selected=${m === state?.attributes.sound_mode} value=${m}>${m}</option>`)}</select><span></span></label>` : nothing}
       ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art">${this.mediaImage(this.queue.next.image)}</span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
-      ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
+      ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = p; this.requestUpdate(); }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
   private mediaAssistantSetup() {
-    const ready = this.players.some(player => this.hass?.entities?.[player]?.platform === 'music_assistant');
-    return !ready && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Music Assistant')}</b><p class="muted">${tr('Connectez Music Assistant dans Home Assistant pour parcourir ses lecteurs, sa bibliothèque et ses favoris.')}</p><a class="btn" href="/config/integrations/integration/music_assistant">${tr('Configurer dans Home Assistant')}</a></div>` : nothing;
+    const ready = this.players.some(player => isMusicAssistant(this.hass?.entities?.[player]?.platform));
+    return !ready && this.hass?.user?.is_admin ? html`<div class="media-assistant"><b>${tr('Music Assistant')}</b><p class="muted">${tr('Connectez Music Assistant dans Home Assistant pour parcourir ses lecteurs, sa bibliothèque et ses favoris.')}</p><a class="btn" href="/config/integrations/integration/mass">${tr('Configurer dans Home Assistant')}</a></div>` : nothing;
   }
   /** Sources and apps to start in one touch, then the library the player offers to browse. */
   private forYou(id: string) {
     const state = this.state(id), tv = mediaIsTv(state);
+    const otherPlayers = this.players.filter(player => player !== id);
+    const currentArtwork = state?.attributes.entity_picture;
+    const currentTitle = nowPlaying(state);
     const sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
     const browsing = this.browsing, level = browsing?.player === id ? browsing.stack[browsing.stack.length - 1] : undefined;
     const playItem = (item: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) => void this.mediaCall('play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
     const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
     return html`
       ${this.mediaAssistantSetup()}
-      ${this.hass?.entities?.[id]?.platform === 'music_assistant' ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
+      ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${isMusicAssistant(this.hass?.entities?.[player]?.platform) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
+      ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
+      ${isMusicAssistant(this.hass?.entities?.[id]?.platform) ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
         <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label><input id="mp-ma-search" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
         <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
       </form>` : nothing}
@@ -875,7 +890,7 @@ export class MPNexusView extends LitElement {
       ${canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
         ${browsing?.player === id && browsing.state === 'loading' ? html`<p class="empty">${tr('Chargement…')}</p>`
           : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
-            : level?.children?.length ? html`<div class="lib">${level.children.map(item => html`<div class="li">
+            : level?.children?.length ? html`${!level.children.some(item => displayMediaImage(item.thumbnail)) ? html`<p class="media-art-hint">${tr('Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.')}</p>` : nothing}<div class="lib">${level.children.map(item => html`<div class="li">
               <button class="library-open" ?disabled=${!item.can_expand && !item.can_play} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}>
                 <span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
       ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
@@ -901,7 +916,7 @@ export class MPNexusView extends LitElement {
     return html`<div class="sg">${[id, ...this.players.filter(p => p !== id)].map(p => {
       const s = states[p], volume = mediaVolume(s), joined = group.includes(p), self = p === id;
       return html`<div class="spk">
-        <button class="rw" @click=${() => { this.player = p; this.mediaTab = 'play'; mediaTab = 'play'; }}><span class="ib" style=${self ? 'color:var(--accent)' : ''}>${mpIcon(entityIcon(p, s), 16)}</span><div><b>${this.playerLabel(p)}</b><small>${[stateLabel(p, s), mediaOn(s) ? nowPlaying(s) : ''].filter(Boolean).join(' · ')}</small></div>
+        <button class="rw" @click=${() => { this.player = p; this.mediaTab = 'play'; mediaTab = 'play'; this.requestUpdate(); }}><span class="ib" style=${self ? 'color:var(--accent)' : ''}>${mpIcon(entityIcon(p, s), 16)}</span><div><b>${this.playerLabel(p)}</b><small>${[stateLabel(p, s), mediaOn(s) ? nowPlaying(s) : ''].filter(Boolean).join(' · ')}</small></div>
           <span class="end">${self ? html`<span class="pill">${tr('Ce lecteur')}</span>` : nothing}</span></button>
         ${groups && !self && canMedia(s, 'grouping') ? html`<button class="end" role="switch" aria-checked=${joined} aria-label=${tr('Jouer ensemble')} title=${tr('Jouer ensemble')} @click=${() => joined ? this.call('media_player', 'unjoin', { entity_id: p }) : this.call('media_player', 'join', { entity_id: id, group_members: [p] })}><span class=${`tgl ${joined ? '' : 'off'}`}></span></button>` : nothing}
         ${volume !== undefined && canMedia(s, 'volume_set') ? html`<label class="vol mini">${mpIcon('volume', 15)}<input type="range" min="0" max="100" .value=${String(volume)} aria-label=${tr('Volume')} @change=${(e: Event) => this.call('media_player', 'volume_set', { entity_id: p, volume_level: Number((e.target as HTMLInputElement).value) / 100 })}><span class="muted">${volume} %</span></label>` : nothing}
@@ -940,11 +955,11 @@ export class MPNexusView extends LitElement {
   private loadQueue(id: string) {
     const state = this.state(id), key = queueSignature(id, state), now = Date.now();
     if (this.queueKey !== key) { this.queueKey = key; this.queue = undefined; this.queueFetchedAt = 0; this.queueRequest++; this.queueLoading = false; }
-    if (this.hass?.entities?.[id]?.platform !== 'music_assistant' || !mediaOn(state)) { this.queue = undefined; return; }
+    if (!isMusicAssistant(this.hass?.entities?.[id]?.platform) || !mediaOn(state)) { this.queue = undefined; return; }
     if (this.queueLoading || now - this.queueFetchedAt < 15_000) return;
     const request = ++this.queueRequest;
     this.queueLoading = true;
-    this.hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain: 'music_assistant', service: 'get_queue', target: { entity_id: id }, return_response: true })
+    this.hass.callWS<{ response?: Record<string, { next_item?: { name?: string; media_item?: { name?: string; artists?: { name?: string }[]; image?: unknown; metadata?: { images?: { path?: string }[] } } } }> }>({ type: 'call_service', domain: 'mass', service: 'get_queue', target: { entity_id: id }, return_response: true })
       .then(answer => {
         if (request !== this.queueRequest || this.currentPlayer !== id || this.mediaTab !== 'play') return;
         const next = answer.response?.[id]?.next_item;

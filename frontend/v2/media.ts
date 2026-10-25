@@ -84,9 +84,11 @@ export function queueSignature(player: string, state: HAState | undefined) {
 /** The Music Assistant integration's add-current-track button, when the registry links it to this player. */
 export function musicAssistantFavoriteButton(hass: Hass | undefined, playerId: string) {
   const device = hass?.entities?.[playerId]?.device_id;
-  if (!device || hass?.entities?.[playerId]?.platform !== 'music_assistant') return undefined;
-  return Object.keys(hass?.states ?? {}).find(id => id.startsWith('button.') && hass?.entities?.[id]?.device_id === device && hass?.entities?.[id]?.platform === 'music_assistant' && hass.states[id]?.state !== 'unavailable');
+  if (!device || !isMusicAssistant(hass?.entities?.[playerId]?.platform)) return undefined;
+  return Object.keys(hass?.states ?? {}).find(id => id.startsWith('button.') && hass?.entities?.[id]?.device_id === device && isMusicAssistant(hass?.entities?.[id]?.platform) && hass.states[id]?.state !== 'unavailable');
 }
+/** Home Assistant registers the Music Assistant integration as `mass`. */
+export const isMusicAssistant = (platform: string | undefined) => platform === 'mass' || platform === 'music_assistant';
 
 export interface NexusFavorite {
   key: string; title: string; artist: string; media_content_id: string; media_content_type: string;

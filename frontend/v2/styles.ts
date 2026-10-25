@@ -42,7 +42,7 @@ export const nexusStyles = css`
   .hd .rgt{margin-left:auto;display:flex;align-items:center;gap:8px;flex:0 0 auto}
   .body{flex:1 1 auto;min-height:0;overflow:auto;overscroll-behavior:contain;padding:0 20px 18px;display:flex;flex-direction:column;gap:12px;scrollbar-width:thin;scrollbar-color:rgba(213,234,255,.2) transparent}
   .body>*{flex-shrink:0}
-  :host([layout=phone]) .hd{padding:max(14px,env(safe-area-inset-top)) 16px 10px}
+  :host([layout=phone]) .hd{padding:max(14px,env(safe-area-inset-top),var(--safe-area-inset-top,0px)) 16px 10px}
   :host([layout=phone]) .body{padding:0 14px 104px}
   :host([layout=portrait]) .hd{padding:18px 4px 10px}:host([layout=portrait]) .main .body{padding:0 4px 12px}
 
@@ -66,7 +66,7 @@ export const nexusStyles = css`
 
   /* Navigation: a bar of tabs at the bottom, a rail on the left, or a header on top. */
   .tabbar{grid-area:nav;display:flex;justify-content:space-around;gap:2px;padding:8px;border-radius:22px;margin:0 0 14px}
-  :host([layout=phone]) .tabbar{position:absolute;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom));z-index:8;margin:0}
+  :host([layout=phone]) .tabbar{position:absolute;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px));z-index:8;margin:0}
   .tabbar a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border-radius:12px;font-size:10px;color:var(--t2)}
   .tabbar a span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .tabbar a[aria-current=page]{color:#fff;background:color-mix(in srgb,var(--accent) 22%,transparent)}
@@ -193,6 +193,7 @@ export const nexusStyles = css`
   .track-surface{grid-area:1/1/4/4;touch-action:none;user-select:none;-webkit-user-select:none;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px;border-radius:50%;background:radial-gradient(circle,rgba(90,160,220,.2),rgba(5,23,39,.48));cursor:grab;color:#dbe8f5}.track-surface:active{cursor:grabbing;background:radial-gradient(circle,rgba(90,160,220,.32),rgba(5,23,39,.58))}.track-surface b{max-width:78%;font-size:11px;text-align:center;color:var(--t2)}.track-surface:focus-visible{outline:2px solid #a2d7ff;outline-offset:3px}
   .src[aria-pressed=true]{border-color:color-mix(in srgb,var(--accent) 70%,white);background:color-mix(in srgb,var(--accent) 22%,transparent)}
   .lib{display:grid;grid-template-columns:repeat(auto-fill,minmax(112px,1fr));gap:12px}
+  .media-art-hint{margin:0;color:var(--t2);font-size:12px;line-height:1.45}
   :host([layout=phone]) .lib{grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
   .li{position:relative;display:flex;flex-direction:column;gap:6px;text-align:left;min-width:0}
   .li b{font-size:12px;font-weight:600;overflow:hidden;text-overflow:ellipsis;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}

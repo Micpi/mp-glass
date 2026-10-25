@@ -53,6 +53,7 @@ export const NEXUS = {
   'Applis et entrées': ['Apps and inputs', 'Приложения и входы'],
   'Sources': ['Sources', 'Источники'],
   'Bibliothèque': ['Library', 'Библиотека'],
+  'Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.': ['This folder provides no cover art. Open an album or choose a Music Assistant player to see available artwork.', 'В этой папке нет обложек. Откройте альбом или выберите плеер Music Assistant, чтобы увидеть доступные обложки.'],
   'Trackpad': ['Trackpad', 'Трекпад'],
   'Trackpad télécommande': ['Remote trackpad', 'Трекпад пульта'],
   'Glissez pour naviguer · Touchez pour OK': ['Swipe to navigate · Tap for OK', 'Проведите для навигации · Нажмите для OK'],
@@ -320,6 +321,7 @@ export const NEXUS = {
 
 /** German and Italian for MP Nexus v2; anything missing falls back to English. */
 export const NEXUS_DE: Partial<Record<keyof typeof NEXUS, string>> = {
+  'Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.': 'Dieser Ordner liefert keine Cover. Öffnen Sie ein Album oder wählen Sie einen Music Assistant Player, um verfügbare Cover zu sehen.',
   'Trackpad': 'Trackpad', 'Trackpad télécommande': 'Fernbedienungs-Trackpad', 'Glissez pour naviguer · Touchez pour OK': 'Wischen zum Navigieren · Tippen für OK',
   'Cet accès invité est en lecture seule.': 'Dieses Gastkonto hat nur Leserechte.',
   'Rechercher dans Music Assistant': 'Music Assistant durchsuchen', 'Titre, artiste, album ou radio': 'Titel, Interpret, Album oder Radio', 'Recherche…': 'Suche…', 'Rechercher': 'Suchen',
@@ -349,6 +351,7 @@ export const NEXUS_DE: Partial<Record<keyof typeof NEXUS, string>> = {
   'Ensoleillé': 'Sonnig', 'Nuit claire': 'Klare Nacht', 'Nuageux': 'Bewölkt', 'Éclaircies': 'Teilweise bewölkt', 'Pluie': 'Regen', 'Averses': 'Starkregen', 'Neige': 'Schnee', 'Neige et pluie': 'Schneeregen', 'Brouillard': 'Nebel', 'Venteux': 'Windig', 'Orage': 'Gewitter', 'Grêle': 'Hagel',
 };
 export const NEXUS_IT: Partial<Record<keyof typeof NEXUS, string>> = {
+  'Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.': 'Questa cartella non fornisce copertine. Apri un album o scegli un lettore Music Assistant per vedere le copertine disponibili.',
   'Trackpad': 'Trackpad', 'Trackpad télécommande': 'Trackpad del telecomando', 'Glissez pour naviguer · Touchez pour OK': 'Scorri per navigare · Tocca per OK',
   'Cet accès invité est en lecture seule.': 'Questo account ospite è di sola lettura.',
   'Rechercher dans Music Assistant': 'Cerca in Music Assistant', 'Titre, artiste, album ou radio': 'Brano, artista, album o radio', 'Recherche…': 'Ricerca…', 'Rechercher': 'Cerca',

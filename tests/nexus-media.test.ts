@@ -42,7 +42,7 @@ describe('MP Nexus v2 media', () => {
     expect(trackpadAvailable({ up: routes.up, down: routes.down, left: routes.left, select: routes.select })).toBe(false);
   });
   it('finds only a Music Assistant favorite button attached to this player device', () => {
-    const h = hass([state('media_player.ma'), state('button.ma_favorite', {}, 'unknown')], { 'media_player.ma': { entity_id: 'media_player.ma', device_id: 'ma-device', platform: 'music_assistant' }, 'button.ma_favorite': { entity_id: 'button.ma_favorite', device_id: 'ma-device', platform: 'music_assistant' } });
+    const h = hass([state('media_player.ma'), state('button.ma_favorite', {}, 'unknown')], { 'media_player.ma': { entity_id: 'media_player.ma', device_id: 'ma-device', platform: 'mass' }, 'button.ma_favorite': { entity_id: 'button.ma_favorite', device_id: 'ma-device', platform: 'mass' } });
     expect(musicAssistantFavoriteButton(h, 'media_player.ma')).toBe('button.ma_favorite');
     expect(musicAssistantFavoriteButton(h, 'media_player.ma2')).toBeUndefined();
   });

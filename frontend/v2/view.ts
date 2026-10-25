@@ -340,7 +340,7 @@ export class MPNexusView extends LitElement {
     update();
   }
   private escape = (e: KeyboardEvent) => {
-    if (e.key !== 'Escape' || this.detail) return;
+    if (e.key !== 'Escape' || this.detail || e.composedPath().some(node => node instanceof HTMLDialogElement && node.open)) return;
     if (this.languageOpen) this.languageOpen = false;
     else if (this.overlay) this.closeOverlay();
     else if (this.full) this.full = false;

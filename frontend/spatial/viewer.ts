@@ -13,7 +13,7 @@ import type { MessageKey } from '../locales';
 import { climateActionMode, entityLabel, COVER_STATES, HVAC, hvacIcon, kindOf, KIND_ICONS, MEDIA_STATES, stateName, type Kind } from '../entities';
 import '../detail';
 import { defineElement } from '../registry';
-import type { CameraView, FixtureProjection, LaundryState, LevelProjection, MediaState, OpeningState, SceneLaundry, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
+import type { CameraView, LaundryState, LevelProjection, MediaState, OpeningState, SceneLaundry, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
 import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
 
 interface EquipmentInfo { name:string;room:SpatialRoom;icon:MPIconName;entityIds:string[];laundry?:boolean;group?:PlanMode;items?:EquipmentEntry[];climate?:ClimateAppearance }
@@ -132,16 +132,6 @@ export class MPSpatialViewer extends LitElement {
     .labels .room-marker .ambient-peek[data-active=true]{color:#f1ca83}
     .labels .room-marker .ambient-peek:hover,.labels .room-marker .ambient-peek:focus-visible{background:#b8d8ef20}
     .equipment-hvac-icon{display:inline-flex;align-items:center;flex:none;color:var(--equipment-tone,#a9bfce);transition:color .15s}
-    .equipment-popup .ambient-summary{margin:12px 0 8px;font-size:12px;color:#c8dbe9}
-    .equipment-popup .ambient-list{max-height:240px;overflow:auto;overscroll-behavior:contain;margin-top:8px}
-    .equipment-popup .ambient-list.many{height:240px}
-    .equipment-popup .ambient-item{display:flex;align-items:center;gap:10px;width:100%;border:0;border-radius:calc(var(--mp-radius,22px) * 8 / 22);background:transparent;text-align:left;padding:9px 3px;min-height:46px}
-    .equipment-popup .ambient-item:hover,.equipment-popup .ambient-item:focus-visible{background:#d0e8ff12}
-    .equipment-popup .ambient-item>span:not(.equipment-hvac-icon){flex:1;min-width:0;display:grid;gap:3px}.equipment-popup .ambient-item strong{font-size:12px;font-weight:500;overflow-wrap:anywhere}.equipment-popup .ambient-item small{font-size:11px;line-height:1.4}
-    .equipment-popup header .close{display:grid;place-items:center;align-self:start;width:30px;height:30px;min-width:30px;min-height:30px;padding:0;border:0;border-radius:50%;background:transparent;color:#a9c2d6;transition:background .15s,color .15s}.equipment-popup header .close:hover,.equipment-popup header .close:focus-visible{background:#ffffff17;color:#fff}
-    .equipment-popup .equipment-search{width:100%;box-sizing:border-box;min-height:36px;padding:7px 10px;border:1px solid #c6e6ff30;border-radius:calc(var(--mp-radius,22px) * 9 / 22);background:#0002;color:inherit;font:inherit;font-size:12px}
-    .equipment-popup .equipment-search::placeholder{color:#afc5d6}.equipment-popup .equipment-back{display:flex;align-items:center;gap:6px;margin-top:10px;border:0;background:transparent;font-size:11px;color:#b9d3e4}.equipment-popup .equipment-back svg{transform:rotate(180deg)}
-    .equipment-popup .equipment-summary{margin:14px 0;font-size:13px}.equipment-popup .equipment-summary>div{padding:5px 0;gap:16px}.equipment-popup .equipment-summary dd{font-weight:600;color:#edf7ff}.equipment-popup .equipment-details{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;font-size:12px}
     .labels button.rich{padding:4px 12px 5px;border-radius:calc(var(--mp-radius,22px) * 14 / 22)}
     .labels .name{display:flex;align-items:center;gap:6px;min-width:0;max-width:100%}.labels .name span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
     .readings{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:1px 8px;font-size:11.5px;font-weight:600;color:#cce3f2;font-variant-numeric:tabular-nums}
@@ -157,8 +147,22 @@ export class MPSpatialViewer extends LitElement {
     .shutter{display:inline-block;position:relative;width:12px;height:13px;border:1px solid currentColor;border-radius:2px;background:transparent;overflow:hidden;flex:none}
     .shutter::before{content:'';position:absolute;inset:0 0 auto;height:var(--closed,100%);background:repeating-linear-gradient(0deg,currentColor 0 1px,transparent 1px 3px);transition:height .3s}
     .shutter.unknown{opacity:.45}.shutter.unknown::before{background:none}.shutter.unknown::after{content:'?';position:absolute;inset:0;text-align:center;font:9px/11px system-ui}
-    .equipment-popup{position:absolute;z-index:5;width:300px;max-width:calc(100% - 16px);max-height:calc(100% - 16px);overflow:auto;box-sizing:border-box;padding:14px;border:1px solid #b9dcff66;border-radius:calc(var(--mp-radius,22px) * 16 / 22);background:#0a2339f5;box-shadow:0 12px 38px #0008;backdrop-filter:blur(20px);color:#edf7ff;cursor:auto}
-    .equipment-popup header{display:flex;align-items:center;gap:9px}.equipment-popup header>div{flex:1;min-width:0}.equipment-popup h3{font-size:15px;margin:0;overflow-wrap:anywhere}.equipment-popup small{color:#aac2d6;font-size:11px}.equipment-popup button{border:1px solid #b5d7ee33;border-radius:calc(var(--mp-radius,22px) * 9 / 22);background:#ffffff0d;color:inherit;padding:6px 9px;cursor:pointer;min-height:32px}.equipment-popup header button{flex:none;font-size:20px;min-width:34px}.equipment-popup .equipment-entities{display:grid;gap:10px;margin-top:12px}.equipment-popup .equipment-entity{border-top:1px solid #d5ebff22;padding-top:9px}.equipment-popup .equipment-state{width:100%;background:transparent;border:0;border-radius:0;padding:0;text-align:left;display:flex;justify-content:space-between;align-items:start;gap:10px;font-size:12px}.equipment-popup .equipment-state strong{overflow-wrap:anywhere;font-weight:500}.equipment-popup .equipment-state span{margin-left:auto;text-align:right;color:#b7e8fa;white-space:pre-wrap}.equipment-popup dl{margin:7px 0;font-size:11px}.equipment-popup dl>div{display:flex;justify-content:space-between;gap:12px;margin:4px 0}.equipment-popup dt{color:#a9c2d8}.equipment-popup dd{margin:0;text-align:right;overflow-wrap:anywhere}.equipment-popup .equipment-size{margin:8px 0 0;color:#bbd8ea;font-size:12px}
+    /* The plan opens the same viewport-sized glass panel as Alerts and Search, outside the clipped canvas. */
+    .equipment-popup{position:fixed;inset:9dvh 0 auto;width:min(560px,calc(100vw - 32px));max-width:none;max-height:min(82dvh,720px);margin:0 auto;padding:0;overflow:hidden;border:1px solid var(--mp-control-border,rgba(213,234,255,.24));border-radius:calc(var(--mp-radius,22px) * 24 / 22);background:var(--mp-panel-background,#102f49);box-shadow:0 20px 50px rgba(0,8,18,var(--mp-shadow,.35)),inset 0 1px rgba(255,255,255,.12);backdrop-filter:blur(var(--mp-blur,22px)) saturate(145%);-webkit-backdrop-filter:blur(var(--mp-blur,22px)) saturate(145%);color:#f7fbff;font:14px/1.4 var(--mp-body-font,Inter,system-ui,sans-serif);cursor:auto}
+    .equipment-popup[open]{display:flex;flex-direction:column}.equipment-popup::backdrop{background:rgba(2,8,16,.45)}
+    .equipment-popup header{display:flex;align-items:center;gap:10px;flex:none;padding:16px 20px 12px}.equipment-popup header>div{flex:1;min-width:0}.equipment-popup h3{font:400 24px/1.15 var(--mp-display-font,Georgia,serif);margin:2px 0 0;overflow-wrap:anywhere}.equipment-popup small{color:var(--mp-text-secondary,#aebfd0);font-size:11px;line-height:1.4}.equipment-popup header small{display:block;font-size:10px;letter-spacing:.22em;text-transform:uppercase}
+    .equipment-popup .equipment-heading-icon,.equipment-popup .equipment-item-icon{display:grid;place-items:center;flex:none;width:38px;height:38px;border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:rgba(197,220,243,.1);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));color:var(--mp-accent,#69b7ff)}
+    .equipment-popup .equipment-hvac-icon{color:var(--equipment-tone,#a9bfce)}
+    .equipment-popup .equipment-body{flex:1 1 auto;min-height:0;padding:0 20px 18px;overflow:auto;overscroll-behavior:contain;scrollbar-width:thin;scrollbar-color:rgba(213,234,255,.2) transparent}
+    .equipment-popup button{font:inherit;cursor:pointer;color:inherit}.equipment-popup header .close{display:grid;place-items:center;flex:none;width:38px;height:38px;min-height:38px;padding:0;border-radius:calc(var(--mp-radius,22px) * 14 / 22);border:1px solid var(--mp-control-border,rgba(213,234,255,.14));background:rgba(197,220,243,.1);color:#dbe8f5}.equipment-popup header .close:hover{background:rgba(197,220,243,.16)}
+    .equipment-popup .ambient-summary{margin:0 0 12px;color:var(--mp-text-secondary,#aebfd0);font-size:12px}.equipment-popup .ambient-list{border:1px solid var(--mp-control-border,rgba(213,234,255,.12));border-radius:calc(var(--mp-radius,22px) * 18 / 22);background:var(--mp-control-background,rgba(8,28,48,.42));padding:0 12px}
+    .equipment-popup .ambient-item{display:flex;align-items:center;gap:10px;width:100%;min-height:60px;padding:10px 0;border:0;border-bottom:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:transparent;text-align:left}.equipment-popup .ambient-item:last-of-type{border-bottom:0}.equipment-popup .ambient-item:hover,.equipment-popup .ambient-item:focus-visible{background:var(--mp-control-hover,rgba(255,255,255,.05))}.equipment-popup .equipment-copy{flex:1;min-width:0;display:grid;gap:4px}.equipment-popup .ambient-item strong{font-size:13px;font-weight:600;overflow-wrap:anywhere}
+    .equipment-popup .equipment-search{width:100%;box-sizing:border-box;min-height:44px;margin:0 0 12px;padding:0 14px;border:1px solid var(--mp-control-border,rgba(213,234,255,.12));border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:var(--mp-control-background,rgba(8,28,48,.42));color:inherit;font:inherit}.equipment-popup .equipment-search::placeholder{color:var(--mp-text-secondary,#aebfd0)}
+    .equipment-popup .equipment-back{display:flex;align-items:center;gap:8px;min-height:42px;margin:0 0 10px;padding:0;border:0;background:transparent;color:var(--mp-accent,#69b7ff);font-size:13px}
+    .equipment-popup .equipment-summary{margin:12px 0 18px;font-size:13px}.equipment-popup .equipment-summary>div{display:flex;justify-content:space-between;gap:16px;padding:8px 0;border-bottom:1px solid var(--mp-control-border,rgba(213,234,255,.12))}.equipment-popup dt{color:var(--mp-text-secondary,#aebfd0)}.equipment-popup dd{margin:0;text-align:right;overflow-wrap:anywhere;font-weight:600}
+    .equipment-popup .equipment-details{display:flex;align-items:center;justify-content:center;gap:8px;width:100%;min-height:44px;border:1px solid var(--mp-control-border,rgba(213,234,255,.12));border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:var(--mp-control-background,rgba(8,28,48,.42));font-weight:600}
+    @media(max-width:699px),(max-height:519px) and (max-width:999px){.equipment-popup{inset:auto 0 0;width:100%;max-height:88dvh;border-radius:28px 28px 0 0;padding-bottom:max(10px,env(safe-area-inset-bottom))}.equipment-popup header{padding:16px 16px 12px}.equipment-popup .equipment-body{padding:0 16px 18px}}
+
     .modes{position:absolute;left:12px;bottom:12px;z-index:2;display:flex;gap:3px;padding:3px;border-radius:calc(var(--mp-radius,22px) * 13 / 22)}
     .modes button{display:flex;align-items:center;gap:6px;border:0;border-radius:calc(var(--mp-radius,22px) * 10 / 22);background:transparent;padding:7px 10px;min-height:34px;color:#bed4e4;font-size:12px}
     .modes button[aria-pressed=true]{background:#74b9eb30;color:#fff}
@@ -442,6 +446,8 @@ export class MPSpatialViewer extends LitElement {
     if(changed.has('hass')&&this.hass)this.updateLaundry(this.hass);
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
     if(ask&&this.asking&&!ask.open)ask.showModal();else if(ask&&!this.asking&&ask.open)ask.close();
+    const equipmentDialog=this.renderRoot.querySelector<HTMLDialogElement>('dialog.equipment-popup');
+    if(equipmentDialog&&this.isConnected&&!equipmentDialog.open)equipmentDialog.showModal();
     if (!this.plan || !this.currentFloor) return;
     // The ambiance chosen and the floors on screen, told to the page: the section below the plan arranges itself on them.
     if(!this.preview){
@@ -455,7 +461,7 @@ export class MPSpatialViewer extends LitElement {
         const {SpatialScene}=await import('./scene');
         const host=this.renderRoot.querySelector<HTMLElement>('.canvas');
         if (!this.isConnected || !host || !this.currentFloor) return;
-        this.scene=new SpatialScene(host, (room,floor)=>this.touch(room,floor), (rooms,levels,fixture)=>this.place(rooms,levels,fixture), ()=>{this.engaged=true;}, floor=>{this.pointed=floor;});
+        this.scene=new SpatialScene(host, (room,floor)=>this.touch(room,floor), (rooms,levels)=>this.place(rooms,levels), ()=>{this.engaged=true;}, floor=>{this.pointed=floor;});
         this.scene.setHand(this.hand);
         this.draw();
       } catch { this.error=tr('La 3D nécessite WebGL 2. Les pièces et leurs équipements restent accessibles dans la liste.'); }
@@ -558,17 +564,8 @@ export class MPSpatialViewer extends LitElement {
     });
   }
   /** Room labels follow the camera; the selected one first, overlapping ones hidden. On the whole house, floor labels instead. */
-  private place(positions: Map<string,{x:number;y:number;visible:boolean}>, levels: LevelProjection,fixture?:FixtureProjection) {
+  private place(positions: Map<string,{x:number;y:number;visible:boolean}>, levels: LevelProjection) {
     const stage=this.renderRoot.querySelector<HTMLElement>('.stage')!,frame=stage.getBoundingClientRect(),occupied=this.occupied(frame);
-    const popup=this.renderRoot.querySelector<HTMLElement>('.equipment-popup');
-    if(popup){
-      popup.style.visibility=fixture?.visible?'visible':'hidden';
-      if(fixture){
-        const left=Math.max(8,Math.min(frame.width-popup.offsetWidth-8,fixture.x-popup.offsetWidth/2));
-        const above=fixture.y-popup.offsetHeight-18,top=Math.max(8,Math.min(frame.height-popup.offsetHeight-8,above>=8?above:fixture.y+18));
-        popup.style.left=left+'px';popup.style.top=top+'px';
-      }
-    }
     // On a narrow stage the floors of the house stand between their labels and the controls; the plan then comes back here, drawn again.
     const aside=this.stacked&&frame.width<NARROW?Array.from(this.renderRoot.querySelectorAll<HTMLElement>('[data-floor]'),l=>l.offsetWidth):[];
     const rail=this.renderRoot.querySelector<HTMLElement>('.rail')?.offsetWidth??0;
@@ -956,7 +953,7 @@ export class MPSpatialViewer extends LitElement {
     </div>
     ${this.detailWindow()}`;
   }
-  private closeEquipment=()=>{this.equipment=undefined;this.equipmentReturn=undefined;this.equipmentFilter='';this.scene?.dismissEquipment();};
+  private closeEquipment=()=>{this.renderRoot.querySelector<HTMLDialogElement>('dialog.equipment-popup')?.close();this.equipment=undefined;this.equipmentReturn=undefined;this.equipmentFilter='';this.scene?.dismissEquipment();};
   private equipmentPicked=(key:string,entityId?:string,keepFilter=false)=>{
     if(!key){this.closeEquipment();return;}
     const previous=this.equipment;
@@ -1030,7 +1027,7 @@ export class MPSpatialViewer extends LitElement {
       <div class=${items.length>6?'ambient-list many':'ambient-list'}>${keys.map(key=>{
         const item=byKey.get(key)!,readings=equipmentReadings(item.entityIds,this.hass?.states??{},item.laundry,this.temperatureUnit);
         const value=readings.map(row=>item.entityIds.length>1&&!item.laundry?shorten(row.label,info.room.name)+' : '+row.value:row.value).join(' · ')||tr('Aucune information disponible.');
-        return html`<button class="ambient-item" aria-label=${tr('Informations de {name}',{name:item.name})} @click=${()=>this.pickAmbient(info.room,item)}>${item.entityIds.length===1&&item.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-hvac-icon" style=${'--equipment-tone:'+(climateAppearance(this.hass?.states[item.entityIds[0]])?.color??'#a9bfce')}>${mpIcon(item.icon,17)}</span>`:mpIcon(item.icon,17)}<span><strong>${item.name}</strong><small>${value}</small></span>${mpIcon('arrow',12)}</button>`;
+        return html`<button class="ambient-item" aria-label=${tr('Informations de {name}',{name:item.name})} @click=${()=>this.pickAmbient(info.room,item)}>${item.entityIds.length===1&&item.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-item-icon equipment-hvac-icon" style=${'--equipment-tone:'+(climateAppearance(this.hass?.states[item.entityIds[0]])?.color??'#a9bfce')}>${mpIcon(item.icon,17)}</span>`:html`<span class="equipment-item-icon">${mpIcon(item.icon,20)}</span>`}<span class="equipment-copy"><strong>${item.name}</strong><small>${value}</small></span>${mpIcon('arrow',12)}</button>`;
       })}${keys.length?nothing:html`<p role="status">${tr('Aucun équipement trouvé.')}</p>`}</div>`;
   }
   private equipmentPopup(){
@@ -1038,12 +1035,13 @@ export class MPSpatialViewer extends LitElement {
     const states=this.hass?.states??{},rows=info.group?[]:equipmentReadings(info.entityIds,states,info.laundry,this.temperatureUnit);
     const ambient=info.group?undefined:this.equipmentReturn;
     const detailId=rows.find(row=>row.entityId)?.entityId??info.entityIds.find(id=>available(states[id]));
-    return html`<section class="equipment-popup" style="visibility:hidden" role="dialog" aria-label=${tr('Informations de {name}',{name:info.name})}>
-      <header>${info.group==='climate'||info.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-hvac-icon" style=${'--equipment-tone:'+(info.climate?.color??'#a9bfce')}>${mpIcon(info.climate?.icon??info.icon,20)}</span>`:mpIcon(info.icon,20)}<div><h3>${info.name}</h3><small>${info.room.name}</small></div><button class="close" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeEquipment}>${mpIcon('close',15)}</button></header>
-      ${ambient?html`<button class="equipment-back" @click=${()=>this.pickRoomAmbient(info.room,ambient)}>${mpIcon('arrow',12)} ${tr(this.equipmentCategory(ambient).label)}</button>`:nothing}
+    return html`<dialog class="equipment-popup" aria-modal="true" @close=${()=>{if(this.equipment)this.closeEquipment();}} @cancel=${(e:Event)=>{e.preventDefault();this.closeEquipment();}} @keydown=${(e:KeyboardEvent)=>{if(e.key==='Escape')e.stopPropagation();}} @click=${(e:MouseEvent)=>{const d=e.currentTarget as HTMLDialogElement,r=d.getBoundingClientRect();if(e.target===d&&(e.clientX<r.left||e.clientX>r.right||e.clientY<r.top||e.clientY>r.bottom))this.closeEquipment();}} aria-label=${tr('Informations de {name}',{name:info.name})}>
+      <header><span class="equipment-heading-icon">${info.group==='climate'||info.entityIds[0]?.startsWith('climate.')?html`<span class="equipment-hvac-icon" style=${'--equipment-tone:'+(info.climate?.color??'#a9bfce')}>${mpIcon(info.climate?.icon??info.icon,20)}</span>`:mpIcon(info.icon,20)}</span><div><small>${info.room.name}</small><h3>${info.name}</h3></div><button class="close" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeEquipment}>${mpIcon('close',15)}</button></header>
+      <div class="equipment-body">${ambient?html`<button class="equipment-back" @click=${()=>this.pickRoomAmbient(info.room,ambient)}>${mpIcon('back',16)} ${tr(this.equipmentCategory(ambient).label)}</button>`:nothing}
       ${info.group?this.ambientList(info):html`${rows.length?html`<dl class="equipment-summary">${rows.map(row=>html`<div><dt>${row.label}</dt><dd>${row.value}</dd></div>`)}</dl>`:html`<p>${tr('Aucune information disponible.')}</p>`}`}
       ${!info.group&&detailId?html`<button class="equipment-details" @click=${()=>this.moreInfo(detailId)}>${tr('Détails')} ${mpIcon('arrow',12)}</button>`:nothing}
-    </section>`;
+      </div>
+    </dialog>`;
   }
   /** The detail window of the device touched, drawn again on every state Home Assistant sends while it stays open. */
   private detailWindow() {

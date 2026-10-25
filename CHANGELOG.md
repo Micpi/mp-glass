@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.29.1 — Le popup des pièces adopte le style Alertes et Recherche
+
+- Le bouton d’ambiance à côté du nom d’une pièce sur le plan 3D ouvre une vraie fenêtre de verre, au-dessus de l’interface, avec la même largeur, la même matière, les mêmes bordures et les mêmes arrondis que Recherche. Sur téléphone, elle s’ouvre en panneau en bas de l’écran ; elle n’est plus limitée ni coupée par le cadre du plan.
+- En-tête avec le nom de la pièce, titre, icône et bouton de fermeture ; équipements présentés dans une liste de cartes cohérente avec les autres popups. Teinte, accentuation, flou et ombres suivent les réglages d’apparence. Les couleurs de fonctionnement du chauffage et de la climatisation restent distinctes.
+- Recherche et défilement des longues listes dans le corps du panneau, avec fermeture toujours accessible. Le clic en dehors et Échap ferment la fenêtre et rendent le focus au bouton d’origine. Les commandes détaillées d’un appareil reviennent à la liste ; Échap ne ferme plus le plan en plein écran derrière une fenêtre native.
+- Vérification navigateur locale sur téléphone, tablette et ordinateur : comparaison de la matière et des dimensions avec Recherche, ouverture des commandes et retour, fermeture et focus, recherche dans une longue liste, couleurs du climat.
+
 ## 0.29.0 — Les scènes se créent et se modifient entièrement dans MP Nexus
 
 - **Gestionnaire intégré** depuis l’accueil (« Gérer les scènes ») et Plus → Scènes. Le lien vers l’éditeur Home Assistant est remplacé par un parcours tactile en trois étapes : nom et icône, choix des appareils, réglages. Galerie de 25 icônes avec aperçu du bouton ; recherche des scènes et des équipements, filtre par pièce, sélection groupée, duplication et suppression confirmée.

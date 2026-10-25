@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.27.2 — Écran de veille « Plan 3D » sur tous les écrans
+
+- Veille « Plan 3D » : l'horloge et les widgets ne chevauchent plus le plan sur une tablette en paysage. Sur un téléphone ou une tablette en portrait, les widgets passent sur deux colonnes en haut, et le plan se place en dessous au lieu d'être coincé derrière eux.
+- L'icône météo suit le temps (pluie, neige, nuit claire, vent) sur l'accueil, dans « Extérieur » et sur l'écran de veille, au lieu d'un soleil fixe.
+- Le manifeste déclare `hassio` dans `after_dependencies`. Il est utilisé par l'activation de Music Assistant depuis la 0.26.0, et le contrôle hassfest l'exige. Rien ne change sur une installation sans Superviseur.
+- Tests : l'écran de veille avec ses cinq widgets est vérifié sur ordinateur, tablette (paysage et portrait) et téléphone : taille des widgets, et plan à côté ou en dessous (Playwright).
+
 ## 0.27.1 — Écran de veille réparé
 
 - Les vignettes de l'écran de veille (météo, minuteur, musique, alertes, qui est là) s'affichent de nouveau en entier. Depuis 0.27.0, les pastilles de couleur d'accentuation du panneau Apparence utilisaient le même nom de style et les réduisaient à de petits ronds de 34 px, où le texte se chevauchait. Les pastilles ont maintenant leur propre style (`swatch`).

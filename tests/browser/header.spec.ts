@@ -68,6 +68,17 @@ test('the rules of an older copy of MP Nexus, loaded as a resource, give way to 
   expect(await page.evaluate(()=>getComputedStyle(document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view-container')!).paddingTop)).toBe('0px');
 });
 
+test('no band either when the kiosk-mode card keeps room above the view with a #view rule',async({page})=>{
+  // As kiosk-mode 2026 adds it to hui-root, in a stylesheet of its own after the others.
+  await subview(page);
+  await page.evaluate(()=>{
+    const root=document.querySelector('hui-root')!.shadowRoot!,sheet=new CSSStyleSheet();
+    sheet.replaceSync('#view{padding-top:calc(0px + var(--kiosk-header-height,56px))!important}');
+    root.adoptedStyleSheets=[...root.adoptedStyleSheets,sheet];
+  });
+  expect(await page.evaluate(()=>getComputedStyle(document.querySelector('hui-root')!.shadowRoot!.querySelector('hui-view-container')!).paddingTop)).toBe('0px');
+});
+
 test('an administrator who left the kiosk keeps the actions of the bar',async({page})=>{
   await page.addInitScript(()=>sessionStorage.setItem('mp-glass.kiosk','left'));
   await subview(page);

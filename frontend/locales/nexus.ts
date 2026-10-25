@@ -281,6 +281,10 @@ export const NEXUS = {
   'jusqu’au {when}': ['until {when}', 'до {when}'],
   '{n} invité actif|{n} invités actifs': ['{n} active guest|{n} active guests', '{n} активный гость|{n} активных гостя|{n} активных гостей'],
   'À scanner avec l’appareil photo du téléphone de l’invité.': ['Scan it with the camera of the guest’s phone.', 'Отсканируйте камерой телефона гостя.'],
+  'Revenir au mode kiosque': ['Back to kiosk mode', 'Вернуться в режим киоска'],
+  'Interface Home Assistant': ['Home Assistant interface', 'Интерфейс Home Assistant'],
+  'Plein écran, sans barre ni menu': ['Full screen, no bar or menu', 'Во весь экран, без панели и меню'],
+  'Barre et menu de Home Assistant sur cet écran': ['Home Assistant bar and menu on this screen', 'Панель и меню Home Assistant на этом экране'],
 } satisfies Messages;
 
 /** German and Italian for MP Nexus v2; anything missing falls back to English. */

@@ -1,6 +1,9 @@
 {
   "domain": "mp_glass",
   "name": "MP Nexus",
+  "after_dependencies": [
+    "lovelace"
+  ],
   "codeowners": [
     "@Micpi"
   ],
@@ -18,5 +21,5 @@
   "requirements": [
     "jsonschema==4.25.1"
   ],
-  "version": "0.20.0"
+  "version": "0.21.0"
 }

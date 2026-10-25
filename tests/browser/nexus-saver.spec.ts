@@ -42,3 +42,40 @@ for (const [name, size] of [['computer', { width: 1440, height: 900 }], ['landsc
     expect(beside || below).toBe(true);
   });
 }
+
+test('the slideshow brings the next photo in with the transition chosen', async ({ page }) => {
+  await page.setViewportSize({ width: 1180, height: 820 });
+  await page.addInitScript(() => localStorage.setItem('mp-nexus.screensaver', JSON.stringify({ content: 'photos', transition: 'circle', photoSeconds: 8 })));
+  await page.clock.install();
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.locator('button.rw', { hasText: 'Écran de veille' }).click();
+  await expect(nexus.locator('select[aria-label="Transition"]')).toHaveValue('circle');
+  await nexus.getByRole('button', { name: 'Aperçu' }).click();
+  await expect(nexus.locator('.saver .pic')).toHaveCount(1);
+  const first = await nexus.locator('.saver .pic .backdrop').first().getAttribute('style');
+  await page.clock.runFor(9000);
+  await expect(nexus.locator('.saver .pic')).toHaveCount(2);
+  await expect(nexus.locator('.saver .pic.in.circle')).toHaveCount(1);
+  expect(await nexus.locator('.saver .pic.in .backdrop').getAttribute('style')).not.toBe(first);
+});
+
+test('the plan of the screensaver turns and shows its layers in turn', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.addInitScript(() => localStorage.setItem('mp-nexus.screensaver', JSON.stringify({ content: 'plan', spin: 'fast', cycleLayers: true, layerSeconds: 10 })));
+  await page.goto('/plus?v2&spatial');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.locator('button.rw', { hasText: 'Écran de veille' }).click();
+  await nexus.getByRole('button', { name: 'Aperçu' }).click();
+  const viewer = nexus.locator('.saver mp-spatial-viewer');
+  await expect(viewer).toHaveJSProperty('spin', 12);
+  const chip = nexus.locator('.saver .slayer');
+  await expect(chip).toBeVisible({ timeout: 10_000 });
+  const before = await chip.textContent();
+  const camera = () => viewer.evaluate((v: HTMLElement & { scene?: { view(): { offset: number[] } } }) => v.scene?.view().offset);
+  await expect.poll(camera, { timeout: 10_000 }).toBeTruthy();
+  const start = await camera();
+  await page.waitForTimeout(800);
+  expect(await camera()).not.toEqual(start);
+  await expect.poll(() => chip.textContent(), { timeout: 15_000 }).not.toBe(before);
+});

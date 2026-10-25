@@ -1,5 +1,6 @@
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
+import { repeat } from 'lit/directives/repeat.js';
 import type { AppearanceConfig, HAState, NavigationConfig } from '../../shared/models';
 import { accentOf, ACCENTS, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, cssImage, DEFAULT_WALLPAPER, deleteWallpaper, importedSource, isImported, isNight, libraryWallpaper, listWallpapers, prepareWallpaper, readScreenLook, uploadWallpaper, WALLPAPERS, wallpaperSource, writeScreenLook, type ImportedWallpaper, type ScreenLook } from '../wallpapers';
 import { mpIcon, type MPIconName } from '../icons';
@@ -17,7 +18,7 @@ import { chooseLanguage, language, LANGUAGE_NAMES, LANGUAGES, LanguageController
 import { flag } from '../flags';
 import { nexusStyles } from './styles';
 import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
-import { automationId, automationOf, backupName, energySummary, projectTemplate, readSaver, routineReady, SAVER_DELAYS, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPrefs, type SaverWidget } from './plus';
+import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
@@ -209,6 +210,11 @@ export class MPNexusView extends LitElement {
   private access?: { guest: boolean; profile?: Guest['profile']; until?: number | null };
   private accessAsked = false;
   private saverSince = 0;
+  /** The layers the plan of the screensaver offers, kept apart from those of the page. */
+  private saverLayers: PlanMode[] = [];
+  /** Ticks while the screensaver shows, to bring in the next photo or the next layer on time. */
+  private saverTimer?: number;
+  private saverStep = '';
   private lastActivity = Date.now();
   private header?: Element;
   private clock?: number;
@@ -280,6 +286,7 @@ export class MPNexusView extends LitElement {
     for (const url of this.protectedImages.values()) URL.revokeObjectURL(url);
     this.protectedImages.clear();
     clearInterval(this.clock);
+    clearInterval(this.saverTimer); this.saverTimer = undefined;
     this.remotePointer = undefined;
     this.browseRequest++;
     this.queueRequest++;
@@ -289,6 +296,9 @@ export class MPNexusView extends LitElement {
     this.watchConnection();
     this.observeProtectedImages();
     if (this.saving) this.checkIdle();
+    if (this.saving && !this.saverTimer) this.saverTimer = window.setInterval(this.saverTick, 1000);
+    else if (!this.saving && this.saverTimer) { clearInterval(this.saverTimer); this.saverTimer = undefined; }
+    if ((this.saving && this.saver.content === 'photos') || this.sub?.type === 'saver') this.loadImported();
     if (this.sub?.type === 'history') this.loadLogbook(); else if (this.logbookAsked) { this.logbookAsked = false; this.logbook = undefined; }
     if (this.sub?.type === 'users' || this.sub?.type === 'guest') this.loadGuests(); else if (this.guestsAsked) { this.guestsAsked = false; this.guests = undefined; }
     if (this.hass && !this.accessAsked && !this.hass.user?.is_admin) { this.accessAsked = true; myAccess(this.hass).then(a => { this.access = a; }).catch(() => undefined); }
@@ -402,11 +412,11 @@ export class MPNexusView extends LitElement {
     if (this.kind === 'lights') this.renderRoot.querySelector(`[data-room="${CSS.escape(roomId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   private planDeselect = () => { if (this.kind !== 'area') this.room = ''; };
-  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string; layer?: PlanMode }) {
+  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string; layer?: PlanMode; spin?: number; ambiance?: (e: CustomEvent<{ mode: PlanMode; floorIds: string[]; modes?: PlanMode[] }>) => void }) {
     const plan = this.plan;
     if (!plan) return nothing;
     return keyed(`${opts.key}|${this.building}`, html`<mp-spatial-viewer bare ?quiet=${opts.quiet ?? false} ?expandable=${opts.expandable ?? false} .plan=${plan} .scope=${this.building} .hass=${this.hass} .areaHref=${this.areaHref}
-      .layer=${opts.layer ?? this.layer} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
+      .layer=${opts.layer ?? this.layer} .spin=${opts.spin ?? 0} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${opts.ambiance ?? this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
       @plan-expand=${() => { this.full = true; }}></mp-spatial-viewer>`);
   }
   /** The plan as a banner on a phone, a button to open it on the whole screen. */
@@ -1776,10 +1786,26 @@ export class MPNexusView extends LitElement {
     const sensors = this.ofDomain('binary_sensor', s => ['motion', 'occupancy', 'presence'].includes(String(s.attributes.device_class ?? '')));
     const widgets: [SaverWidget, 'Heure'|'Météo'|'Minuteur'|'Musique'|'Alertes'|'Qui est là'][] = [['clock', 'Heure'], ['weather', 'Météo'], ['timer', 'Minuteur'], ['music', 'Musique'], ['alerts', 'Alertes'], ['people', 'Qui est là']];
     const contents: [SaverContent, 'Photos'|'Plan 3D'|'Horloge'][] = [['photos', 'Photos'], ['plan', 'Plan 3D'], ['clock', 'Horloge']];
+    const sources: [SaverPhotos, 'Toutes les photos'|'Mes photos'|'La bibliothèque'][] = [['all', 'Toutes les photos'], ['mine', 'Mes photos'], ['library', 'La bibliothèque']];
+    const transitions: [SaverTransition, 'Au hasard'|'Fondu'|'Glissement'|'Zoom'|'Flou'|'Balayage'|'Cercle'][] = [['random', 'Au hasard'], ['fade', 'Fondu'], ['slide', 'Glissement'], ['zoom', 'Zoom'], ['blur', 'Flou'], ['wipe', 'Balayage'], ['circle', 'Cercle']];
+    const spins: [SaverSpin, 'Arrêtée'|'Lente'|'Normale'|'Rapide'][] = [['off', 'Arrêtée'], ['slow', 'Lente'], ['normal', 'Normale'], ['fast', 'Rapide']];
+    const every = (n: number) => n < 60 ? tr('{n} s', { n }) : tr('{n} min', { n: n / 60 });
+    const choice = <T extends string | number>(label: string, value: T, options: [T, string][], change: (value: string) => void) =>
+      html`<select aria-label=${label} @change=${(e: Event) => change((e.target as HTMLSelectElement).value)}>${options.map(([v, text]) => html`<option value=${String(v)} .selected=${v === value}>${text}</option>`)}</select>`;
+    const mine = this.imported?.length ?? 0;
     return html`${this.head(tr('Écran de veille'), saver.enabled ? tr('Après {n} min sans toucher l’écran', { n: saver.delayMinutes }) : tr('Désactivé sur cet écran'), html`<button class="end" role="switch" aria-checked=${saver.enabled} aria-label=${tr('Écran de veille')} @click=${() => set({ enabled: !saver.enabled })}><span class=${`tgl ${saver.enabled ? '' : 'off'}`}></span></button>`, this.back)}
       <div class="body">
         <div class="rlab">${tr('Contenu')}</div>
         <div class="layers">${contents.map(([value, label]) => html`<button aria-pressed=${saver.content === value} @click=${() => set({ content: value })}><span>${tr(label)}</span></button>`)}</div>
+        ${saver.content === 'photos' ? html`<div class="sg">
+          <div class="rw"><span class="ib">${mpIcon('palette', 16)}</span><div><b>${tr('Diaporama')}</b><small>${mine ? tr('{n} photo importée|{n} photos importées', { n: mine }) : tr('Importez-les dans Apparence')}</small></div><span class="end">${choice(tr('Diaporama'), saver.photos, sources.map(([v, l]) => [v, tr(l)]), v => set({ photos: v as SaverPhotos }))}</span></div>
+          <div class="rw"><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Transition')}</b><small>${tr('Entre deux photos')}</small></div><span class="end">${choice(tr('Transition'), saver.transition, transitions.map(([v, l]) => [v, tr(l)]), v => set({ transition: v as SaverTransition }))}</span></div>
+          <div class="rw"><span class="ib">${mpIcon('repeat', 16)}</span><div><b>${tr('Photo suivante')}</b><small>${tr('après')}</small></div><span class="end">${choice(tr('Photo suivante'), saver.photoSeconds, SAVER_PHOTO_SECONDS.map(n => [n, every(n)]), v => set({ photoSeconds: Number(v) }))}</span></div>
+        </div>` : saver.content === 'plan' ? html`<div class="sg">
+          <div class="rw"><span class="ib">${mpIcon('orbit', 16)}</span><div><b>${tr('Rotation du plan')}</b><small>${tr('La maison tourne lentement sur elle-même')}</small></div><span class="end">${choice(tr('Rotation du plan'), saver.spin, spins.map(([v, l]) => [v, tr(l)]), v => set({ spin: v as SaverSpin }))}</span></div>
+          <div class="rw"><span class="ib">${mpIcon('layers', 16)}</span><div><b>${tr('Changer de calque')}</b><small>${tr('Lumières, climat, ouvrants… à tour de rôle')}</small></div><button class="end" role="switch" aria-checked=${saver.cycleLayers} aria-label=${tr('Changer de calque')} @click=${() => set({ cycleLayers: !saver.cycleLayers })}><span class=${`tgl ${saver.cycleLayers ? '' : 'off'}`}></span></button></div>
+          ${saver.cycleLayers ? html`<div class="rw"><span class="ib">${mpIcon('repeat', 16)}</span><div><b>${tr('Calque suivant')}</b><small>${tr('après')}</small></div><span class="end">${choice(tr('Calque suivant'), saver.layerSeconds, SAVER_LAYER_SECONDS.map(n => [n, every(n)]), v => set({ layerSeconds: Number(v) }))}</span></div>` : nothing}
+        </div>` : nothing}
         <div class="rlab">${tr('Afficher')}</div>
         <div class="houses wrap">${widgets.map(([value, label]) => html`<button class="pill" aria-pressed=${saver.widgets.includes(value)} @click=${() => set({ widgets: saver.widgets.includes(value) ? saver.widgets.filter(x => x !== value) : [...saver.widgets, value] })}>${tr(label)}</button>`)}</div>
         <div class="sg">
@@ -1790,16 +1816,42 @@ export class MPNexusView extends LitElement {
         <button class="btn primary" @click=${() => { this.saving = true; this.saverSince = Date.now(); }}>${mpIcon('play', 16)}${tr('Aperçu')}</button>
       </div>`;
   }
+  /** The photos of the slideshow, as backgrounds: imported ones once fetched, then the library; the library alone while none is imported. */
+  private saverPhotos(): string[] {
+    const which = this.saver.photos, ready = () => this.requestUpdate();
+    const mine = which === 'library' ? [] : (this.imported ?? []).flatMap(w => { const url = importedSource(this.hass, w.id, ready); return url ? [`background-image:${cssImage(url)};background-position:center`] : []; });
+    const library = which === 'mine' && this.imported?.length ? [] : WALLPAPERS.map(w => `background-image:${cssImage(w.url)};background-position:${w.position} center`);
+    return [...mine, ...library];
+  }
+  /** The photo on screen and the one it covers, each kept in place by its number so its slow drift never jumps. */
+  private slideshow(background: string, elapsed: number) {
+    const photos = this.saverPhotos(), n = photos.length;
+    if (!n) return html`<div class="backdrop kb" style=${background}></div>`;
+    const step = cycleStep(elapsed, this.saver.photoSeconds), shown = step > 0 ? [step - 1, step] : [step];
+    return repeat(shown, i => i, i => html`<div class=${`pic ${i === step && step > 0 ? `in ${slideTransition(this.saver.transition, step)}` : ''}`}><div class=${`backdrop ${i % 2 ? 'kb2' : 'kb'}`} style=${photos[i % n]!}></div></div>`);
+  }
+  private saverAmbiance = (e: CustomEvent<{ mode: PlanMode; floorIds: string[]; modes?: PlanMode[] }>) => { if (e.detail.modes?.length && e.detail.modes.join() !== this.saverLayers.join()) { this.saverLayers = e.detail.modes; this.requestUpdate(); } };
+  /** The layer the screensaver's plan shows: the one of the page, or each in turn. */
+  private saverLayer(elapsed: number): PlanMode | undefined {
+    const offered = this.saverLayers.length ? this.saverLayers : this.layers;
+    if (!this.saver.cycleLayers || offered.length < 2) return undefined;
+    return offered[cycleStep(elapsed, this.saver.layerSeconds) % offered.length];
+  }
+  private saverTick = () => {
+    const elapsed = Date.now() - this.saverSince, saver = this.saver;
+    const step = saver.content === 'photos' ? `p${cycleStep(elapsed, saver.photoSeconds)}` : saver.content === 'plan' ? `l${cycleStep(elapsed, saver.layerSeconds)}` : '';
+    if (step !== this.saverStep) { this.saverStep = step; this.requestUpdate(); }
+  };
   /** The screen at rest: a photo, the plan or a clock, with the few things worth seeing from across the room. */
   private screensaver(background: string) {
-    const saver = this.saver, now = new Date(), states = this.hass?.states ?? {};
+    const saver = this.saver, now = new Date(), states = this.hass?.states ?? {}, elapsed = Date.now() - this.saverSince;
     const has = (w: SaverWidget) => saver.widgets.includes(w);
     const weather = this.ofDomain('weather', s => available(s))[0], playing = this.media.find(id => mediaPlaying(states[id]));
     const timer = this.ofDomain('timer', s => s.state === 'active')[0], left = timerLeft(timer);
     const alerts = unseen(this.alerts, this.prefs), home = this.persons.filter(p => p.home);
-    const dim = saver.nightDim && inQuietHours(now);
+    const dim = saver.nightDim && inQuietHours(now), layer = saver.content === 'plan' ? this.saverLayer(elapsed) : undefined;
     return html`<div class=${`saver ${saver.content}`} role="dialog" aria-label=${tr('Écran de veille')} @pointerdown=${this.wake}>
-      ${saver.content === 'photos' ? html`<div class="backdrop kb" style=${background}></div>` : saver.content === 'plan' ? html`<div class="backdrop" style=${`${background};filter:brightness(.4)`}></div><div class="splan">${this.viewer({ key: 'saver', quiet: true })}</div>` : nothing}
+      ${saver.content === 'photos' ? this.slideshow(background, elapsed) : saver.content === 'plan' ? html`<div class="backdrop" style=${`${background};filter:brightness(.4)`}></div><div class="splan">${this.viewer({ key: 'saver', quiet: true, layer, spin: SAVER_SPIN[saver.spin], ambiance: this.saverAmbiance })}${layer ? keyed(layer, html`<div class="slayer">${mpIcon(PLAN_LAYERS[layer].icon, 16)}<span>${layer === 'media' ? tr('Médias') : tr(PLAN_LAYERS[layer].label)}</span></div>`) : nothing}</div>` : nothing}
       <div class="sl">
         ${has('clock') || saver.content === 'clock' ? html`<div class="sclock">${new Intl.DateTimeFormat(locale(), { hour: '2-digit', minute: '2-digit' }).format(now)}</div><div class="sdate">${new Intl.DateTimeFormat(locale(), { weekday: 'long', day: 'numeric', month: 'long' }).format(now)}</div>` : nothing}
         ${has('weather') && weather ? html`<div class="sw">${mpIcon(weatherIcon(weather.state), 22)}<div><b>${finite(weather.attributes.temperature) === undefined ? weather.state : `${this.format(finite(weather.attributes.temperature)!)}°`}</b><small>${weatherName(weather.state)}</small></div></div>` : nothing}

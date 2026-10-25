@@ -278,6 +278,24 @@ export const nexusStyles = css`
   .saver .backdrop{z-index:0}
   .saver .kb{animation:kb 60s ease-in-out infinite alternate}
   @keyframes kb{from{transform:scale(1.04) translate(0,0)}to{transform:scale(1.14) translate(-3%,-2%)}}
+  .saver .kb2{animation:kb2 60s ease-in-out infinite alternate}
+  @keyframes kb2{from{transform:scale(1.14) translate(-3%,2%)}to{transform:scale(1.04) translate(2%,0)}}
+  /* The slideshow: the photo coming in over the one it replaces, with the transition chosen. */
+  .saver .pic{position:absolute;inset:0;overflow:hidden;z-index:0}
+  .saver .pic.in{z-index:1;animation:1.8s cubic-bezier(.4,0,.2,1) both}
+  .saver .pic.fade{animation-name:ss-fade}.saver .pic.slide{animation-name:ss-slide}.saver .pic.zoom{animation-name:ss-zoom}
+  .saver .pic.blur{animation-name:ss-blur}.saver .pic.wipe{animation-name:ss-wipe}.saver .pic.circle{animation-name:ss-circle}
+  :host(:not([motion])) .saver .pic.in{animation-name:ss-fade}
+  @keyframes ss-fade{from{opacity:0}}
+  @keyframes ss-slide{from{transform:translateX(100%)}to{transform:none}}
+  @keyframes ss-zoom{from{opacity:0;transform:scale(1.35)}to{opacity:1;transform:none}}
+  @keyframes ss-blur{from{opacity:0;filter:blur(36px) brightness(1.4)}to{opacity:1;filter:none}}
+  @keyframes ss-wipe{from{clip-path:inset(0 0 0 100%)}to{clip-path:inset(0)}}
+  @keyframes ss-circle{from{clip-path:circle(0% at 50% 50%)}to{clip-path:circle(75% at 50% 50%)}}
+  .saver.photos::after{z-index:1}
+  /* The layer the plan shows, named under it while the layers take turns. */
+  .saver .slayer{position:absolute;left:50%;bottom:2%;transform:translateX(-50%);z-index:2;display:flex;align-items:center;gap:8px;padding:8px 14px;border-radius:999px;background:rgba(5,23,39,.6);border:1px solid rgba(213,234,255,.18);backdrop-filter:blur(14px);-webkit-backdrop-filter:blur(14px);font-size:14px;font-weight:600;white-space:nowrap;animation:ss-chip 1s ease-out both}
+  @keyframes ss-chip{from{opacity:0;transform:translate(-50%,8px)}}
   .saver.photos::after{content:'';position:absolute;inset:0;background:linear-gradient(90deg,rgba(2,8,16,.7),transparent 60%)}
   .saver .splan{position:absolute;inset:6% 4% 6% 34%}.saver .splan mp-spatial-viewer{position:absolute;inset:0}
   .saver.clock{background:radial-gradient(ellipse at 30% 40%,#12344f,#02070d 70%)}

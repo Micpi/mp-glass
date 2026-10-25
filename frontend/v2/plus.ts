@@ -67,22 +67,55 @@ export const backupName = (date = new Date()) => `mp-nexus-${date.toISOString().
 // ——— Screensaver ———
 export type SaverContent = 'photos'|'plan'|'clock';
 export type SaverWidget = 'clock'|'weather'|'timer'|'music'|'alerts'|'people';
-export interface SaverPrefs { enabled: boolean; content: SaverContent; widgets: SaverWidget[]; delayMinutes: number; nightDim: boolean; wakeSensor: string }
+/** Photos shown one after the other: those imported into this home, the library, or both. */
+export type SaverPhotos = 'mine'|'library'|'all';
+/** How one photo gives way to the next; 'random' draws one for each photo. */
+export type SaverTransition = 'fade'|'slide'|'zoom'|'blur'|'wipe'|'circle'|'random';
+export type SaverSpin = 'off'|'slow'|'normal'|'fast';
+export interface SaverPrefs {
+  enabled: boolean; content: SaverContent; widgets: SaverWidget[]; delayMinutes: number; nightDim: boolean; wakeSensor: string;
+  photos: SaverPhotos; transition: SaverTransition; photoSeconds: number;
+  spin: SaverSpin; cycleLayers: boolean; layerSeconds: number;
+}
 const SAVER_KEY = 'mp-nexus.screensaver';
-export const SAVER_DEFAULTS: SaverPrefs = { enabled: false, content: 'photos', widgets: ['clock', 'weather', 'music', 'alerts'], delayMinutes: 2, nightDim: true, wakeSensor: '' };
+export const SAVER_DEFAULTS: SaverPrefs = {
+  enabled: false, content: 'photos', widgets: ['clock', 'weather', 'music', 'alerts'], delayMinutes: 2, nightDim: true, wakeSensor: '',
+  photos: 'all', transition: 'random', photoSeconds: 15, spin: 'slow', cycleLayers: true, layerSeconds: 20,
+};
 export const SAVER_DELAYS = [1, 2, 5, 10, 30];
+export const SAVER_PHOTO_SECONDS = [8, 15, 30, 60, 300];
+export const SAVER_LAYER_SECONDS = [10, 20, 30, 60];
+export const SAVER_TRANSITIONS = ['fade', 'slide', 'zoom', 'blur', 'wipe', 'circle'] as const;
+/** Degrees a second the house turns on itself: a full turn in two minutes, one, or half a minute. */
+export const SAVER_SPIN: Record<SaverSpin, number> = { off: 0, slow: 3, normal: 6, fast: 12 };
+const pick = <T extends string>(values: readonly T[], value: unknown, fallback: T) => values.find(v => v === value) ?? fallback;
 export function readSaver(): SaverPrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(SAVER_KEY) ?? '{}') as Partial<SaverPrefs>;
     const widgets: SaverWidget[] = ['clock', 'weather', 'timer', 'music', 'alerts', 'people'];
     return {
-      enabled: saved.enabled === true, content: (['photos', 'plan', 'clock'] as const).find(c => c === saved.content) ?? SAVER_DEFAULTS.content,
+      enabled: saved.enabled === true, content: pick(['photos', 'plan', 'clock'], saved.content, SAVER_DEFAULTS.content),
       widgets: Array.isArray(saved.widgets) ? widgets.filter(w => saved.widgets!.includes(w)) : SAVER_DEFAULTS.widgets,
       delayMinutes: SAVER_DELAYS.includes(Number(saved.delayMinutes)) ? Number(saved.delayMinutes) : SAVER_DEFAULTS.delayMinutes,
       nightDim: saved.nightDim !== false, wakeSensor: typeof saved.wakeSensor === 'string' ? saved.wakeSensor : '',
+      photos: pick(['mine', 'library', 'all'], saved.photos, SAVER_DEFAULTS.photos),
+      transition: pick([...SAVER_TRANSITIONS, 'random'], saved.transition, SAVER_DEFAULTS.transition),
+      photoSeconds: SAVER_PHOTO_SECONDS.includes(Number(saved.photoSeconds)) ? Number(saved.photoSeconds) : SAVER_DEFAULTS.photoSeconds,
+      spin: pick(['off', 'slow', 'normal', 'fast'], saved.spin, SAVER_DEFAULTS.spin), cycleLayers: saved.cycleLayers !== false,
+      layerSeconds: SAVER_LAYER_SECONDS.includes(Number(saved.layerSeconds)) ? Number(saved.layerSeconds) : SAVER_DEFAULTS.layerSeconds,
     };
   } catch { return { ...SAVER_DEFAULTS }; }
 }
+/** The transition that brings in photo `index`: the one chosen, or for 'random' one drawn anew each time, never twice in a row. */
+export function slideTransition(transition: SaverTransition, index: number): typeof SAVER_TRANSITIONS[number] {
+  if (transition !== 'random') return transition;
+  const n = SAVER_TRANSITIONS.length, draw = (i: number) => Math.floor(Math.abs(Math.sin(i * 12.9898 + 78.233) * 43758.5453));
+  let current = draw(0) % n;
+  for (let i = 1; i <= index; i++) current = (current + 1 + draw(i) % (n - 1)) % n;
+  return SAVER_TRANSITIONS[current]!;
+}
+/** Which step of a cycle is on screen `elapsed` ms after the screensaver started, with a step every `seconds`. */
+export const cycleStep = (elapsed: number, seconds: number) => Math.floor(Math.max(0, elapsed) / (seconds * 1000));
 export function writeSaver(prefs: SaverPrefs) { try { localStorage.setItem(SAVER_KEY, JSON.stringify(prefs)); } catch { /* For this page only. */ } }
 /** Seconds left on a Home Assistant timer that runs. */
 export function timerLeft(state: HAState | undefined, now = Date.now()) {

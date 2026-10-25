@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.28.0 — Écran de veille animé : diaporama et plan qui tourne
+
+- **Diaporama photo** (Plus → Écran de veille → Photos) : les photos défilent l'une après l'autre au lieu d'une seule image fixe. On choisit lesquelles (« Toutes les photos », « Mes photos » importées dans Apparence, ou « La bibliothèque » des 13 fonds MP Nexus) et le rythme (8 s, 15 s, 30 s, 1 min ou 5 min). Sans photo importée, « Mes photos » montre la bibliothèque.
+- **Effets de transition** : fondu, glissement, zoom, flou, balayage, cercle, ou « Au hasard » qui en tire un nouveau à chaque photo, jamais deux fois le même de suite. Chaque photo garde aussi sa lente dérive (Ken Burns), dans un sens puis dans l'autre. Avec « Effets animés » coupé dans Apparence, ou si l'appareil demande moins d'animations, les photos passent en simple fondu.
+- **Plan 3D qui tourne** : la maison tourne lentement sur elle-même pendant la veille. Vitesse lente (un tour en 2 min), normale (1 min), rapide (30 s), ou arrêtée.
+- **Calques à tour de rôle** : le plan passe d'un calque à l'autre (lumières, climat, ouvrants, médias, buanderie, selon ce que la maison propose), toutes les 10 s, 20 s, 30 s ou 1 min. Le nom du calque s'affiche sous le plan. Le calque choisi sur les pages n'est pas modifié.
+- Réglages enregistrés pour cet écran, comme le reste de l'écran de veille. Les réglages déjà enregistrés sont conservés.
+- Tests : réglages lus et corrigés, transitions tirées sans répétition, cadence (Vitest). Diaporama qui change de photo avec la transition choisie, plan qui tourne et change de calque (Playwright).
+
 ## 0.27.2 — Écran de veille « Plan 3D » sur tous les écrans
 
 - Veille « Plan 3D » : l'horloge et les widgets ne chevauchent plus le plan sur une tablette en paysage. Sur un téléphone ou une tablette en portrait, les widgets passent sur deux colonnes en haut, et le plan se place en dessous au lieu d'être coincé derrière eux.

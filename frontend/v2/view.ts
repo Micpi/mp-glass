@@ -197,6 +197,9 @@ export class MPNexusView extends LitElement {
   /** The drawer open under the remote: the numbers, or the keyboard that types on the television. */
   private remoteExtra?: 'digits'|'keyboard';
   private remoteText = '';
+  /** The keyboard opens by itself while the television waits for text, unless it was closed during that wait. */
+  private remoteFocusClosed = false;
+  private remoteFocusShown = false;
   private imageObserver?: IntersectionObserver;
   private protectedImages = new Map<string, string>();
   private protectedImageRequests = new Map<string, Promise<string | undefined>>();
@@ -1264,8 +1267,16 @@ export class MPNexusView extends LitElement {
     const apps = (['netflix', 'youtube', 'prime'] as const).filter(k => routes[k]);
     const colors = (['red', 'green', 'yellow', 'blue'] as const).filter(k => routes[k]);
     const hasDigits = DIGITS.every(n => routes[n]);
-    const extra = this.remoteExtra === 'digits' && !hasDigits || this.remoteExtra === 'keyboard' && !keyboard ? undefined : this.remoteExtra;
-    const drawer = (which: 'digits'|'keyboard') => { this.remoteExtra = extra === which ? undefined : which; };
+    const focused = !!keyboard?.focus && this.state(keyboard.focus)?.state === 'on';
+    if (!focused) { this.remoteFocusClosed = false; this.remoteFocusShown = false; }
+    const asked = this.remoteExtra === 'digits' && !hasDigits || this.remoteExtra === 'keyboard' && !keyboard ? undefined : this.remoteExtra;
+    const extra = focused && !this.remoteFocusClosed && !this.mediaReadOnlyGuest ? 'keyboard' : asked;
+    if (extra === 'keyboard' && focused && !this.remoteFocusShown) { this.remoteFocusShown = true; void this.updateComplete.then(() => this.renderRoot.querySelector<HTMLInputElement>('.remote-keyboard input')?.focus()); }
+    const drawer = (which: 'digits'|'keyboard') => {
+      if (extra === which) { this.remoteExtra = undefined; if (focused) this.remoteFocusClosed = true; }
+      else { this.remoteExtra = which; if (which === 'keyboard') this.remoteFocusClosed = false; else if (focused) this.remoteFocusClosed = true; }
+      this.requestUpdate();
+    };
     const type = (e: Event) => {
       e.preventDefault();
       const text = this.remoteText.trim() && this.remoteText.slice(0, 250);
@@ -1285,7 +1296,7 @@ export class MPNexusView extends LitElement {
         <button class="btn" type="submit" ?disabled=${!this.remoteText.trim()}>${mpIcon('arrow', 16)}${tr('Envoyer')}</button>
         ${keyboard.enter ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.enter!)}>${mpIcon('check', 16)}${tr('Valider')}</button>` : nothing}
         ${keyboard.clear ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.clear!)}>${mpIcon('close', 16)}${tr('Effacer')}</button>` : nothing}
-        <small>${keyboard.mode === 'search' ? tr('Le texte part directement dans la recherche du téléviseur.') : tr('Le texte s’écrit dans le champ ouvert sur le téléviseur.')}</small>
+        <small>${focused ? tr('Le téléviseur attend du texte.') + ' ' : ''}${keyboard.mode === 'search' ? tr('Le texte part directement dans la recherche du téléviseur.') : tr('Le texte s’écrit dans le champ ouvert sur le téléviseur.')}</small>
       </form>` : nothing}
       ${extra === 'digits' ? html`<div class="remote-digits" role="group" aria-label=${tr('Pavé numérique')}>${DIGITS.map(n => html`<button class=${n === '0' ? 'zero' : ''} @click=${() => send(n)}>${n}</button>`)}</div>` : nothing}
       `

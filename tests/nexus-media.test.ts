@@ -74,6 +74,9 @@ describe('MP Nexus v2 media', () => {
     expect(remoteKeyboard(tv('apple_tv'), 'media_player.tv')).toBeUndefined();
     expect(remoteKeyboard(tv('apple_tv', { d: { id: 'd', primary_config_entry: 'entry1' } }), 'media_player.tv')?.send('Dune')).toEqual({ domain: 'apple_tv', service: 'append_keyboard_text', data: { config_entry_id: 'entry1', text: 'Dune' } });
     expect(remoteKeyboard(tv('samsungtv'), 'media_player.tv')).toBeUndefined();
+    const focused = hass([state('media_player.tv'), state('remote.tv', {}, 'on'), state('binary_sensor.tv_keyboard_focused', {}, 'on'), state('binary_sensor.other_keyboard', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', device_id: 'd', platform: 'apple_tv' }, 'remote.tv': { entity_id: 'remote.tv', device_id: 'd', platform: 'apple_tv' }, 'binary_sensor.tv_keyboard_focused': { entity_id: 'binary_sensor.tv_keyboard_focused', device_id: 'd', platform: 'apple_tv' }, 'binary_sensor.other_keyboard': { entity_id: 'binary_sensor.other_keyboard', device_id: 'x', platform: 'apple_tv' } });
+    expect(remoteKeyboard({ ...focused, devices: { d: { id: 'd', primary_config_entry: 'entry1' } } }, 'media_player.tv')?.focus).toBe('binary_sensor.tv_keyboard_focused');
+    expect(remoteKeyboard(tv('webostv'), 'media_player.tv')?.focus).toBeUndefined();
     expect(remoteKeyboard(tv('braviatv'), 'media_player.tv')).toBeUndefined();
   });
   it('enables the trackpad only when all four directions and select have a known route', () => {

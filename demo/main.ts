@@ -266,6 +266,9 @@ if (params.has('v2') && spatial) {
   // `?tv=samsungtv:Samsung` shows the remote another brand and integration would get.
   const [tvPlatform='apple_tv',tvMaker='Apple']=(params.get('tv')??'').split(':').filter(Boolean);
   for(const id of ['media_player.salon_tv','remote.salon_tv'])hass.entities[id]!.platform=tvPlatform;
+  // `?tv-focus` plays a TV that waits for text, as Apple TV reports with its keyboard sensor.
+  hass.states['binary_sensor.salon_tv_keyboard_focused']={entity_id:'binary_sensor.salon_tv_keyboard_focused',state:params.has('tv-focus')?'on':'off',attributes:{friendly_name:'Salon · Clavier actif'}};
+  hass.entities['binary_sensor.salon_tv_keyboard_focused']={entity_id:'binary_sensor.salon_tv_keyboard_focused',device_id:'tv',platform:tvPlatform};
   hass.devices={tv:{id:'tv',manufacturer:tvMaker,model:'Salon',config_entries:['demo_tv'],primary_config_entry:'demo_tv'}};
   if(params.has('proxy-cover'))hass.states['media_player.salon_sonos']!.attributes.entity_picture='/api/media_player_proxy/media_player.salon_sonos?token=temporary-demo-token';
   hass.states={...hass.states,'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',state:'unknown',attributes:{friendly_name:'Salon · Favoriser le titre actuel'}}};

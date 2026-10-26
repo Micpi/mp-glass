@@ -138,3 +138,20 @@ test('v2 draws the remote of the TV brand and types on televisions that take tex
   await expect(nexus.getByRole('button', { name: 'Source' })).toBeVisible();
   await expect(nexus.getByRole('button', { name: 'Clavier' })).toHaveCount(0);
 });
+
+test('v2 keeps the TV keyboard hidden until asked, and opens it while the TV waits for text', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  const nexus = page.locator('mp-nexus-view-v2');
+  await page.goto('/media?spatial&v2');
+  await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
+  await nexus.getByRole('tab').last().click();
+  await expect(nexus.getByRole('button', { name: 'Clavier' })).toBeVisible();
+  await expect(nexus.getByRole('textbox', { name: 'Clavier' })).toHaveCount(0);
+  await page.goto('/media?spatial&v2&tv-focus');
+  await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
+  await nexus.getByRole('tab').last().click();
+  await expect(nexus.getByRole('textbox', { name: 'Clavier' })).toBeFocused();
+  await expect(nexus.getByText('Le téléviseur attend du texte.', { exact: false })).toBeVisible();
+  await nexus.getByRole('button', { name: 'Clavier' }).click();
+  await expect(nexus.getByRole('textbox', { name: 'Clavier' })).toHaveCount(0);
+});

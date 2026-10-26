@@ -93,11 +93,21 @@ export function remoteRoutes(hass: Hass | undefined, playerId: string): Partial<
 }
 
 /** Typing on the television: the text goes to the field it has focused, or, on Roku, straight into its search. */
-export interface RemoteKeyboard { mode: 'text'|'search'; send(text: string): RemoteRoute; enter?: RemoteRoute; clear?: RemoteRoute }
+export interface RemoteKeyboard { mode: 'text'|'search'; send(text: string): RemoteRoute; enter?: RemoteRoute; clear?: RemoteRoute; focus?: string }
+/** The sensor that tells when the television waits for text, as Apple TV's « keyboard focused » does, on the same device. */
+export function keyboardFocusSensor(hass: Hass | undefined, playerId: string) {
+  const devices = new Set([playerId, remoteOf(hass, playerId)].map(id => id && hass?.entities?.[id]?.device_id).filter(Boolean));
+  if (!devices.size) return undefined;
+  return Object.keys(hass?.states ?? {}).find(id => id.startsWith('binary_sensor.') && /keyboard/.test(id) && devices.has(hass?.entities?.[id]?.device_id));
+}
 /** ADB types `%s` for a space; the rest is quoted for the television's shell. */
 const adbText = (text: string) => `input text '${text.replace(/ /g, '%s').replace(/'/g, `'\\''`)}'`;
 /** The keyboard of a player, when its integration lets Home Assistant type on it. */
 export function remoteKeyboard(hass: Hass | undefined, playerId: string): RemoteKeyboard | undefined {
+  const keyboard = keyboardRoutes(hass, playerId), focus = keyboard && keyboardFocusSensor(hass, playerId);
+  return keyboard && focus ? { ...keyboard, focus } : keyboard;
+}
+function keyboardRoutes(hass: Hass | undefined, playerId: string): RemoteKeyboard | undefined {
   const { platform, remote } = remotePlatform(hass, playerId);
   switch (platform) {
     case 'androidtv_remote': return remote ? { mode: 'text', send: text => ({ domain: 'remote', service: 'send_command', data: { entity_id: remote, command: `text:${text}` } }), enter: { domain: 'remote', service: 'send_command', data: { entity_id: remote, command: 'ENTER' } } } : undefined;

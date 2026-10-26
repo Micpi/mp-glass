@@ -7,6 +7,8 @@ export interface Hass {
   connection: object;
   /** The entity registry as the frontend keeps it: what device an entity belongs to, and what integration made it. */
   entities?: Record<string, { entity_id: string; device_id?: string | null; platform?: string; area_id?: string | null }>;
+  /** The device registry as the frontend keeps it: who made a device, and the config entries behind it. */
+  devices?: Record<string, { id: string; manufacturer?: string | null; model?: string | null; config_entries?: string[]; primary_config_entry?: string | null }>;
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService(domain: string, service: string, data: Record<string, unknown>): Promise<unknown>;
   fetchWithAuth?(path: string, init?: RequestInit): Promise<Response>;

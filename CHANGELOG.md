@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.30.0 — Une télécommande adaptée à chaque marque de téléviseur
+
+- **Marque et système reconnus automatiquement** à partir de l’intégration Home Assistant du téléviseur et du fabricant inscrit dans le registre des appareils : Apple TV, Google TV / Android TV (TCL, Sony, Philips, Hisense, Xiaomi, NVIDIA…), Fire TV, Samsung Tizen, LG webOS, Sony Bravia, Panasonic Viera, Philips, Roku et Kodi. Un badge en haut de la télécommande indique la marque et le système détectés.
+- **Commun à tous** : les flèches et OK, le trackpad (glisser pour naviguer, toucher pour OK), Retour, Accueil, Menu, le volume, les chaînes, le son coupé, lecture/pause et l’alimentation.
+- **Touches propres à chaque marque**, affichées seulement quand l’intégration sait les envoyer : Source, Guide TV, Info, Réglages, Applis, Options, Rechercher, Assistant vocal, Sous-titres, Quitter, Revoir, Reculer/Avancer, Centre de contrôle (Apple TV), Ambilight (Philips), touches de couleur et pavé numérique « 123 ». Raccourcis Netflix, YouTube et Prime Video sur Google TV, LG, Sony et Panasonic.
+- **Nouvelles intégrations** : Panasonic Viera (`panasonic_viera`) et Kodi ont désormais des flèches, OK et le trackpad.
+- **Clavier** pour écrire sur le téléviseur (recherche, identifiants, titres) : Google TV / Android TV (`text:` du Android TV Remote), Android TV et Fire TV par ADB, LG webOS (clavier à l’écran), Apple TV (`apple_tv.append_keyboard_text`, avec Effacer) et Kodi. Sur Roku, le texte lance directement la recherche. Le bouton Clavier n’apparaît pas pour les marques dont l’intégration ne permet pas la saisie (Samsung, Sony Bravia, Panasonic, Philips). Les invités en lecture seule ne peuvent rien envoyer.
+- La démo accepte `?tv=<intégration>:<fabricant>` (par exemple `?tv=samsungtv:Samsung`) pour voir la télécommande de chaque marque. Tests unitaires des commandes de chaque marque, de la détection et du clavier ; test navigateur sur téléphone (badge, pavé numérique, envoi de texte, absence de clavier sur Samsung). Une installation Home Assistant réelle n’a pas été utilisée pour ce travail.
+
 ## 0.29.1 — Le popup des pièces adopte le style Alertes et Recherche
 
 - Le bouton d’ambiance à côté du nom d’une pièce sur le plan 3D ouvre une vraie fenêtre de verre, au-dessus de l’interface, avec la même largeur, la même matière, les mêmes bordures et les mêmes arrondis que Recherche. Sur téléphone, elle s’ouvre en panneau en bas de l’écran ; elle n’est plus limitée ni coupée par le cadre du plan.

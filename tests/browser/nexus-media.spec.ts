@@ -109,3 +109,32 @@ test('v2 media and the trackpad fit phone and tablet orientations without horizo
     await expect(nexus.getByRole('button', { name: 'Trackpad télécommande' })).toBeVisible();
   }
 });
+
+test('v2 draws the remote of the TV brand and types on televisions that take text', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/media?spatial&v2&tv=androidtv_remote:TCL');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
+  await nexus.getByRole('tab').last().click();
+  await expect(nexus.locator('.remote-brand')).toContainText('TCL');
+  await expect(nexus.locator('.remote-brand')).toContainText('Google TV');
+  await expect(nexus.getByRole('button', { name: 'Rouge' })).toBeVisible();
+  await expect(nexus.getByRole('switch', { name: 'Trackpad' })).toBeEnabled();
+  await nexus.getByRole('button', { name: '123' }).click();
+  await nexus.locator('.remote-digits').getByRole('button', { name: '7' }).click();
+  const calls = () => page.evaluate(() => (window as unknown as { demo: { calls: unknown[] } }).demo.calls);
+  expect((await calls()).at(-1)).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.salon_tv', command: '7' } });
+  await nexus.getByRole('button', { name: 'Clavier' }).click();
+  await nexus.getByRole('textbox', { name: 'Clavier' }).fill('Le Grand Bleu');
+  await nexus.getByRole('button', { name: 'Envoyer' }).click();
+  await expect.poll(async () => (await calls()).at(-1)).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.salon_tv', command: 'text:Le Grand Bleu' } });
+  await expect(nexus.getByText('Texte envoyé au téléviseur.')).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+
+  await page.goto('/media?spatial&v2&tv=samsungtv:Samsung');
+  await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
+  await nexus.getByRole('tab').last().click();
+  await expect(nexus.locator('.remote-brand')).toContainText('Samsung');
+  await expect(nexus.getByRole('button', { name: 'Source' })).toBeVisible();
+  await expect(nexus.getByRole('button', { name: 'Clavier' })).toHaveCount(0);
+});

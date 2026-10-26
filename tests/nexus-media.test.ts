@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
+import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteKeyboard, remoteProfile, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
 import { serviceBrand } from '../frontend/v2/brands';
 import type { Hass } from '../frontend/ha/client';
 
@@ -35,6 +35,46 @@ describe('MP Nexus v2 media', () => {
     expect(remoteRoutes(hass([state('media_player.sonos')]), 'media_player.sonos')).toEqual({});
     expect(remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'remote.tv': { entity_id: 'remote.tv', platform: 'apple_tv' } }), 'media_player.tv').back?.data).toEqual({ entity_id: 'remote.tv', command: 'menu' });
     expect(remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')]), 'media_player.tv')).toEqual({});
+  });
+  it('gives each brand the keys its integration really has', () => {
+    const samsung = remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', device_id: 'd', platform: 'samsungtv' }, 'remote.tv': { entity_id: 'remote.tv', device_id: 'd', platform: 'samsungtv' } }), 'media_player.tv');
+    expect(samsung.input?.data).toEqual({ entity_id: 'remote.tv', command: 'KEY_SOURCE' });
+    expect(samsung.blue?.data.command).toBe('KEY_CYAN');
+    expect(samsung['7']?.data.command).toBe('KEY_7');
+    const viera = remoteRoutes(hass([state('media_player.viera'), state('remote.viera', {}, 'on')], { 'media_player.viera': { entity_id: 'media_player.viera', device_id: 'p', platform: 'panasonic_viera' }, 'remote.viera': { entity_id: 'remote.viera', device_id: 'p', platform: 'panasonic_viera' } }), 'media_player.viera');
+    expect(viera.select?.data.command).toBe('enter');
+    expect(viera.netflix?.data.command).toBe('NRC_NETFLIX-ONOFF');
+    const google = remoteRoutes(hass([state('media_player.tcl'), state('remote.tcl', {}, 'on')], { 'media_player.tcl': { entity_id: 'media_player.tcl', device_id: 't', platform: 'androidtv_remote' }, 'remote.tcl': { entity_id: 'remote.tcl', device_id: 't', platform: 'androidtv_remote' } }), 'media_player.tcl');
+    expect(google.settings?.data.command).toBe('SETTINGS');
+    expect(google.youtube).toEqual({ domain: 'media_player', service: 'play_media', data: { entity_id: 'media_player.tcl', media_content_type: 'url', media_content_id: 'https://www.youtube.com' } });
+    const apple = remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'remote.tv': { entity_id: 'remote.tv', platform: 'apple_tv' } }), 'media_player.tv');
+    expect(apple.red).toBeUndefined();
+    expect(apple.control?.data.command).toBe('control_center');
+    const kodi = remoteRoutes(hass([state('media_player.kodi')], { 'media_player.kodi': { entity_id: 'media_player.kodi', platform: 'kodi' } }), 'media_player.kodi');
+    expect(kodi.select).toEqual({ domain: 'kodi', service: 'call_method', data: { entity_id: 'media_player.kodi', method: 'Input.Select' } });
+  });
+  it('names the maker from the device registry and the system from the integration', () => {
+    const tv = (platform: string, manufacturer?: string) => {
+      const h = hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', device_id: 'd', platform }, 'remote.tv': { entity_id: 'remote.tv', device_id: 'd', platform } });
+      return remoteProfile({ ...h, devices: { d: { id: 'd', manufacturer } } }, 'media_player.tv');
+    };
+    expect(tv('androidtv_remote', 'TCL')).toEqual({ brand: 'TCL', system: 'Google TV', tone: 'tcl' });
+    expect(tv('androidtv_remote', 'Sony')).toMatchObject({ brand: 'Sony', system: 'Google TV' });
+    expect(tv('webostv', 'LG Electronics')).toMatchObject({ brand: 'LG', system: 'webOS' });
+    expect(tv('samsungtv')).toMatchObject({ brand: 'Samsung', system: 'Tizen' });
+    expect(tv('androidtv', 'Amazon')).toMatchObject({ brand: 'Amazon', system: 'Fire TV' });
+    expect(tv('cast')).toBeUndefined();
+  });
+  it('types on the televisions whose integration takes text, and only those', () => {
+    const tv = (platform: string, devices?: Hass['devices']) => ({ ...hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', device_id: 'd', platform }, 'remote.tv': { entity_id: 'remote.tv', device_id: 'd', platform } }), devices });
+    expect(remoteKeyboard(tv('androidtv_remote'), 'media_player.tv')?.send('Dune')).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.tv', command: 'text:Dune' } });
+    expect(remoteKeyboard(tv('webostv'), 'media_player.tv')?.send('Dune').data).toEqual({ entity_id: 'media_player.tv', command: 'com.webos.service.ime/insertText', payload: { text: 'Dune', replace: 0 } });
+    expect(remoteKeyboard(tv('androidtv'), 'media_player.tv')?.send("l'été 2")?.data.command).toBe(`input text 'l'\\''été%s2'`);
+    expect(remoteKeyboard(tv('roku'), 'media_player.tv')).toMatchObject({ mode: 'search' });
+    expect(remoteKeyboard(tv('apple_tv'), 'media_player.tv')).toBeUndefined();
+    expect(remoteKeyboard(tv('apple_tv', { d: { id: 'd', primary_config_entry: 'entry1' } }), 'media_player.tv')?.send('Dune')).toEqual({ domain: 'apple_tv', service: 'append_keyboard_text', data: { config_entry_id: 'entry1', text: 'Dune' } });
+    expect(remoteKeyboard(tv('samsungtv'), 'media_player.tv')).toBeUndefined();
+    expect(remoteKeyboard(tv('braviatv'), 'media_player.tv')).toBeUndefined();
   });
   it('enables the trackpad only when all four directions and select have a known route', () => {
     const routes = remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'media_player.tv': { entity_id: 'media_player.tv', platform: 'androidtv_remote' }, 'remote.tv': { entity_id: 'remote.tv', platform: 'androidtv_remote' } }), 'media_player.tv');

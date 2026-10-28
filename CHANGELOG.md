@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.32.0 — Une icône TV pour la barre de son, et les lecteurs de l’accueil ouvrent le Multimédia
+
+- **Icône TV dédiée** : quand une barre de son (Sonos Arc, Beam, Ray…) joue le son de la télévision (source TV, HDMI ou (e)ARC), la carte du panneau « En ce moment » et la pochette de la page Multimédia montrent un écran de télévision lumineux au lieu du dégradé générique. Même visuel pour un téléviseur allumé qui ne fournit pas d’image.
+- **Toucher un lecteur ouvre la page Multimédia sur ce lecteur**, onglet Lecture. Les boutons Pause et Suivant de la carte agissent toujours sans changer de page. La carte s’éclaire au survol et s’ouvre aussi au clavier (Entrée ou Espace).
+- Le lecteur choisi dans le Multimédia est gardé tant que le tableau de bord reste ouvert.
+- Tests : reconnaissance de la source TV (unitaire) et test navigateur de la démo (`?sonos-tv`) : écran TV sur l’accueil et dans le Multimédia, boutons sans navigation, lien vers le bon lecteur. Pas d’essai sur une installation Home Assistant réelle.
+
 ## 0.31.0 — Personnaliser les couleurs du plan, masquer des lecteurs et plus
 
 - **Nouveau panneau Plus → Personnaliser**, pour cet écran ou pour toute la maison (administrateur, avec Enregistrer/Annuler comme l’Apparence).

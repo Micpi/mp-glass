@@ -59,6 +59,8 @@ export function nowPlaying(state?:HAState){
 }
 /** A television shows pictures; speakers and amplifiers play sound. */
 export const mediaIsTv=(state?:HAState)=>state?.attributes.device_class==='tv';
+/** A soundbar or speaker that plays the television's sound: Sonos and others name that input TV, HDMI or (e)ARC. */
+export const mediaTvInput=(state?:HAState)=>mediaOn(state)&&/^(tv|television|téléviseur|tv audio|hdmi(?:[ -]?(?:arc|earc|\d))?|e?arc)$/i.test(String(state!.attributes.source??'').trim());
 const temperatureSensor=(s:HAState)=>s.entity_id.startsWith('sensor.')&&(s.attributes.device_class==='temperature'||/^°[CF]$/.test(String(s.attributes.unit_of_measurement)));
 /**
  * Whether the room has something that measures its temperature, even offline: a temperature sensor, or a thermostat that

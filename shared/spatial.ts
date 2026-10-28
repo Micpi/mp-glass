@@ -469,6 +469,29 @@ export function buildingPlan(plan: SpatialPlan, id: string): SpatialPlan {
   return shown;
 }
 const housePlans = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
+/**
+ * The plan without the entities set aside: rooms, doors, windows, televisions and machines forget them, and a television
+ * or machine linked to one of them leaves the plan. The same plan and choice give the same object, as for a house.
+ */
+export function withoutHidden(plan: SpatialPlan, hidden: ReadonlySet<string>): SpatialPlan {
+  if (!hidden.size) return plan;
+  const key = [...hidden].sort().join(','), cached = hiddenPlans.get(plan)?.get(key);
+  if (cached) return cached;
+  const keep = (id: string | undefined) => !id || !hidden.has(id);
+  const shown: SpatialPlan = {
+    ...plan,
+    floors: plan.floors.map(floor => ({ ...floor, rooms: floor.rooms.map(room => ({
+      ...room,
+      ...(room.entityIds ? { entityIds: room.entityIds.filter(id => keep(id)) } : {}),
+      ...(room.openings ? { openings: room.openings.map(o => o.entityIds ? { ...o, entityIds: o.entityIds.filter(id => keep(id)) } : o) } : {}),
+      ...(room.media ? { media: room.media.filter(m => keep(m.entityId)) } : {}),
+      ...(room.laundry ? { laundry: room.laundry.filter(m => keep(m.entityId)) } : {}),
+    })) })),
+  };
+  hiddenPlans.set(plan, (hiddenPlans.get(plan) ?? new Map<string, SpatialPlan>()).set(key, shown));
+  return shown;
+}
+const hiddenPlans = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 export function parseSpatial(value: unknown): SpatialPlan {
   if (!validate(value)) throw new Error('Plan invalide : vérifiez les pièces et les coordonnées.');
   if (value.site && sitePoints(value.site) > SITE_POINTS) throw new Error('Plan de masse trop détaillé.');

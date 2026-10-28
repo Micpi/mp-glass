@@ -1,5 +1,6 @@
 import type { AppearanceConfig, HAState } from '../shared/models';
 import type { Hass } from './ha/client';
+import { PLAN_COLOR_KEYS } from '../shared/spatial-state';
 import { MP_GLASS_BACKGROUND } from './background';
 import loft from '../demo/assets/backgrounds/office.webp';
 import yacht from '../demo/assets/backgrounds/yacht.webp';
@@ -186,12 +187,25 @@ export async function accentOf(url: string): Promise<string | undefined> {
 
 // ——— A look of its own for one screen ———
 /** What a screen may set for itself, over the look of the house. */
-export const SCREEN_KEYS = ['wallpaper', 'nightWallpaper', 'accent', 'glassTint', 'glassOpacity', 'glassBlur', 'radius', 'backgroundDim', 'backgroundBlur', 'backgroundPosition', 'fontStyle', 'motion'] as const;
+export const SCREEN_KEYS = ['wallpaper', 'nightWallpaper', 'accent', 'glassTint', 'glassOpacity', 'glassBlur', 'radius', 'backgroundDim', 'backgroundBlur', 'backgroundPosition', 'fontStyle', 'motion',
+  'planColors', 'planGlow', 'hiddenLayers', 'hiddenEntities', 'showClock', 'showStats', 'showScenes'] as const;
 export type ScreenLook = Partial<Pick<AppearanceConfig, typeof SCREEN_KEYS[number]>>;
 const SCREEN_LOOK_KEY = 'mp-nexus.appearance';
 const colour = (v: unknown) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : undefined;
 const within = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : undefined;
 const ref = (v: unknown) => typeof v === 'string' && (libraryWallpaper(v) || IMPORTED.test(v)) ? v : undefined;
+const flag = (v: unknown) => typeof v === 'boolean' ? v : undefined;
+/** The sound entries of a list, each once; an empty or unreadable one is no choice at all. */
+function list<T>(v: unknown, item: (x: unknown) => T | undefined): T[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const kept = [...new Set(v.map(item).filter((x): x is T => x !== undefined))];
+  return kept.length ? kept : undefined;
+}
+function planColors(v: unknown): ScreenLook['planColors'] {
+  if (!v || typeof v !== 'object') return undefined;
+  const kept = Object.fromEntries(PLAN_COLOR_KEYS.map(key => [key, colour((v as Record<string, unknown>)[key])]).filter(([, x]) => x));
+  return Object.keys(kept).length ? kept : undefined;
+}
 /** Only the known keys with sound values: a hand-edited or older entry never breaks the page. */
 export function cleanLook(value: unknown): ScreenLook {
   const v = (value && typeof value === 'object' ? value : {}) as Record<string, unknown>;
@@ -201,6 +215,10 @@ export function cleanLook(value: unknown): ScreenLook {
     backgroundDim: within(v.backgroundDim, 0, .8), backgroundBlur: within(v.backgroundBlur, 0, 20),
     backgroundPosition: (['left', 'center', 'right'] as const).find(p => p === v.backgroundPosition), fontStyle: (['elegant', 'modern', 'soft'] as const).find(f => f === v.fontStyle),
     motion: typeof v.motion === 'boolean' ? v.motion : undefined,
+    planColors: planColors(v.planColors), planGlow: within(v.planGlow, .3, 1.8),
+    hiddenLayers: list(v.hiddenLayers, x => (['climate', 'openings', 'media', 'laundry'] as const).find(m => m === x)),
+    hiddenEntities: list(v.hiddenEntities, x => typeof x === 'string' && /^[a-z0-9_]+\.[a-z0-9_]+$/.test(x) ? x : undefined),
+    showClock: flag(v.showClock), showStats: flag(v.showStats), showScenes: flag(v.showScenes),
   };
   return Object.fromEntries(Object.entries(look).filter(([, x]) => x !== undefined)) as ScreenLook;
 }

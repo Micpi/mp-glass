@@ -212,6 +212,94 @@
         "sectionSubtitle": {
           "type": "string",
           "maxLength": 160
+        },
+        "planColors": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "lights": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "selected": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "room": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "house": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "open": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "daylight": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "media": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "laundry": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "cold": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "cool": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "mild": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            },
+            "hot": {
+              "type": "string",
+              "pattern": "^#[0-9a-fA-F]{6}$"
+            }
+          }
+        },
+        "planGlow": {
+          "type": "number",
+          "minimum": 0.3,
+          "maximum": 1.8
+        },
+        "hiddenLayers": {
+          "type": "array",
+          "maxItems": 4,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "climate",
+              "openings",
+              "media",
+              "laundry"
+            ]
+          }
+        },
+        "hiddenEntities": {
+          "type": "array",
+          "maxItems": 1000,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "maxLength": 255,
+            "pattern": "^[a-z0-9_]+\\.[a-z0-9_]+$"
+          }
+        },
+        "showStats": {
+          "type": "boolean"
+        },
+        "showScenes": {
+          "type": "boolean"
         }
       }
     },

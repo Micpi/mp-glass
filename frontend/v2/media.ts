@@ -21,17 +21,18 @@ const REMOTE_COMMANDS: Record<string, Keys> = {
   androidtv_remote: {
     up: 'DPAD_UP', down: 'DPAD_DOWN', left: 'DPAD_LEFT', right: 'DPAD_RIGHT', select: 'DPAD_CENTER', back: 'BACK', home: 'HOME', menu: 'MENU',
     input: 'TV_INPUT', guide: 'GUIDE', info: 'INFO', settings: 'SETTINGS', search: 'SEARCH', assistant: 'ASSIST', captions: 'CAPTIONS',
+    rewind: 'MEDIA_REWIND', forward: 'MEDIA_FAST_FORWARD',
     red: 'PROG_RED', green: 'PROG_GREEN', yellow: 'PROG_YELLOW', blue: 'PROG_BLUE', ...digits(n => n),
   },
   roku: { up: 'up', down: 'down', left: 'left', right: 'right', select: 'select', back: 'back', home: 'home', menu: 'info', search: 'search', replay: 'replay', rewind: 'reverse', forward: 'forward' },
   samsungtv: {
     up: 'KEY_UP', down: 'KEY_DOWN', left: 'KEY_LEFT', right: 'KEY_RIGHT', select: 'KEY_ENTER', back: 'KEY_RETURN', home: 'KEY_HOME', menu: 'KEY_MENU',
-    input: 'KEY_SOURCE', guide: 'KEY_GUIDE', info: 'KEY_INFO', options: 'KEY_TOOLS', exit: 'KEY_EXIT',
+    input: 'KEY_SOURCE', guide: 'KEY_GUIDE', info: 'KEY_INFO', options: 'KEY_TOOLS', exit: 'KEY_EXIT', rewind: 'KEY_REWIND', forward: 'KEY_FF',
     red: 'KEY_RED', green: 'KEY_GREEN', yellow: 'KEY_YELLOW', blue: 'KEY_CYAN', ...digits(n => `KEY_${n}`),
   },
   philips_js: {
     up: 'CursorUp', down: 'CursorDown', left: 'CursorLeft', right: 'CursorRight', select: 'Confirm', back: 'Back', home: 'Home', menu: 'Options',
-    input: 'Source', info: 'Info', search: 'Find', settings: 'Adjust', captions: 'Subtitle', ambilight: 'AmbilightOnOff',
+    input: 'Source', info: 'Info', search: 'Find', settings: 'Adjust', captions: 'Subtitle', ambilight: 'AmbilightOnOff', rewind: 'Rewind', forward: 'FastForward',
     red: 'RedColour', green: 'GreenColour', yellow: 'YellowColour', blue: 'BlueColour', ...digits(n => `Digit${n}`),
   },
   braviatv: {
@@ -41,7 +42,7 @@ const REMOTE_COMMANDS: Record<string, Keys> = {
   },
   panasonic_viera: {
     up: 'up', down: 'down', left: 'left', right: 'right', select: 'enter', back: 'back', home: 'home', menu: 'NRC_MENU-ONOFF',
-    input: 'NRC_CHG_INPUT-ONOFF', guide: 'NRC_EPG-ONOFF', info: 'NRC_INFO-ONOFF', apps: 'NRC_APPS-ONOFF', options: 'NRC_SUBMENU-ONOFF', exit: 'NRC_CANCEL-ONOFF', netflix: 'NRC_NETFLIX-ONOFF',
+    input: 'NRC_CHG_INPUT-ONOFF', guide: 'NRC_EPG-ONOFF', info: 'NRC_INFO-ONOFF', apps: 'NRC_APPS-ONOFF', options: 'NRC_SUBMENU-ONOFF', exit: 'NRC_CANCEL-ONOFF', netflix: 'NRC_NETFLIX-ONOFF', rewind: 'NRC_REW-ONOFF', forward: 'NRC_FF-ONOFF',
     red: 'NRC_RED-ONOFF', green: 'NRC_GREEN-ONOFF', yellow: 'NRC_YELLOW-ONOFF', blue: 'NRC_BLUE-ONOFF', ...digits(n => `NRC_D${n}-ONOFF`),
   },
 };
@@ -79,6 +80,8 @@ function remotePlatform(hass: Hass | undefined, playerId: string) {
   const remote = remoteOf(hass, playerId);
   return { platform: (remote && hass?.entities?.[remote]?.platform) || platform, remote };
 }
+/** The integration that carries a player's keys, which decides how its remote is laid out. */
+export const remoteSystem = (hass: Hass | undefined, playerId: string) => remotePlatform(hass, playerId).platform;
 /** How each key reaches the television behind a player; empty when MP Nexus has no way to send keys to it. */
 export function remoteRoutes(hass: Hass | undefined, playerId: string): Partial<Record<RemoteKey, RemoteRoute>> {
   const { platform, remote } = remotePlatform(hass, playerId), own = PLAYER_BUTTONS[platform];

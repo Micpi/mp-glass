@@ -41,11 +41,13 @@ describe('MP Nexus v2 media', () => {
     expect(samsung.input?.data).toEqual({ entity_id: 'remote.tv', command: 'KEY_SOURCE' });
     expect(samsung.blue?.data.command).toBe('KEY_CYAN');
     expect(samsung['7']?.data.command).toBe('KEY_7');
+    expect(samsung.forward?.data.command).toBe('KEY_FF');
     const viera = remoteRoutes(hass([state('media_player.viera'), state('remote.viera', {}, 'on')], { 'media_player.viera': { entity_id: 'media_player.viera', device_id: 'p', platform: 'panasonic_viera' }, 'remote.viera': { entity_id: 'remote.viera', device_id: 'p', platform: 'panasonic_viera' } }), 'media_player.viera');
     expect(viera.select?.data.command).toBe('enter');
     expect(viera.netflix?.data.command).toBe('NRC_NETFLIX-ONOFF');
     const google = remoteRoutes(hass([state('media_player.tcl'), state('remote.tcl', {}, 'on')], { 'media_player.tcl': { entity_id: 'media_player.tcl', device_id: 't', platform: 'androidtv_remote' }, 'remote.tcl': { entity_id: 'remote.tcl', device_id: 't', platform: 'androidtv_remote' } }), 'media_player.tcl');
     expect(google.settings?.data.command).toBe('SETTINGS');
+    expect(google.rewind?.data.command).toBe('MEDIA_REWIND');
     expect(google.youtube).toEqual({ domain: 'media_player', service: 'play_media', data: { entity_id: 'media_player.tcl', media_content_type: 'url', media_content_id: 'https://www.youtube.com' } });
     const apple = remoteRoutes(hass([state('media_player.tv'), state('remote.tv', {}, 'on')], { 'remote.tv': { entity_id: 'remote.tv', platform: 'apple_tv' } }), 'media_player.tv');
     expect(apple.red).toBeUndefined();

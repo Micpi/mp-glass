@@ -180,3 +180,18 @@ test('a soundbar on the TV input shows a screen, and its home card opens the Mul
   await expect(nexus.locator('.main .cover.tv .tv-glyph')).toBeVisible();
   await page.screenshot({ path: 'test-results/sonos-tv-media.png' });
 });
+
+test('v2 puts the ten-second jumps of Apple TV right under its pad', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/media?spatial&v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
+  await nexus.getByRole('tab').last().click();
+  await nexus.getByRole('button', { name: 'Avancer de 10 s' }).click();
+  const calls = () => page.evaluate(() => (window as unknown as { demo: { calls: unknown[] } }).demo.calls);
+  expect((await calls()).at(-1)).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.salon_tv', command: 'skip_forward' } });
+  await expect(nexus.getByRole('button', { name: 'Chaîne' })).toHaveCount(0);
+  const pad = await nexus.locator('.pad').boundingBox(), skip = await nexus.locator('.remote-transport').boundingBox();
+  expect(skip!.y).toBeGreaterThan(pad!.y + pad!.height);
+  expect(skip!.y - (pad!.y + pad!.height)).toBeLessThan(120);
+});

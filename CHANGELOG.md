@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.33.0 — Chaque télécommande reprend la disposition de l’application de sa marque
+
+- **Reculer et Avancer bien visibles** : une barre de lecture, juste sous le pad, avec un grand bouton lecture/pause au centre. Sur Apple TV et Kodi, ce sont des sauts de 10 secondes (−10 s / +10 s), comme dans la télécommande de l’iPhone. Sur les autres marques, ce sont le retour et l’avance rapides du téléviseur. Si la marque n’a pas ces touches, le lecteur saute de 10 secondes quand Home Assistant le permet.
+- **Une disposition par marque**, inspirée de son application mobile officielle. Le pad et le trackpad sont communs à toutes.
+  - Apple TV : Menu et Centre de contrôle en haut, grandes touches Retour et Accueil sous le pad, pas de touches Chaîne.
+  - Google TV : Source et Réglages en haut, puis Retour, Accueil et une touche Assistant aux couleurs Google.
+  - Samsung : Source et Guide TV en haut, Retour, Accueil et Quitter sous le pad.
+  - LG : Réglages et Guide TV, puis Retour, Accueil et Info.
+  - Sony : Source et Options, puis Retour, Accueil et Guide TV.
+  - Panasonic : Source et Applis, puis Retour, Accueil et Menu.
+  - Philips : Source et Ambilight, puis Retour, Accueil et Options.
+  - Roku : Retour et Accueil en haut, Revoir et Options (✱) sous le pad, pas de touches Chaîne.
+  - Kodi : Menu et Info en haut, Retour et Accueil sous le pad.
+  - Les autres touches de la marque restent dans la grille du bas.
+- Retour et avance rapides ajoutés pour Google TV, Samsung, Panasonic et Philips. Nouvelles icônes −10 s / +10 s et retour/avance rapides.
+- Vérification locale : captures sur téléphone pour Apple TV, TCL Google TV, TCL Roku, Samsung, LG, Sony, Panasonic et Philips. Test navigateur du saut de 10 secondes Apple TV sous le pad et tests unitaires des nouvelles touches.
+
 ## 0.32.0 — Une icône TV pour la barre de son, et les lecteurs de l’accueil ouvrent le Multimédia
 
 - **Icône TV dédiée** : quand une barre de son (Sonos Arc, Beam, Ray…) joue le son de la télévision (source TV, HDMI ou (e)ARC), la carte du panneau « En ce moment » et la pochette de la page Multimédia montrent un écran de télévision lumineux au lieu du dégradé générique. Même visuel pour un téléviseur allumé qui ne fournit pas d’image.

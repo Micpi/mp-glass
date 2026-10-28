@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.33.1 — L’apparence et les couleurs du plan s’appliquent partout sans recharger
+
+- **Correction** : un changement d’apparence ou de couleurs du plan fait dans Plus n’apparaissait sur l’Accueil (et les autres pages) qu’après avoir rechargé la page. Home Assistant garde chaque page ouverte en mémoire ; chacune reçoit maintenant aussitôt le nouveau style, y compris une page revenue à l’écran plus tard et un autre onglet du même appareil. Après un enregistrement pour toute la maison, les pages reprennent le style enregistré, et non plus celui du chargement.
+- **Bouton « Enregistrer et recharger »** en bas d’Apparence et de Personnaliser pour cet écran. Les choix sont gardés au fur et à mesure ; le bouton le confirme et recharge le tableau de bord. « Enregistrer pour la maison » recharge aussi la page une fois l’enregistrement fait.
+- Test navigateur : une palette choisie dans Personnaliser atteint une page d’accueil gardée de côté, puis le bouton recharge avec le choix conservé.
+
 ## 0.33.0 — Chaque télécommande reprend la disposition de l’application de sa marque
 
 - **Reculer et Avancer bien visibles** : une barre de lecture, juste sous le pad, avec un grand bouton lecture/pause au centre. Sur Apple TV et Kodi, ce sont des sauts de 10 secondes (−10 s / +10 s), comme dans la télécommande de l’iPhone. Sur les autres marques, ce sont le retour et l’avance rapides du téléviseur. Si la marque n’a pas ces touches, le lecteur saute de 10 secondes quand Home Assistant le permet.

@@ -190,7 +190,7 @@ export async function accentOf(url: string): Promise<string | undefined> {
 export const SCREEN_KEYS = ['wallpaper', 'nightWallpaper', 'accent', 'glassTint', 'glassOpacity', 'glassBlur', 'radius', 'backgroundDim', 'backgroundBlur', 'backgroundPosition', 'fontStyle', 'motion',
   'planColors', 'planGlow', 'hiddenLayers', 'hiddenEntities', 'showClock', 'showStats', 'showScenes'] as const;
 export type ScreenLook = Partial<Pick<AppearanceConfig, typeof SCREEN_KEYS[number]>>;
-const SCREEN_LOOK_KEY = 'mp-nexus.appearance';
+export const SCREEN_LOOK_KEY = 'mp-nexus.appearance';
 const colour = (v: unknown) => typeof v === 'string' && /^#[0-9a-fA-F]{6}$/.test(v) ? v : undefined;
 const within = (v: unknown, min: number, max: number) => typeof v === 'number' && Number.isFinite(v) && v >= min && v <= max ? v : undefined;
 const ref = (v: unknown) => typeof v === 'string' && (libraryWallpaper(v) || IMPORTED.test(v)) ? v : undefined;

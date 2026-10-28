@@ -1,5 +1,5 @@
 import { describe,expect,it } from 'vitest';
-import { ambianceEntities,canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasOpenings,hasPlayers,hasThermometer,mediaIsTv,mediaOn,mediaPlaying,mediaVolume,nowPlaying,PLAN_COLORS,roomAmbient,roomEntityIds,roomOpen,roomTemperature,temperatureRange } from '../shared/spatial-state';
+import { ambianceEntities,canCover,canMedia,coverClosed,coverOpen,coverPosition,coverStyle,coverTilt,groupCover,hasOpenings,hasPlayers,hasThermometer,mediaIsTv,mediaOn,mediaTvInput,mediaPlaying,mediaVolume,nowPlaying,PLAN_COLORS,roomAmbient,roomEntityIds,roomOpen,roomTemperature,temperatureRange } from '../shared/spatial-state';
 import type { HAState } from '../shared/models';
 import type { SpatialRoom } from '../shared/spatial';
 
@@ -107,6 +107,11 @@ describe('shutters, blinds, curtains and players',()=>{
     expect(['off','standby','unavailable','unknown'].some(s=>mediaOn(state('media_player.a',s)))).toBe(false);
     expect(canMedia(tv,'pause')).toBe(true);expect(canMedia(tv,'next_track')).toBe(false);expect(canMedia(state('media_player.a','unavailable',{supported_features:1}),'pause')).toBe(false);
     expect(mediaVolume(state('media_player.a','on',{volume_level:2}))).toBeUndefined();
+  });
+  it('tell a soundbar that plays the television',()=>{
+    expect(['TV','tv','HDMI','HDMI ARC','eARC','Téléviseur'].every(source=>mediaTvInput(state('media_player.sonos_salon','playing',{source})))).toBe(true);
+    expect(['Spotify','Line-in','AirPlay',undefined].some(source=>mediaTvInput(state('media_player.sonos_salon','playing',{source})))).toBe(false);
+    expect(mediaTvInput(state('media_player.sonos_salon','off',{source:'TV'}))).toBe(false);
   });
 });
 

@@ -271,6 +271,7 @@ if (params.has('v2') && spatial) {
   hass.entities['binary_sensor.salon_tv_keyboard_focused']={entity_id:'binary_sensor.salon_tv_keyboard_focused',device_id:'tv',platform:tvPlatform};
   hass.devices={tv:{id:'tv',manufacturer:tvMaker,model:'Salon',config_entries:['demo_tv'],primary_config_entry:'demo_tv'}};
   if(params.has('proxy-cover'))hass.states['media_player.salon_sonos']!.attributes.entity_picture='/api/media_player_proxy/media_player.salon_sonos?token=temporary-demo-token';
+  if(params.has('sonos-tv'))hass.states['media_player.salon_sonos']!.attributes={...hass.states['media_player.salon_sonos']!.attributes,source:'TV',app_name:undefined,media_title:undefined,media_artist:undefined,entity_picture:undefined,media_duration:undefined,media_position:undefined};
   hass.states={...hass.states,'button.salon_sonos_favorite':{entity_id:'button.salon_sonos_favorite',state:'unknown',attributes:{friendly_name:'Salon · Favoriser le titre actuel'}}};
   const item=(title:string,id:string,colors:[string,string],play=true)=>({title,media_content_id:id,media_content_type:play?'music':'directory',can_play:play,can_expand:!play,thumbnail:art(...colors)});
   const library:Record<string,unknown>={

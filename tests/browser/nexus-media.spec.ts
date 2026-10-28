@@ -155,3 +155,28 @@ test('v2 keeps the TV keyboard hidden until asked, and opens it while the TV wai
   await nexus.getByRole('button', { name: 'Clavier' }).click();
   await expect(nexus.getByRole('textbox', { name: 'Clavier' })).toHaveCount(0);
 });
+
+test('a soundbar on the TV input shows a screen, and its home card opens the Multimédia page on it', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await page.goto('/home?spatial&v2&sonos-tv');
+  const nexus = page.locator('mp-nexus-view-v2');
+  const card = nexus.locator('.side .player-card', { hasText: 'Salon · Sonos Arc' });
+  await expect(card.locator('.art.tv .tv-glyph')).toBeVisible();
+  await page.screenshot({ path: 'test-results/sonos-tv-home.png' });
+  // Home Assistant handles the link itself; the demo would reload the page, so the test keeps the page and reads the link.
+  await page.evaluate(() => window.addEventListener('click', event => { const link = event.composedPath().find(node => node instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined; if (link) { event.preventDefault(); (window as unknown as { followed: string }).followed = new URL(link.href).pathname; } }, true));
+  const followed = () => page.evaluate(() => (window as unknown as { followed?: string }).followed);
+  const calls = () => page.evaluate(() => (window as unknown as { demo: { calls: unknown[] } }).demo.calls.length);
+  const before = await calls();
+  await card.getByRole('button', { name: 'Suivant' }).click();
+  await expect.poll(calls).toBe(before + 1);
+  expect(await followed()).toBeUndefined();
+  await card.locator('b').click();
+  await expect.poll(followed).toBe('/media');
+  // The Multimédia page Home Assistant builds next opens on that player.
+  expect(await page.evaluate(() => (document.createElement('mp-nexus-view-v2') as unknown as { player: string }).player)).toBe('media_player.salon_sonos');
+  await page.goto('/media?spatial&v2&sonos-tv');
+  await nexus.getByRole('button', { name: 'Salon · Sonos Arc' }).click();
+  await expect(nexus.locator('.main .cover.tv .tv-glyph')).toBeVisible();
+  await page.screenshot({ path: 'test-results/sonos-tv-media.png' });
+});

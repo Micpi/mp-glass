@@ -267,6 +267,9 @@ export const nexusStyles = css`
   .voice{text-align:center;padding:10px 0}.voice .mic{width:76px;height:76px;border-radius:50%;margin:6px auto 10px;display:grid;place-items:center;background:var(--mp-primary-background,var(--mp-accent,#69b7ff));color:var(--mp-on-accent,#061421);animation:pulse 1.2s ease-out infinite}
   .voice .serif{font-size:22px;margin-top:10px;min-height:28px}
   .live>.end{margin-left:auto}
+  .player-card{cursor:pointer;transition:border-color .2s,background .2s}.player-card:hover,.player-card:focus-visible{border-color:color-mix(in srgb,var(--accent) 55%,transparent);outline:none}
+  .art.tv,.cover.tv{display:grid;place-items:center;background:radial-gradient(circle at 50% 115%,rgba(110,150,255,.6),transparent 62%),radial-gradient(circle at 20% 15%,rgba(127,208,255,.35),transparent 45%),linear-gradient(160deg,#1c2a52,#0a1024)}
+  .tv-glyph{filter:drop-shadow(0 0 8px rgba(110,170,255,.55))}.cover.tv .tv-glyph{width:48%;height:auto}
   .answer b{white-space:normal;font-size:14px;line-height:1.35}
   .rw .txt{text-align:left;min-width:0;flex:1}
   .rw.ask b{white-space:normal}

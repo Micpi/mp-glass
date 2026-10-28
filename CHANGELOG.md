@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.30.1 — Des touches de télécommande plus belles et plus faciles à toucher
+
+- **Une vraie télécommande** : toutes les touches sont regroupées dans un corps centré, aux proportions d’une télécommande, sur téléphone, tablette et ordinateur. En haut, une rangée de touches rondes : Alimentation (en rouge), Retour, Accueil et Menu, avec leur nom écrit dessous.
+- **Pavé directionnel redessiné**, plus grand, avec relief, anneau intérieur et bouton OK en relief. La direction touchée s’éclaire de la couleur d’accent. Le trackpad garde la même place.
+- **Volume et chaînes** en grandes bascules de 52 px. Son coupé et lecture/pause sont au centre ; la touche du son devient jaune quand le son est coupé.
+- Pavé numérique et clavier dans un sélecteur à deux positions. Chiffres en touches rondes de 64 px, disposés comme sur un téléphone. Touches de couleur lumineuses, applications en tuiles avec leur logo (Prime Video compris), raccourcis de la marque en grille de touches rondes avec leur nom.
+- Les touches s’enfoncent légèrement au toucher. Sur les téléphones qui le permettent, une courte vibration confirme l’appui. L’animation est coupée quand le système demande moins de mouvements. Toutes les zones tactiles font au moins 50 px.
+- Vérification locale : captures sur téléphone, tablette et ordinateur pour Apple TV, TCL Google TV, Samsung, LG, Sony et Panasonic, sans défilement horizontal, et tests navigateur de la télécommande.
+
 ## 0.30.0 — Une télécommande adaptée à chaque marque de téléviseur
 
 - **Marque et système reconnus automatiquement** à partir de l’intégration Home Assistant du téléviseur et du fabricant inscrit dans le registre des appareils : Apple TV, Google TV / Android TV (TCL, Sony, Philips, Hisense, Xiaomi, NVIDIA…), Fire TV, Samsung Tizen, LG webOS, Sony Bravia, Panasonic Viera, Philips, Roku et Kodi. Un badge en haut de la télécommande indique la marque et le système détectés.

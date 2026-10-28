@@ -120,28 +120,62 @@ export function ambianceEntities(room:SpatialRoom,states:Record<string,HAState>,
   if(mode==='laundry')return roomLaundry(room,states);
   return roomEntityIds(room).filter(id=>id.startsWith('light.'));
 }
+/**
+ * Every colour the plan draws a room with: its lights, the room picked and the others, the halo under the house, each
+ * ambiance, and the four steps of the temperature scale. `glow` scales how bright the halos shine (1 as designed).
+ */
+export interface PlanPalette { lights:string; selected:string; room:string; house:string; open:string; daylight:string; media:string; laundry:string; cold:string; cool:string; mild:string; hot:string; glow:number }
+export type PlanColor=Exclude<keyof PlanPalette,'glow'>;
+export const DEFAULT_PALETTE:Readonly<PlanPalette>={lights:'#ffd080',selected:'#8fd8ff',room:'#3496d1',house:'#2f8fe0',open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff',laundry:'#72dfc5',cold:'#69b7ff',cool:'#71d7c0',mild:'#ffc574',hot:'#ff816b',glow:1};
+export const PLAN_COLOR_KEYS=Object.keys(DEFAULT_PALETTE).filter(key=>key!=='glow') as PlanColor[];
+/** The palette shown: the colours chosen over those of MP Nexus, with an intensity kept between 0.3 and 1.8. */
+export function planPalette(colors?:Partial<Record<PlanColor,string>>,glow?:number):PlanPalette{
+  const palette={...DEFAULT_PALETTE};
+  for(const key of PLAN_COLOR_KEYS){const value=colors?.[key];if(typeof value==='string'&&/^#[0-9a-fA-F]{6}$/.test(value))palette[key]=value;}
+  if(typeof glow==='number'&&Number.isFinite(glow))palette.glow=Math.min(1.8,Math.max(.3,glow));
+  return palette;
+}
+/** Ready-made palettes, a tap away; 'Accent' takes the accent colour of the page (see `accentPalette`). */
+export type PaletteName='Classique'|'Accent'|'Néon'|'Pastel'|'Chaleureux';
+export const PLAN_PALETTES:readonly {name:PaletteName;colors:Partial<Record<PlanColor,string>>}[]=[
+  {name:'Classique',colors:{}},
+  {name:'Accent',colors:{}},
+  {name:'Néon',colors:{lights:'#ffe14d',selected:'#00e5ff',room:'#3a5bff',house:'#7c4dff',open:'#39ff88',daylight:'#00e5ff',media:'#ff3df2',laundry:'#00ffc8',cold:'#2f7bff',cool:'#00e5c0',mild:'#ffd000',hot:'#ff3b3b'}},
+  {name:'Pastel',colors:{lights:'#ffe3b0',selected:'#cfe8ff',room:'#8fb6d9',house:'#9fb8d6',open:'#b8f2d8',daylight:'#c8f0ff',media:'#dccdff',laundry:'#b5ebdf',cold:'#a8cfff',cool:'#b0eadc',mild:'#ffe0a8',hot:'#ffb3a7'}},
+  {name:'Chaleureux',colors:{lights:'#ffb347',selected:'#ffd59e',room:'#b5763a',house:'#c97b3c',open:'#9be0a8',daylight:'#ffe08a',media:'#ff9e7a',laundry:'#8fd3b8',cold:'#7fb4ff',cool:'#8fd9b6',mild:'#ffc061',hot:'#ff6a4d'}},
+];
+/** The rooms, the room picked and the halo under the house in the accent colour; the meaning of the other colours stays. */
+export function accentPalette(accent:string):Partial<Record<PlanColor,string>>{
+  if(!/^#[0-9a-fA-F]{6}$/.test(accent))return {};
+  const light=`#${[1,3,5].map(i=>Math.round(parseInt(accent.slice(i,i+2),16)*.45+255*.55).toString(16).padStart(2,'0')).join('')}`;
+  return {selected:light,room:accent.toLowerCase(),house:accent.toLowerCase()};
+}
 /** Halo colours of the plan besides the lights and the temperature scale. */
-export const PLAN_COLORS={open:'#8ff0c8',daylight:'#8fe9ff',media:'#c3a6ff',laundry:'#72dfc5'} as const;
+export const PLAN_COLORS={open:DEFAULT_PALETTE.open,daylight:DEFAULT_PALETTE.daylight,media:DEFAULT_PALETTE.media,laundry:DEFAULT_PALETTE.laundry} as const;
 /** A fixed Celsius scale, shared by every room; a missing reading produces no thermal halo. */
-export function temperatureColor(celsius:number){return celsius<18?'#69b7ff':celsius<21?'#71d7c0':celsius<24?'#ffc574':'#ff816b';}
-export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C',laundryActive?:boolean):RoomAmbient{
-  if(mode==='climate'){const t=roomTemperature(room,states,unit);return {color:t?temperatureColor(t.celsius):'#3496d1',strength:t?.value===undefined?0:.55};}
+export function temperatureColor(celsius:number,palette:Pick<PlanPalette,'cold'|'cool'|'mild'|'hot'>=DEFAULT_PALETTE){return celsius<18?palette.cold:celsius<21?palette.cool:celsius<24?palette.mild:palette.hot;}
+export function roomAmbient(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit='°C',laundryActive?:boolean,palette:PlanPalette=DEFAULT_PALETTE):RoomAmbient{
+  const ambient=ambientOf(room,states,mode,unit,laundryActive,palette);
+  return palette.glow===1?ambient:{color:ambient.color,strength:ambient.strength*palette.glow};
+}
+function ambientOf(room:SpatialRoom,states:Record<string,HAState>,mode:PlanMode,unit:string,laundryActive:boolean|undefined,palette:PlanPalette):RoomAmbient{
+  if(mode==='climate'){const t=roomTemperature(room,states,unit);return {color:t?temperatureColor(t.celsius,palette):palette.room,strength:t?.value===undefined?0:.55};}
   // A door or a window open stands out; otherwise the more its shutters let daylight in, the brighter the room.
   if(mode==='openings'){
-    if(roomOpen(room,states).length)return {color:PLAN_COLORS.open,strength:.6};
+    if(roomOpen(room,states).length)return {color:palette.open,strength:.6};
     const shares=roomCovers(room,states).filter(id=>groupCover(states[id])).map(id=>coverClosed(states[id])).filter((c):c is number=>c!==undefined);
     const daylight=shares.length?shares.reduce((sum,c)=>sum+1-c,0)/shares.length:0;
-    return {color:PLAN_COLORS.daylight,strength:daylight>.005?.3+.4*daylight:0};
+    return {color:palette.daylight,strength:daylight>.005?.3+.4*daylight:0};
   }
   if(mode==='media'){
     const players=roomPlayers(room,states).map(id=>states[id]);
-    return {color:PLAN_COLORS.media,strength:players.some(mediaPlaying)?.6:players.some(mediaOn)?.22:0};
+    return {color:palette.media,strength:players.some(mediaPlaying)?.6:players.some(mediaOn)?.22:0};
   }
   if(mode==='laundry'){
     const ids=roomLaundry(room,states),running=laundryActive??laundryIsRunning(states,ids);
-    return {color:PLAN_COLORS.laundry,strength:laundryActive===undefined?ids.length?(running?.62:.18):0:running?.62:.18};
+    return {color:palette.laundry,strength:laundryActive===undefined?ids.length?(running?.62:.18):0:running?.62:.18};
   }
   const lights=(room.entityIds??[]).filter(id=>id.startsWith('light.')).map(id=>states[id]).filter(s=>s?.state==='on');
   const strength=lights.length?Math.max(...lights.map(s=>.2+.6*(brightnessPercent(s?.attributes.brightness)??100)/100)):0;
-  return {color:'#ffd080',strength};
+  return {color:palette.lights,strength};
 }

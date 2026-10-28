@@ -51,6 +51,17 @@ export interface AppearanceConfig {
   showBrightness?: boolean;
   sectionTitle?: string;
   sectionSubtitle?: string;
+  /** Colours of the plan chosen over those of MP Nexus, by what they show (see `PlanPalette`). */
+  planColors?: Partial<Record<import('./spatial-state').PlanColor, string>>;
+  /** How bright the halos of the plan shine: 1 as designed. */
+  planGlow?: number;
+  /** Ambiances of the plan kept off its buttons; the lights always stay. */
+  hiddenLayers?: Exclude<import('./spatial-state').PlanMode, 'lights'>[];
+  /** Entities MP Nexus v2 neither shows nor counts: a player, a light, a shutter set aside. */
+  hiddenEntities?: string[];
+  /** The summary pills and the scenes of the home page; unset shows them. */
+  showStats?: boolean;
+  showScenes?: boolean;
 }
 export interface NavigationConfig { items: NavigationItem[]; showLabels: boolean }
 /** Which MP Nexus interface the dashboard draws: the first one, or MP Nexus v2. Unset is v1. */

@@ -14,7 +14,7 @@ import { climateActionMode, entityLabel, COVER_STATES, HVAC, hvacIcon, kindOf, K
 import '../detail';
 import { defineElement } from '../registry';
 import type { CameraView, LaundryState, LevelProjection, MediaState, OpeningState, SceneLaundry, SceneLevel, SceneMedia, SceneOpening, SpatialScene } from './scene';
-import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, PLAN_COLORS, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode } from '../../shared/spatial-state';
+import { canCover, canMedia, coverClosed, coverOpen, coverPosition, coverStyle, coverTilt, groupCover, hasOpenings, hasPlayers, hasThermometer, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, DEFAULT_PALETTE, roomAmbient, roomEntityIds, roomOpen, roomPlayers, roomTemperature, temperatureColor, temperatureRange, type CoverAction, type CoverStyle, type PlanMode, type PlanPalette } from '../../shared/spatial-state';
 
 interface EquipmentInfo { name:string;room:SpatialRoom;icon:MPIconName;entityIds:string[];laundry?:boolean;group?:PlanMode;items?:EquipmentEntry[];climate?:ClimateAppearance }
 interface Device { id:string; kind:Kind; name:string; ready:boolean; switchable:boolean; on:boolean; detail:string; value?:string; numeric?:number; percent?:number; dimmable:boolean; mode?:string }
@@ -29,12 +29,12 @@ const MODES:{mode:PlanMode;label:MessageKey;icon:MPIconName;offered?:(room:Spati
 ];
 const LAUNDRY_MODE:{mode:PlanMode;label:MessageKey;icon:MPIconName}={mode:'laundry',label:'Buanderie',icon:'washer'};
 /** What the colour of a room says, in each ambiance that colours rooms otherwise than with its lights (shown through `trText`). */
-const LEGENDS:Partial<Record<PlanMode,[string,string][]>>={
-  climate:[['#69b7ff','< 18 °C'],['#71d7c0','18–21'],['#ffc574','21–24'],['#ff816b','≥ 24 °C']],
-  openings:[[PLAN_COLORS.open,'Porte ou fenêtre ouverte'],[PLAN_COLORS.daylight,'Volets ouverts']],
-  media:[[PLAN_COLORS.media,'En lecture'],[`${PLAN_COLORS.media}66`,'Allumé']],
-  laundry:[[PLAN_COLORS.laundry,'Machine en cours'],['#557f79','Machine arrêtée']],
-};
+const legends=(p:PlanPalette):Partial<Record<PlanMode,[string,string][]>>=>({
+  climate:[[p.cold,'< 18 °C'],[p.cool,'18–21'],[p.mild,'21–24'],[p.hot,'≥ 24 °C']],
+  openings:[[p.open,'Porte ou fenêtre ouverte'],[p.daylight,'Volets ouverts']],
+  media:[[p.media,'En lecture'],[`${p.media}66`,'Allumé']],
+  laundry:[[p.laundry,'Machine en cours'],[`${p.laundry}66`,'Machine arrêtée']],
+});
 
 const plain=(text:string)=>text.normalize('NFD').replace(/\p{Diacritic}/gu,'').toLowerCase();
 const ROOM_ICONS:[RegExp,MPIconName][]=[
@@ -98,7 +98,7 @@ function shorten(name:string,room:string){
 }
 
 export class MPSpatialViewer extends LitElement {
-  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, spin:{type:Number}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
+  static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, spin:{type:Number}, palette:{attribute:false}, hiddenLayers:{attribute:false}, hiddenEntities:{attribute:false}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
     :host{display:block;position:relative;container-type:inline-size;min-width:0;color:#eff7ff;font:13px/1.5 var(--mp-body-font,Inter,system-ui,sans-serif);--accent:var(--mp-accent,#69b7ff);--warm:#ffd35a;--line:var(--mp-control-border,rgba(213,234,255,.12))}
     *{box-sizing:border-box}button{font:inherit;color:inherit;cursor:pointer}button:disabled{opacity:.45;cursor:default}
@@ -305,6 +305,12 @@ export class MPSpatialViewer extends LitElement {
   bare = false;
   /** The layer the page asks for, from its own buttons. */
   layer?: PlanMode;
+  /** The colours of the halos and of the rooms, as the person chose them. */
+  palette: PlanPalette = DEFAULT_PALETTE;
+  /** Ambiances the person keeps off the plan; the lights are always offered. */
+  hiddenLayers: readonly PlanMode[] = [];
+  /** Entities the person keeps out of MP Nexus: a washing machine among them is neither drawn nor counted. */
+  hiddenEntities: ReadonlySet<string> = new Set();
   /** The room the page brings into view, '' for none: opened on its floor and framed by the camera. */
   focusRoom = '';
   /** A button of the rail asks the page to show the plan on the whole screen. */
@@ -355,7 +361,7 @@ export class MPSpatialViewer extends LitElement {
   private get temperatureUnit(){return this.hass?.config?.unit_system?.temperature??'°C';}
   private temperature(room:SpatialRoom){return roomTemperature(room,this.hass?.states??{},this.temperatureUnit);}
   /** The ambiances the floors shown can offer: no climate without a room that measures its temperature, and so on. */
-  private modes(floors:SpatialFloor[]){const states=this.hass?.states??{},modes=MODES.filter(m=>!m.offered||floors.some(f=>f.rooms.some(r=>m.offered!(r,states))));if(floors.some(f=>f.rooms.some(r=>this.laundryForRoom(r).length)))modes.push(LAUNDRY_MODE);return modes;}
+  private modes(floors:SpatialFloor[]){const states=this.hass?.states??{},off=new Set<PlanMode>(this.hiddenLayers.filter(m=>m!=='lights')),modes=MODES.filter(m=>!off.has(m.mode)&&(!m.offered||floors.some(f=>f.rooms.some(r=>m.offered!(r,states)))));if(!off.has('laundry')&&floors.some(f=>f.rooms.some(r=>this.laundryForRoom(r).length)))modes.push(LAUNDRY_MODE);return modes;}
   private planMode(floors:SpatialFloor[]):PlanMode{return this.modes(floors).some(m=>m.mode===this.mode)?this.mode:'lights';}
   private updateLaundry(hass=this.hass){
     if(!hass)return;
@@ -373,7 +379,7 @@ export class MPSpatialViewer extends LitElement {
       const unit=this.laundryUnits.find(u=>!!item.entityId&&u.entityIds.includes(item.entityId));
       return {key:'placed:'+item.id,kind:item.kind,name:item.name??unit?.name??(item.kind==='dryer'?tr('Sèche-linge'):tr('Lave-linge')),entityIds:unit?.entityIds??(item.entityId?[item.entityId]:[])};
     });
-    return [...placed,...this.laundryUnits.filter(unit=>!saved.some(item=>!!item.entityId&&unit.entityIds.includes(item.entityId))).filter(unit=>(!!room.areaId&&unit.areaId===room.areaId)||unit.entityIds.some(id=>linked.has(id))||(!unit.areaId&&unit.entityIds.some(id=>{
+    return [...placed.filter(unit=>!unit.entityIds.some(id=>this.hiddenEntities.has(id))),...this.laundryUnits.filter(unit=>!unit.entityIds.some(id=>this.hiddenEntities.has(id))).filter(unit=>!saved.some(item=>!!item.entityId&&unit.entityIds.includes(item.entityId))).filter(unit=>(!!room.areaId&&unit.areaId===room.areaId)||unit.entityIds.some(id=>linked.has(id))||(!unit.areaId&&unit.entityIds.some(id=>{
       const name=plain(String(this.hass?.states[id]?.attributes.friendly_name??''));return !!roomName&&name.includes(roomName);
     })))];
   }
@@ -476,13 +482,14 @@ export class MPSpatialViewer extends LitElement {
     if(this.scene&&this.currentFloor){
       const floors=this.shownFloors,mode=this.planMode(floors),states=this.hass?.states??{};
       const rooms=floors.flatMap(f=>f.rooms.map(r=>[this.roomKey(f,r),r] as const));
-      const styled=this.scene.highlight(this.room?.id??'',new Map(rooms.map(([key,r])=>{const laundry=this.laundryForRoom(r);return [key,roomAmbient(r,states,mode,this.temperatureUnit,laundry.length?laundry.some(unit=>this.laundryInfo(unit).running):undefined)];})),this.stacked?this.opening||this.pointed:'');
+      const recoloured=this.scene.setColors({selected:this.palette.selected,room:this.palette.room,house:this.palette.house});
+      const styled=this.scene.highlight(this.room?.id??'',new Map(rooms.map(([key,r])=>{const laundry=this.laundryForRoom(r);return [key,roomAmbient(r,states,mode,this.temperatureUnit,laundry.length?laundry.some(unit=>this.laundryInfo(unit).running):undefined,this.palette)];})),this.stacked?this.opening||this.pointed:'');
       this.scene.setLaundryMode(mode==='laundry');
       const fixtures=this.scene.fixtures(...this.fixtureStates(floors));
       // Labels change size when sensor values or the mode changes, even if the camera stays still.
       const previous=changed.get('hass') as Hass|undefined;
       const readings=changed.has('hass')&&rooms.some(([,r])=>r.entityIds?.some(id=>previous?.states[id]!==this.hass?.states[id]));
-      if(styled||fixtures||readings||changed.has('mode')||changed.has('plan')||changed.has('floor')||changed.has('equipment')||changed.has('equipmentFilter')||changed.has('hass'))this.scene.render();
+      if(recoloured||styled||fixtures||readings||changed.has('mode')||changed.has('plan')||changed.has('floor')||changed.has('equipment')||changed.has('equipmentFilter')||changed.has('hass'))this.scene.render();
     }
   }
   /**
@@ -821,7 +828,7 @@ export class MPSpatialViewer extends LitElement {
     if(mode==='climate'){
       const temperature=this.temperature(room);
       if(!temperature&&!hasThermometer(room,states))return nothing;
-      return html`<span class="readings"><span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius):'#a8bdca'}`} title=${temperature?tr('Température · {id}',{id:temperature.id}):tr('Température indisponible')}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span></span>`;
+      return html`<span class="readings"><span class="reading temp" style=${`--tone:${temperature?temperatureColor(temperature.celsius,this.palette):'#a8bdca'}`} title=${temperature?tr('Température · {id}',{id:temperature.id}):tr('Température indisponible')}>${mpIcon('thermo',12)}${temperature?`${this.format(temperature.value)} ${temperature.unit}`:'—'}</span></span>`;
     }
     if(mode==='openings'){
       const open=roomOpen(room,states),covers=[...this.roomEntities(room)].filter(id=>id.startsWith('cover.'));
@@ -868,7 +875,7 @@ export class MPSpatialViewer extends LitElement {
   private temperatures(floor: SpatialFloor) {
     const range=temperatureRange(floor.rooms,this.hass?.states??{},this.temperatureUnit);
     if(!range) return floor.rooms.some(r=>hasThermometer(r,this.hass?.states??{}))?html`<span class="temps" title=${tr('Température indisponible')}>${mpIcon('thermo',12)}—</span>`:nothing;
-    const {low,high}=range,value=(t:typeof low)=>html`<span style=${`color:${temperatureColor(t.celsius)}`}>${this.format(t.value)}</span>`;
+    const {low,high}=range,value=(t:typeof low)=>html`<span style=${`color:${temperatureColor(t.celsius,this.palette)}`}>${this.format(t.value)}</span>`;
     return html`<span class="temps" title=${tr('Température des pièces du niveau')}>${mpIcon('thermo',12)}<span>${value(low)}${this.format(low.value)===this.format(high.value)&&low.unit===high.unit?nothing:html`–${value(high)}`} ${high.unit}</span></span>`;
   }
   /** Doors and windows of a floor standing open, and how many of its shutters let daylight in; everything closed said once. */
@@ -904,7 +911,7 @@ export class MPSpatialViewer extends LitElement {
   render() {
     const floor=this.currentFloor,room=this.room,plan=this.plan;
     if(!floor||!plan) return html`<div class="empty">${tr('Ajoutez votre plan dans Studio → Plan 3D.')}</div>`;
-    const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),modes=this.modes(floors),mode=this.planMode(floors),legend=LEGENDS[mode];
+    const stacked=this.stacked,floors=this.shownFloors,lit=this.litRooms(floor),modes=this.modes(floors),mode=this.planMode(floors),legend=legends(this.palette)[mode];
     // From above, the floors of the whole house would hide one another.
     const top=stacked?nothing:html`<button aria-label=${tr('Vue de dessus')} title=${tr('Vue de dessus')} aria-pressed=${this.topView} @click=${this.toggleTop}>${mpIcon('plan',18)}</button>`;
     return html`<div class="layout">

@@ -5,8 +5,8 @@ import { repeat } from 'lit/directives/repeat.js';
 import type { AppearanceConfig, HAState, NavigationConfig } from '../../shared/models';
 import { accentOf, ACCENTS, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, cssImage, DEFAULT_WALLPAPER, deleteWallpaper, importedSource, isImported, isNight, libraryWallpaper, listWallpapers, prepareWallpaper, readScreenLook, uploadWallpaper, WALLPAPERS, wallpaperSource, writeScreenLook, type ImportedWallpaper, type ScreenLook } from '../wallpapers';
 import { mpIcon, type MPIconName } from '../icons';
-import { buildingPlan, planBuildings, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
-import { canMedia, contactSensor, coverOpen, coverPosition, finite, groupCover, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, roomEntityIds, roomTemperature, type PlanMode } from '../../shared/spatial-state';
+import { buildingPlan, planBuildings, withoutHidden, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
+import { canMedia, contactSensor, coverOpen, coverPosition, finite, groupCover, mediaIsTv, mediaOn, mediaPlaying, mediaVolume, nowPlaying, accentPalette, DEFAULT_PALETTE, PLAN_COLOR_KEYS, PLAN_PALETTES, planPalette, roomEntityIds, roomTemperature, type PlanColor, type PlanMode, type PlanPalette } from '../../shared/spatial-state';
 import { available } from '../../shared/capabilities';
 import type { Hass } from '../ha/client';
 import { claimHeader, kioskLeft, leaveKiosk, releaseHeader } from '../ha/header';
@@ -55,7 +55,7 @@ interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
 /** The four faces of the Multimédia page. */
 type MediaTab = 'play'|'foryou'|'rooms'|'remote';
 /** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
-interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'|'users'|'guest'|'appearance'; id: string }
+interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'|'users'|'guest'|'appearance'|'customize'; id: string }
 interface LogEntry { when: number; entity_id?: string; name?: string; message?: string; state?: string }
 const EXPORT_KEY = 'mp-nexus.last-export';
 const newGuest = (): GuestDraft => ({ name: '', kind: 'temporary', profile: 'read', local_only: true, until: defaultUntil() });
@@ -146,8 +146,8 @@ export class MPNexusView extends LitElement {
   private areas: AreaSummary[] = [];
   private inventory?: ViewConfig['mp_inventory'];
   private info?: ViewConfig['mp_info'];
-  private entities: string[] = [];
-  private media: string[] = [];
+  private entityIds: string[] = [];
+  private mediaIds: string[] = [];
   private building = readBuilding();
   private layout: Layout = 'desk';
   /** The room opened from the plan: its card beside the plan, in a sheet on a phone. */
@@ -258,8 +258,8 @@ export class MPNexusView extends LitElement {
     this.areas = config?.mp_areas ?? [];
     this.inventory = config?.mp_inventory;
     this.info = config?.mp_info;
-    this.entities = config?.mp_entities ?? [];
-    this.media = config?.mp_media ?? [];
+    this.entityIds = config?.mp_entities ?? [];
+    this.mediaIds = config?.mp_media ?? [];
     this.layer = PAGE_LAYERS[this.kind] ?? chosenLayer;
     this.applyLook();
   }
@@ -407,7 +407,7 @@ export class MPNexusView extends LitElement {
       named = cache.get(key) ?? trPlan(spatial, this.spatialOrigin === 'example');
       translated.set(spatial, cache.set(key, named));
     }
-    return buildingPlan(named, this.building);
+    return withoutHidden(buildingPlan(named, this.building), this.setAside);
   }
   private get placed(): PlacedRoom[] { return this.plan?.floors.flatMap(floor => floor.rooms.map(room => ({ room, floor }))) ?? []; }
   private find(roomId: string) { return this.placed.find(p => p.room.id === roomId); }
@@ -437,7 +437,7 @@ export class MPNexusView extends LitElement {
     const plan = this.plan;
     if (!plan) return nothing;
     return keyed(`${opts.key}|${this.building}`, html`<mp-spatial-viewer bare ?quiet=${opts.quiet ?? false} ?expandable=${opts.expandable ?? false} .plan=${plan} .scope=${this.building} .hass=${this.hass} .areaHref=${this.areaHref}
-      .layer=${opts.layer ?? this.layer} .spin=${opts.spin ?? 0} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${opts.ambiance ?? this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
+      .layer=${opts.layer ?? this.layer} .spin=${opts.spin ?? 0} .palette=${this.palette} .hiddenLayers=${this.appearance.hiddenLayers ?? []} .hiddenEntities=${this.setAside} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${opts.ambiance ?? this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
       @plan-expand=${() => { this.full = true; }}></mp-spatial-viewer>`);
   }
   /** The plan as a banner on a phone, a button to open it on the whole screen. */
@@ -458,6 +458,26 @@ export class MPNexusView extends LitElement {
 
   // ——— Devices ———
   private state(id: string): HAState | undefined { return this.hass?.states[id]; }
+  /** What the person set aside in Personnaliser: neither shown nor counted anywhere in MP Nexus. */
+  private get setAside(): ReadonlySet<string> {
+    const ids = this.appearance.hiddenEntities ?? [], key = ids.join(',');
+    if (key !== this.hiddenKey) { this.hiddenKey = key; this.hiddenIds = new Set(ids); }
+    return this.hiddenIds;
+  }
+  private hiddenKey = '';
+  private hiddenIds: ReadonlySet<string> = new Set();
+  private get entities() { return this.visible(this.entityIds); }
+  private get media() { return this.visible(this.mediaIds); }
+  private set media(ids: string[]) { this.mediaIds = ids; }
+  private visible(ids: string[]) { const hidden = this.setAside; return hidden.size ? ids.filter(id => !hidden.has(id)) : ids; }
+  /** The palette of the plan, the same object while the choices stay the same so the plan is not drawn again for nothing. */
+  private get palette(): PlanPalette {
+    const a = this.appearance, key = JSON.stringify([a.planColors, a.planGlow]);
+    if (key !== this.paletteKey) { this.paletteKey = key; this.paletteValue = planPalette(a.planColors, a.planGlow); }
+    return this.paletteValue;
+  }
+  private paletteKey = '';
+  private paletteValue: PlanPalette = planPalette();
   private on(id: string) {
     const state = this.state(id), domain = domainOf(id);
     if (!available(state)) return false;
@@ -712,9 +732,9 @@ export class MPNexusView extends LitElement {
     return html`<section class="main panel card glass">
       ${this.head(this.projectName || tr('Ma maison'), this.greeting(), html`${this.whoStack()}${this.layout === 'desk' ? nothing : this.headerActions()}`)}
       <div class="body">
-        ${this.stats()}${this.houseButtons()}
+        ${this.appearance.showStats === false ? nothing : this.stats()}${this.houseButtons()}
         ${this.plan ? html`<div class="plan3d">${this.viewer({ key: 'home', expandable: true })}</div>${this.layerButtons()}` : this.noPlan()}
-        ${this.scenes()}
+        ${this.appearance.showScenes === false ? nothing : this.scenes()}
       </div>
     </section>`;
   }
@@ -824,7 +844,7 @@ export class MPNexusView extends LitElement {
   private get placedAll(): PlacedRoom[] {
     const spatial = this.spatial;
     if (!spatial) return [];
-    const plan = this.spatialOrigin === 'project' ? spatial : trPlan(spatial, this.spatialOrigin === 'example');
+    const plan = withoutHidden(this.spatialOrigin === 'project' ? spatial : trPlan(spatial, this.spatialOrigin === 'example'), this.setAside);
     return plan.floors.flatMap(floor => floor.rooms.map(room => ({ room, floor })));
   }
 
@@ -895,7 +915,7 @@ export class MPNexusView extends LitElement {
   // ——— Multimédia ———
   private get players() {
     const musicAssistant = Object.keys(this.hass?.states ?? {}).filter(id => id.startsWith('media_player.') && this.isMusicAssistantPlayer(id));
-    return [...new Set([...this.media, ...musicAssistant])].filter(id => this.state(id));
+    return [...new Set([...this.media, ...this.visible(musicAssistant)])].filter(id => this.state(id));
   }
   private get currentPlayer() {
     const players = this.players, states = this.hass?.states ?? {};
@@ -1343,7 +1363,7 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— Climate and covers, opened over the page ———
-  private climateIds() { return Object.keys(this.hass?.states ?? {}).filter(id => id.startsWith('climate.') && available(this.state(id))).sort((a, b) => this.name(a).localeCompare(this.name(b), locale())); }
+  private climateIds() { return Object.keys(this.hass?.states ?? {}).filter(id => id.startsWith('climate.') && !this.setAside.has(id) && available(this.state(id))).sort((a, b) => this.name(a).localeCompare(this.name(b), locale())); }
   /** A thermostat as the room uses it: the dial of its setpoint, its modes, its fan and its presets. */
   private climatePanel(id: string) {
     const close = () => { this.sub = undefined; };
@@ -1406,7 +1426,7 @@ export class MPNexusView extends LitElement {
   private subPanel() {
     const sub = this.sub!;
     const body = sub.type === 'climate' ? this.climatePanel(sub.id) : sub.type === 'covers' ? this.coversPanel(sub.id) : sub.type === 'routines' ? this.routinesPanel() : sub.type === 'routine' ? this.routinePanel()
-      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : sub.type === 'users' ? this.usersPanel() : sub.type === 'guest' ? this.guestPanel() : sub.type === 'appearance' ? this.appearancePanel() : this.saverPanel();
+      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : sub.type === 'users' ? this.usersPanel() : sub.type === 'guest' ? this.guestPanel() : sub.type === 'appearance' ? this.appearancePanel() : sub.type === 'customize' ? this.customizePanel() : this.saverPanel();
     return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${body}</section>`;
   }
 
@@ -1450,7 +1470,7 @@ export class MPNexusView extends LitElement {
   private searchPanel() {
     const q = fold(this.query.trim()), states = this.hass?.states ?? {};
     const rooms = q ? this.placedAll.filter(p => fold(p.room.name).includes(q)).slice(0, 4) : [];
-    const devices = q ? Object.values(states).filter(s => available(s) && ['light', 'switch', 'cover', 'climate', 'media_player', 'fan', 'lock', 'scene', 'script', 'sensor', 'binary_sensor', 'input_boolean', 'vacuum'].includes(domainOf(s.entity_id))
+    const devices = q ? Object.values(states).filter(s => available(s) && !this.setAside.has(s.entity_id) && ['light', 'switch', 'cover', 'climate', 'media_player', 'fan', 'lock', 'scene', 'script', 'sensor', 'binary_sensor', 'input_boolean', 'vacuum'].includes(domainOf(s.entity_id))
       && fold(String(s.attributes.friendly_name ?? s.entity_id)).includes(q)).sort((a, b) => Number(SWITCHED.includes(domainOf(b.entity_id))) - Number(SWITCHED.includes(domainOf(a.entity_id)))).slice(0, 10) : [];
     const offRooms = rooms.filter(p => this.lightsIn(roomEntityIds(p.room)).some(id => this.on(id)));
     const voice = !!speechRecognition();
@@ -1537,7 +1557,7 @@ export class MPNexusView extends LitElement {
 
   // ——— Plus: routines, energy, outdoor, access, history, backup, screensaver ———
   private back = () => { this.sub = undefined; };
-  private ofDomain(domain: string, test: (s: HAState) => boolean = () => true) { return Object.values(this.hass?.states ?? {}).filter(s => s.entity_id.startsWith(`${domain}.`) && test(s)); }
+  private ofDomain(domain: string, test: (s: HAState) => boolean = () => true) { const hidden = this.setAside; return Object.values(this.hass?.states ?? {}).filter(s => s.entity_id.startsWith(`${domain}.`) && !hidden.has(s.entity_id) && test(s)); }
   /** The entities of a domain in one room of the plan, or in the whole house. */
   private inScope(domain: string, roomId: string, test: (s: HAState) => boolean = () => true) {
     const room = this.placedAll.find(p => p.room.id === roomId)?.room;
@@ -1844,6 +1864,84 @@ export class MPNexusView extends LitElement {
           : Object.keys(this.screenLook).length ? html`<button class="btn" @click=${() => { this.screenLook = {}; writeScreenLook({}); this.lookNote = undefined; this.applyLook(); }}>${mpIcon('home', 16)}${tr('Reprendre le style de la maison')}</button>` : nothing}
       </div>`;
   }
+  // ——— Personnaliser: the colours of the plan, its layers, the home page and the devices set aside ———
+  private customizeSummary() {
+    const a = this.appearance, hidden = a.hiddenEntities?.length ?? 0, colours = Object.keys(a.planColors ?? {}).length || (a.planGlow ?? 1) !== 1;
+    return [colours ? tr('Couleurs du plan choisies') : tr('Couleurs du plan, calques, accueil'), hidden ? tr('{n} appareil masqué|{n} appareils masqués', { n: hidden }) : ''].filter(Boolean).join(' · ');
+  }
+  /** Only the colours that differ from those of MP Nexus are kept: a later change of the defaults still reaches the others. */
+  private setPlanColors(colors: Partial<Record<PlanColor, string>>) {
+    const kept = Object.fromEntries(PLAN_COLOR_KEYS.map(key => [key, colors[key]?.toLowerCase()]).filter(([key, value]) => value && value !== DEFAULT_PALETTE[key as PlanColor]));
+    this.setLook({ planColors: Object.keys(kept).length ? kept : undefined });
+  }
+  private toggleListed<T extends string>(list: readonly T[] | undefined, item: T, on: boolean): T[] | undefined {
+    const next = on ? [...new Set([...(list ?? []), item])] : (list ?? []).filter(x => x !== item);
+    return next.length ? next : undefined;
+  }
+  private customizePanel() {
+    const admin = !!this.hass?.user?.is_admin, house = this.lookScope === 'house', a = this.lookTarget, states = this.hass?.states ?? {};
+    const palette = planPalette(a.planColors, a.planGlow), chosen = a.planColors ?? {};
+    const toggle = (on: boolean, label: string, change: () => void) => html`<button class="end" role="switch" aria-checked=${on} aria-label=${label} @click=${change}><span class=${`tgl ${on ? '' : 'off'}`}></span></button>`;
+    const row = (icon: MPIconName, title: string, sub: string, on: boolean, change: () => void) => html`<div class="rw"><span class="ib">${mpIcon(icon, 16)}</span><div><b>${title}</b><small>${sub}</small></div>${toggle(on, title, change)}</div>`;
+    const colour = (key: PlanColor, label: string) => html`<div class="pcl"><label class="pc" style=${`--sw:${palette[key]}`} title=${label}><input type="color" aria-label=${label} .value=${palette[key]} @input=${(e: Event) => this.setPlanColors({ ...chosen, [key]: (e.target as HTMLInputElement).value })}></label><span>${label}</span></div>`;
+    const palettes = PLAN_PALETTES.map(p => ({ ...p, colors: p.name === 'Accent' ? accentPalette(this.appearance.accent ?? '#69b7ff') : p.colors }));
+    const current = palettes.find(p => PLAN_COLOR_KEYS.every(key => (p.colors[key] ?? DEFAULT_PALETTE[key]).toLowerCase() === palette[key].toLowerCase()));
+    const layers: [Exclude<PlanMode, 'lights'>, MPIconName, MessageKey, string][] = [['climate', 'thermo', 'Climat', tr('Températures pièce par pièce')], ['openings', 'window', 'Ouvrants', tr('Portes, fenêtres et volets')], ['media', 'tv', 'Audio-vidéo', tr('Télévisions et enceintes')], ['laundry', 'washer', 'Buanderie', tr('Lave-linge et sèche-linge')]];
+    const hidden = new Set(a.hiddenEntities ?? []), query = fold(this.hideQuery.trim());
+    const groups: [string, MPIconName, string, (id: string) => boolean][] = [
+      ['players', 'speaker', tr('Lecteurs multimédia'), id => id.startsWith('media_player.')], ['lights', 'bulb', tr('Lumières'), id => id.startsWith('light.')],
+      ['covers', 'shutter', tr('Volets et portails'), id => id.startsWith('cover.')], ['climate', 'thermo', tr('Climat'), id => id.startsWith('climate.')],
+      ['switches', 'power', tr('Prises et interrupteurs'), id => ['switch', 'fan', 'input_boolean'].includes(domainOf(id))],
+    ];
+    const all = Object.keys(states).sort((x, y) => this.name(x).localeCompare(this.name(y), locale()));
+    const device = (id: string) => { const shown = !hidden.has(id), name = this.name(id), room = shown ? this.roomOfEntity(id) : undefined;
+      return html`<div class=${`rw ${shown ? '' : 'off'}`}><span class="ib">${mpIcon(entityIcon(id, states[id]), 16)}</span><div><b>${name}</b><small>${shown ? room ?? id : tr('Masqué · ni affiché, ni compté')}</small></div>${toggle(shown, tr('Afficher {name}', { name }), () => this.setLook({ hiddenEntities: this.toggleListed(a.hiddenEntities, id, shown) }))}</div>`; };
+    return html`${this.head(tr('Personnaliser'), house ? tr('Pour toute la maison') : tr('Sur cet écran'), nothing, this.back)}
+      <div class="body look">
+        ${admin ? html`<div class="layers" role="group" aria-label=${tr('Appliquer à')}>
+          <button aria-pressed=${!house} @click=${() => { this.lookScope = 'screen'; this.requestUpdate(); }}>${mpIcon('tv', 15)}<span>${tr('Cet écran')}</span></button>
+          <button aria-pressed=${house} @click=${() => { this.lookScope = 'house'; this.requestUpdate(); }}>${mpIcon('home', 15)}<span>${tr('Toute la maison')}</span></button></div>`
+          : html`<p class="note info">${tr('Vos choix s’appliquent à cet écran seulement.')}</p>`}
+
+        <div class="rlab">${tr('Couleurs du plan 3D')}</div>
+        <div class="pals">${palettes.map(p => html`<button class="pal" aria-pressed=${current === p} @click=${() => this.setPlanColors(p.colors)}><span class="pal-dots">${(['lights', 'selected', 'open', 'media', 'hot'] as const).map(key => html`<i style=${`background:${p.colors[key] ?? DEFAULT_PALETTE[key]}`}></i>`)}</span><span>${tr(p.name)}</span></button>`)}</div>
+        <p class="hint-text">${tr('Touchez une pastille pour choisir sa couleur.')}</p>
+        <div class="rsub">${tr('Pièces')}</div>
+        <div class="pcs">${colour('lights', tr('Lumière allumée'))}${colour('selected', tr('Pièce choisie'))}${colour('room', tr('Pièces au repos'))}${colour('house', tr('Halo sous la maison'))}</div>
+        <div class="rsub">${tr('Calques')}</div>
+        <div class="pcs">${colour('open', tr('Porte ou fenêtre ouverte'))}${colour('daylight', tr('Volets ouverts'))}${colour('media', tr('Média en lecture'))}${colour('laundry', tr('Machine en cours'))}</div>
+        <div class="rsub">${tr('Températures')}</div>
+        <div class="pcs">${colour('cold', '< 18 °C')}${colour('cool', '18 – 21 °C')}${colour('mild', '21 – 24 °C')}${colour('hot', '≥ 24 °C')}</div>
+        <label class="rng"><span><b>${tr('Intensité des halos')}</b><small>${Math.round(palette.glow * 100)} %</small></span><input type="range" min="30" max="180" step="5" .value=${String(Math.round(palette.glow * 100))} @input=${(e: Event) => { const v = Number((e.target as HTMLInputElement).value) / 100; this.setLook({ planGlow: v === 1 ? undefined : v }); }}></label>
+        ${a.planColors || a.planGlow !== undefined ? html`<button class="btn" @click=${() => this.setLook({ planColors: undefined, planGlow: undefined })}>${mpIcon('back', 16)}${tr('Couleurs d’origine')}</button>` : nothing}
+
+        <div class="rlab">${tr('Calques du plan')}</div>
+        <div class="sg">${row('bulb', tr('Lumières'), tr('Toujours proposé'), true, () => undefined)}${layers.map(([mode, icon, label, sub]) => row(icon, tr(label), sub, !a.hiddenLayers?.includes(mode), () => this.setLook({ hiddenLayers: this.toggleListed(a.hiddenLayers, mode, !a.hiddenLayers?.includes(mode)) })))}</div>
+
+        <div class="rlab">${tr('Accueil')}</div>
+        <div class="sg">
+          ${row('gauge', tr('Résumé de la maison'), tr('Lumières, températures, ouvertures en un coup d’œil'), a.showStats !== false, () => this.setLook({ showStats: a.showStats === false }))}
+          ${row('sparkle', tr('Scènes'), tr('Sous le plan de l’accueil'), a.showScenes !== false, () => this.setLook({ showScenes: a.showScenes === false }))}
+          ${row('clock', tr('Horloge'), tr('Dans la barre du haut sur grand écran'), a.showClock !== false, () => this.setLook({ showClock: a.showClock === false }))}
+        </div>
+
+        <div class="rlab">${tr('Appareils affichés')}</div>
+        <p class="hint-text">${tr('Un appareil masqué disparaît de MP Nexus : il n’est plus affiché, ni compté sur le plan, l’accueil ou le multimédia.')}</p>
+        <label class="srch"><span class="inp">${mpIcon('search', 16)}<input type="search" placeholder=${tr('Rechercher un appareil')} aria-label=${tr('Rechercher un appareil')} .value=${this.hideQuery} @input=${(e: Event) => { this.hideQuery = (e.target as HTMLInputElement).value; this.requestUpdate(); }}></span></label>
+        ${groups.map(([key, icon, title, test]) => {
+          const ids = all.filter(id => test(id) && (!query || fold(`${this.name(id)} ${id}`).includes(query)));
+          if (!ids.length) return nothing;
+          const off = ids.filter(id => hidden.has(id)).length;
+          return html`<details class="hide-group" ?open=${!!query || key === 'players'}><summary><span class="ib">${mpIcon(icon, 16)}</span><b>${title}</b><small>${off ? tr('{n} masqué sur {total}|{n} masqués sur {total}', { n: off, total: ids.length }) : tr('{n} affiché|{n} affichés', { n: ids.length })}</small></summary><div class="sg">${ids.map(device)}</div></details>`;
+        })}
+        ${hidden.size ? html`<button class="btn" @click=${() => this.setLook({ hiddenEntities: undefined })}>${mpIcon('check', 16)}${tr('Tout réafficher')}</button>` : nothing}
+
+        ${this.lookNote ? html`<p class=${`note ${this.lookNote.ok ? 'ok' : ''}`} role="status">${this.lookNote.text}</p>` : nothing}
+        ${house ? html`<div class="acts"><button class="btn" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => { this.houseDraft = undefined; this.lookNote = undefined; this.applyLook(); }}>${tr('Annuler')}</button>
+          <button class="btn primary" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => void this.saveHouseLook()}>${mpIcon('check', 16)}${tr('Enregistrer pour la maison')}</button></div>` : nothing}
+      </div>`;
+  }
+  private hideQuery = '';
   private saverPanel() {
     const saver = this.saver, set = (change: Partial<SaverPrefs>) => { this.saver = { ...saver, ...change }; writeSaver(this.saver); this.lastActivity = Date.now(); };
     const sensors = this.ofDomain('binary_sensor', s => ['motion', 'occupancy', 'presence'].includes(String(s.attributes.device_class ?? '')));
@@ -2062,6 +2160,7 @@ export class MPNexusView extends LitElement {
         ${this.screenPrefs()}
         <div class="sg">
           ${open('appearance', 'palette', tr('Apparence'), this.lookSummary())}
+          ${open('customize', 'tune', tr('Personnaliser'), this.customizeSummary())}
           ${open('saver', 'moon', tr('Écran de veille'), saver.enabled ? tr('{content} · après {n} min', { content: tr(saver.content === 'photos' ? 'Photos' : saver.content === 'plan' ? 'Plan 3D' : 'Horloge'), n: saver.delayMinutes }) : tr('Désactivé sur cet écran'))}
           ${admin ? open('users', 'user', tr('Utilisateurs'), tr('Invités par lien ou QR code')) : nothing}
           ${admin ? open('backup', 'layers', tr('Sauvegarde & partage'), this.lastExport ? tr('Dernière exportation : {when}', { when: new Intl.DateTimeFormat(locale(), { dateStyle: 'short' }).format(this.lastExport) }) : tr('Exporter, restaurer, partager')) : nothing}

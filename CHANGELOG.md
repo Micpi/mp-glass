@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.31.0 — Personnaliser les couleurs du plan, masquer des lecteurs et plus
+
+- **Nouveau panneau Plus → Personnaliser**, pour cet écran ou pour toute la maison (administrateur, avec Enregistrer/Annuler comme l’Apparence).
+- **Couleurs du plan 3D au choix** : cinq palettes en un toucher (Classique, Accent qui reprend la couleur d’accentuation, Néon, Pastel, Chaleureux), puis chaque couleur réglable en touchant sa pastille : lumière allumée, pièce choisie, pièces au repos, halo sous la maison, porte ou fenêtre ouverte, volets ouverts, média en lecture, machine en cours, et les quatre paliers de température (< 18, 18–21, 21–24, ≥ 24 °C). Curseur **Intensité des halos** de 30 à 180 %. Les légendes du plan et les températures affichées sur les pièces prennent les mêmes couleurs. Bouton « Couleurs d’origine ».
+- **Masquer des appareils** : lecteurs multimédia (ouverts en premier), lumières, volets et portails, climat, prises et interrupteurs, avec recherche. Un appareil masqué n’est plus affiché ni compté nulle part dans MP Nexus v2 : liste des lecteurs et pièces du multimédia (Music Assistant compris), « En ce moment », résumé de l’accueil, halos et télévisions/enceintes du plan, pages des pièces, recherche, alertes du climat. « Tout réafficher » annule d’un coup.
+- **Calques du plan** : Climat, Ouvrants, Audio-vidéo et Buanderie peuvent être retirés des boutons du plan ; Lumières reste toujours proposé.
+- **Accueil** : le résumé (pastilles lumières, température, ouvertures, lecture), les scènes et l’horloge se masquent séparément.
+- Les nouveaux réglages sont validés par le schéma du projet (Home Assistant refuse une couleur ou un calque invalide) et nettoyés sur chaque écran. Tests unitaires : palettes, halos colorés, intensité, plan sans les appareils masqués, validation. Vérification visuelle locale dans la démo sur ordinateur et téléphone ; pas d’essai sur une installation Home Assistant réelle.
+
 ## 0.30.1 — Des touches de télécommande plus belles et plus faciles à toucher
 
 - **Une vraie télécommande** : toutes les touches sont regroupées dans un corps centré, aux proportions d’une télécommande, sur téléphone, tablette et ordinateur. En haut, une rangée de touches rondes : Alimentation (en rouge), Retour, Accueil et Menu, avec leur nom écrit dessous.

@@ -116,6 +116,9 @@ export class SpatialScene {
   private levels = new Map<string,LevelParts>();
   private ray = new T.Raycaster();
   private halo?: T.CanvasTexture;
+  private houseHalo?: T.MeshBasicMaterial;
+  /** The room picked, the rooms at rest and the pool of light under the house, as the palette of the plan sets them. */
+  private colors={selected:'#8fd8ff',room:'#3496d1',house:'#2f8fe0'};
   private center = new T.Vector3();
   private radius = 10;
   /** Farther back for a stack of floors, as tall on screen as it is wide, where one floor lies flat. */
@@ -343,7 +346,7 @@ export class SpatialScene {
   private addHalo(box:T.Box3,elevation:number) {
     const halo=this.haloTexture();if(!halo)return;
     const size=box.getSize(new T.Vector3());
-    const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:halo,color:0x2f8fe0,transparent:true,opacity:.3,depthWrite:false}));
+    const plane=new T.Mesh(new T.PlaneGeometry(size.x*1.9+2,size.z*1.9+2),new T.MeshBasicMaterial({map:halo,color:this.colors.house,transparent:true,opacity:.3,depthWrite:false}));this.houseHalo=plane.material;
     plane.rotation.x=-Math.PI/2;plane.position.set(this.center.x,elevation-.02,this.center.z);plane.renderOrder=-1;this.group.add(plane);
   }
   /**
@@ -665,12 +668,12 @@ export class SpatialScene {
   }
   /** Selected room in light, rooms with a light on in warm tones, the others muted while a room is selected or while `level`, a floor of a stack, is pointed at. */
   highlight(selected:string,ambient:ReadonlyMap<string,RoomAmbient>=new Map(),level='') {
-    const key=JSON.stringify([selected,level,[...ambient]]);
+    const key=JSON.stringify([selected,level,[...ambient],this.colors]);
     if(key===this.styled)return false;
     this.styled=key;
     for(const [id,{floor,surface,glow}] of this.rooms){
       const state=ambient.get(id),on=!!state?.strength,picked=id===selected,muted=!!selected&&!picked||!!level&&floor!==level;
-      surface.material.color.set(on?state!.color:picked?'#8fd8ff':'#3496d1');
+      surface.material.color.set(on?state!.color:picked?this.colors.selected:this.colors.room);
       surface.material.opacity=on?(picked?.16:muted?.07:.1):picked?.3:muted?.1:.18;
       glow.material.uniforms.tint!.value.set(state?.color??'#ffd080');
       glow.material.uniforms.strength!.value=(state?.strength??0)*(muted?.65:1);
@@ -685,6 +688,12 @@ export class SpatialScene {
       const floor=this.rooms.get(room)?.floor,muted=!!selected&&room!==selected||!!level&&floor!==level;
       frame.opacity=muted?.4:.95;
     }
+    return true;
+  }
+  /** New colours for the room picked, the rooms at rest and the halo under the house; the rooms take them at the next highlight. */
+  setColors(colors:{selected:string;room:string;house:string}){
+    if(JSON.stringify(colors)===JSON.stringify(this.colors))return false;
+    this.colors={...colors};this.houseHalo?.color.set(colors.house);
     return true;
   }
   /** Brings a room to the centre, closer when the camera is far away. */

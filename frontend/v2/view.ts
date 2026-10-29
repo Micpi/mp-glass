@@ -3,7 +3,7 @@ import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { AppearanceConfig, HAState, NavigationConfig } from '../../shared/models';
-import { accentOf, ACCENTS, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, cssImage, DEFAULT_WALLPAPER, deleteWallpaper, importedSource, isImported, isNight, libraryWallpaper, listWallpapers, prepareWallpaper, readScreenLook, uploadWallpaper, WALLPAPERS, wallpaperSource, writeScreenLook, type ImportedWallpaper, type ScreenLook } from '../wallpapers';
+import { accentOf, ACCENTS, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, cssImage, DEFAULT_WALLPAPER, deleteWallpaper, importedSource, isImported, isNight, libraryWallpaper, listWallpapers, prepareWallpaper, readScreenLook, SCREEN_LOOK_KEY, uploadWallpaper, WALLPAPERS, wallpaperSource, writeScreenLook, type ImportedWallpaper, type ScreenLook } from '../wallpapers';
 import { mpIcon, type MPIconName } from '../icons';
 import { buildingPlan, planBuildings, withoutHidden, type SpatialFloor, type SpatialPlan, type SpatialRoom } from '../../shared/spatial';
 import { canMedia, contactSensor, coverOpen, coverPosition, finite, groupCover, mediaIsTv, mediaOn, mediaTvInput, mediaPlaying, mediaVolume, nowPlaying, accentPalette, DEFAULT_PALETTE, PLAN_COLOR_KEYS, PLAN_PALETTES, planPalette, roomEntityIds, roomTemperature, type PlanColor, type PlanMode, type PlanPalette } from '../../shared/spatial-state';
@@ -74,6 +74,9 @@ const BUILDING_KEY = 'mp-glass.building';
 function readBuilding(): string { try { return localStorage.getItem(BUILDING_KEY) ?? ''; } catch { return ''; } }
 /** The layer chosen on the plan, kept from one page to the next while the dashboard stays open. */
 let chosenLayer: PlanMode = 'lights';
+/** Every page of the dashboard is told when the look changes; the house's once saved, over the one the dashboard loaded with. */
+const LOOK_CHANGED = 'mp-nexus-look-changed';
+let savedHouse: AppearanceConfig | undefined;
 /** Each page opens its plan on the layer that speaks of it; the others keep the layer last chosen. */
 const PAGE_LAYERS: Partial<Record<ViewKind, PlanMode>> = { lights: 'lights', media: 'media' };
 /** The face of the Multimédia page last chosen, kept while the dashboard stays open. */
@@ -271,7 +274,7 @@ export class MPNexusView extends LitElement {
     this.projectName = config?.mp_project_name ?? config?.title ?? '';
     this.spatial = config?.mp_spatial;
     this.spatialOrigin = config?.mp_spatial_origin ?? 'project';
-    this.houseLook = config?.mp_appearance ?? { preset: 'glass-blue' };
+    this.houseLook = savedHouse ?? config?.mp_appearance ?? { preset: 'glass-blue' };
     this.navigation = config?.mp_navigation ?? { items: ['home', 'lights', 'rooms'], showLabels: true };
     this.kind = config?.mp_view_kind ?? 'home';
     if ((config?.mp_view_path ?? 'home') !== this.path) this.sub = undefined;
@@ -285,6 +288,19 @@ export class MPNexusView extends LitElement {
     this.layer = PAGE_LAYERS[this.kind] ?? chosenLayer;
     this.applyLook();
   }
+  /** A look kept for this screen, told at once to the other pages of the dashboard that Home Assistant keeps alive. */
+  private writeLook(look: ScreenLook) {
+    writeScreenLook(look);
+    dispatchEvent(new CustomEvent(LOOK_CHANGED, { detail: this }));
+  }
+  /** Another page changed the look (or another tab, through storage): this one shows it too, without a reload. */
+  private lookChanged = (event: Event) => {
+    if (event instanceof CustomEvent && event.detail === this) return;
+    if (event instanceof StorageEvent && event.key !== null && event.key !== SCREEN_LOOK_KEY) return;
+    this.screenLook = readScreenLook();
+    if (savedHouse) this.houseLook = savedHouse;
+    this.applyLook();
+  };
   /** The look shown: the house's (or its draft while an administrator edits it), then what this screen sets for itself. */
   private applyLook() {
     this.appearance = { ...(this.houseDraft ?? this.houseLook), ...this.screenLook };
@@ -305,6 +321,10 @@ export class MPNexusView extends LitElement {
     window.visualViewport?.addEventListener('scroll', this.measure);
     addEventListener('keydown', this.escape);
     addEventListener('pointerdown', this.outside);
+    addEventListener(LOOK_CHANGED, this.lookChanged);
+    addEventListener('storage', this.lookChanged);
+    // A page Home Assistant kept aside comes back with the look chosen meanwhile on another page.
+    this.lookChanged(new Event(LOOK_CHANGED));
     this.resize.observe(this);
     this.clock = window.setInterval(() => { this.checkIdle(); this.requestUpdate(); }, 15_000);
     for (const type of ['pointerdown', 'keydown', 'wheel']) addEventListener(type, this.activity, { passive: true });
@@ -320,6 +340,8 @@ export class MPNexusView extends LitElement {
     window.visualViewport?.removeEventListener('scroll', this.measure);
     removeEventListener('keydown', this.escape);
     removeEventListener('pointerdown', this.outside);
+    removeEventListener(LOOK_CHANGED, this.lookChanged);
+    removeEventListener('storage', this.lookChanged);
     clearTimeout(this.engineTimer); clearTimeout(this.flowTimer);
     this.engineSession?.session.close(); this.engineSession = undefined;
     for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
@@ -1785,7 +1807,7 @@ export class MPNexusView extends LitElement {
   private get lookTarget(): AppearanceConfig { return this.lookScope === 'house' ? this.houseDraft ?? this.houseLook : this.appearance; }
   private setLook(change: Partial<AppearanceConfig>) {
     if (this.lookScope === 'house') this.houseDraft = { ...(this.houseDraft ?? this.houseLook), ...change };
-    else { this.screenLook = cleanLook({ ...this.screenLook, ...change }); writeScreenLook(this.screenLook); }
+    else { this.screenLook = cleanLook({ ...this.screenLook, ...change }); this.writeLook(this.screenLook); }
     this.lookNote = undefined;
     this.applyLook();
   }
@@ -1819,7 +1841,7 @@ export class MPNexusView extends LitElement {
     try {
       await deleteWallpaper(hass, id);
       this.imported = (this.imported ?? []).filter(w => w.id !== id);
-      if (this.screenLook.wallpaper === id || this.screenLook.nightWallpaper === id) { const { wallpaper, nightWallpaper, ...rest } = this.screenLook; this.screenLook = { ...rest, ...(wallpaper === id ? {} : { wallpaper }), ...(nightWallpaper === id ? {} : { nightWallpaper }) }; this.screenLook = cleanLook(this.screenLook); writeScreenLook(this.screenLook); }
+      if (this.screenLook.wallpaper === id || this.screenLook.nightWallpaper === id) { const { wallpaper, nightWallpaper, ...rest } = this.screenLook; this.screenLook = { ...rest, ...(wallpaper === id ? {} : { wallpaper }), ...(nightWallpaper === id ? {} : { nightWallpaper }) }; this.screenLook = cleanLook(this.screenLook); this.writeLook(this.screenLook); }
       this.lookNote = { ok: true, text: tr('Photo supprimée.') };
     } catch { this.lookNote = { ok: false, text: tr('La photo n’a pas pu être supprimée.') }; }
     this.applyLook();
@@ -1838,6 +1860,10 @@ export class MPNexusView extends LitElement {
     else this.lookNote = { ok: false, text: tr('La couleur de cette image n’a pas pu être lue.') };
     this.requestUpdate();
   }
+  /** The choices of this screen are kept as they are made; the button says so and loads the page again, every view with them. */
+  private saveScreenButton() {
+    return html`<button class="btn primary" @click=${() => location.reload()}>${mpIcon('check', 16)}${tr('Enregistrer et recharger')}</button>`;
+  }
   private async saveHouseLook() {
     const hass = this.hass, draft = this.houseDraft;
     if (!hass || !draft) return;
@@ -1849,8 +1875,11 @@ export class MPNexusView extends LitElement {
       const appearance = { ...current.project.appearance } as Record<string, unknown>;
       for (const key of keys) { if (after[key] === undefined) delete appearance[key]; else appearance[key] = after[key]; }
       const saved = await saveProject(hass, { revision: current.revision, project: parseProject({ ...current.project, appearance }) });
-      this.houseLook = saved.project.appearance; this.houseDraft = undefined;
+      this.houseLook = savedHouse = saved.project.appearance; this.houseDraft = undefined;
       this.lookNote = { ok: true, text: tr('Enregistré pour toute la maison. Les autres écrans l’afficheront à leur prochain chargement.') };
+      dispatchEvent(new CustomEvent(LOOK_CHANGED, { detail: this }));
+      // The page loads again, as from Home Assistant: every view takes the saved look.
+      setTimeout(() => location.reload(), 600);
     } catch { this.lookNote = { ok: false, text: tr('L’apparence n’a pas pu être enregistrée.') }; }
     this.lookBusy = false;
     this.applyLook();
@@ -1871,7 +1900,7 @@ export class MPNexusView extends LitElement {
           <button aria-pressed=${!house} @click=${() => { this.lookScope = 'screen'; this.requestUpdate(); }}>${mpIcon('tv', 15)}<span>${tr('Cet écran')}</span></button>
           <button aria-pressed=${house} @click=${() => { this.lookScope = 'house'; this.requestUpdate(); }}>${mpIcon('home', 15)}<span>${tr('Toute la maison')}</span></button></div>`
           : html`<p class="note info">${tr('Vos choix s’appliquent à cet écran seulement.')}</p>`}
-        ${overridden ? html`<p class="note info">${tr('Cet écran garde ses propres réglages par-dessus ceux de la maison.')} <button class="lnk" @click=${() => { this.screenLook = {}; writeScreenLook({}); this.applyLook(); }}>${tr('Les retirer')}</button></p>` : nothing}
+        ${overridden ? html`<p class="note info">${tr('Cet écran garde ses propres réglages par-dessus ceux de la maison.')} <button class="lnk" @click=${() => { this.screenLook = {}; this.writeLook({}); this.applyLook(); }}>${tr('Les retirer')}</button></p>` : nothing}
 
         <div class="rlab">${tr('Ambiances')}</div>
         <div class="amb">${AMBIANCES.map(x => { const w = libraryWallpaper(x.look.wallpaper)!; return html`<button class="amb-card" aria-pressed=${ambiance === x} style=${`--amb:${x.look.accent}`} @click=${() => this.setLook(x.look)}><span class="amb-img" style=${`background-image:${cssImage(w.thumb)}`}></span><span class="amb-name"><i></i>${tr(x.name)}</span></button>`; })}</div>
@@ -1910,7 +1939,7 @@ export class MPNexusView extends LitElement {
         ${this.lookNote ? html`<p class=${`note ${this.lookNote.ok ? 'ok' : ''}`} role="status">${this.lookNote.text}</p>` : nothing}
         ${house ? html`<div class="acts"><button class="btn" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => { this.houseDraft = undefined; this.lookNote = undefined; this.applyLook(); }}>${tr('Annuler')}</button>
           <button class="btn primary" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => void this.saveHouseLook()}>${mpIcon('check', 16)}${tr('Enregistrer pour la maison')}</button></div>`
-          : Object.keys(this.screenLook).length ? html`<button class="btn" @click=${() => { this.screenLook = {}; writeScreenLook({}); this.lookNote = undefined; this.applyLook(); }}>${mpIcon('home', 16)}${tr('Reprendre le style de la maison')}</button>` : nothing}
+          : html`${Object.keys(this.screenLook).length ? html`<button class="btn" @click=${() => { this.screenLook = {}; this.writeLook({}); this.lookNote = undefined; this.applyLook(); }}>${mpIcon('home', 16)}${tr('Reprendre le style de la maison')}</button>` : nothing}${this.saveScreenButton()}`}
       </div>`;
   }
   // ——— Personnaliser: the colours of the plan, its layers, the home page and the devices set aside ———
@@ -1987,7 +2016,7 @@ export class MPNexusView extends LitElement {
 
         ${this.lookNote ? html`<p class=${`note ${this.lookNote.ok ? 'ok' : ''}`} role="status">${this.lookNote.text}</p>` : nothing}
         ${house ? html`<div class="acts"><button class="btn" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => { this.houseDraft = undefined; this.lookNote = undefined; this.applyLook(); }}>${tr('Annuler')}</button>
-          <button class="btn primary" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => void this.saveHouseLook()}>${mpIcon('check', 16)}${tr('Enregistrer pour la maison')}</button></div>` : nothing}
+          <button class="btn primary" ?disabled=${!this.houseDraft || this.lookBusy} @click=${() => void this.saveHouseLook()}>${mpIcon('check', 16)}${tr('Enregistrer pour la maison')}</button></div>` : this.saveScreenButton()}
       </div>`;
   }
   private hideQuery = '';

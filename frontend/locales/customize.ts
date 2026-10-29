@@ -43,4 +43,5 @@ export const CUSTOMIZE = {
   '{n} masqué sur {total}|{n} masqués sur {total}': ['{n} of {total} hidden|{n} of {total} hidden', '{n} из {total} скрыто|{n} из {total} скрыты|{n} из {total} скрыто'],
   '{n} affiché|{n} affichés': ['{n} shown|{n} shown', '{n} показано|{n} показаны|{n} показано'],
   'Tout réafficher': ['Show everything again', 'Показать всё снова'],
+  'Enregistrer et recharger': ['Save and reload', 'Сохранить и перезагрузить'],
 } satisfies Messages;

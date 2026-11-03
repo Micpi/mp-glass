@@ -4,6 +4,8 @@ Simple commands are understood by Home Assistant itself, at home, with no AI. An
 language model chosen in the options (Groq by default), which acts through Home Assistant's own Assist tools,
 on the entities exposed to Assist only, plus what MP Nexus adds about the household.
 """
+import asyncio
+import dataclasses
 import logging
 
 from aiohttp import ClientError, ClientTimeout
@@ -14,8 +16,8 @@ from homeassistant.helpers import intent, llm
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .assistant_core import (
-    DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, base_url, build_request, clean_key, household,
-    provider_error, read_answer, to_messages, tool_result_data, tool_spec, touched_entities,
+    DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, base_url, build_request, clean_key, done_answer, household,
+    plain_command, provider_error, quota_wait, read_answer, to_messages, tool_result_data, tool_spec, touched_entities,
 )
 from .const import DOMAIN
 
@@ -91,6 +93,10 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
     async def _answer(self, user_input, chat_log):
         # 1. At home first: the sentences Home Assistant understands on its own never leave the house.
         local = await conversation.async_handle_intents(self.hass, user_input, chat_log)
+        plain = plain_command(user_input.text)
+        if local is None and plain and plain != user_input.text.strip():
+            # « Nexus, éteins la cuisine s'il te plaît » is still « éteins la cuisine ».
+            local = await conversation.async_handle_intents(self.hass, dataclasses.replace(user_input, text=plain), chat_log)
         if local is not None:
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
                 agent_id=user_input.agent_id, content=local.speech.get("plain", {}).get("speech", "")))
@@ -109,12 +115,38 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             await self._converse(chat_log, key, options)
         except AssistantError as err:
             _LOGGER.warning("Nexus assistant: %s", err.detail)
-            return self._error(user_input, chat_log, err.detail)
+            touched = self._touched(chat_log, start)
+            if not touched:
+                return self._error(user_input, chat_log, err.detail)
+            # The house already did what was asked; only the sentence saying so is missing.
+            chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
+                agent_id=self.entity_id, content=done_answer([_name(self.hass, e) for e in touched], user_input.language)))
         result = conversation.async_get_result_from_chat_log(user_input, chat_log)
-        touched = touched_entities([tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
+        touched = self._touched(chat_log, start)
         if touched and result.response.response_type != intent.IntentResponseType.ERROR:
             result.response.async_set_results([intent.IntentResponseTarget(name=_name(self.hass, e), type=intent.IntentResponseTargetType.ENTITY, id=e) for e in touched])
         return result
+
+    @staticmethod
+    def _touched(chat_log, start):
+        return touched_entities([tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
+
+    async def _post(self, session, url, payload, key):
+        """The model's answer; when the per-minute quota is full, waits for it once if that is short."""
+        for attempt in range(2):
+            try:
+                async with session.post(url, json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=45), allow_redirects=False) as response:
+                    body = await response.read()
+                    if response.status == 200:
+                        return body
+                    wait = quota_wait(response.status, response.headers.get("retry-after"), body) if attempt == 0 else None
+                    if wait is None:
+                        raise provider_error(response.status, body, key)
+            except (ClientError, TimeoutError) as err:
+                raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
+            _LOGGER.debug("Nexus assistant: per-minute quota full, waiting %.1f s", wait)
+            await asyncio.sleep(wait + 0.3)
+        raise AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
 
     async def _converse(self, chat_log, key, options):
         api = chat_log.llm_api
@@ -123,13 +155,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         model = (options.get("assistant_model") or "").strip() or DEFAULT_MODEL
         for _ in range(MAX_TOOL_TURNS):
             payload = build_request(model, to_messages([_content(c) for c in chat_log.content]), tools)
-            try:
-                async with session.post(url, json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=45), allow_redirects=False) as response:
-                    body = await response.read()
-                    if response.status != 200:
-                        raise provider_error(response.status, body, key)
-            except (ClientError, TimeoutError) as err:
-                raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
+            body = await self._post(session, url, payload, key)
             text, calls = read_answer(body)
             content = conversation.AssistantContent(agent_id=self.entity_id, content=text or None,
                                                     tool_calls=[llm.ToolInput(tool_name=c["name"], tool_args=c["args"], id=c["id"]) for c in calls] or None)

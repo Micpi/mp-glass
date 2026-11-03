@@ -98,6 +98,31 @@ class AssistantCoreTests(unittest.TestCase):
         self.assertEqual(core.tool_result_data(Old()), {"ok": False})
         self.assertIsNone(core.tool_result_data(object()))
 
+    def test_quota_waits_only_when_short(self):
+        minute = json.dumps({"error": {"message": "Rate limit reached for model `openai/gpt-oss-120b` on tokens per minute (TPM): Limit 8000, Used 6200, Requested 3100. Please try again in 9.75s."}})
+        self.assertEqual(core.quota_wait(429, None, minute), 9.75)
+        self.assertEqual(core.quota_wait(429, "3", b"{}"), 3.0)
+        self.assertIsNone(core.quota_wait(429, None, json.dumps({"error": {"message": "Please try again in 1m30s."}})))
+        self.assertIsNone(core.quota_wait(429, None, json.dumps({"error": {"message": "on tokens per day (TPD). Please try again in 2h3m1s."}})))
+        self.assertIsNone(core.quota_wait(500, "1", b"{}"))
+        day = core.provider_error(429, json.dumps({"error": {"message": "Rate limit reached on requests per day (RPD)"}}))
+        self.assertIn("du jour", day.detail)
+
+    def test_plain_command_drops_the_name_and_politeness(self):
+        self.assertEqual(core.plain_command("Éteins la cuisine s'il te plaît."), "Éteins la cuisine")
+        self.assertEqual(core.plain_command("Nexus, allume le salon stp"), "allume le salon")
+        self.assertEqual(core.plain_command("Turn on the kitchen please"), "Turn on the kitchen")
+        self.assertEqual(core.plain_command("Ouvre les stores"), "Ouvre les stores")
+        self.assertEqual(core.plain_command("Allume la lampe Mercier"), "Allume la lampe Mercier")
+
+    def test_gpt_oss_reasons_briefly(self):
+        self.assertEqual(core.build_request("openai/gpt-oss-120b", [], [])["reasoning_effort"], "low")
+        self.assertNotIn("reasoning_effort", core.build_request("llama-x", [], []))
+
+    def test_done_answer(self):
+        self.assertEqual(core.done_answer(["Cuisine"], "fr-FR"), "C'est fait : Cuisine.")
+        self.assertEqual(core.done_answer([], "en"), "Done.")
+
     def test_household(self):
         self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
 

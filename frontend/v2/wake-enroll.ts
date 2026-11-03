@@ -120,8 +120,8 @@ export function variants(samples: Float32Array, seed = 1): Float32Array[] {
 
 export interface Enrolled { id: string; name: string; voice: VoiceModel }
 
-/** Turns the recordings into embeddings and asks Home Assistant to make the word. */
-export async function createVoiceWord(hass: Hass, name: string, words: Float32Array[], sentences: Float32Array[], models?: Pick<WakeModels, 'mel' | 'embed'>): Promise<Enrolled> {
+/** Turns the recordings into embeddings and asks Home Assistant to make the word, or to replace the recordings of `again`. */
+export async function createVoiceWord(hass: Hass, name: string, words: Float32Array[], sentences: Float32Array[], models?: Pick<WakeModels, 'mel' | 'embed'>, again?: string): Promise<Enrolled> {
   const speech = models ?? await loadSpeechModels();
   const recordings: { frames: string; end: number }[] = [], noisy: { frames: string; end: number; source: number }[] = [];
   for (const [i, samples] of words.entries()) {
@@ -134,5 +134,5 @@ export async function createVoiceWord(hass: Hass, name: string, words: Float32Ar
     for (const variant of variants(cut, i + 1)) noisy.push({ frames: base64Floats(await clipFrames(speech, variant)), end, source: recordings.length - 1 });
   }
   const spoken = await Promise.all(sentences.map(async s => base64Floats(await clipFrames(speech, s))));
-  return hass.callWS<Enrolled>({ type: 'mp_glass/assistant/wake_word/create', name, recordings, noisy, sentences: spoken });
+  return hass.callWS<Enrolled>({ type: 'mp_glass/assistant/wake_word/create', name, ...(again ? { word: again } : {}), recordings, noisy, sentences: spoken });
 }

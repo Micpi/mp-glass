@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.38.2 — Réenregistrer un mot d'éveil
+
+- **Mettre à jour une voix déjà enregistrée** : Plus → Sur cet écran → Mot d'éveil → « Réenregistrer « Nexus » » (administrateur). Les nouvelles prises remplacent les anciennes **sans changer le mot** : les écrans qui l'utilisent continuent de le choisir, les réglages de sensibilité restent, et ce que la maison lui a appris (réveils par erreur annulés, vraies demandes, sons de la maison) est conservé. On peut aussi le renommer au passage. Si l'entraînement échoue, les anciens enregistrements sont remis en place.
+
 ## 0.38.1 — Le mot d'éveil vous entend de loin, et Nexus se fait entendre sur iPhone
 
 - **Le mot d'éveil à votre voix se déclenche enfin à distance** : l'enregistrement se fait près de l'écran, mais on parle ensuite depuis l'autre bout de la pièce, et l'écho de la pièce changeait assez la voix pour rester sous le seuil. L'enregistrement fabrique maintenant aussi des versions « de loin » de chaque prise (réverbération, voix plus faible, bruit de fond), et le seuil se règle sur elles. **Recréez votre mot** (Plus → Sur cet écran → Mot d'éveil → « + Créer un mot avec ma voix… ») : un mot créé en 0.38.0 l'indique dans ses réglages.

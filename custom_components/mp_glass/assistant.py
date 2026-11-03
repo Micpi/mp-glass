@@ -150,6 +150,27 @@ def _add_voice(folder, name, data, background):
     return word, model
 
 
+def _redo_voice(folder, word, name, data, background):
+    """Records a voice word again: same id, so the screens keep choosing it. What the home taught it (cancelled false
+    wakes, real requests, ordinary sounds) is kept; a failed training puts the old recordings back. None when gone."""
+    index = _wake_index(folder)
+    if index.get(word, {}).get("kind") != "voice":
+        return None
+    before = voice.load_voice(folder, word)
+    old_model = voice.read_model(folder, word)
+    voice.save_voice(folder, word, {**data, "confirmed": before["confirmed"], "hard": before["hard"]})
+    try:
+        model = voice.train(folder, word, background)
+    except Exception:
+        voice.save_voice(folder, word, before)
+        if old_model is not None:
+            voice.write_model(folder, word, old_model)
+        raise
+    index[word] = {"name": name, "kind": "voice"}
+    _write_index(folder, index)
+    return word, model
+
+
 def _remove_wake(folder, word):
     index = _wake_index(folder)
     entry = index.pop(word, None)
@@ -257,6 +278,7 @@ def _windows(text, most):
 @websocket_api.websocket_command({
     vol.Required("type"): "mp_glass/assistant/wake_word/create",
     vol.Required("name"): vol.All(str, vol.Length(max=80)),
+    vol.Optional("word"): _WORD,
     vol.Required("recordings"): vol.All([{vol.Required("frames"): voice._FRAMES, vol.Required("end"): vol.All(int, vol.Range(min=1, max=voice.MAX_FRAMES))}],
                                         vol.Length(min=trainer.MIN_RECORDINGS, max=voice.MAX_RECORDINGS)),
     vol.Optional("noisy", default=[]): vol.All([{vol.Required("frames"): voice._FRAMES, vol.Required("end"): vol.All(int, vol.Range(min=1, max=voice.MAX_FRAMES)),
@@ -277,8 +299,15 @@ async def websocket_wake_word_create(hass, connection, msg):
     runtime = _runtime(hass)
     background = await runtime.background()
     name = wake_name(msg["name"])
+    again = msg.get("word")
     async with runtime.lock:
-        made = await hass.async_add_executor_job(_add_voice, wake_folder(hass), name, data, background)
+        if again:
+            made = await hass.async_add_executor_job(_redo_voice, wake_folder(hass), again, name, data, background)
+            if made is None:
+                connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
+                return
+        else:
+            made = await hass.async_add_executor_job(_add_voice, wake_folder(hass), name, data, background)
     if made is None:
         connection.send_error(msg["id"], "too_many", f"{MAX_WAKE_WORDS} mots d'éveil au plus : retirez-en un d'abord.")
         return

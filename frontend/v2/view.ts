@@ -120,7 +120,7 @@ const REMOTE_FACES: Partial<Record<RemoteKey, [MPIconName, MessageKey]>> = {
 };
 /** A short buzz under the finger, where the phone can, so a key feels pressed. */
 const tap = () => { try { navigator.vibrate?.(8); } catch { /* No vibration on this device. */ } };
-interface Enrollment { step: 'name'|'word'|'sentence'|'saving'|'done'|'error'; name: string; words: Float32Array[]; sentences: Float32Array[]; recording: boolean; level: number; note?: string; id?: string }
+interface Enrollment { step: 'name'|'word'|'sentence'|'saving'|'done'|'error'; name: string; words: Float32Array[]; sentences: Float32Array[]; recording: boolean; level: number; note?: string; id?: string; again?: string }
 /** Read aloud while making a wake word: ordinary speech, so that Nexus learns what is not its name. */
 const ENROLL_SENTENCES = ['Ce soir, je voudrais écouter un peu de musique dans le salon.', 'Pense à éteindre les lumières de la cuisine avant de partir.'] as const;
 /** Requests in a row without touching the screen, after the wake word; then Nexus waits for its name again. */
@@ -1903,10 +1903,11 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— A wake word made from the voice: the name, said five times, then two ordinary sentences ———
-  private startEnroll() {
+  /** `again`: a word of this home recorded once more (same name and settings, new recordings). */
+  private startEnroll(again?: { id: string; name: string }) {
     unlockAudio();
     this.stopWake();
-    this.enroll = { step: 'name', name: 'Nexus', words: [], sentences: [], recording: false, level: 0 };
+    this.enroll = { step: 'name', name: again?.name ?? 'Nexus', words: [], sentences: [], recording: false, level: 0, again: again?.id };
     this.overlay = 'enroll';
   }
   private async enrollRecord() {
@@ -1940,11 +1941,12 @@ export class MPNexusView extends LitElement {
     if (!e || !hass) return;
     this.enroll = { ...e, step: 'saving' };
     try {
-      const made = await createVoiceWord(hass, e.name, e.words, e.sentences);
+      const made = await createVoiceWord(hass, e.name, e.words, e.sentences, undefined, e.again);
       if (this.overlay !== 'enroll') return;
       this.wakeList = [{ id: made.id, name: made.name, custom: true, kind: 'voice' }, ...(this.wakeList ?? []).filter(w => w.id !== made.id)];
       this.voicePrefs = { ...this.voicePrefs, wake: made.id };
       writeVoicePrefs(this.voicePrefs);
+      this.wakeFor = undefined;
       this.enroll = { ...e, step: 'done', id: made.id };
     } catch (error) {
       if (this.overlay !== 'enroll') return;
@@ -1980,7 +1982,7 @@ export class MPNexusView extends LitElement {
         <p class="muted">${tr('Il s’améliore tout seul : avec les sons de la maison, et quand vous fermez Nexus après un réveil par erreur.')}</p>
         <button class="btn primary" @click=${this.closeOverlay}>${tr('Terminer')}</button>`;
     } else {
-      body = html`<div class="said serif">${e.note}</div><button class="btn" @click=${() => { this.enroll = { step: 'name', name: e.name, words: [], sentences: [], recording: false, level: 0 }; }}>${tr('Recommencer')}</button>`;
+      body = html`<div class="said serif">${e.note}</div><button class="btn" @click=${() => { this.enroll = { step: 'name', name: e.name, words: [], sentences: [], recording: false, level: 0, again: e.again }; }}>${tr('Recommencer')}</button>`;
     }
     return html`<div class="hd"><b class="vtitle">${tr('Créer un mot d’éveil')}</b>${close}</div><div class="body nexus-voice enroll">${body}</div>`;
   }
@@ -2026,6 +2028,7 @@ export class MPNexusView extends LitElement {
         ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
       ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
+      ${admin && custom?.kind === 'voice' ? html`<button class="rw" @click=${() => this.startEnroll({ id: custom.id, name: custom.name })}><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Réenregistrer « {word} »', { word: custom.name })}</b><small>${tr('Nouvelles prises de votre voix, mêmes réglages. Ce que la maison lui a appris est gardé.')}</small></div></button>` : nothing}
       ${admin ? html`<input class="wakefile" type="file" accept=".onnx" hidden @change=${add}>` : nothing}
       ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: custom.name })}</b></div></button>` : nothing}`;
   }

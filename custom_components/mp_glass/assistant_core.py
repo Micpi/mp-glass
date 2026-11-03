@@ -67,7 +67,11 @@ def to_messages(contents):
 
 
 def build_request(model, messages, tools):
-    payload = {"model": model or DEFAULT_MODEL, "messages": messages, "temperature": 0.3, "max_tokens": 1024}
+    model = model or DEFAULT_MODEL
+    # The free tier counts the tokens a request may produce against its per-minute quota: short answers, little reasoning.
+    payload = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": 700}
+    if "gpt-oss" in model:
+        payload["reasoning_effort"] = "low"
     if tools:
         payload["tools"] = tools
         payload["tool_choice"] = "auto"
@@ -117,12 +121,55 @@ def provider_error(status, body, api_key=""):
     if status in (401, 403):
         return AssistantError("auth", "La clé de l'IA est refusée : vérifiez-la dans les options de l'intégration MP Nexus.")
     if status == 429:
+        if re.search(r"per day|\(RPD\)|\(TPD\)", message, re.I):
+            return AssistantError("quota", "Le quota gratuit du jour de l'IA est atteint. Les commandes simples marchent toujours ; le reste reviendra demain.")
         return AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
     if status == 404 or "model" in message.lower() and status == 400:
         return AssistantError("model", f"Le modèle d'IA choisi n'est pas disponible ({message or status}). Changez-le dans les options de l'intégration MP Nexus.")
     if status >= 500:
         return AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.")
     return AssistantError("request", f"Le service d'IA a refusé la demande ({message or status}).")
+
+
+# Longest wait for the per-minute quota before giving up: a spoken request cannot hang longer.
+MAX_QUOTA_WAIT = 12.0
+
+
+def quota_wait(status, retry_after, body):
+    """Seconds to wait before the same request fits the per-minute quota again; None when it is not worth waiting."""
+    if status != 429:
+        return None
+    try:
+        wait = float(retry_after)
+    except (TypeError, ValueError):
+        try:
+            message = str((json.loads(body).get("error") or {}).get("message") or "")
+        except (ValueError, AttributeError, TypeError):
+            message = ""
+        found = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?([\d.]+)s", message)
+        if not found:
+            return None
+        hours, minutes, seconds = found.groups()
+        wait = int(hours or 0) * 3600 + int(minutes or 0) * 60 + float(seconds)
+    return wait if 0 <= wait <= MAX_QUOTA_WAIT else None
+
+
+_POLITE = re.compile(r"[\s,;.!?]*\b(?:s['’]il (?:te|vous) pla[iî]t|stp|svp|merci(?: beaucoup)?|please|thanks?(?: you)?|bitte|danke|per favore|grazie|пожалуйста|спасибо)(?=$|[\s,;.!?])[\s,;.!?]*", re.I)
+_CALL = re.compile(r"^\s*(?:(?:hey|hé|ok|dis)\s+)?nexus\b[\s,;.!?]*", re.I)
+
+
+def plain_command(text):
+    """The request without its name call and politeness, as Home Assistant's own sentences expect: « Nexus, éteins la cuisine s'il te plaît » → « éteins la cuisine »."""
+    plain = _POLITE.sub(" ", _CALL.sub("", text or ""))
+    return " ".join(plain.split()).strip(" ,;.!?")
+
+
+def done_answer(names, language):
+    """What Nexus says when the actions are done but the AI could not phrase the answer."""
+    listed = ", ".join(names)
+    if (language or "").lower().startswith("fr"):
+        return f"C'est fait : {listed}." if listed else "C'est fait."
+    return f"Done: {listed}." if listed else "Done."
 
 
 def touched_entities(results):

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.35.2 — Nexus tient dans le quota gratuit
+
+- **Plus de faux « quota atteint »** : quand l'IA avait déjà agi (la lumière s'éteignait bien) mais que le quota par minute de Groq bloquait sa phrase de confirmation, Nexus affichait une erreur. Il attend maintenant quelques secondes que le quota se libère, et s'il ne peut toujours pas, il confirme lui-même : « C'est fait : Cuisine. »
+- **Les ordres polis restent à la maison** : « Éteins la cuisine s'il te plaît », « Nexus, allume le salon stp » sont reconnus par Home Assistant sans passer par l'IA, comme « Éteins la cuisine ». Plus rapide, et rien ne quitte la maison.
+- **Moins de jetons par demande** : le modèle par défaut réfléchit brièvement et ses réponses sont plus courtes, ce qui laisse plus de place dans le quota gratuit par minute.
+- Quand c'est le quota **du jour** qui est atteint, Nexus le dit : les commandes simples marchent toujours, le reste revient le lendemain.
+
 ## 0.35.1 — Nexus dit ce qui ne va pas, et suit Home Assistant 2026.10
 
 - **Correction** : sur les Home Assistant récents (2026.10 et au-delà), Nexus répondait « Nexus ne répond pas » dès qu'une demande passait par l'IA. Home Assistant a changé la façon dont un outil rend son résultat et dont ses paramètres sont décrits ; MP Nexus accepte maintenant les deux formes, l'ancienne comme la nouvelle.

@@ -36,6 +36,25 @@ def tool_spec(name, description, parameters):
     return {"type": "function", "function": spec}
 
 
+def short_names(names):
+    """Tool names as the model expects them: Home Assistant 2026.10+ prefixes each tool with its integration
+    (« intent__HassTurnOff »), and models trained on « HassTurnOff » call the short name, which strict providers
+    such as Groq refuse. Maps each real name to the name offered; the prefix is dropped when no other tool takes it."""
+    shorts = {name: name.split("__", 1)[1] if "__" in name else name for name in names}
+    taken = {}
+    for short in shorts.values():
+        taken[short] = taken.get(short, 0) + 1
+    return {name: short if taken[short] == 1 and short not in names or short == name else name for name, short in shorts.items()}
+
+
+def shorten_text(text, names):
+    """The instructions with the tool names the model is offered."""
+    for name, short in names.items():
+        if short != name:
+            text = re.sub(rf"\b{re.escape(name)}\b", short, text)
+    return text
+
+
 def to_messages(contents):
     """The chat log as the OpenAI chat API reads it.
 
@@ -133,6 +152,11 @@ def provider_error(status, body, api_key=""):
 
 # Longest wait for the per-minute quota before giving up: a spoken request cannot hang longer.
 MAX_QUOTA_WAIT = 12.0
+
+
+def bad_tool_call(status, body):
+    """The provider refused what the model wrote (a tool it was not offered, broken arguments): worth one new try."""
+    return status == 400 and b"tool call validation failed" in (body if isinstance(body, (bytes, bytearray)) else str(body or "").encode()).lower()
 
 
 def quota_wait(status, retry_after, body):

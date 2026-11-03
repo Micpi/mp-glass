@@ -21,6 +21,8 @@ import { flag } from '../flags';
 import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
+import { listenTone, ringSound, unlockSound } from './sound';
+import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
@@ -125,17 +127,6 @@ interface Enrollment { step: 'name'|'word'|'sentence'|'saving'|'done'|'error'; n
 const ENROLL_SENTENCES = ['Ce soir, je voudrais écouter un peu de musique dans le salon.', 'Pense à éteindre les lumières de la cuisine avant de partir.'] as const;
 /** Requests in a row without touching the screen, after the wake word; then Nexus waits for its name again. */
 const HANDS_FREE_TURNS = 3;
-/** A short rising tone: Nexus heard its name and listens. */
-const chime = () => {
-  try {
-    const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    const c = new Context(), o = c.createOscillator(), g = c.createGain(), t = c.currentTime;
-    o.frequency.setValueAtTime(880, t); o.frequency.exponentialRampToValueAtTime(1320, t + 0.12);
-    g.gain.setValueAtTime(0.0001, t); g.gain.exponentialRampToValueAtTime(0.12, t + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, t + 0.25);
-    o.connect(g).connect(c.destination); o.start(t); o.stop(t + 0.3);
-    o.onended = () => { void c.close().catch(() => undefined); };
-  } catch { /* No sound on this device. */ }
-};
 /** The colour of a thermostat's arc: what it is doing, as the plan and the detail window show it. */
 /** The usual presets and fan speeds of thermostats, named in the interface language; others keep the name their integration gives. */
 const CLIMATE_NAMES: Record<string, 'Aucun'|'Éco'|'Confort'|'Absent'|'Nuit'|'Boost'|'Programme'|'Automatique'|'Faible'|'Moyenne'|'Forte'> = {
@@ -162,7 +153,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -252,7 +243,10 @@ export class MPNexusView extends LitElement {
   private sub?: SubPanel;
   private scenesOpen = false;
   private prefs: NexusPrefs = readPrefs();
-  private overlay: ''|'search'|'alerts'|'invite'|'voice'|'enroll' = '';
+  private overlay: ''|'search'|'alerts'|'invite'|'voice'|'enroll'|'timers'|'ring' = '';
+  private timerSnap: TimerSnapshot = NO_TIMERS; private timerTick = 0;
+  private timerFeed?: TimerFeed; private timerFeedFor?: object; private timerTicker?: number;
+  private ringing?: { key: string; sound: ReturnType<typeof ringSound> };
   /** The voice of Nexus: what it is doing, how loud it hears, what it heard, and how it speaks on this screen. */
   private voiceState: 'idle'|'listening'|'thinking'|'speaking' = 'idle';
   private voiceLevel = 0;
@@ -384,6 +378,7 @@ export class MPNexusView extends LitElement {
     super.disconnectedCallback();
     this.endVoice();
     this.stopWake();
+    this.stopTimers();
     document.removeEventListener('visibilitychange', this.wakeVisibility);
     if (this.header) releaseHeader(this.header, this);
     this.header = undefined;
@@ -413,6 +408,7 @@ export class MPNexusView extends LitElement {
   protected updated() {
     this.watchConnection();
     queueMicrotask(() => this.keepWake());
+    queueMicrotask(() => this.keepTimers());
     this.observeProtectedImages();
     if (this.saving) this.checkIdle();
     if (this.saving && !this.saverTimer) this.saverTimer = window.setInterval(this.saverTick, 1000);
@@ -1583,7 +1579,9 @@ export class MPNexusView extends LitElement {
   private headerActions() {
     const count = unseen(this.alerts, this.prefs).length;
     const bell = count ? tr('Alertes : {n} à voir', { n: count }) : tr('Alertes');
-    return html`<button class=${`ib orbb ${this.wakeState === 'armed' ? 'armed' : ''}`} aria-label=${tr('Parler à Nexus')} title=${this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : tr('Parler à Nexus')} @click=${() => this.openVoice()}><i class="orb"></i></button>
+    const next = this.timerSnap.timers[0];
+    const chip = next ? html`<button class="tchip" aria-label=${tr('Minuteurs et réveils')} title=${tr('Minuteurs et réveils')} @click=${() => { this.overlay = 'timers'; }}>${mpIcon(next.kind === 'alarm' ? 'bell' : 'clock', 15)}<span>${next.kind === 'alarm' && !next.snoozed ? clockLabel(next, locale()) : countdown(this.timerFeed?.left(next) ?? 0)}</span></button>` : nothing;
+    return html`${chip}<button class=${`ib orbb ${this.wakeState === 'armed' ? 'armed' : ''}`} aria-label=${tr('Parler à Nexus')} title=${this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : tr('Parler à Nexus')} @click=${() => this.openVoice()}><i class="orb"></i></button>
       <button class="ib" aria-label=${tr('Rechercher')} title=${tr('Rechercher')} @click=${() => this.openOverlay('search')}>${mpIcon('search', 17)}</button>
       <button class="ib bell" aria-label=${bell} title=${bell} @click=${() => this.openOverlay('alerts')}>${mpIcon('bell', 17)}${count ? html`<span class="bdg">${count > 9 ? '9+' : count}</span>` : nothing}</button>`;
   }
@@ -1595,6 +1593,7 @@ export class MPNexusView extends LitElement {
     // Closed while Nexus still waited for the request it was woken for: a false wake, which the word learns.
     if (this.overlay === 'voice' && this.handsFree && this.handsFreeTurns === 0 && this.voiceState === 'listening' && !this.voiceHeard) this.teachWake('cancelled');
     if (this.overlay === 'enroll') { this.enrollStop.stop?.(); this.enroll = undefined; }
+    if (this.overlay === 'ring' && this.hass) void stopRing(this.hass).catch(() => undefined);
     this.wakeLesson = undefined;
     this.overlay = ''; this.invitation = undefined; this.stopListening(); this.endVoice();
   };
@@ -1674,8 +1673,73 @@ export class MPNexusView extends LitElement {
         ${fresh.size ? html`<button class="btn" @click=${() => this.setPrefs({ seen: [...new Set([...this.prefs.seen, ...alerts.map(a => a.key)])] })}>${mpIcon('check', 16)}${tr('Tout marquer comme lu')}</button>` : nothing}
       </div>`;
   }
+  // ——— Timers and alarms: counted by Home Assistant, rung on every open screen ———
+  private keepTimers() {
+    const hass = this.hass;
+    if (!hass) return;
+    if (this.timerFeedFor !== hass.connection) {
+      this.stopTimers();
+      this.timerFeedFor = hass.connection;
+      const feed = this.timerFeed = new TimerFeed(hass, snapshot => { this.timerSnap = snapshot; this.syncRing(); });
+      void feed.start();
+    }
+    const counting = this.timerSnap.timers.length > 0;
+    if (counting && !this.timerTicker) this.timerTicker = window.setInterval(() => { this.timerTick++; }, 1000);
+    else if (!counting && this.timerTicker) { clearInterval(this.timerTicker); this.timerTicker = undefined; }
+    if (this.overlay === 'timers' && !counting) this.overlay = '';
+  }
+  private stopTimers() {
+    this.timerFeed?.stop(); this.timerFeed = undefined; this.timerFeedFor = undefined;
+    clearInterval(this.timerTicker); this.timerTicker = undefined;
+    this.ringing?.sound.stop(); this.ringing = undefined;
+  }
+  /** Rings while something rings, on whatever page is open; stops when it was stopped on any screen. */
+  private syncRing() {
+    const rings = this.timerSnap.ringing, key = rings.map(r => r.id).join(',');
+    if (!rings.length) {
+      this.ringing?.sound.stop(); this.ringing = undefined;
+      if (this.overlay === 'ring') this.overlay = '';
+      return;
+    }
+    if (this.ringing?.key !== key) {
+      this.ringing?.sound.stop();
+      this.ringing = { key, sound: ringSound(rings.some(r => r.kind === 'alarm') ? 'alarm' : 'timer') };
+    }
+    if (this.overlay !== 'ring' && this.overlay !== 'enroll') {
+      if (this.overlay === 'voice') this.endVoice();
+      this.overlay = 'ring';
+    }
+  }
+  private ringPanel() {
+    const hass = this.hass, rings = this.timerSnap.ringing;
+    const ring: Ring | undefined = rings.find(r => r.kind === 'alarm') ?? rings[0];
+    if (!ring || !hass) return nothing;
+    const alarm = ring.kind === 'alarm';
+    return html`<div class="hd"><b class="vtitle">${alarm ? tr('Réveil') : tr('Minuteur')}</b></div>
+      <div class="body nexus-voice ringp">
+        <div class="ringbell">${mpIcon(alarm ? 'bell' : 'clock', 40)}</div>
+        <div class="said serif">${ring.label || (alarm ? tr('C’est l’heure !') : tr('Minuteur terminé'))}</div>
+        ${rings.length > 1 ? html`<p class="muted small">${tr('{n} sonneries en cours', { n: rings.length })}</p>` : nothing}
+        <button class="btn primary" @click=${() => { void stopRing(hass).catch(() => undefined); }}>${tr('Arrêter')}</button>
+        <button class="btn" @click=${() => { for (const r of rings) void snoozeRing(hass, r, alarm ? 9 * 60 : 60).catch(() => undefined); }}>${alarm ? tr('Reporter de 9 min') : tr('+ 1 min')}</button>
+      </div>`;
+  }
+  private timersPanel() {
+    const hass = this.hass, items = this.timerSnap.timers;
+    const days = (item: TimerItem) => !item.days?.length ? '' : item.days.length === 7 ? tr('tous les jours') : item.days.length === 5 && item.days.every(d => d < 5) ? tr('en semaine')
+      : item.days.map(d => new Date(2024, 0, 1 + d).toLocaleDateString(locale(), { weekday: 'short' })).join(', ');
+    const row = (item: TimerItem) => {
+      const alarm = item.kind === 'alarm' && !item.snoozed;
+      const title = item.label || (alarm ? tr('Réveil') : tr('Minuteur'));
+      const sub = alarm ? [clockLabel(item, locale()), days(item)].filter(Boolean).join(' · ') : `${tr('Il reste {time}', { time: countdown(this.timerFeed?.left(item) ?? 0) })}${item.snoozed ? ` · ${tr('Reporté')}` : ''}`;
+      return html`<div class="al"><span class="ib">${mpIcon(item.kind === 'alarm' ? 'bell' : 'clock', 16)}</span><div><b>${title}</b><small>${sub}</small></div>
+        <button class="pill" @click=${() => { if (hass) void cancelTimer(hass, item).catch(() => undefined); }}>${tr('Annuler')}</button></div>`;
+    };
+    return html`${this.head(tr('Minuteurs et réveils'), '', html`<button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>`)}
+      <div class="body">${items.length ? items.map(row) : html`<p class="empty">${tr('Aucun minuteur ni réveil. Dites : « Nexus, mets un minuteur de 10 minutes ».')}</p>`}</div>`;
+  }
   private overlayPanel() {
-    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : this.overlay === 'enroll' ? tr('Créer un mot d’éveil') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.overlay === 'enroll' ? this.enrollPanel() : this.alertsPanel()}</section>`;
+    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : this.overlay === 'enroll' ? tr('Créer un mot d’éveil') : this.overlay === 'timers' ? tr('Minuteurs et réveils') : this.overlay === 'ring' ? tr('Minuteur') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.overlay === 'enroll' ? this.enrollPanel() : this.overlay === 'timers' ? this.timersPanel() : this.overlay === 'ring' ? this.ringPanel() : this.alertsPanel()}</section>`;
   }
 
   // ——— The voice of Nexus: touch the orb, speak, hear the answer ———
@@ -1703,6 +1767,7 @@ export class MPNexusView extends LitElement {
       // One recording at a time: phones silence the first when a second one starts.
       if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
       if (turn !== this.voiceTurn) return;
+      if (this.handsFree && this.handsFreeTurns > 0) { await this.listenSignal(); if (turn !== this.voiceTurn) return; }
       try { await recorder.start(); }
       catch { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; } return; }
       const audio = await recorder.done;
@@ -1816,7 +1881,7 @@ export class MPNexusView extends LitElement {
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
     if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, key); return; }
     if (this.wakeListener) {
-      const busy = this.overlay === 'voice' && this.voiceState !== 'idle';
+      const busy = (this.overlay === 'voice' && this.voiceState !== 'idle') || this.overlay === 'ring';
       this.wakeListener.paused = busy;
       if (!busy) void this.wakeListener.mic(true);
     }
@@ -1829,7 +1894,7 @@ export class MPNexusView extends LitElement {
       const model = await wakeModel(hass, word), voice = typeof model === 'object' && !(model instanceof Uint8Array);
       const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
       if (this.wakeFor !== key) return;
-      const listener = this.wakeListener = new WakeListener(models, this.woke);
+      const listener = this.wakeListener = new WakeListener(models, () => { void this.woke(); });
       if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
       listener.onScore = score => this.showWakeScore(score);
       this.wakeOld = voice && !((model as { version?: number }).version! >= 2);
@@ -1863,15 +1928,25 @@ export class MPNexusView extends LitElement {
     if (this.wakeState !== 'off') this.wakeState = 'off';
   }
   private wakeVisibility = () => { if (document.visibilityState !== 'visible') this.stopWake(); this.requestUpdate(); };
-  private woke = () => {
+  private woke = async () => {
     if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
-    if (this.overlay === 'enroll') return;
+    if (this.overlay === 'enroll' || this.overlay === 'ring') return;
     const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
     this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
     if (this.saving) this.wake();
-    chime();
+    // The page lets go of the microphone first (an iPhone plays quietly while it is held), then a short tone says « I listen ».
+    const listener = this.wakeListener;
+    if (listener) { listener.paused = true; await listener.mic(false); }
+    await this.listenSignal();
     this.openVoice(true);
   };
+  /** The short tone before each time Nexus listens (it can be turned off in the wake word's settings). */
+  private async listenSignal() {
+    if (this.voicePrefs.wakeChime === false) return;
+    audioSession('playback');
+    await listenTone();
+    audioSession('auto');
+  }
   /** How close the word came lately, drawn straight into the settings' meter (no new render 12 times a second). */
   private showWakeScore(score: number) {
     const now = performance.now();
@@ -2028,6 +2103,8 @@ export class MPNexusView extends LitElement {
         ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
       ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
+      ${current ? html`<div class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Bip d’écoute')}</b><small>${tr('Un petit son dit que Nexus vous écoute après son nom')}</small></div>
+        <button class="end" role="switch" aria-checked=${this.voicePrefs.wakeChime !== false} aria-label=${tr('Bip d’écoute')} @click=${() => { this.voicePrefs = { ...this.voicePrefs, wakeChime: this.voicePrefs.wakeChime === false ? undefined : false }; writeVoicePrefs(this.voicePrefs); if (this.voicePrefs.wakeChime !== false) { unlockSound(); void listenTone(); } }}><span class=${`tgl ${this.voicePrefs.wakeChime !== false ? '' : 'off'}`}></span></button></div>` : nothing}
       ${admin && custom?.kind === 'voice' ? html`<button class="rw" @click=${() => this.startEnroll({ id: custom.id, name: custom.name })}><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Réenregistrer « {word} »', { word: custom.name })}</b><small>${tr('Nouvelles prises de votre voix, mêmes réglages. Ce que la maison lui a appris est gardé.')}</small></div></button>` : nothing}
       ${admin ? html`<input class="wakefile" type="file" accept=".onnx" hidden @change=${add}>` : nothing}
       ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: custom.name })}</b></div></button>` : nothing}`;

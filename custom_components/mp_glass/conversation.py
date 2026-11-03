@@ -24,6 +24,7 @@ from .assistant_core import (
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
 from .const import DOMAIN
+from .timers import TOOLS as TIMER_TOOLS, handle_sentence as timers_handle
 
 _LOGGER = logging.getLogger(__name__)
 API_ID = "mp_nexus"
@@ -56,7 +57,7 @@ class NexusAPI(llm.API):
         assist = await llm.async_get_api(self.hass, llm.LLM_API_ASSIST, llm_context)
         # The list of devices, grouped by room: a third of the tokens of Home Assistant's YAML.
         return llm.APIInstance(api=self, api_prompt=compact_context(assist.api_prompt), llm_context=llm_context,
-                               tools=[*assist.tools, HouseholdTool()], custom_serializer=assist.custom_serializer)
+                               tools=[*assist.tools, HouseholdTool(), *(tool() for tool in TIMER_TOOLS)], custom_serializer=assist.custom_serializer)
 
 
 def _content(item, names):
@@ -114,6 +115,13 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             return self._error(user_input, chat_log, f"Nexus a rencontré une erreur ({type(err).__name__}). Le détail est dans le journal de Home Assistant.")
 
     async def _answer(self, user_input, chat_log):
+        # 0. Timers and alarms, understood at home: « un minuteur de 10 minutes », « réveille-moi à 7 h », « stop » while it rings.
+        spoken = timers_handle(self.hass, user_input.text, user_input.language)
+        if spoken:
+            chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(agent_id=user_input.agent_id, content=spoken))
+            response = intent.IntentResponse(language=user_input.language)
+            response.async_set_speech(spoken)
+            return conversation.ConversationResult(response=response, conversation_id=chat_log.conversation_id)
         # 1. At home first: the sentences Home Assistant understands on its own never leave the house.
         local = await conversation.async_handle_intents(self.hass, user_input, chat_log)
         plain = plain_command(user_input.text)
@@ -295,6 +303,8 @@ def _name(hass, entity_id):
 
 def _schema(tool, serializer):
     """The tool's parameters as JSON schema: probatio since Home Assistant 2026.10, voluptuous before."""
+    if getattr(tool, "json_schema", None):
+        return tool.json_schema
     try:
         try:
             import probatio  # noqa: PLC0415

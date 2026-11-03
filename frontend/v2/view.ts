@@ -1587,7 +1587,11 @@ export class MPNexusView extends LitElement {
       const reply = await askAssist(hass, text, language(), this.conversationId);
       this.conversationId = reply.conversationId;
       this.answer = { text: reply.text || (reply.failed ? tr('Je n’ai pas compris.') : tr('C’est fait.')), touched: reply.touched };
-    } catch { this.answer = { text: nexusAgent(hass) ? tr('Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.') : tr('Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.') }; }
+    } catch (error) {
+      // Home Assistant says why it refused: showing it beats a message that sends the household looking in the wrong place.
+      const said = (error as { message?: string } | undefined)?.message?.trim();
+      this.answer = { text: said || (nexusAgent(hass) ? tr('Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.') : tr('Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.')) };
+    }
   }
   private recognition?: { stop(): void };
   private listen() {

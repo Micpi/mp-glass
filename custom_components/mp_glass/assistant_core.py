@@ -137,6 +137,14 @@ def touched_entities(results):
     return seen
 
 
+def tool_result_data(item):
+    """What a tool answered, whatever Home Assistant wraps it in: `result.data` since 2026.10, `tool_result` before."""
+    result = getattr(item, "result", None)
+    if result is not None and hasattr(result, "data"):
+        return result.data
+    return getattr(item, "tool_result", None)
+
+
 def household(persons):
     """Who lives here and who is home, from person states (entity_id, name, state)."""
     home = [p["name"] for p in persons if p["state"] == "home"]

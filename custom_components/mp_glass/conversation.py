@@ -24,6 +24,8 @@ from .assistant_core import (
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
 from .const import DOMAIN
+from .facts import TOOLS as FACT_TOOLS, prompt_block as facts_block
+from .facts_core import LESSON_MARK, lesson_marker, lesson_prompt
 from .timers import TOOLS as TIMER_TOOLS, handle_sentence as timers_handle
 
 _LOGGER = logging.getLogger(__name__)
@@ -57,7 +59,7 @@ class NexusAPI(llm.API):
         assist = await llm.async_get_api(self.hass, llm.LLM_API_ASSIST, llm_context)
         # The list of devices, grouped by room: a third of the tokens of Home Assistant's YAML.
         return llm.APIInstance(api=self, api_prompt=compact_context(assist.api_prompt), llm_context=llm_context,
-                               tools=[*assist.tools, HouseholdTool(), *(tool() for tool in TIMER_TOOLS)], custom_serializer=assist.custom_serializer)
+                               tools=[*assist.tools, HouseholdTool(), *(tool() for tool in TIMER_TOOLS), *(tool() for tool in FACT_TOOLS)], custom_serializer=assist.custom_serializer)
 
 
 def _content(item, names):
@@ -68,6 +70,9 @@ def _content(item, names):
         return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": tool_result_data(item)}
     if item.role == "system":
         return {"role": "system", "content": shorten_text(item.content or "", names)}
+    # The screen opens a lesson with a marker; the model reads it as the person asking to begin.
+    if item.role == "user" and (item.content or "").startswith(LESSON_MARK):
+        return {"role": "user", "content": "Commençons la leçon."}
     return {"role": item.role, "content": item.content}
 
 
@@ -115,17 +120,19 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             return self._error(user_input, chat_log, f"Nexus a rencontré une erreur ({type(err).__name__}). Le détail est dans le journal de Home Assistant.")
 
     async def _answer(self, user_input, chat_log):
+        first = next((c for c in chat_log.content if isinstance(c, conversation.UserContent)), None)
+        lesson_id = lesson_marker(first.content) if first else None
         # 0. Timers and alarms, understood at home: « un minuteur de 10 minutes », « réveille-moi à 7 h », « stop » while it rings.
-        spoken = timers_handle(self.hass, user_input.text, user_input.language)
+        spoken = None if lesson_id else timers_handle(self.hass, user_input.text, user_input.language)
         if spoken:
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(agent_id=user_input.agent_id, content=spoken))
             response = intent.IntentResponse(language=user_input.language)
             response.async_set_speech(spoken)
             return conversation.ConversationResult(response=response, conversation_id=chat_log.conversation_id)
         # 1. At home first: the sentences Home Assistant understands on its own never leave the house.
-        local = await conversation.async_handle_intents(self.hass, user_input, chat_log)
+        local = None if lesson_id else await conversation.async_handle_intents(self.hass, user_input, chat_log)
         plain = plain_command(user_input.text)
-        if local is None and plain and plain != user_input.text.strip():
+        if local is None and not lesson_id and plain and plain != user_input.text.strip():
             # « Nexus, éteins la cuisine s'il te plaît » is still « éteins la cuisine ».
             local = await conversation.async_handle_intents(self.hass, dataclasses.replace(user_input, text=plain), chat_log)
         if local is not None:
@@ -138,14 +145,17 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             return self._error(user_input, chat_log, "Je n'ai compris cette demande qu'avec l'IA, et aucune clé n'est configurée. Ajoutez une clé Groq gratuite dans les options de l'intégration MP Nexus.")
         # 2. The language model, with the tools of the house.
         try:
-            await chat_log.async_provide_llm_data(user_input.as_llm_context(DOMAIN), NexusAPI(hass=self.hass, id=API_ID, name="MP Nexus"), PROMPT, user_input.extra_system_prompt)
+            # What the household taught Nexus goes with the instructions, and a lesson turns the conversation into an interview.
+            known = facts_block(self.hass, "" if lesson_id else user_input.text)
+            instructions = PROMPT + known + (lesson_prompt(lesson_id, known.count("\n- ")) if lesson_id else "")
+            await chat_log.async_provide_llm_data(user_input.as_llm_context(DOMAIN), NexusAPI(hass=self.hass, id=API_ID, name="MP Nexus"), instructions, user_input.extra_system_prompt)
         except conversation.ConverseError as err:
             return err.as_conversation_result()
         start = len(chat_log.content)
         phrase = plain or user_input.text
         fresh = sum(1 for c in chat_log.content if isinstance(c, conversation.UserContent)) == 1
         # 3. A request the AI already solved is replayed at home.
-        learned = self.memory.recall(phrase) if self.learning and fresh else None
+        learned = self.memory.recall(phrase) if self.learning and fresh and not lesson_id else None
         if learned:
             replayed = await self._replay(user_input, chat_log, learned, key, options, start)
             if replayed is not None:
@@ -166,7 +176,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
                 agent_id=self.entity_id, content=done_answer([_name(self.hass, e) for e in touched], user_input.language)))
         else:
-            if self.learning and fresh:
+            if self.learning and fresh and not lesson_id:
                 self.memory.learn(phrase, lesson(self._calls(chat_log, start), self._last_answer(chat_log, start)))
                 self._save()
         return self._result(user_input, chat_log, start)

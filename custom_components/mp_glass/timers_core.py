@@ -90,6 +90,9 @@ def parse_duration(text):
     if re.search(r"\bquart d heure\b|\ba quarter of an hour\b|\bquarter hour\b", text):
         total, found = total + 900, True
         text = re.sub(r"\bquart d heure\b|\ba quarter of an hour\b|\bquarter hour\b", " ", text)
+    if re.search(r"\bheures? et demie?\b", text):
+        total, found = total + 1800, True
+        text = re.sub(r"\bheures? et demie?\b", "heure", text)
     # « 1h30 », « 1 h 30 »: a bare number after hours counts as minutes.
     clock = re.search(r"\b(\d{1,2}) ?(?:h|heures?|hours?) ?(\d{1,2})\b(?! ?(?:h|heures?|hours?|min|minutes?|sec|s)\b)", text)
     if clock:
@@ -143,7 +146,7 @@ def parse_days(text):
         return EVERY_DAY, None
     if re.search(r"\ben semaine\b|\bjours? de semaine\b|\bweekdays?\b|\bdu lundi au vendredi\b|\bmonday to friday\b|\bchaque jour ouvre\b", text):
         return WEEKDAYS, None
-    if re.search(r"\bles week ?ends?\b|\bweekends?\b", text):
+    if re.search(r"\bweek ?ends?\b", text):
         return WEEKEND, None
     names = [m.group(1) for m in re.finditer(r"\b(" + "|".join(_DAYS) + r")s?\b", text)]
     days = tuple(sorted({_DAYS[n] for n in names}))
@@ -232,7 +235,7 @@ def _strip(text):
     """The sentence without its durations and clock times (accents kept), so that what is left can be a label."""
     text = re.sub(r"\b(?:une? )?demie? heure\b|\bhalf an hour\b|\bquart d heure\b", " ", text)
     text = re.sub(r"\b\d{1,2} ?(?:h|heures?|hours?|:) ?\d{0,2}(?: ?(?:et demie?|et quart|am|pm|du matin|du soir))?\b", " ", text)
-    text = re.sub(rf"\b(?:\d+|[a-zéèêûîôàç]+(?: (?:et )?[a-zéèêûîôàç]+){{0,2}}) ?{_UNIT}\b", " ", text)
+    text = re.sub(rf"\b(?:\d+ ?|[a-zéèêûîôàç]+(?: (?:et )?[a-zéèêûîôàç]+){{0,2}} ){_UNIT}\b", " ", text)
     return " ".join(re.sub(r"\b(?:dans|in|et|and|d ici)\b(?= *$| +(?:pour|de|for|to)\b)", " ", text).split())
 
 
@@ -276,7 +279,7 @@ def understand(text):
         if seconds and re.search(rf"\b{_SET}\b|\bde\b|\bpour\b|\bfor\b|\b{_TIMER_WORDS}\b", t):
             return {"action": "start_timer", "seconds": min(seconds, MAX_TIMER_SECONDS), "label": _label(_light(raw), True)}
         return None
-    reminder = re.search(r"\b(?:rappelle moi|rappelez moi|previens moi|previenez moi|remind me|tell me|let me know)\b", t)
+    reminder = re.search(r"\b(?:rappelle moi|rappelez moi|previens moi|previenez moi|prevenez moi|previens|remind me|tell me|let me know)\b", t)
     in_duration = re.search(r"\b(?:dans|in|d ici|within)\b (.+)", t)
     if (wake_me or reminder) and in_duration and parse_duration(in_duration.group(1)):
         label = _label(_light(raw), True) if reminder else ""

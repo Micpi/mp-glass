@@ -1,0 +1,41 @@
+import { describe, expect, it } from 'vitest';
+import { LONGEST_MS, NOBODY_MS, PAUSE_MS, readVoicePrefs, recordingFormat, shouldStop, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+
+describe('the voice of Nexus', () => {
+  it('stops listening after a pause once someone spoke', () => {
+    const state: Endpoint = {};
+    expect(shouldStop(state, 0.01, 100, 0)).toBe('go');
+    expect(shouldStop(state, 0.2, 400, 0)).toBe('go');
+    expect(shouldStop(state, 0.01, 500, 0)).toBe('go');
+    expect(shouldStop(state, 0.01, 500 + PAUSE_MS - 1, 0)).toBe('go');
+    expect(shouldStop(state, 0.01, 500 + PAUSE_MS, 0)).toBe('done');
+  });
+  it('a word again restarts the pause, and silence alone ends with nothing', () => {
+    const state: Endpoint = {};
+    shouldStop(state, 0.2, 100, 0); shouldStop(state, 0.01, 200, 0);
+    expect(shouldStop(state, 0.2, 1000, 0)).toBe('go');
+    expect(shouldStop(state, 0.01, 1100, 0)).toBe('go');
+    expect(shouldStop(state, 0.01, 1100 + PAUSE_MS - 50, 0)).toBe('go');
+    expect(shouldStop({}, 0.01, NOBODY_MS, 0)).toBe('nothing');
+  });
+  it('never listens longer than the longest request', () => {
+    const state: Endpoint = {};
+    let verdict = 'go';
+    for (let t = 0; t <= LONGEST_MS && verdict === 'go'; t += 100) verdict = shouldStop(state, 0.3, t, 0);
+    expect(verdict).toBe('done');
+  });
+  it('records in a format Whisper reads: webm first, mp4 on Safari', () => {
+    expect(recordingFormat(type => type.startsWith('audio/webm'))).toBe('audio/webm;codecs=opus');
+    expect(recordingFormat(type => type === 'audio/mp4')).toBe('audio/mp4');
+    expect(recordingFormat(() => false)).toBeUndefined();
+  });
+  it('remembers how this screen speaks', () => {
+    const store = new Map<string, string>();
+    globalThis.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } } as unknown as Storage;
+    expect(readVoicePrefs()).toEqual({ speak: 'device', engine: undefined });
+    writeVoicePrefs({ speak: 'ha', engine: 'tts.piper' });
+    expect(readVoicePrefs()).toEqual({ speak: 'ha', engine: 'tts.piper' });
+    store.set('mp-nexus.voice', '{"speak":"shout"}');
+    expect(readVoicePrefs().speak).toBe('device');
+  });
+});

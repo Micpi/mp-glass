@@ -142,3 +142,30 @@ def household(persons):
     home = [p["name"] for p in persons if p["state"] == "home"]
     away = [p["name"] for p in persons if p["state"] != "home"]
     return {"à_la_maison": home, "absents": away}
+
+
+# ——— Voice: speech to text with Whisper on the same provider ———
+STT_MODEL = "whisper-large-v3-turbo"
+# Half a minute of speech is about 150 kB; Home Assistant refuses WebSocket messages over 4 MB, base64 included.
+MAX_AUDIO_BYTES = 2 * 1024 * 1024
+AUDIO_TYPES = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-m4a": "m4a", "audio/aac": "m4a"}
+
+
+def audio_name(mime):
+    """The file name Whisper expects for a recording type (it reads the format from the extension); None when unsupported."""
+    ext = AUDIO_TYPES.get((mime or "").split(";")[0].strip().lower())
+    return f"voice.{ext}" if ext else None
+
+
+def stt_language(language):
+    """Whisper takes the two-letter code: « fr-FR » becomes « fr »; anything else lets it guess."""
+    code = (language or "").split("-")[0].split("_")[0].lower()
+    return code if re.fullmatch(r"[a-z]{2}", code) else None
+
+
+def read_transcript(body):
+    try:
+        text = (json.loads(body) if isinstance(body, (str, bytes, bytearray)) else body).get("text")
+    except (ValueError, AttributeError) as err:
+        raise AssistantError("bad_answer", "Transcription illisible.") from err
+    return " ".join(str(text or "").split())

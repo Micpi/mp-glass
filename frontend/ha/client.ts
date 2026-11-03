@@ -12,6 +12,8 @@ export interface Hass {
   callWS<T>(message: Record<string, unknown>): Promise<T>;
   callService(domain: string, service: string, data: Record<string, unknown>): Promise<unknown>;
   fetchWithAuth?(path: string, init?: RequestInit): Promise<Response>;
+  /** Home Assistant's REST API, as its own frontend calls it (text-to-speech links among others). */
+  callApi?<T>(method: string, path: string, data?: Record<string, unknown>): Promise<T>;
 }
 interface Structure { floors: HAFloor[]; areas: HAArea[]; devices: HADevice[]; entities: HAEntity[]; warnings: string[] }
 const cache = new WeakMap<object, { at: number; promise: Promise<Structure> }>();

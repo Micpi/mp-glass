@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.35.0 — Nexus parle : l’orbe vocale (phase 2)
+
+- **Orbe Nexus** dans l’en-tête de chaque page : on la touche, on parle, Nexus agit puis répond à voix haute. Pas besoin d’appuyer pour finir : il s’arrête seul après une courte pause (20 secondes au plus), ou dès qu’on retouche l’orbe.
+- **On peut l’interrompre** : toucher l’orbe pendant qu’il parle le coupe et il écoute aussitôt. La conversation continue (« et dans la cuisine ? ») tant que la fenêtre reste ouverte.
+- **Transcription par Whisper (Groq)**, avec la même clé que l’assistant : elle marche aussi sur iPhone, iPad et Firefox, où la dictée du navigateur manque. L’enregistrement passe par Home Assistant ; la clé ne quitte jamais le serveur. Sans clé, la dictée du navigateur prend le relais quand il en a une.
+- **Voix de Nexus réglable par écran** (Plus → Sur cet écran) : la voix de l’appareil (gratuite, souvent hors ligne), une voix de Home Assistant (Piper, Home Assistant Cloud…) ou muette.
+- Le micro de la recherche ouvre la même orbe. Les animations respectent le réglage « réduire les animations ».
+
 ## 0.34.0 — Nexus, l’assistant de MP Nexus (phase 1 : le cerveau)
 
 - **Nouvel assistant « Nexus »** installé par l’intégration comme agent de conversation Home Assistant. Il répond dans la recherche de MP Nexus, mais aussi partout où Home Assistant propose un assistant (application, satellites vocaux, pipelines Assist) : il suffit de choisir « Nexus » comme agent de conversation.

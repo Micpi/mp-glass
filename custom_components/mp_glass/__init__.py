@@ -18,6 +18,7 @@ from .kiosk import async_setup_kiosk
 from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdropView, SpatialRuntime, SpatialUploadView, backdrop_folder, websocket_cancel, websocket_info, websocket_job, websocket_normalize
 from .music import COMMANDS as MUSIC_COMMANDS, KEY as MUSIC_KEY, MusicArtworkView, MusicAssistantRuntime
 from .music_engine import COMMANDS as ENGINE_COMMANDS
+from .assistant import COMMANDS as ASSISTANT_COMMANDS
 from .wallpaper import COMMANDS as WALLPAPER_COMMANDS, VIEWS as WALLPAPER_VIEWS, wallpaper_folder
 from .scenes import KEY as SCENES_KEY, async_setup_scenes
 
@@ -54,7 +55,7 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_cancel)
         websocket_api.async_register_command(hass, websocket_normalize)
         websocket_api.async_register_command(hass, websocket_info)
-        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS, *WALLPAPER_COMMANDS):
+        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS, *WALLPAPER_COMMANDS, *ASSISTANT_COMMANDS):
             websocket_api.async_register_command(hass, command)
         hass.http.register_view(SpatialUploadView())
         hass.http.register_view(SpatialBackdropView())

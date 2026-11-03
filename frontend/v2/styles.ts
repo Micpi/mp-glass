@@ -280,6 +280,23 @@ export const nexusStyles = css`
   .tv-glyph{filter:drop-shadow(0 0 8px rgba(110,170,255,.55))}.cover.tv .tv-glyph{width:48%;height:auto}
   .answer b{white-space:normal;font-size:14px;line-height:1.35}
   .answer .touched{margin-top:8px;flex-wrap:wrap}
+  .orbb{padding:0}.orbb .orb{width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0,#bfe3ff 18%,var(--mp-accent,#69b7ff) 55%,#3a4bd8 100%);box-shadow:0 0 12px var(--mp-accent,#69b7ff);animation:nx-breathe 3.2s ease-in-out infinite}
+  @keyframes nx-breathe{0%,100%{transform:scale(.92);opacity:.85}50%{transform:scale(1.05);opacity:1}}
+  .modal.voice{text-align:center}.vtitle{font-size:17px;letter-spacing:.04em}
+  .nexus-voice{display:flex;flex-direction:column;align-items:center;gap:12px;padding:34px 20px 28px;overflow-x:hidden}
+  .vorb{position:relative;flex:0 0 auto;width:148px;height:148px;margin:0 auto 6px;border:0;padding:0;border-radius:50%;cursor:pointer;background:radial-gradient(circle at 35% 30%,#fff 0,#cfeaff 12%,var(--mp-accent,#69b7ff) 48%,#3946c9 82%,#1b1f6b 100%);box-shadow:0 0 calc(30px + var(--lvl,0) * 60px) color-mix(in srgb,var(--mp-accent,#69b7ff) 70%,transparent);transform:scale(calc(1 + var(--lvl,0) * .14));transition:transform .08s linear,box-shadow .08s linear}
+  .vorb i{position:absolute;inset:-10px;border-radius:50%;border:2px solid color-mix(in srgb,var(--mp-accent,#69b7ff) 55%,transparent);opacity:0}
+  .vorb.idle{animation:nx-breathe 3.2s ease-in-out infinite}
+  .vorb.listening i{animation:nx-ring 1.6s ease-out infinite}.vorb.listening i:nth-child(2){animation-delay:.53s}.vorb.listening i:nth-child(3){animation-delay:1.06s}
+  .vorb.thinking{animation:nx-spin 1.4s linear infinite;background:conic-gradient(from 0deg,#3946c9,var(--mp-accent,#69b7ff),#c9b8ff,#3946c9)}
+  .vorb.speaking{animation:nx-talk .5s ease-in-out infinite alternate}
+  @keyframes nx-ring{0%{transform:scale(.9);opacity:.8}100%{transform:scale(1.5);opacity:0}}
+  @keyframes nx-spin{to{rotate:360deg}}
+  @keyframes nx-talk{from{transform:scale(.97)}to{transform:scale(1.07)}}
+  .nexus-voice .heard{font-size:15px;opacity:.75;max-width:440px}
+  .nexus-voice .said{font-size:21px;line-height:1.35;max-width:460px}
+  .nexus-voice .touched{justify-content:center;flex-wrap:wrap}.vclose{margin-left:auto}
+  @media (prefers-reduced-motion:reduce){.vorb,.vorb i,.orbb .orb{animation:none!important;transition:none}}
   .rw .txt{text-align:left;min-width:0;flex:1}
   .rw.ask b{white-space:normal}
   .al{display:flex;gap:10px;align-items:center;padding:10px;border-radius:calc(var(--mp-radius,22px) * 16 / 22);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 67.74%),100%),transparent)}

@@ -44,6 +44,7 @@ class MPGlassOptionsFlow(config_entries.OptionsFlow):
             vol.Optional("assistant_api_key", default=options.get("assistant_api_key", "")): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Optional("assistant_model", default=options.get("assistant_model", DEFAULT_MODEL)): str,
             vol.Optional("assistant_url", default=options.get("assistant_url", GROQ_URL)): str,
+            vol.Optional("assistant_learn", default=options.get("assistant_learn", True) is not False): bool,
         }))
 
     async def async_step_spatial_addon(self, user_input=None):

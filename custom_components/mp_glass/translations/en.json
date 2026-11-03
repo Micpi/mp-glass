@@ -25,7 +25,8 @@
           "gemini_quality": "Default plan analysis model",
           "assistant_api_key": "Nexus assistant: AI key (free Groq key)",
           "assistant_model": "Nexus assistant: AI model",
-          "assistant_url": "Nexus assistant: AI service address (OpenAI-compatible)"
+          "assistant_url": "Nexus assistant: AI service address (OpenAI-compatible)",
+          "assistant_learn": "Nexus assistant: learn recurring requests (off forgets them)"
         },
         "description": "For 3D plan generation, select direct Gemini and paste your API key. No app to install. Both models are on Google's free tier. Leave the key empty if you only use the dashboard. Nexus assistant: simple commands stay at home; for anything else, paste a free key from console.groq.com. Only names and states of devices exposed to Assist are sent."
       },

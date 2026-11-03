@@ -458,6 +458,16 @@ export const NEXUS = {
   'Reculer de 10 s': ['Back 10 s', 'Назад на 10 с'],
   'Avancer de 10 s': ['Forward 10 s', 'Вперёд на 10 с'],
   'Assistant': ['Assistant', 'Ассистент'],
+  'Mot d’éveil': ['Wake word', 'Слово активации'],
+  'Dites-le pour parler à Nexus sans toucher l’écran': ['Say it to talk to Nexus hands-free', 'Скажите его, чтобы говорить с Nexus без касания'],
+  'Aucun': ['None', 'Нет'],
+  'À l’écoute de « {word} »': ['Listening for “{word}”', 'Жду «{word}»'],
+  'Touchez l’écran pour activer le micro': ['Touch the screen to turn the microphone on', 'Коснитесь экрана, чтобы включить микрофон'],
+  'Le mot d’éveil n’a pas pu démarrer.': ['The wake word could not start.', 'Не удалось запустить слово активации.'],
+  'Ajouter un mot entraîné (.onnx)': ['Add a trained word (.onnx)', 'Добавить обученное слово (.onnx)'],
+  'Retirer « {word} »': ['Remove “{word}”', 'Удалить «{word}»'],
+  'Préparation…': ['Getting ready…', 'Подготовка…'],
+  'Le micro reste sur cet écran tant que le mot n’est pas entendu.': ['The microphone stays on this screen until the word is heard.', 'Звук не покидает экран, пока слово не прозвучит.'],
 } satisfies Messages;
 
 /** German and Italian for MP Nexus v2; anything missing falls back to English. */
@@ -512,6 +522,16 @@ export const NEXUS_DE: Partial<Record<keyof typeof NEXUS, string>> = {
   'Le téléviseur attend du texte.': 'Der Fernseher wartet auf Text.',
   'Reculer de 10 s': '10 s zurück', 'Avancer de 10 s': '10 s vor',
   'Assistant': 'Assistent',
+  'Mot d’éveil': 'Aktivierungswort',
+  'Dites-le pour parler à Nexus sans toucher l’écran': 'Sagen Sie es, um ohne Berührung mit Nexus zu sprechen',
+  'Aucun': 'Keines',
+  'À l’écoute de « {word} »': 'Wartet auf „{word}“',
+  'Touchez l’écran pour activer le micro': 'Berühren Sie den Bildschirm, um das Mikrofon einzuschalten',
+  'Le mot d’éveil n’a pas pu démarrer.': 'Das Aktivierungswort konnte nicht starten.',
+  'Ajouter un mot entraîné (.onnx)': 'Trainiertes Wort hinzufügen (.onnx)',
+  'Retirer « {word} »': '„{word}“ entfernen',
+  'Préparation…': 'Wird vorbereitet…',
+  'Le micro reste sur cet écran tant que le mot n’est pas entendu.': 'Der Ton bleibt auf diesem Bildschirm, bis das Wort fällt.',
 };
 export const NEXUS_IT: Partial<Record<keyof typeof NEXUS, string>> = {
   'Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.': 'Il microfono non è accessibile. Consentilo per questa pagina nel browser.',
@@ -564,4 +584,14 @@ export const NEXUS_IT: Partial<Record<keyof typeof NEXUS, string>> = {
   'Le téléviseur attend du texte.': 'Il televisore attende del testo.',
   'Reculer de 10 s': 'Indietro di 10 s', 'Avancer de 10 s': 'Avanti di 10 s',
   'Assistant': 'Assistente',
+  'Mot d’éveil': 'Parola di attivazione',
+  'Dites-le pour parler à Nexus sans toucher l’écran': 'Dillo per parlare con Nexus senza toccare lo schermo',
+  'Aucun': 'Nessuna',
+  'À l’écoute de « {word} »': 'In ascolto di «{word}»',
+  'Touchez l’écran pour activer le micro': 'Tocca lo schermo per attivare il microfono',
+  'Le mot d’éveil n’a pas pu démarrer.': 'La parola di attivazione non è partita.',
+  'Ajouter un mot entraîné (.onnx)': 'Aggiungi una parola addestrata (.onnx)',
+  'Retirer « {word} »': 'Rimuovi «{word}»',
+  'Préparation…': 'Preparazione…',
+  'Le micro reste sur cet écran tant que le mot n’est pas entendu.': 'L’audio resta su questo schermo finché la parola non viene sentita.',
 };

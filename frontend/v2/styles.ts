@@ -296,6 +296,7 @@ export const nexusStyles = css`
   .nexus-voice .heard{font-size:15px;opacity:.75;max-width:440px}
   .nexus-voice .said{font-size:21px;line-height:1.35;max-width:460px}
   .nexus-voice .touched{justify-content:center;flex-wrap:wrap}.vclose{margin-left:auto}
+  .orbb.armed .orb{box-shadow:0 0 0 2px rgba(255,255,255,.55),0 0 0 5px color-mix(in srgb,var(--mp-accent,#69b7ff) 35%,transparent),0 0 14px var(--mp-accent,#69b7ff)}
   @media (prefers-reduced-motion:reduce){.vorb,.vorb i,.orbb .orb{animation:none!important;transition:none}}
   .rw .txt{text-align:left;min-width:0;flex:1}
   .rw.ask b{white-space:normal}

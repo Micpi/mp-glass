@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.37.0 — Nexus répond à son nom (phase 3)
+
+- **Mot d'éveil** : un écran peut écouter un mot (Plus → Sur cet écran → Mot d'éveil). Dès qu'il l'entend, un petit son, l'orbe s'ouvre et Nexus écoute la demande, sans toucher l'écran. Il enchaîne jusqu'à trois demandes de suite, puis se referme seul dans le silence.
+- **Tout se passe sur l'écran** : le mot est reconnu dans la page par openWakeWord (modèles ONNX en WebAssembly). Aucun son ne quitte l'appareil tant que le mot n'est pas entendu ; ensuite c'est le parcours habituel (Whisper, Nexus).
+- **« Hey Jarvis » prêt à l'emploi**, et **votre propre mot** : un modèle entraîné pour la maison (« Nexus », avec le carnet d'entraînement de Home Assistant) s'ajoute en .onnx depuis le même menu, par un administrateur ; il est gardé par Home Assistant (sauvegardes comprises) et proposé à tous les écrans.
+- L'orbe de l'en-tête porte un anneau quand l'écran écoute. Il faut que la page soit ouverte et l'écran allumé (une tablette murale, par exemple) ; sur téléphone et tablette, un premier toucher de l'écran autorise le micro. L'écran de veille se lève quand le mot est entendu.
+
 ## 0.36.0 — Nexus apprend vos demandes récurrentes
 
 - **Nexus apprend** : quand l'IA a résolu une phrase (« mode cinéma », « donne-moi la température du salon ») et que tout a marché, Nexus la retient. La fois suivante, il la traite à la maison : une action est rejouée telle quelle, sans l'IA, avec la même réponse ; une question relit les valeurs du moment et l'IA ne fait que formuler la phrase, avec une requête de quelques centaines de jetons au lieu de plusieurs milliers.

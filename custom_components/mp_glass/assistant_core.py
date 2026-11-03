@@ -1,0 +1,144 @@
+"""The MP Nexus assistant without Home Assistant: what is sent to the language model and how its answer is read.
+
+The model is reached through the OpenAI-compatible chat API that Groq (and most hosted models) offer.
+"""
+import json
+import re
+
+GROQ_URL = "https://api.groq.com/openai/v1"
+DEFAULT_MODEL = "openai/gpt-oss-120b"
+# Turns between the model and the tools of the house for a single request.
+MAX_TOOL_TURNS = 8
+# Messages of an ongoing conversation kept for the model, besides the instructions.
+MAX_HISTORY = 12
+
+PROMPT = """Tu es Nexus, l'assistant de la maison dans MP Nexus, le tableau de bord Home Assistant du foyer.
+Tu réponds dans la langue de la personne, en une ou deux phrases courtes, naturelles, faites pour être lues à voix haute : pas de liste, pas de Markdown, pas d'identifiant technique.
+Tu agis avec les outils fournis plutôt que de décrire ce qu'il faudrait faire. Pour une demande en plusieurs étapes (une ambiance, « mode cinéma », « je pars »), enchaîne les actions utiles puis résume ce que tu as fait.
+Avant de déverrouiller une serrure, de désarmer une alarme ou d'ouvrir une porte de garage ou un portail, demande une confirmation explicite et n'agis qu'après un « oui ».
+Si un appareil ou une pièce n'existe pas, dis-le simplement. N'invente jamais un état : lis-le avec les outils."""
+
+
+def clean_key(api_key):
+    """The key as typed, without the spaces a copy and paste leaves; None when it cannot be one."""
+    key = (api_key or "").strip()
+    return key if key and not re.search(r"[^\x21-\x7e]", key) else None
+
+
+def base_url(url):
+    return (url or "").strip().rstrip("/") or GROQ_URL
+
+
+def tool_spec(name, description, parameters):
+    spec = {"name": name, "parameters": parameters or {"type": "object", "properties": {}}}
+    if description:
+        spec["description"] = description
+    return {"type": "function", "function": spec}
+
+
+def to_messages(contents):
+    """The chat log as the OpenAI chat API reads it.
+
+    Each entry is a dict: role (system, user, assistant, tool_result), content, and for the assistant its tool calls
+    (id, name, args); for a tool result its call id and result. Only the last MAX_HISTORY messages after the system
+    prompt are kept, and never a tool result whose call was cut off.
+    """
+    messages = []
+    for item in contents:
+        role = item.get("role")
+        if role in ("system", "user"):
+            messages.append({"role": role, "content": item.get("content") or ""})
+        elif role == "assistant":
+            calls = item.get("tool_calls") or []
+            message = {"role": "assistant", "content": item.get("content") or (None if calls else "")}
+            if calls:
+                message["tool_calls"] = [{"id": c["id"], "type": "function", "function": {"name": c["name"], "arguments": json.dumps(c.get("args") or {}, ensure_ascii=False)}} for c in calls]
+            messages.append(message)
+        elif role == "tool_result":
+            messages.append({"role": "tool", "tool_call_id": item["tool_call_id"], "content": json.dumps(item.get("result"), ensure_ascii=False, default=str)})
+    system = [m for m in messages if m["role"] == "system"][:1]
+    rest = [m for m in messages if m["role"] != "system"]
+    if len(rest) > MAX_HISTORY:
+        rest = rest[-MAX_HISTORY:]
+        # A history never starts on an answer to a call it no longer holds.
+        while rest and rest[0]["role"] != "user":
+            rest.pop(0)
+    return system + rest
+
+
+def build_request(model, messages, tools):
+    payload = {"model": model or DEFAULT_MODEL, "messages": messages, "temperature": 0.3, "max_tokens": 1024}
+    if tools:
+        payload["tools"] = tools
+        payload["tool_choice"] = "auto"
+    return payload
+
+
+def _arguments(raw):
+    if isinstance(raw, dict):
+        return raw
+    try:
+        value = json.loads(raw or "{}")
+    except (TypeError, ValueError):
+        return {}
+    return value if isinstance(value, dict) else {}
+
+
+def read_answer(body):
+    """(text, tool calls) of a chat completion; tool calls as dicts with id, name and args, empty or None values dropped."""
+    try:
+        message = (json.loads(body) if isinstance(body, (str, bytes, bytearray)) else body)["choices"][0]["message"]
+    except (ValueError, KeyError, IndexError, TypeError) as err:
+        raise AssistantError("bad_answer", "Réponse illisible du fournisseur IA.") from err
+    calls = []
+    for index, call in enumerate(message.get("tool_calls") or []):
+        function = call.get("function") or {}
+        if not function.get("name"):
+            continue
+        args = {k: v for k, v in _arguments(function.get("arguments")).items() if v not in (None, "", [])}
+        calls.append({"id": call.get("id") or f"call_{index}", "name": function["name"], "args": args})
+    return (message.get("content") or "").strip(), calls
+
+
+class AssistantError(Exception):
+    def __init__(self, code, detail):
+        super().__init__(detail)
+        self.code, self.detail = code, detail
+
+
+def provider_error(status, body, api_key=""):
+    """A refusal of the provider in words the household understands, without ever repeating the key."""
+    try:
+        message = str((json.loads(body).get("error") or {}).get("message") or "")
+    except (ValueError, AttributeError):
+        message = ""
+    if api_key:
+        message = message.replace(api_key, "***")
+    if status in (401, 403):
+        return AssistantError("auth", "La clé de l'IA est refusée : vérifiez-la dans les options de l'intégration MP Nexus.")
+    if status == 429:
+        return AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
+    if status == 404 or "model" in message.lower() and status == 400:
+        return AssistantError("model", f"Le modèle d'IA choisi n'est pas disponible ({message or status}). Changez-le dans les options de l'intégration MP Nexus.")
+    if status >= 500:
+        return AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.")
+    return AssistantError("request", f"Le service d'IA a refusé la demande ({message or status}).")
+
+
+def touched_entities(results):
+    """Entities the tools acted on, from their results (Home Assistant intent responses), in order and once each."""
+    seen = []
+    for result in results:
+        data = (result or {}).get("data") if isinstance(result, dict) else None
+        for target in (data or {}).get("success") or []:
+            entity = target.get("id") if isinstance(target, dict) else None
+            if target.get("type") == "entity" and isinstance(entity, str) and "." in entity and entity not in seen:
+                seen.append(entity)
+    return seen
+
+
+def household(persons):
+    """Who lives here and who is home, from person states (entity_id, name, state)."""
+    home = [p["name"] for p in persons if p["state"] == "home"]
+    away = [p["name"] for p in persons if p["state"] != "home"]
+    return {"à_la_maison": home, "absents": away}

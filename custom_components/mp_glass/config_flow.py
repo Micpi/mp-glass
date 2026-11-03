@@ -5,6 +5,7 @@ from homeassistant import config_entries
 from homeassistant.core import callback
 from homeassistant.helpers import selector
 from urllib.parse import urlsplit
+from .assistant_core import DEFAULT_MODEL, GROQ_URL
 from .const import DOMAIN
 from .spatial_gemini import QUALITIES, selected_backend
 
@@ -40,6 +41,9 @@ class MPGlassOptionsFlow(config_entries.OptionsFlow):
             vol.Optional("gemini_api_key", default=options.get("gemini_api_key", "")): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
             vol.Required("gemini_quality", default=options.get("gemini_quality", "precise") if options.get("gemini_quality") in QUALITIES else "precise"): selector.SelectSelector(
                 selector.SelectSelectorConfig(options=list(QUALITIES), translation_key="gemini_quality", mode=selector.SelectSelectorMode.DROPDOWN)),
+            vol.Optional("assistant_api_key", default=options.get("assistant_api_key", "")): selector.TextSelector(selector.TextSelectorConfig(type=selector.TextSelectorType.PASSWORD)),
+            vol.Optional("assistant_model", default=options.get("assistant_model", DEFAULT_MODEL)): str,
+            vol.Optional("assistant_url", default=options.get("assistant_url", GROQ_URL)): str,
         }))
 
     async def async_step_spatial_addon(self, user_input=None):

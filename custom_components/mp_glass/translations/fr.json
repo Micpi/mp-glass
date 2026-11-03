@@ -22,9 +22,12 @@
           "show_settings": "Afficher le panneau de configuration intégrateur",
           "spatial_backend": "Analyse des plans",
           "gemini_api_key": "Clé API Gemini",
-          "gemini_quality": "Modèle d’analyse des plans par défaut"
+          "gemini_quality": "Modèle d’analyse des plans par défaut",
+          "assistant_api_key": "Assistant Nexus : clé IA (clé Groq gratuite)",
+          "assistant_model": "Assistant Nexus : modèle d’IA",
+          "assistant_url": "Assistant Nexus : adresse du service d’IA (compatible OpenAI)"
         },
-        "description": "Pour générer un plan 3D, choisissez Gemini direct et collez votre clé API. Aucun add-on à installer. Les deux modèles font partie du palier gratuit de Google. Laissez la clé vide si vous utilisez seulement le dashboard."
+        "description": "Pour générer un plan 3D, choisissez Gemini direct et collez votre clé API. Aucun add-on à installer. Les deux modèles font partie du palier gratuit de Google. Laissez la clé vide si vous utilisez seulement le dashboard. Assistant Nexus : les ordres simples restent à la maison ; pour le reste, collez une clé gratuite créée sur console.groq.com. Seuls les noms et états des appareils exposés à Assist sont envoyés."
       },
       "spatial_addon": {
         "title": "Connexion à l’add-on (avancé)",

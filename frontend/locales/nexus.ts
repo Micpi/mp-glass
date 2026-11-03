@@ -137,6 +137,11 @@ export const NEXUS = {
   'Appareils': ['Devices', 'Устройства'],
   'Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.': ['Assist is not answering. Check that it is enabled in Home Assistant.', 'Assist не отвечает. Проверьте, что он включён в Home Assistant.'],
   'Assist · Home Assistant': ['Assist · Home Assistant', 'Assist · Home Assistant'],
+  'Parler à Nexus': ['Talk to Nexus', 'Поговорить с Nexus'],
+  'Demander à Nexus : « {text} »': ['Ask Nexus: “{text}”', 'Спросить Nexus: «{text}»'],
+  'Cherchez une pièce ou un appareil, ou parlez à Nexus :': ['Search for a room or a device, or talk to Nexus:', 'Найдите комнату или устройство или поговорите с Nexus:'],
+  'Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.': ['Nexus is not answering. Check the MP Nexus integration in Home Assistant.', 'Nexus не отвечает. Проверьте интеграцию MP Nexus в Home Assistant.'],
+  'Je n’ai pas compris.': ['I did not understand.', 'Я не понял.'],
   'Aucune alerte : tout est en ordre à la maison.': ['No alerts: everything is in order at home.', 'Оповещений нет: дома всё в порядке.'],
   'Batterie faible · {n} %': ['Low battery · {n} %', 'Низкий заряд · {n} %'],
   'Cherchez une pièce ou un appareil, ou parlez à Assist :': ['Search for a room or a device, or talk to Assist:', 'Найдите комнату или устройство или поговорите с Assist:'],
@@ -448,6 +453,11 @@ export const NEXUS = {
 
 /** German and Italian for MP Nexus v2; anything missing falls back to English. */
 export const NEXUS_DE: Partial<Record<keyof typeof NEXUS, string>> = {
+  'Parler à Nexus': 'Mit Nexus sprechen',
+  'Demander à Nexus : « {text} »': 'Nexus fragen: „{text}“',
+  'Cherchez une pièce ou un appareil, ou parlez à Nexus :': 'Suchen Sie einen Raum oder ein Gerät, oder sprechen Sie mit Nexus:',
+  'Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.': 'Nexus antwortet nicht. Prüfen Sie die MP-Nexus-Integration in Home Assistant.',
+  'Je n’ai pas compris.': 'Das habe ich nicht verstanden.',
   'Moteur Music Assistant MP Nexus': 'MP Nexus Music Assistant Engine', 'Ajoutez l’adresse du serveur et un jeton Music Assistant dans les options de l’intégration MP Nexus pour obtenir la bibliothèque complète, la file et les vraies pochettes.': 'Fügen Sie Serveradresse und Music Assistant Token in den MP Nexus Integrationsoptionen hinzu, um Bibliothek, Warteschlange und echte Cover zu erhalten.', 'Configurer MP Nexus': 'MP Nexus konfigurieren', 'MP Nexus ne parvient pas à joindre Music Assistant. Vérifiez l’adresse et le jeton dans les options de l’intégration.': 'MP Nexus kann Music Assistant nicht erreichen. Prüfen Sie Adresse und Token in den Integrationsoptionen.',
   'Bibliothèque Music Assistant': 'Music Assistant Bibliothek', 'Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs': 'Automatisch verbunden · {n} Player|Automatisch verbunden · {n} Player', 'Albums': 'Alben', 'Artistes': 'Künstler', 'Morceaux': 'Titel', 'Playlists': 'Playlists', 'Radios': 'Radio', 'Podcasts': 'Podcasts',
   'Lire ensuite': 'Als Nächstes abspielen', 'Ajouter à la file': 'Zur Warteschlange hinzufügen', 'Lecture lancée.': 'Wiedergabe gestartet.', 'Ajouté à la suite.': 'Als Nächstes hinzugefügt.', 'Ajouté à la file.': 'Zur Warteschlange hinzugefügt.', 'La bibliothèque Music Assistant ne répond pas.': 'Die Music Assistant Bibliothek antwortet nicht.', 'Aucun média dans cette section.': 'Keine Medien in diesem Bereich.', 'File de lecture': 'Warteschlange', 'Vider': 'Leeren', 'Retirer de la file': 'Aus der Warteschlange entfernen',
@@ -486,6 +496,11 @@ export const NEXUS_DE: Partial<Record<keyof typeof NEXUS, string>> = {
   'Assistant': 'Assistent',
 };
 export const NEXUS_IT: Partial<Record<keyof typeof NEXUS, string>> = {
+  'Parler à Nexus': 'Parla con Nexus',
+  'Demander à Nexus : « {text} »': 'Chiedi a Nexus: «{text}»',
+  'Cherchez une pièce ou un appareil, ou parlez à Nexus :': 'Cerca una stanza o un dispositivo, oppure parla con Nexus:',
+  'Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.': 'Nexus non risponde. Verifica l’integrazione MP Nexus in Home Assistant.',
+  'Je n’ai pas compris.': 'Non ho capito.',
   'Moteur Music Assistant MP Nexus': 'Motore Music Assistant MP Nexus', 'Ajoutez l’adresse du serveur et un jeton Music Assistant dans les options de l’intégration MP Nexus pour obtenir la bibliothèque complète, la file et les vraies pochettes.': 'Aggiungi l’indirizzo del server e un token Music Assistant nelle opzioni dell’integrazione MP Nexus per ottenere libreria completa, coda e copertine reali.', 'Configurer MP Nexus': 'Configura MP Nexus', 'MP Nexus ne parvient pas à joindre Music Assistant. Vérifiez l’adresse et le jeton dans les options de l’intégration.': 'MP Nexus non riesce a raggiungere Music Assistant. Controlla indirizzo e token nelle opzioni dell’integrazione.',
   'Bibliothèque Music Assistant': 'Libreria Music Assistant', 'Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs': 'Connesso automaticamente · {n} lettore|Connesso automaticamente · {n} lettori', 'Albums': 'Album', 'Artistes': 'Artisti', 'Morceaux': 'Brani', 'Playlists': 'Playlist', 'Radios': 'Radio', 'Podcasts': 'Podcast',
   'Lire ensuite': 'Riproduci dopo', 'Ajouter à la file': 'Aggiungi alla coda', 'Lecture lancée.': 'Riproduzione avviata.', 'Ajouté à la suite.': 'Aggiunto come prossimo.', 'Ajouté à la file.': 'Aggiunto alla coda.', 'La bibliothèque Music Assistant ne répond pas.': 'La libreria Music Assistant non risponde.', 'Aucun média dans cette section.': 'Nessun contenuto in questa sezione.', 'File de lecture': 'Coda', 'Vider': 'Svuota', 'Retirer de la file': 'Rimuovi dalla coda',

@@ -73,8 +73,17 @@ export function unseen(alerts: Alert[], prefs: NexusPrefs, now = new Date()) {
 /** Words without accents nor case, to find « cuisine » when « Cuisine » or « cuis » is typed. */
 export const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase();
 
-/** Asks Home Assistant Assist, and returns what it answers in words. */
-export async function askAssist(hass: Hass, text: string, language: string) {
-  const answer = await hass.callWS<{ response?: { speech?: { plain?: { speech?: string } }; response_type?: string } }>({ type: 'conversation/process', text, language });
-  return answer.response?.speech?.plain?.speech ?? '';
+/** Nexus, the assistant MP Nexus installs as a Home Assistant conversation agent, when this Home Assistant has it. */
+export function nexusAgent(hass: Pick<Hass, 'entities'> | undefined) {
+  return Object.values(hass?.entities ?? {}).find(e => e.platform === 'mp_glass' && e.entity_id.startsWith('conversation.'))?.entity_id;
+}
+/** What the assistant answered: its words, the conversation to go on with, and the devices it acted on. */
+export interface AssistAnswer { text: string; conversationId?: string; touched: string[]; failed: boolean }
+type ConverseReply = { conversation_id?: string; response?: { speech?: { plain?: { speech?: string } }; response_type?: string; data?: { success?: { type?: string; id?: string }[] } } };
+/** Asks Nexus when it is installed, Home Assistant Assist otherwise, keeping the thread of the conversation. */
+export async function askAssist(hass: Hass, text: string, language: string, conversationId?: string): Promise<AssistAnswer> {
+  const agent = nexusAgent(hass);
+  const answer = await hass.callWS<ConverseReply>({ type: 'conversation/process', text, language, ...(agent ? { agent_id: agent } : {}), ...(conversationId ? { conversation_id: conversationId } : {}) });
+  const touched = [...new Set((answer.response?.data?.success ?? []).filter(t => t.type === 'entity' && typeof t.id === 'string' && t.id.includes('.')).map(t => t.id!))];
+  return { text: answer.response?.speech?.plain?.speech ?? '', conversationId: answer.conversation_id, touched, failed: answer.response?.response_type === 'error' };
 }

@@ -22,7 +22,8 @@ import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
 import { canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
-import { addWakeWord, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
+import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
+import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
@@ -119,6 +120,9 @@ const REMOTE_FACES: Partial<Record<RemoteKey, [MPIconName, MessageKey]>> = {
 };
 /** A short buzz under the finger, where the phone can, so a key feels pressed. */
 const tap = () => { try { navigator.vibrate?.(8); } catch { /* No vibration on this device. */ } };
+interface Enrollment { step: 'name'|'word'|'sentence'|'saving'|'done'|'error'; name: string; words: Float32Array[]; sentences: Float32Array[]; recording: boolean; level: number; note?: string; id?: string }
+/** Read aloud while making a wake word: ordinary speech, so that Nexus learns what is not its name. */
+const ENROLL_SENTENCES = ['Ce soir, je voudrais écouter un peu de musique dans le salon.', 'Pense à éteindre les lumières de la cuisine avant de partir.'] as const;
 /** Requests in a row without touching the screen, after the wake word; then Nexus waits for its name again. */
 const HANDS_FREE_TURNS = 3;
 /** A short rising tone: Nexus heard its name and listens. */
@@ -158,7 +162,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -248,7 +252,7 @@ export class MPNexusView extends LitElement {
   private sub?: SubPanel;
   private scenesOpen = false;
   private prefs: NexusPrefs = readPrefs();
-  private overlay: ''|'search'|'alerts'|'invite'|'voice' = '';
+  private overlay: ''|'search'|'alerts'|'invite'|'voice'|'enroll' = '';
   /** The voice of Nexus: what it is doing, how loud it hears, what it heard, and how it speaks on this screen. */
   private voiceState: 'idle'|'listening'|'thinking'|'speaking' = 'idle';
   private voiceLevel = 0;
@@ -263,6 +267,12 @@ export class MPNexusView extends LitElement {
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
   private handsFreeTurns = 0;
+  /** A voice word learns on this screen: ordinary sounds, and what woke Nexus (kept until the request tells which it was). */
+  private wakeAmbient: Float32Array[] = [];
+  private wakeLesson?: { word: string; heard: Float32Array };
+  /** Making a wake word from the voice: the steps and what was recorded. */
+  private enroll?: Enrollment;
+  private enrollStop: { stop?: () => void } = {};
   private recorder?: Recorder;
   private speech?: Speech;
   private transcription?: boolean;
@@ -1578,7 +1588,13 @@ export class MPNexusView extends LitElement {
     this.overlay = which; this.query = ''; this.answer = undefined; this.conversationId = undefined;
     if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
   }
-  private closeOverlay = () => { this.overlay = ''; this.invitation = undefined; this.stopListening(); this.endVoice(); };
+  private closeOverlay = () => {
+    // Closed while Nexus still waited for the request it was woken for: a false wake, which the word learns.
+    if (this.overlay === 'voice' && this.handsFree && this.handsFreeTurns === 0 && this.voiceState === 'listening' && !this.voiceHeard) this.teachWake('cancelled');
+    if (this.overlay === 'enroll') { this.enrollStop.stop?.(); this.enroll = undefined; }
+    this.wakeLesson = undefined;
+    this.overlay = ''; this.invitation = undefined; this.stopListening(); this.endVoice();
+  };
   /** The rooms, devices and actions whose name holds what was typed, then Assist for anything else. */
   private searchPanel() {
     const q = fold(this.query.trim()), states = this.hass?.states ?? {};
@@ -1656,7 +1672,7 @@ export class MPNexusView extends LitElement {
       </div>`;
   }
   private overlayPanel() {
-    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.alertsPanel()}</section>`;
+    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : this.overlay === 'enroll' ? tr('Créer un mot d’éveil') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.overlay === 'enroll' ? this.enrollPanel() : this.alertsPanel()}</section>`;
   }
 
   // ——— The voice of Nexus: touch the orb, speak, hear the answer ———
@@ -1708,6 +1724,7 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn) return;
     text = text.trim();
     if (!text) { this.voiceState = 'idle'; return; }
+    this.teachWake('confirmed');
     this.voiceHeard = text; this.voiceState = 'thinking';
     await this.ask(text);
     // Read again: `ask` set it meanwhile, which the type checker cannot see.
@@ -1751,6 +1768,7 @@ export class MPNexusView extends LitElement {
       <div class="body nexus-voice">
         <button class=${`vorb ${state}`} style=${`--lvl:${this.voiceLevel.toFixed(2)}`} aria-label=${state === 'listening' ? tr('Envoyer') : tr('Parler à Nexus')} @click=${() => this.orbTouched()}><i></i><i></i><i></i></button>
         <div class="muted" aria-live="polite">${status}</div>
+        ${this.wakeLesson && state === 'listening' ? html`<div class="muted small">${tr('Réveillé par erreur ? Fermez : Nexus apprendra.')}</div>` : nothing}
         ${this.voiceHeard ? html`<div class="heard">« ${this.voiceHeard} »</div>` : nothing}
         ${this.answer && state !== 'thinking' ? html`<div class="said serif" aria-live="polite">${this.answer.text}</div>
           ${this.answer.touched?.length ? html`<div class="houses touched">${this.answer.touched.slice(0, 8).map(id => html`<button class="pill" @click=${() => { this.detail = id; }}>${mpIcon(entityIcon(id, states[id]), 13)}${[this.name(id), this.roomOfEntity(id)].filter(Boolean).join(' · ')}</button>`)}</div>` : nothing}` : nothing}
@@ -1779,23 +1797,26 @@ export class MPNexusView extends LitElement {
   private wakeName() { return this.wakeList?.find(w => w.id === this.voicePrefs.wake)?.name ?? this.voicePrefs.wake ?? ''; }
   /** Starts, follows or stops listening for the word as the choice, the page and the voice change. */
   private keepWake() {
-    const word = this.voicePrefs.wake, wanted = !!word && !!this.hass && canRecord() && document.visibilityState === 'visible';
+    const word = this.voicePrefs.wake, wanted = !!word && !!this.hass && canRecord() && document.visibilityState === 'visible' && this.overlay !== 'enroll';
     if (!wanted) { if (this.wakeListener || this.wakeState !== 'off') this.stopWake(); return; }
     if (!this.wakeList) { this.wakeList = []; void wakeWords(this.hass!).then(list => { this.wakeList = list; }); }
-    if (this.wakeFor !== word) { this.stopWake(); this.wakeFor = word; void this.startWake(word!); return; }
+    const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
+    if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, key); return; }
     if (this.wakeListener) this.wakeListener.paused = this.overlay === 'voice' && this.voiceState !== 'idle';
   }
-  private async startWake(word: string) {
+  private async startWake(word: string, key: string) {
     const hass = this.hass;
     if (!hass) return;
     this.wakeState = 'loading';
     try {
-      const models = await loadWakeModels(await wakeModel(hass, word));
-      if (this.wakeFor !== word) return;
-      this.wakeListener = new WakeListener(models, this.woke);
+      const model = await wakeModel(hass, word), voice = typeof model === 'object' && !(model instanceof Uint8Array);
+      const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
+      if (this.wakeFor !== key) return;
+      const listener = this.wakeListener = new WakeListener(models, this.woke);
+      if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
       await this.armWake();
     } catch (error) {
-      if (this.wakeFor !== word) return;
+      if (this.wakeFor !== key) return;
       console.warn('MP Nexus: wake word', error);
       this.wakeState = 'error';
     }
@@ -1818,16 +1839,121 @@ export class MPNexusView extends LitElement {
   };
   private stopWake() {
     removeEventListener('pointerdown', this.armWake);
+    this.flushAmbient(5);
     this.wakeListener?.stop(); this.wakeListener = undefined; this.wakeFor = undefined;
     if (this.wakeState !== 'off') this.wakeState = 'off';
   }
   private wakeVisibility = () => { if (document.visibilityState !== 'visible') this.stopWake(); this.requestUpdate(); };
   private woke = () => {
     if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
+    if (this.overlay === 'enroll') return;
+    const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
+    this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
     if (this.saving) this.wake();
     chime();
     this.openVoice(true);
   };
+  /** What woke Nexus becomes a lesson for the word: the word itself when a request followed, a false wake when closed at once. */
+  private teachWake(kind: 'confirmed'|'cancelled') {
+    const lesson = this.wakeLesson, hass = this.hass;
+    this.wakeLesson = undefined;
+    if (!lesson || !hass) return;
+    void learnWake(hass, lesson.word, { [kind]: [lesson.heard] }).catch(error => console.warn('MP Nexus: wake word lesson', error));
+  }
+  private heardAmbient(word: string, window: Float32Array) {
+    this.wakeAmbient.push(window);
+    if (this.wakeAmbient.length >= 30) this.flushAmbient(30, word);
+  }
+  private flushAmbient(least: number, word = this.voicePrefs.wake) {
+    const hass = this.hass, ambient = this.wakeAmbient;
+    if (ambient.length < least) return;
+    this.wakeAmbient = [];
+    if (hass && word) void learnWake(hass, word, { ambient }).catch(() => undefined);
+  }
+
+  // ——— A wake word made from the voice: the name, said five times, then two ordinary sentences ———
+  private startEnroll() {
+    unlockAudio();
+    this.stopWake();
+    this.enroll = { step: 'name', name: 'Nexus', words: [], sentences: [], recording: false, level: 0 };
+    this.overlay = 'enroll';
+  }
+  private async enrollRecord() {
+    const e = this.enroll;
+    if (!e || e.recording) { this.enrollStop.stop?.(); return; }
+    const sentence = e.step === 'sentence';
+    this.enroll = { ...e, recording: true, note: undefined, level: 0 };
+    this.enrollStop = {};
+    let samples: Float32Array;
+    try { samples = await recordSamples(sentence ? SENTENCE_MS : WORD_MS, level => { if (this.enroll) this.enroll = { ...this.enroll, level }; }, this.enrollStop); }
+    catch { if (this.enroll) this.enroll = { ...this.enroll, recording: false, level: 0, note: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; return; }
+    const now = this.enroll;
+    if (!now || this.overlay !== 'enroll') return;
+    const span = speechSpan(samples);
+    if (!span || (!sentence && span.end - span.start > 16000 * 1.8)) {
+      this.enroll = { ...now, recording: false, level: 0, note: !span ? tr('Je n’ai rien entendu, ou le mot a été coupé. Recommencez, un peu plus près.') : tr('C’était un peu long : dites seulement « {word} ».', { word: now.name }) };
+      return;
+    }
+    if (sentence) {
+      const sentences = [...now.sentences, samples];
+      this.enroll = { ...now, sentences, recording: false, level: 0 };
+      if (sentences.length >= ENROLL_SENTENCES.length) void this.enrollSave();
+      return;
+    }
+    const words = [...now.words, samples];
+    this.enroll = { ...now, words, recording: false, level: 0, step: words.length >= WORD_TIMES ? 'sentence' : 'word' };
+    if (words.length < WORD_TIMES) window.setTimeout(() => { if (this.enroll?.step === 'word' && !this.enroll.recording) void this.enrollRecord(); }, 700);
+  }
+  private async enrollSave() {
+    const e = this.enroll, hass = this.hass;
+    if (!e || !hass) return;
+    this.enroll = { ...e, step: 'saving' };
+    try {
+      const made = await createVoiceWord(hass, e.name, e.words, e.sentences);
+      if (this.overlay !== 'enroll') return;
+      this.wakeList = [{ id: made.id, name: made.name, custom: true, kind: 'voice' }, ...(this.wakeList ?? []).filter(w => w.id !== made.id)];
+      this.voicePrefs = { ...this.voicePrefs, wake: made.id };
+      writeVoicePrefs(this.voicePrefs);
+      this.enroll = { ...e, step: 'done', id: made.id };
+    } catch (error) {
+      if (this.overlay !== 'enroll') return;
+      this.enroll = { ...e, step: 'error', note: (error as { message?: string })?.message || tr('Le mot n’a pas pu être créé.') };
+    }
+  }
+  private enrollPanel() {
+    const e = this.enroll;
+    if (!e) return nothing;
+    const close = html`<button class="ib vclose" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>`;
+    const orb = (label: string) => html`<button class=${`vorb ${e.recording ? 'listening' : e.step === 'saving' ? 'thinking' : 'idle'}`} style=${`--lvl:${e.level.toFixed(2)}`} aria-label=${label} ?disabled=${e.step === 'saving'} @click=${() => this.enrollRecord()}><i></i><i></i><i></i></button>`;
+    const dots = (done: number, total: number) => html`<div class="edots" aria-hidden="true">${Array.from({ length: total }, (_, i) => html`<i class=${i < done ? 'on' : ''}></i>`)}</div>`;
+    let body;
+    if (e.step === 'name') {
+      const begin = () => { const name = e.name.trim().replace(/\s+/g, ' ').slice(0, 40); if (name) this.enroll = { ...e, name, step: 'word' }; };
+      body = html`<p class="muted">${tr('Choisissez le nom qui réveillera Nexus. Un mot de deux ou trois syllabes, peu courant, marche le mieux.')}</p>
+        <input class="ename" maxlength="40" .value=${e.name} aria-label=${tr('Nom du mot d’éveil')} @input=${(ev: Event) => { if (this.enroll) this.enroll = { ...this.enroll, name: (ev.target as HTMLInputElement).value }; }} @keydown=${(ev: KeyboardEvent) => { if (ev.key === 'Enter') begin(); }}>
+        <p class="muted small">${tr('Vous le direz cinq fois, puis vous lirez deux phrases. Rien n’est enregistré en son : seule l’empreinte de votre voix est gardée dans Home Assistant.')}</p>
+        <button class="btn primary" ?disabled=${!e.name.trim()} @click=${begin}>${tr('Commencer')}</button>`;
+    } else if (e.step === 'word') {
+      body = html`${orb(tr('Enregistrer'))}${dots(e.words.length, WORD_TIMES)}
+        <div class="said serif">${e.recording ? tr('Dites « {word} »', { word: e.name }) : e.words.length ? tr('Encore une fois…') : tr('Touchez l’orbe, puis dites « {word} »', { word: e.name })}</div>
+        <div class="muted">${e.note ?? tr('Comme vous l’appelleriez depuis le canapé.')}</div>`;
+    } else if (e.step === 'sentence') {
+      const text = ENROLL_SENTENCES[Math.min(e.sentences.length, ENROLL_SENTENCES.length - 1)]!;
+      body = html`${orb(tr('Enregistrer'))}${dots(e.sentences.length, ENROLL_SENTENCES.length)}
+        <div class="muted">${e.note ?? (e.recording ? tr('Lisez la phrase, puis touchez l’orbe.') : tr('Touchez l’orbe, puis lisez cette phrase à voix haute :'))}</div>
+        <div class="said serif">« ${tr(text)} »</div>`;
+    } else if (e.step === 'saving') {
+      body = html`${orb(tr('Préparation…'))}<div class="said serif">${tr('Nexus apprend votre voix…')}</div><div class="muted">${tr('Quelques secondes.')}</div>`;
+    } else if (e.step === 'done') {
+      body = html`<div class="said serif">${tr('C’est prêt ! Dites « {word} » pour essayer.', { word: e.name })}</div>
+        <p class="muted">${tr('Il s’améliore tout seul : avec les sons de la maison, et quand vous fermez Nexus après un réveil par erreur.')}</p>
+        <button class="btn primary" @click=${this.closeOverlay}>${tr('Terminer')}</button>`;
+    } else {
+      body = html`<div class="said serif">${e.note}</div><button class="btn" @click=${() => { this.enroll = { step: 'name', name: e.name, words: [], sentences: [], recording: false, level: 0 }; }}>${tr('Recommencer')}</button>`;
+    }
+    return html`<div class="hd"><b class="vtitle">${tr('Créer un mot d’éveil')}</b>${close}</div><div class="body nexus-voice enroll">${body}</div>`;
+  }
+
   private wakeChoice() {
     const hass = this.hass, admin = !!hass?.user?.is_admin;
     if (!canRecord()) return nothing;
@@ -1839,6 +1965,7 @@ export class MPNexusView extends LitElement {
     const change = (e: Event) => {
       const value = (e.target as HTMLSelectElement).value;
       if (value === '+') { (e.target as HTMLSelectElement).value = current; this.renderRoot.querySelector<HTMLInputElement>('input.wakefile')?.click(); return; }
+      if (value === '*') { (e.target as HTMLSelectElement).value = current; this.startEnroll(); return; }
       this.voicePrefs = { ...this.voicePrefs, wake: value || undefined };
       writeVoicePrefs(this.voicePrefs);
       if (value) unlockAudio();
@@ -1865,10 +1992,25 @@ export class MPNexusView extends LitElement {
       <select class="end" aria-label=${tr('Mot d’éveil')} @change=${change}>
         <option value="" .selected=${!current}>${tr('Aucun')}</option>
         ${(this.wakeList ?? []).map(w => html`<option value=${w.id} .selected=${current === w.id}>${w.name}</option>`)}
-        ${admin ? html`<option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
+        ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
+      ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
       ${admin ? html`<input class="wakefile" type="file" accept=".onnx" hidden @change=${add}>` : nothing}
       ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: custom.name })}</b></div></button>` : nothing}`;
+  }
+
+  /** For a word made from the voice: how readily it wakes, and whether this screen teaches it what it hears. */
+  private voiceWordPrefs() {
+    const prefs = this.voicePrefs, learn = prefs.wakeLearn !== false;
+    const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
+    return html`<label class="rw"><span class="ib">${mpIcon('motion', 16)}</span><div><b>${tr('Sensibilité')}</b><small>${tr('Plus sensible : il entend de plus loin, mais se trompe plus souvent')}</small></div>
+        <select class="end" aria-label=${tr('Sensibilité')} @change=${(e: Event) => { const v = (e.target as HTMLSelectElement).value; set({ wakeSensitivity: v === 'high' || v === 'low' ? v : undefined }); }}>
+          <option value="high" .selected=${prefs.wakeSensitivity === 'high'}>${tr('Sensible')}</option>
+          <option value="" .selected=${!prefs.wakeSensitivity}>${tr('Normale')}</option>
+          <option value="low" .selected=${prefs.wakeSensitivity === 'low'}>${tr('Stricte')}</option>
+        </select></label>
+      <div class="rw"><span class="ib">${mpIcon('moon', 16)}</span><div><b>${tr('Apprendre en arrière-plan')}</b><small>${tr('Les sons de la maison, en empreintes seulement, l’améliorent chaque nuit')}</small></div>
+        <button class="end" role="switch" aria-checked=${learn} aria-label=${tr('Apprendre en arrière-plan')} @click=${() => set({ wakeLearn: learn ? false : undefined })}><span class=${`tgl ${learn ? '' : 'off'}`}></span></button></div>`;
   }
 
   /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence. */

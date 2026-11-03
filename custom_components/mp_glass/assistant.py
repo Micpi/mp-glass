@@ -14,7 +14,10 @@ from homeassistant.components import websocket_api
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .assistant_core import MAX_AUDIO_BYTES, STT_MODEL, AssistantError, audio_name, base_url, clean_key, provider_error, read_transcript, stt_language
+from . import wake_trainer as trainer, wake_voice as voice
 from .const import DOMAIN
+
+_WORD = vol.All(str, vol.Match(r"^[a-f0-9]{16}$"))
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -78,7 +81,7 @@ async def websocket_transcribe(hass, connection, msg):
     connection.send_result(msg["id"], {"text": text})
 
 
-# ——— Wake words trained for this home (« Nexus »): openWakeWord models in ONNX, kept with Home Assistant's backups ———
+# ——— Wake words for this home: openWakeWord models (.onnx, trained on Colab) or made from the user's voice ———
 MAX_WAKE_BYTES = 3 * 1024 * 1024
 MAX_WAKE_WORDS = 8
 
@@ -87,11 +90,24 @@ def wake_folder(hass):
     return hass.config.path(".storage", "mp_glass_wake_words")
 
 
+def _entry(value):
+    """An index entry: a name (an .onnx model, as in 0.37) or {name, kind}."""
+    if isinstance(value, dict):
+        return {"name": str(value.get("name") or "Nexus"), "kind": "voice" if value.get("kind") == "voice" else "model"}
+    return {"name": str(value), "kind": "model"}
+
+
 def _wake_index(folder):
     try:
         with open(os.path.join(folder, "index.json"), encoding="utf-8") as handle:
             index = json.load(handle)
-        return {k: str(v) for k, v in index.items() if re.fullmatch(r"[a-f0-9]{16}", k) and os.path.isfile(os.path.join(folder, f"{k}.onnx"))}
+        out = {}
+        for key, value in index.items():
+            entry = _entry(value)
+            path = voice.voice_path(folder, key) if entry["kind"] == "voice" else os.path.join(folder, f"{key}.onnx")
+            if re.fullmatch(r"[a-f0-9]{16}", key) and os.path.isfile(path):
+                out[key] = entry
+        return out
     except (OSError, ValueError, AttributeError):
         return {}
 
@@ -99,7 +115,7 @@ def _wake_index(folder):
 def _write_index(folder, index):
     tmp = os.path.join(folder, "index.json.tmp")
     with open(tmp, "w", encoding="utf-8") as handle:
-        json.dump(index, handle, ensure_ascii=False)
+        json.dump({k: (v["name"] if v["kind"] == "model" else v) for k, v in index.items()}, handle, ensure_ascii=False)
     os.replace(tmp, os.path.join(folder, "index.json"))
 
 
@@ -111,25 +127,56 @@ def _add_wake(folder, name, model):
     word = secrets.token_hex(8)
     with open(os.path.join(folder, f"{word}.onnx"), "wb") as handle:
         handle.write(model)
-    index[word] = name
+    index[word] = {"name": name, "kind": "model"}
     _write_index(folder, index)
     return word
 
 
+def _add_voice(folder, name, data, background):
+    """Saves a word made from the voice and trains it at once; returns (word, model) or None when full."""
+    os.makedirs(folder, exist_ok=True)
+    index = _wake_index(folder)
+    if len(index) >= MAX_WAKE_WORDS:
+        return None
+    word = secrets.token_hex(8)
+    voice.save_voice(folder, word, data)
+    try:
+        model = voice.train(folder, word, background)
+    except Exception:
+        voice.remove_voice(folder, word)
+        raise
+    index[word] = {"name": name, "kind": "voice"}
+    _write_index(folder, index)
+    return word, model
+
+
 def _remove_wake(folder, word):
     index = _wake_index(folder)
-    if index.pop(word, None) is None:
+    entry = index.pop(word, None)
+    if entry is None:
         return False
-    os.remove(os.path.join(folder, f"{word}.onnx"))
+    if entry["kind"] == "voice":
+        voice.remove_voice(folder, word)
+    else:
+        os.remove(os.path.join(folder, f"{word}.onnx"))
     _write_index(folder, index)
     return True
 
 
 def _read_wake(folder, word):
-    if word not in _wake_index(folder):
+    """{"model": bytes} for an .onnx word, {"voice": model} for a voice word, None when it is gone."""
+    entry = _wake_index(folder).get(word)
+    if entry is None:
         return None
+    if entry["kind"] == "voice":
+        model = voice.read_model(folder, word)
+        return {"voice": model} if model else None
     with open(os.path.join(folder, f"{word}.onnx"), "rb") as handle:
-        return handle.read()
+        return {"model": handle.read()}
+
+
+def _voice_words(folder):
+    return [k for k, v in _wake_index(folder).items() if v["kind"] == "voice"]
 
 
 def looks_like_onnx(model):
@@ -141,21 +188,32 @@ def wake_name(name):
     return " ".join(str(name or "").split())[:40] or "Nexus"
 
 
+def _runtime(hass):
+    folder = wake_folder(hass)
+
+    async def words():
+        return await hass.async_add_executor_job(_voice_words, folder)
+    return voice.async_setup_nightly(hass, folder, words)
+
+
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_words"})
 @websocket_api.async_response
 async def websocket_wake_words(hass, connection, msg):
     index = await hass.async_add_executor_job(_wake_index, wake_folder(hass))
-    connection.send_result(msg["id"], {"words": [{"id": k, "name": v} for k, v in index.items()], "max": MAX_WAKE_WORDS})
+    connection.send_result(msg["id"], {"words": [{"id": k, **v} for k, v in index.items()], "max": MAX_WAKE_WORDS})
 
 
-@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word", vol.Required("word"): vol.All(str, vol.Match(r"^[a-f0-9]{16}$"))})
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word", vol.Required("word"): _WORD})
 @websocket_api.async_response
 async def websocket_wake_word(hass, connection, msg):
-    model = await hass.async_add_executor_job(_read_wake, wake_folder(hass), msg["word"])
-    if model is None:
+    found = await hass.async_add_executor_job(_read_wake, wake_folder(hass), msg["word"])
+    if found is None:
         connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
         return
-    connection.send_result(msg["id"], {"model": base64.b64encode(model).decode()})
+    if "voice" in found:
+        connection.send_result(msg["id"], {"voice": found["voice"]})
+        return
+    connection.send_result(msg["id"], {"model": base64.b64encode(found["model"]).decode()})
 
 
 @websocket_api.require_admin
@@ -181,14 +239,118 @@ async def websocket_wake_word_add(hass, connection, msg):
     connection.send_result(msg["id"], {"id": word, "name": name})
 
 
+def _frames(text):
+    frames = trainer.decode(text, (trainer.DIMS,))
+    if not trainer.WINDOW <= len(frames) <= voice.MAX_FRAMES:
+        raise ValueError("length")
+    return frames
+
+
+def _windows(text, most):
+    windows = trainer.decode(text)
+    if len(windows) > most:
+        raise ValueError("too many")
+    return windows
+
+
 @websocket_api.require_admin
-@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word/remove", vol.Required("word"): vol.All(str, vol.Match(r"^[a-f0-9]{16}$"))})
+@websocket_api.websocket_command({
+    vol.Required("type"): "mp_glass/assistant/wake_word/create",
+    vol.Required("name"): vol.All(str, vol.Length(max=80)),
+    vol.Required("recordings"): vol.All([{vol.Required("frames"): voice._FRAMES, vol.Required("end"): vol.All(int, vol.Range(min=1, max=voice.MAX_FRAMES))}],
+                                        vol.Length(min=trainer.MIN_RECORDINGS, max=voice.MAX_RECORDINGS)),
+    vol.Optional("noisy", default=[]): vol.All([{vol.Required("frames"): voice._FRAMES, vol.Required("end"): vol.All(int, vol.Range(min=1, max=voice.MAX_FRAMES)),
+                                                 vol.Required("source"): vol.All(int, vol.Range(min=0, max=voice.MAX_RECORDINGS - 1))}], vol.Length(max=voice.MAX_NOISY)),
+    vol.Optional("sentences", default=[]): vol.All([voice._FRAMES], vol.Length(max=voice.MAX_SENTENCES)),
+})
+@websocket_api.async_response
+async def websocket_wake_word_create(hass, connection, msg):
+    try:
+        data = {
+            "recordings": [(_frames(r["frames"]), r["end"]) for r in msg["recordings"]],
+            "noisy": [(_frames(r["frames"]), r["end"], r["source"]) for r in msg["noisy"] if r["source"] < len(msg["recordings"])],
+            "sentences": [_frames(f) for f in msg["sentences"]],
+        }
+    except (binascii.Error, ValueError):
+        connection.send_error(msg["id"], "invalid_voice", "Les enregistrements sont illisibles : recommencez.")
+        return
+    runtime = _runtime(hass)
+    background = await runtime.background()
+    name = wake_name(msg["name"])
+    async with runtime.lock:
+        made = await hass.async_add_executor_job(_add_voice, wake_folder(hass), name, data, background)
+    if made is None:
+        connection.send_error(msg["id"], "too_many", f"{MAX_WAKE_WORDS} mots d'éveil au plus : retirez-en un d'abord.")
+        return
+    word, model = made
+    connection.send_result(msg["id"], {"id": word, "name": name, "voice": model})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "mp_glass/assistant/wake_word/learn",
+    vol.Required("word"): _WORD,
+    vol.Optional("ambient"): voice._WINDOWS,
+    vol.Optional("confirmed"): voice._WINDOWS,
+    vol.Optional("cancelled"): voice._WINDOWS,
+})
+@websocket_api.async_response
+async def websocket_wake_word_learn(hass, connection, msg):
+    """What a screen heard while listening: ordinary sounds of the home, the word that woke Nexus for a real request,
+    and the false wakes the user cancelled (learned within a minute)."""
+    folder = wake_folder(hass)
+    try:
+        ambient = _windows(msg["ambient"], voice.MAX_AMBIENT_SENT) if msg.get("ambient") else None
+        confirmed = _windows(msg["confirmed"], voice.MAX_EXAMPLES_SENT) if msg.get("confirmed") else None
+        cancelled = _windows(msg["cancelled"], voice.MAX_EXAMPLES_SENT) if msg.get("cancelled") else None
+    except (binascii.Error, ValueError):
+        connection.send_error(msg["id"], "invalid_voice", "Exemples illisibles.")
+        return
+    if msg["word"] not in await hass.async_add_executor_job(_voice_words, folder):
+        connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
+        return
+    runtime = _runtime(hass)
+    async with runtime.lock:
+        if ambient is not None:
+            await hass.async_add_executor_job(voice.add_ambient, folder, ambient)
+        if confirmed is not None or cancelled is not None:
+            await hass.async_add_executor_job(voice.add_examples, folder, msg["word"], confirmed, cancelled)
+    if cancelled is not None:
+        runtime.train_soon(msg["word"])
+    connection.send_result(msg["id"], {})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word/train", vol.Required("word"): _WORD})
+@websocket_api.async_response
+async def websocket_wake_word_train(hass, connection, msg):
+    if msg["word"] not in await hass.async_add_executor_job(_voice_words, wake_folder(hass)):
+        connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
+        return
+    model = await _runtime(hass).train(msg["word"])
+    connection.send_result(msg["id"], {"voice": model})
+
+
+@websocket_api.require_admin
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word/remove", vol.Required("word"): _WORD})
 @websocket_api.async_response
 async def websocket_wake_word_remove(hass, connection, msg):
-    if not await hass.async_add_executor_job(_remove_wake, wake_folder(hass), msg["word"]):
+    async with _runtime(hass).lock:
+        removed = await hass.async_add_executor_job(_remove_wake, wake_folder(hass), msg["word"])
+    if not removed:
         connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
         return
     connection.send_result(msg["id"], {})
 
 
-COMMANDS = (websocket_info, websocket_transcribe, websocket_wake_words, websocket_wake_word, websocket_wake_word_add, websocket_wake_word_remove)
+async def async_setup_wake(hass):
+    """The nightly training, from the integration's start."""
+    _runtime(hass)
+
+
+def async_unload_wake(hass):
+    if runtime := hass.data.pop(voice.KEY, None):
+        runtime.close()
+
+
+COMMANDS = (websocket_info, websocket_transcribe, websocket_wake_words, websocket_wake_word, websocket_wake_word_add, websocket_wake_word_create,
+            websocket_wake_word_learn, websocket_wake_word_train, websocket_wake_word_remove)

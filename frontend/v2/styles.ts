@@ -283,7 +283,7 @@ export const nexusStyles = css`
   .orbb{padding:0}.orbb .orb{width:20px;height:20px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff 0,#bfe3ff 18%,var(--mp-accent,#69b7ff) 55%,#3a4bd8 100%);box-shadow:0 0 12px var(--mp-accent,#69b7ff);animation:nx-breathe 3.2s ease-in-out infinite}
   @keyframes nx-breathe{0%,100%{transform:scale(.92);opacity:.85}50%{transform:scale(1.05);opacity:1}}
   .modal.voice{text-align:center}.vtitle{font-size:17px;letter-spacing:.04em}
-  .nexus-voice{display:flex;flex-direction:column;align-items:center;gap:12px;padding:34px 20px 28px;overflow-x:hidden}
+  .nexus-voice{display:flex;flex-direction:column;align-items:center;gap:12px;padding:44px 20px 28px;overflow-x:hidden}
   .vorb{position:relative;flex:0 0 auto;width:148px;height:148px;margin:0 auto 6px;border:0;padding:0;border-radius:50%;cursor:pointer;background:radial-gradient(circle at 35% 30%,#fff 0,#cfeaff 12%,var(--mp-accent,#69b7ff) 48%,#3946c9 82%,#1b1f6b 100%);box-shadow:0 0 calc(30px + var(--lvl,0) * 60px) color-mix(in srgb,var(--mp-accent,#69b7ff) 70%,transparent);transform:scale(calc(1 + var(--lvl,0) * .14));transition:transform .08s linear,box-shadow .08s linear}
   .vorb i{position:absolute;inset:-10px;border-radius:50%;border:2px solid color-mix(in srgb,var(--mp-accent,#69b7ff) 55%,transparent);opacity:0}
   .vorb.idle{animation:nx-breathe 3.2s ease-in-out infinite}
@@ -296,6 +296,10 @@ export const nexusStyles = css`
   .nexus-voice .heard{font-size:15px;opacity:.75;max-width:440px}
   .nexus-voice .said{font-size:21px;line-height:1.35;max-width:460px}
   .nexus-voice .touched{justify-content:center;flex-wrap:wrap}.vclose{margin-left:auto}
+  .nexus-voice .small{font-size:12px;opacity:.8;max-width:420px;text-align:center}
+  .enroll{text-align:center}.enroll p{margin:0;max-width:420px}.enroll .said{font-size:19px}
+  .enroll .ename{width:min(320px,100%);box-sizing:border-box;padding:12px 16px;border-radius:14px;border:1px solid var(--mp-control-border,rgba(213,234,255,.18));background:rgba(255,255,255,.06);color:inherit;font:inherit;font-size:20px;text-align:center}
+  .edots{display:flex;gap:8px;justify-content:center}.edots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.18)}.edots i.on{background:var(--mp-accent,#69b7ff);box-shadow:0 0 8px var(--mp-accent,#69b7ff)}
   .orbb.armed .orb{box-shadow:0 0 0 2px rgba(255,255,255,.55),0 0 0 5px color-mix(in srgb,var(--mp-accent,#69b7ff) 35%,transparent),0 0 14px var(--mp-accent,#69b7ff)}
   @media (prefers-reduced-motion:reduce){.vorb,.vorb i,.orbb .orb{animation:none!important;transition:none}}
   .rw .txt{text-align:left;min-width:0;flex:1}

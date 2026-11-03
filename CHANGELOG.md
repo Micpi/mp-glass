@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.38.0 — Un mot d'éveil à votre voix, qui apprend tout seul
+
+- **Créer un mot avec sa voix** : Plus → Sur cet écran → Mot d'éveil → « + Créer un mot avec ma voix… » (administrateur). On tape le nom (« Nexus », « Maison », n'importe quelle langue), on le dit cinq fois, on lit deux phrases ordinaires : en quelques secondes le mot est prêt et proposé à tous les écrans. Plus besoin de Colab.
+- **Comment il reconnaît le mot** : l'écran compare ce qu'il entend aux empreintes de votre voix, et un petit « décideur » entraîné par Home Assistant confirme. Il est entraîné contre des heures de conversations génériques (jeu openWakeWord/DiPCo, livré avec l'intégration) et contre vos deux phrases, pour ne pas se réveiller quand vous parlez normalement.
+- **Il apprend en arrière-plan** : en écoutant, l'écran garde de temps en temps l'empreinte d'un son de la maison (télé, conversations) ; chaque nuit à 3 h 21, Home Assistant réentraîne le mot avec. Quand Nexus se réveille par erreur, fermez-le aussitôt : ce son est appris dans la minute et ne le réveillera plus. Quand une vraie demande suit le mot, l'exemple est gardé aussi.
+- **Rien n'est enregistré en son** : seules des empreintes (96 nombres toutes les 80 ms, impossibles à réécouter) sont envoyées à Home Assistant et gardées dans ses sauvegardes. L'apprentissage se coupe par écran (« Apprendre en arrière-plan »).
+- **Sensibilité** réglable par écran (Sensible, Normale, Stricte). Limite connue : un mot très proche à l'oreille (« Lexus » pour « Nexus ») peut le réveiller au début ; fermer Nexus le lui apprend.
+- Les mots .onnx entraînés sur Colab et « Hey Jarvis » marchent comme avant.
+
 ## 0.37.0 — Nexus répond à son nom (phase 3)
 
 - **Mot d'éveil** : un écran peut écouter un mot (Plus → Sur cet écran → Mot d'éveil). Dès qu'il l'entend, un petit son, l'orbe s'ouvre et Nexus écoute la demande, sans toucher l'écran. Il enchaîne jusqu'à trois demandes de suite, puis se referme seul dans le silence.

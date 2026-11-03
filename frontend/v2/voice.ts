@@ -1,13 +1,20 @@
 import type { Hass } from '../ha/client';
 
 /** How Nexus speaks on this screen: with the voice of the device, with a Home Assistant voice (Piper, Nabu Casa…), or not at all. */
-export interface VoicePrefs { speak: 'device'|'ha'|'off'; engine?: string; /** The wake word this screen listens for, if any. */ wake?: string }
+export interface VoicePrefs {
+  speak: 'device'|'ha'|'off'; engine?: string;
+  /** The wake word this screen listens for, if any. */ wake?: string;
+  /** For a word made from the voice: how readily it wakes, and whether the screen teaches it what it hears. */
+  wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
+}
 const VOICE_KEY = 'mp-nexus.voice';
 export function readVoicePrefs(): VoicePrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(VOICE_KEY) ?? '{}') as Partial<VoicePrefs>;
     return { speak: saved.speak === 'ha' || saved.speak === 'off' ? saved.speak : 'device', engine: typeof saved.engine === 'string' && saved.engine ? saved.engine : undefined,
-      wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined };
+      wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
+      wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
+      wakeLearn: saved.wakeLearn === false ? false : undefined };
   } catch { return { speak: 'device' }; }
 }
 export function writeVoicePrefs(prefs: VoicePrefs) {

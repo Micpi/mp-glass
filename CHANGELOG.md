@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.36.0 — Nexus apprend vos demandes récurrentes
+
+- **Nexus apprend** : quand l'IA a résolu une phrase (« mode cinéma », « donne-moi la température du salon ») et que tout a marché, Nexus la retient. La fois suivante, il la traite à la maison : une action est rejouée telle quelle, sans l'IA, avec la même réponse ; une question relit les valeurs du moment et l'IA ne fait que formuler la phrase, avec une requête de quelques centaines de jetons au lieu de plusieurs milliers.
+- Peu importe la ponctuation, les majuscules, les accents ou un « s'il te plaît » : la phrase est reconnue.
+- **Jamais pour ce qui est sensible** : rien n'est appris pour une serrure, une alarme, une porte de garage ou un portail, ni pour une demande conditionnelle (« s'il fait froid, allume le chauffage ») ou une suite de conversation (« et dans la cuisine ? »). Si une action apprise ne marche plus (appareil renommé, supprimé), Nexus l'oublie et redemande à l'IA.
+- Jusqu'à 200 phrases, les moins utilisées partent d'abord. Le nombre de phrases apprises s'affiche dans les attributs de l'entité Nexus. Option « Apprendre les demandes récurrentes » dans l'intégration : la désactiver efface tout ce qui a été appris.
+- **Requêtes plus légères** : la liste des appareils envoyée à l'IA est regroupée par pièce, environ trois fois moins de jetons qu'avant, et Nexus lit les états en filtrant par pièce ou appareil. Le quota gratuit par minute dure bien plus longtemps.
+
 ## 0.35.3 — Nexus trouve les outils de Home Assistant 2026.10
 
 - **Correction** : depuis Home Assistant 2026.10, chaque outil porte le nom de son intégration (« intent__HassTurnOff »). L'IA appelait l'ancien nom (« HassTurnOff ») et Groq refusait la demande : « attempted to call tool 'HassTurnOff' which was not in request.tools ». MP Nexus propose maintenant les outils sous leur nom court et retrouve le vrai nom au moment d'agir.

@@ -14,16 +14,20 @@ from homeassistant.components import conversation
 from homeassistant.const import MATCH_ALL
 from homeassistant.helpers import intent, llm
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
+from homeassistant.helpers.storage import Store
+from homeassistant.util.ulid import ulid_now
 
 from .assistant_core import (
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
     household, plain_command, provider_error, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
 )
+from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
 from .const import DOMAIN
 
 _LOGGER = logging.getLogger(__name__)
 API_ID = "mp_nexus"
+MEMORY_KEY = f"{DOMAIN}.nexus_learned"
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -50,7 +54,8 @@ class NexusAPI(llm.API):
 
     async def async_get_api_instance(self, llm_context):
         assist = await llm.async_get_api(self.hass, llm.LLM_API_ASSIST, llm_context)
-        return llm.APIInstance(api=self, api_prompt=assist.api_prompt, llm_context=llm_context,
+        # The list of devices, grouped by room: a third of the tokens of Home Assistant's YAML.
+        return llm.APIInstance(api=self, api_prompt=compact_context(assist.api_prompt), llm_context=llm_context,
                                tools=[*assist.tools, HouseholdTool()], custom_serializer=assist.custom_serializer)
 
 
@@ -73,6 +78,16 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
     def __init__(self, entry):
         self.entry = entry
         self._attr_unique_id = f"{DOMAIN}_assistant"
+        self.memory = Memory()
+        self._store = None
+
+    @property
+    def extra_state_attributes(self):
+        return {"learned_requests": len(self.memory)}
+
+    @property
+    def learning(self):
+        return self.entry.options.get("assistant_learn", True) is not False
 
     @property
     def supported_languages(self):
@@ -80,6 +95,11 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._store = Store(self.hass, 1, MEMORY_KEY)
+        if self.learning:
+            self.memory = Memory(await self._store.async_load())
+        else:
+            await self._store.async_remove()
         conversation.async_set_agent(self.hass, self.entry, self)
 
     async def async_will_remove_from_hass(self):
@@ -114,6 +134,19 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         except conversation.ConverseError as err:
             return err.as_conversation_result()
         start = len(chat_log.content)
+        phrase = plain or user_input.text
+        fresh = sum(1 for c in chat_log.content if isinstance(c, conversation.UserContent)) == 1
+        # 3. A request the AI already solved is replayed at home.
+        learned = self.memory.recall(phrase) if self.learning and fresh else None
+        if learned:
+            replayed = await self._replay(user_input, chat_log, learned, key, options, start)
+            if replayed is not None:
+                self.memory.used(phrase)
+                self._save()
+                return replayed
+            self.memory.forget(phrase)
+            self._save()
+            start = len(chat_log.content)
         try:
             await self._converse(chat_log, key, options)
         except AssistantError as err:
@@ -124,11 +157,77 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             # The house already did what was asked; only the sentence saying so is missing.
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
                 agent_id=self.entity_id, content=done_answer([_name(self.hass, e) for e in touched], user_input.language)))
+        else:
+            if self.learning and fresh:
+                self.memory.learn(phrase, lesson(self._calls(chat_log, start), self._last_answer(chat_log, start)))
+                self._save()
+        return self._result(user_input, chat_log, start)
+
+    def _result(self, user_input, chat_log, start):
         result = conversation.async_get_result_from_chat_log(user_input, chat_log)
         touched = self._touched(chat_log, start)
         if touched and result.response.response_type != intent.IntentResponseType.ERROR:
             result.response.async_set_results([intent.IntentResponseTarget(name=_name(self.hass, e), type=intent.IntentResponseTargetType.ENTITY, id=e) for e in touched])
         return result
+
+    def _save(self):
+        if self._store is not None:
+            self._store.async_delay_save(self.memory.as_dict, 5)
+            self.async_write_ha_state()
+
+    def _calls(self, chat_log, start):
+        """The tools used since `start`: name, args, read-only, success and the entities acted on."""
+        api = chat_log.llm_api
+        tools = {t.name: t for t in api.tools} if api else {}
+        results = {c.tool_call_id: c for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)}
+        calls = []
+        for item in chat_log.content[start:]:
+            if not isinstance(item, conversation.AssistantContent):
+                continue
+            for call in item.tool_calls or ():
+                result = results.get(call.id)
+                data = tool_result_data(result) if result else None
+                tool = tools.get(call.tool_name)
+                annotated = getattr(getattr(tool, "annotations", None), "read_only", None)
+                entities = [(e, (self.hass.states.get(e).attributes.get("device_class") if self.hass.states.get(e) else None)) for e in touched_entities([data])]
+                calls.append({"name": call.tool_name, "args": dict(call.tool_args or {}), "read_only": is_read_only(call.tool_name, annotated),
+                              "ok": result is not None and _succeeded(result, data), "entities": entities})
+        return calls
+
+    @staticmethod
+    def _last_answer(chat_log, start):
+        for item in reversed(chat_log.content[start:]):
+            if isinstance(item, conversation.AssistantContent) and item.content:
+                return item.content
+        return ""
+
+    async def _replay(self, user_input, chat_log, learned, key, options, start):
+        """Plays a learned request again: the actions with the same answer, or fresh readings phrased in a small request.
+        None when something no longer works the same way (the AI then takes over)."""
+        content = conversation.AssistantContent(agent_id=self.entity_id, content=None, tool_calls=[
+            llm.ToolInput(tool_name=c["name"], tool_args=c["args"], id=ulid_now()) for c in learned["calls"]])
+        async for _ in chat_log.async_add_assistant_content(content):
+            pass
+        calls = self._calls(chat_log, start)
+        if not calls or not all(c["ok"] for c in calls):
+            _LOGGER.debug("Nexus assistant: learned request no longer works, asking the AI")
+            return None
+        if learned["kind"] == "action":
+            answer = learned["answer"]
+        else:
+            readings = [tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)]
+            model = (options.get("assistant_model") or "").strip() or DEFAULT_MODEL
+            try:
+                body = await self._post(async_get_clientsession(self.hass), f"{base_url(options.get('assistant_url'))}/chat/completions",
+                                        question_request(model, user_input.text, readings, user_input.language), key)
+                answer = read_answer(body)[0]
+            except AssistantError as err:
+                _LOGGER.warning("Nexus assistant: %s", err.detail)
+                return self._error(user_input, chat_log, err.detail)
+            if not answer:
+                return None
+        chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(agent_id=self.entity_id, content=answer))
+        return self._result(user_input, chat_log, start)
 
     @staticmethod
     def _touched(chat_log, start):
@@ -176,6 +275,17 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         response = intent.IntentResponse(language=user_input.language)
         response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, text)
         return conversation.ConversationResult(response=response, conversation_id=chat_log.conversation_id)
+
+
+def _succeeded(result, data):
+    """A tool result that is not an error, in either Home Assistant shape."""
+    if getattr(getattr(result, "result", None), "error", False):
+        return False
+    if not isinstance(data, dict):
+        return data is not None
+    if "error" in data or data.get("response_type") == "error":
+        return False
+    return not (data.get("data") or {}).get("failed")
 
 
 def _name(hass, entity_id):

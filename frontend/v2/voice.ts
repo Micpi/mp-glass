@@ -1,4 +1,5 @@
 import type { Hass } from '../ha/client';
+import { unlockSound } from './sound';
 
 /** How Nexus speaks on this screen: with the voice of the device, with a Home Assistant voice (Piper, Nabu Casa…), or not at all. */
 export interface VoicePrefs {
@@ -6,6 +7,8 @@ export interface VoicePrefs {
   /** The wake word this screen listens for, if any. */ wake?: string;
   /** For a word made from the voice: how readily it wakes, and whether the screen teaches it what it hears. */
   wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
+  /** The short tone that says Nexus is listening after its name (on unless turned off). */
+  wakeChime?: boolean;
 }
 const VOICE_KEY = 'mp-nexus.voice';
 export function readVoicePrefs(): VoicePrefs {
@@ -14,7 +17,7 @@ export function readVoicePrefs(): VoicePrefs {
     return { speak: saved.speak === 'ha' || saved.speak === 'off' ? saved.speak : 'device', engine: typeof saved.engine === 'string' && saved.engine ? saved.engine : undefined,
       wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
       wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
-      wakeLearn: saved.wakeLearn === false ? false : undefined };
+      wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined };
   } catch { return { speak: 'device' }; }
 }
 export function writeVoicePrefs(prefs: VoicePrefs) {
@@ -157,6 +160,7 @@ export function unlockAudio() {
   player.src = 'data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=';
   void player.play().catch(() => undefined);
   if (typeof speechSynthesis !== 'undefined') speechSynthesis.speak(new SpeechSynthesisUtterance(''));
+  unlockSound();
 }
 
 /** A Home Assistant voice: the engine renders the sentence, the page plays it. */

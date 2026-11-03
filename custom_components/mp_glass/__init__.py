@@ -19,6 +19,7 @@ from .spatial import KEY as SPATIAL_KEY, SpatialBackdropImageView, SpatialBackdr
 from .music import COMMANDS as MUSIC_COMMANDS, KEY as MUSIC_KEY, MusicArtworkView, MusicAssistantRuntime
 from .music_engine import COMMANDS as ENGINE_COMMANDS
 from .assistant import COMMANDS as ASSISTANT_COMMANDS, async_setup_wake, async_unload_wake
+from .timers import COMMANDS as TIMER_COMMANDS, async_setup_timers, async_unload_timers
 from .wallpaper import COMMANDS as WALLPAPER_COMMANDS, VIEWS as WALLPAPER_VIEWS, wallpaper_folder
 from .scenes import KEY as SCENES_KEY, async_setup_scenes
 
@@ -55,7 +56,7 @@ async def async_setup_entry(hass, entry):
         websocket_api.async_register_command(hass, websocket_cancel)
         websocket_api.async_register_command(hass, websocket_normalize)
         websocket_api.async_register_command(hass, websocket_info)
-        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS, *WALLPAPER_COMMANDS, *ASSISTANT_COMMANDS):
+        for command in (*MUSIC_COMMANDS, *ENGINE_COMMANDS, *WALLPAPER_COMMANDS, *ASSISTANT_COMMANDS, *TIMER_COMMANDS):
             websocket_api.async_register_command(hass, command)
         hass.http.register_view(SpatialUploadView())
         hass.http.register_view(SpatialBackdropView())
@@ -67,6 +68,7 @@ async def async_setup_entry(hass, entry):
     await async_setup_guests(hass)
     await async_setup_scenes(hass)
     await async_setup_wake(hass)
+    await async_setup_timers(hass)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     async_setup_kiosk(hass)
     await async_register_studio(hass, entry.options.get("show_settings", True))
@@ -87,6 +89,7 @@ async def async_unload_entry(hass, entry):
         await runtime.close()
     hass.data.pop(MUSIC_KEY, None)
     async_unload_wake(hass)
+    async_unload_timers(hass)
     # The strategy module stays for the reload that usually follows; the dashboard waits for the entry meanwhile.
     async_unregister_studio(hass)
     async_unload_guests(hass)

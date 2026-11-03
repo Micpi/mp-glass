@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.39.0 — Minuteurs, réveils et le bip qui dit « je t'écoute »
+
+- **Minuteurs** : « Nexus, mets un minuteur de 10 minutes pour les pâtes », « minuteur d'une demi-heure », « rappelle-moi dans 20 minutes de sortir le pain ». Compris à la maison, sans IA ni quota.
+- **Réveils** : « réveille-moi à 7 h 30 », « réveil à 6 h 45 en semaine », « alarme le samedi à 9 h », « tous les jours à 7 h ». Les réveils répétés reviennent seuls.
+- **Gérer** : « quels minuteurs j'ai ? », « combien de temps il reste ? », « annule le minuteur », « supprime tous les réveils ». Une pastille avec le compte à rebours apparaît en haut de l'écran d'accueil ; elle ouvre la liste (Annuler).
+- **Ça sonne sur tous les écrans ouverts** de la maison, plein écran, avec **Arrêter** et **Reporter** (9 min pour un réveil, 1 min pour un minuteur). On peut aussi dire « stop » ou « reporte de 5 minutes ». Si aucun écran n'est ouvert, une notification Home Assistant prend le relais, et chaque sonnerie envoie un événement (`mp_glass_timer_done`, `mp_glass_alarm`) pour vos automatisations, par exemple pour sonner sur un téléphone. Ils survivent à un redémarrage de Home Assistant.
+- **L'IA sait s'en servir** pour les formulations plus libres (quatre outils : démarrer, régler un réveil, lister, annuler).
+- **Bip d'écoute** : après le mot, un petit son en deux notes dit que Nexus écoute (réglage « Bip d'écoute » dans les réglages du mot d'éveil). Sur iPhone, l'écran lâche d'abord le micro pour que le bip s'entende, puis reprend l'écoute. Un bip précède aussi chaque question suivante de la conversation mains libres.
+
 ## 0.38.2 — Réenregistrer un mot d'éveil
 
 - **Mettre à jour une voix déjà enregistrée** : Plus → Sur cet écran → Mot d'éveil → « Réenregistrer « Nexus » » (administrateur). Les nouvelles prises remplacent les anciennes **sans changer le mot** : les écrans qui l'utilisent continuent de le choisir, les réglages de sensibilité restent, et ce que la maison lui a appris (réveils par erreur annulés, vraies demandes, sons de la maison) est conservé. On peut aussi le renommer au passage. Si l'entraînement échoue, les anciens enregistrements sont remis en place.

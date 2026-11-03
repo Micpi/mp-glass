@@ -175,7 +175,7 @@ export async function loadWakeModels(word: string | Uint8Array | VoiceModel, sha
 
 // ——— Words made from the user's voice: prints and a small judge, trained by Home Assistant (wake_trainer.py) ———
 export type Sensitivity = 'high' | 'normal' | 'low';
-const SENSITIVITY: Record<Sensitivity, number> = { high: -0.04, normal: -0.01, low: 0.02 };
+const SENSITIVITY: Record<Sensitivity, number> = { high: -0.08, normal: -0.05, low: -0.02 };
 export interface VoiceModel {
   kind: 'voice'; center: string; prints: string; count: number; own: number; near: number;
   judge?: { mean: string; std: string; w1: string; b1: string; w2: string; b2: number; hidden: number; threshold: number };
@@ -193,7 +193,7 @@ export const base64Floats = (values: Float32Array) => {
   return btoa(text);
 };
 /** The prints' threshold: near the recordings' own closeness, always above the closest background sound. */
-export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal') => Math.min(0.97, Math.max(own + (SENSITIVITY[sensitivity] ?? -0.01), near + 0.03));
+export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal') => Math.min(0.97, Math.max(own + (SENSITIVITY[sensitivity] ?? -0.05), near + 0.03));
 
 /** Scores a window of 16 embeddings: 0.5 and above when it is the word (close to the prints, and the judge agrees). */
 export function voiceJudge(model: VoiceModel, sensitivity: Sensitivity = 'normal') {
@@ -235,16 +235,21 @@ const WORKLET = `class MpWakeTap extends AudioWorkletProcessor {
 }
 registerProcessor('mp-wake-tap', MpWakeTap);`;
 
+const microphone = () => navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+
 /** Listens for the word while the page is shown; `paused` drops the sound while Nexus records or speaks. */
 export class WakeListener {
   private hold = false;
   private pipeline?: WakePipeline;
-  private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode;
+  private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode; private source?: MediaStreamAudioSourceNode;
+  private micBusy?: Promise<void>; private micOff = false;
   private busy = false; private queue: Float32Array[] = []; private last = 0; private chunks = 0;
   /** The 16 embeddings that woke Nexus: a voice word learns from them, as the word or as a false wake. */
   heard?: Float32Array;
   /** Called with an ordinary sound of the home about every 12 s of listening, when set: a voice word learns from them. */
   onAmbient?: (window: Float32Array) => void;
+  /** Called with each score (0.5 and above wakes Nexus), when set: the settings show how close the word comes. */
+  onScore?: (score: number) => void;
   constructor(private models: WakeModels, private onWake: () => void, private threshold = THRESHOLD) {}
   get running() { return !!this.context && this.context.state === 'running'; }
   get paused() { return this.hold; }
@@ -259,11 +264,11 @@ export class WakeListener {
     if (this.context) { if (this.context.state === 'suspended') await this.context.resume(); return; }
     const pipeline = this.pipeline = new WakePipeline(this.models);
     await pipeline.warm();
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 } });
+    this.stream = await microphone();
     const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     const context = this.context = new Context();
     const resampler = new Resampler(context.sampleRate);
-    const source = context.createMediaStreamSource(this.stream);
+    const source = this.source = context.createMediaStreamSource(this.stream);
     const feed = (samples: Float32Array) => {
       if (this.paused) return;
       this.queue.push(resampler.push(samples));
@@ -284,6 +289,33 @@ export class WakeListener {
     }
     if (context.state === 'suspended') await context.resume();
   }
+  /**
+   * Lets go of the microphone while Nexus records or speaks, and takes it back afterwards. On iPhones a page that holds
+   * the microphone plays sound quietly, in the earpiece, and a second recording silences the first one.
+   */
+  mic(on: boolean) {
+    if (on === !this.micOff) return this.micBusy ?? Promise.resolve();
+    this.micOff = !on;
+    const previous = this.micBusy ?? Promise.resolve();
+    return this.micBusy = previous.then(async () => {
+      if (!this.context || !this.node) return;
+      if (!on) {
+        this.source?.disconnect(); this.source = undefined;
+        this.stream?.getTracks().forEach(t => t.stop()); this.stream = undefined;
+        return;
+      }
+      if (this.stream || this.micOff) return;
+      try {
+        const stream = await microphone();
+        if (this.micOff || !this.context) { stream.getTracks().forEach(t => t.stop()); return; }
+        this.stream = stream;
+        this.source = this.context.createMediaStreamSource(stream);
+        this.source.connect(this.node);
+        this.pipeline?.reset();
+        if (this.context.state === 'suspended') await this.context.resume();
+      } catch (error) { console.warn('MP Nexus: wake word microphone', error); }
+    });
+  }
   private async drain(pipeline: WakePipeline) {
     if (this.busy) return;
     this.busy = true;
@@ -292,6 +324,7 @@ export class WakeListener {
         const samples = this.queue.shift()!;
         const score = await pipeline.push(samples);
         this.chunks += samples.length / CHUNK;
+        if (score !== undefined && !this.paused) this.onScore?.(score);
         // Sounds teach more than silence: one is taken when something is heard, or after a long quiet anyway.
         let energy = 0;
         for (let i = 0; i < samples.length; i++) energy += samples[i]! * samples[i]!;
@@ -311,6 +344,8 @@ export class WakeListener {
     } finally { this.busy = false; }
   }
   stop() {
+    this.micOff = true;
+    this.source?.disconnect(); this.source = undefined;
     this.node?.disconnect();
     this.stream?.getTracks().forEach(t => t.stop());
     void this.context?.close().catch(() => undefined);

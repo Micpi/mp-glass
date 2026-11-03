@@ -21,7 +21,7 @@ import { flag } from '../flags';
 import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
-import { canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -162,7 +162,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -262,6 +262,9 @@ export class MPNexusView extends LitElement {
   /** The wake word: the words this home can use, and whether this screen is listening for its own. */
   private wakeList?: WakeWord[];
   private wakeState: 'off'|'loading'|'touch'|'armed'|'error' = 'off';
+  /** A voice word recorded before 0.38.1, without its far versions: it hears poorly from across the room. */
+  private wakeOld = false;
+  private wakePeak = 0; private wakePeakAt = 0;
   private wakeListener?: WakeListener;
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
@@ -1688,6 +1691,7 @@ export class MPNexusView extends LitElement {
     if (!hass) return;
     this.speech?.stop(); this.speech = undefined;
     this.recorder?.cancel(); this.stopListening();
+    audioSession('auto');
     const turn = ++this.voiceTurn;
     this.answer = undefined; this.voiceHeard = '';
     this.transcription ??= await canTranscribe(hass);
@@ -1696,6 +1700,9 @@ export class MPNexusView extends LitElement {
     if (this.transcription && canRecord()) {
       const recorder = this.recorder = new Recorder(level => { this.voiceLevel = level; });
       this.voiceState = 'listening';
+      // One recording at a time: phones silence the first when a second one starts.
+      if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
+      if (turn !== this.voiceTurn) return;
       try { await recorder.start(); }
       catch { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; } return; }
       const audio = await recorder.done;
@@ -1736,9 +1743,14 @@ export class MPNexusView extends LitElement {
     const hass = this.hass, prefs = this.voicePrefs;
     if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; this.followUp(); return; }
     this.voiceState = 'speaking';
+    // The page lets go of the microphone first: on iPhones, a page that listens speaks quietly, in the earpiece.
+    if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
+    if (turn !== this.voiceTurn) return;
+    audioSession('playback');
     try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine) : speakOnDevice(text, locale()); }
     catch { this.speech = speakOnDevice(text, locale()); }
     await this.speech.done;
+    audioSession('auto');
     if (turn !== this.voiceTurn) return;
     this.voiceState = 'idle'; this.speech = undefined;
     this.followUp();
@@ -1755,6 +1767,7 @@ export class MPNexusView extends LitElement {
     else if (this.voiceState !== 'thinking') { unlockAudio(); void this.talk(); }
   }
   private endVoice() {
+    audioSession('auto');
     this.voiceTurn++;
     this.handsFree = false;
     this.recorder?.cancel(); this.recorder = undefined;
@@ -1802,7 +1815,11 @@ export class MPNexusView extends LitElement {
     if (!this.wakeList) { this.wakeList = []; void wakeWords(this.hass!).then(list => { this.wakeList = list; }); }
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
     if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, key); return; }
-    if (this.wakeListener) this.wakeListener.paused = this.overlay === 'voice' && this.voiceState !== 'idle';
+    if (this.wakeListener) {
+      const busy = this.overlay === 'voice' && this.voiceState !== 'idle';
+      this.wakeListener.paused = busy;
+      if (!busy) void this.wakeListener.mic(true);
+    }
   }
   private async startWake(word: string, key: string) {
     const hass = this.hass;
@@ -1814,6 +1831,8 @@ export class MPNexusView extends LitElement {
       if (this.wakeFor !== key) return;
       const listener = this.wakeListener = new WakeListener(models, this.woke);
       if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
+      listener.onScore = score => this.showWakeScore(score);
+      this.wakeOld = voice && !((model as { version?: number }).version! >= 2);
       await this.armWake();
     } catch (error) {
       if (this.wakeFor !== key) return;
@@ -1853,6 +1872,18 @@ export class MPNexusView extends LitElement {
     chime();
     this.openVoice(true);
   };
+  /** How close the word came lately, drawn straight into the settings' meter (no new render 12 times a second). */
+  private showWakeScore(score: number) {
+    const now = performance.now();
+    if (score >= this.wakePeak || now - this.wakePeakAt > 2500) { this.wakePeak = score; this.wakePeakAt = now; }
+    const meter = this.renderRoot.querySelector<HTMLElement>('.wmeter');
+    if (!meter) return;
+    const share = Math.min(1, this.wakePeak / 0.5);
+    meter.style.setProperty('--v', share.toFixed(3));
+    meter.classList.toggle('hit', this.wakePeak >= 0.5);
+    const label = meter.querySelector('small');
+    if (label) label.textContent = this.wakePeak >= 0.5 ? tr('Reconnu') : `${Math.round(share * 100)} %`;
+  }
   /** What woke Nexus becomes a lesson for the word: the word itself when a request followed, a false wake when closed at once. */
   private teachWake(kind: 'confirmed'|'cancelled') {
     const lesson = this.wakeLesson, hass = this.hass;
@@ -2003,7 +2034,10 @@ export class MPNexusView extends LitElement {
   private voiceWordPrefs() {
     const prefs = this.voicePrefs, learn = prefs.wakeLearn !== false;
     const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
-    return html`<label class="rw"><span class="ib">${mpIcon('motion', 16)}</span><div><b>${tr('Sensibilité')}</b><small>${tr('Plus sensible : il entend de plus loin, mais se trompe plus souvent')}</small></div>
+    return html`${this.wakeOld ? html`<div class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Enregistrez ce mot à nouveau')}</b><small>${tr('Depuis la 0.38.1, l’enregistrement apprend aussi votre voix de loin : recréez le mot pour qu’il vous entende partout dans la pièce.')}</small></div></div>` : ''}
+      <div class="rw"><span class="ib">${mpIcon('motion', 16)}</span><div><b>${tr('Ce que l’écran entend')}</b><small>${tr('Dites le mot : la barre doit atteindre « Reconnu »')}</small></div>
+        <span class="end wmeter" style="--v:0"><i></i><small .textContent=${this.wakeState === 'armed' ? '0 %' : tr('Touchez l’écran pour écouter')}></small></span></div>
+      <label class="rw"><span class="ib">${mpIcon('motion', 16)}</span><div><b>${tr('Sensibilité')}</b><small>${tr('Plus sensible : il entend de plus loin, mais se trompe plus souvent')}</small></div>
         <select class="end" aria-label=${tr('Sensibilité')} @change=${(e: Event) => { const v = (e.target as HTMLSelectElement).value; set({ wakeSensitivity: v === 'high' || v === 'low' ? v : undefined }); }}>
           <option value="high" .selected=${prefs.wakeSensitivity === 'high'}>${tr('Sensible')}</option>
           <option value="" .selected=${!prefs.wakeSensitivity}>${tr('Normale')}</option>

@@ -98,7 +98,7 @@ describe('wake word', () => {
     expect(speechSpan(new Float32Array(32000))).toBeUndefined();
     expect(speechSpan(samples.subarray(0, span.end - 3000))).toBeUndefined();
     const harder = variants(samples, 3);
-    expect(harder).toHaveLength(4);
+    expect(harder).toHaveLength(7);
     expect(harder.every(v => v.length === samples.length && v.every(x => Math.abs(x) <= 32768))).toBe(true);
   }, 60_000);
   it('a voice word loads as a wake word and is heard in the stream', async () => {

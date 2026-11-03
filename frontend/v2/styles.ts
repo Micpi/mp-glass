@@ -299,6 +299,7 @@ export const nexusStyles = css`
   .nexus-voice .small{font-size:12px;opacity:.8;max-width:420px;text-align:center}
   .enroll{text-align:center}.enroll p{margin:0;max-width:420px}.enroll .said{font-size:19px}
   .enroll .ename{width:min(320px,100%);box-sizing:border-box;padding:12px 16px;border-radius:14px;border:1px solid var(--mp-control-border,rgba(213,234,255,.18));background:rgba(255,255,255,.06);color:inherit;font:inherit;font-size:20px;text-align:center}
+  .wmeter{position:relative;display:flex;align-items:center;gap:8px;min-width:120px}.wmeter i{position:relative;flex:1;height:6px;border-radius:3px;background:rgba(255,255,255,.12);overflow:hidden}.wmeter i::after{content:'';position:absolute;inset:0;transform-origin:left;transform:scaleX(var(--v,0));background:var(--mp-accent,#69b7ff);transition:transform .12s}.wmeter.hit i::after{background:#5ad18a}.wmeter small{min-width:56px;text-align:right;font-variant-numeric:tabular-nums}
   .edots{display:flex;gap:8px;justify-content:center}.edots i{width:9px;height:9px;border-radius:50%;background:rgba(255,255,255,.18)}.edots i.on{background:var(--mp-accent,#69b7ff);box-shadow:0 0 8px var(--mp-accent,#69b7ff)}
   .orbb.armed .orb{box-shadow:0 0 0 2px rgba(255,255,255,.55),0 0 0 5px color-mix(in srgb,var(--mp-accent,#69b7ff) 35%,transparent),0 0 14px var(--mp-accent,#69b7ff)}
   @media (prefers-reduced-motion:reduce){.vorb,.vorb i,.orbb .orb{animation:none!important;transition:none}}

@@ -77,7 +77,7 @@ export async function clipFrames(models: Pick<WakeModels, 'mel' | 'embed'>, samp
 /** Where the window of the word stops: embedding k hears the sound up to the end of chunk k; one more for the tail. */
 export const endFrame = (endSample: number) => Math.ceil((LEAD + endSample) / CHUNK) + 1;
 
-/** The recording made harder, as the screen may hear it: with a fan, a television far away, or spoken softly. */
+/** The recording made harder, as the screen may hear it: with a fan, a television far away, spoken softly, or from across the room. */
 export function variants(samples: Float32Array, seed = 1): Float32Array[] {
   let state = seed * 9301 + 49297;
   const random = () => { state = (state * 1103515245 + 12345) % 2147483648; return state / 2147483648; };
@@ -97,7 +97,25 @@ export function variants(samples: Float32Array, seed = 1): Float32Array[] {
   const soft = samples.map(v => v * 0.35);
   const echo = new Float32Array(samples.length);
   for (let i = 0; i < samples.length; i++) echo[i] = Math.max(-32768, Math.min(32767, samples[i]! + 0.45 * (samples[i - 1200] ?? 0) + 0.25 * (samples[i - 2600] ?? 0)));
-  return [noisy(20, 0), noisy(10, 0.97), soft, echo];
+  // Said from a few metres away: the room's reverberation, a softer voice, and the hum of the home.
+  const room = (rt60: number, gain: number, snr: number) => {
+    const length = Math.floor(rt60 * RATE), response = new Float32Array(length);
+    let energy = 0;
+    for (let i = 0; i < length; i++) { response[i] = (random() * 2 - 1) * Math.exp(-6.9 * i / length); energy += response[i]! * response[i]!; }
+    response[0] = 1; energy += 1;
+    const norm = gain / Math.sqrt(energy), wet = new Float32Array(samples.length);
+    // Sparse taps: a few hundred echoes are enough for the embeddings, and fast on a phone.
+    const taps: number[] = [0];
+    for (let i = 1; i + 7 < length; i += 7) taps.push(i + Math.floor(random() * 7));
+    for (const t of taps) { const w = response[t]! * norm * (t ? 2.6 : 1); for (let i = t; i < samples.length; i++) wet[i] = wet[i]! + samples[i - t]! * w; }
+    let wp = 0, n = 0;
+    for (const v of wet) if (v) { wp += v * v; n++; }
+    const hum = Math.sqrt(wp / Math.max(1, n) / 10 ** (snr / 10));
+    let last = 0;
+    for (let i = 0; i < wet.length; i++) { last = 0.9 * last + (random() * 2 - 1) * 0.3; wet[i] = Math.max(-32768, Math.min(32767, wet[i]! + last * hum * 2)); }
+    return wet;
+  };
+  return [noisy(20, 0), noisy(10, 0.97), soft, echo, room(0.3, 0.5, 35), room(0.45, 0.3, 30), room(0.7, 0.2, 22)];
 }
 
 export interface Enrolled { id: string; name: string; voice: VoiceModel }

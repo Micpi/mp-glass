@@ -139,6 +139,16 @@ export async function speechEngines(hass: Hass, language: string) {
   } catch { return []; }
 }
 
+/**
+ * What the page's sound is for, on iPhones and iPads (Safari 16.4+): « playback » while Nexus speaks, so that the answer
+ * plays loud on the speaker even in a page that listens; « auto » again before listening.
+ */
+export function audioSession(type: 'playback' | 'auto') {
+  const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+  if (!session || session.type === type) return;
+  try { session.type = type; } catch { /* Not on this device. */ }
+}
+
 /** One audio element, unlocked by the touch that opened the voice, so phones let it play the answer later. */
 let player: HTMLAudioElement | undefined;
 export function unlockAudio() {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.38.1 — Le mot d'éveil vous entend de loin, et Nexus se fait entendre sur iPhone
+
+- **Le mot d'éveil à votre voix se déclenche enfin à distance** : l'enregistrement se fait près de l'écran, mais on parle ensuite depuis l'autre bout de la pièce, et l'écho de la pièce changeait assez la voix pour rester sous le seuil. L'enregistrement fabrique maintenant aussi des versions « de loin » de chaque prise (réverbération, voix plus faible, bruit de fond), et le seuil se règle sur elles. **Recréez votre mot** (Plus → Sur cet écran → Mot d'éveil → « + Créer un mot avec ma voix… ») : un mot créé en 0.38.0 l'indique dans ses réglages.
+- **« Ce que l'écran entend »** : une barre en direct dans les réglages du mot. Dites le mot, elle doit atteindre « Reconnu » ; sinon, passez la sensibilité sur « Sensible ».
+- **iPhone : la réponse de Nexus était inaudible** : tant que l'écran gardait le micro ouvert pour écouter le mot, l'iPhone jouait le son tout bas, dans l'écouteur. L'écran lâche maintenant le micro pendant que Nexus parle et demande le haut-parleur, puis reprend l'écoute.
+
 ## 0.38.0 — Un mot d'éveil à votre voix, qui apprend tout seul
 
 - **Créer un mot avec sa voix** : Plus → Sur cet écran → Mot d'éveil → « + Créer un mot avec ma voix… » (administrateur). On tape le nom (« Nexus », « Maison », n'importe quelle langue), on le dit cinq fois, on lit deux phrases ordinaires : en quelques secondes le mot est prêt et proposé à tous les écrans. Plus besoin de Colab.

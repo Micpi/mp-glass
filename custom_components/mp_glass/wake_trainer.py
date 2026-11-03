@@ -27,6 +27,10 @@ HIDDEN, EPOCHS, LEARNING_RATE, WEIGHT_DECAY = 16, 220, 0.01, 1e-3
 MAX_NEGATIVES = 6000
 # A judge is used once it finds most recordings again with a threshold above the background sounds.
 MIN_RECALL = 0.8
+# The word said again, near or far, scores at least this low end of the recordings' versions against each other.
+OWN_QUANTILE = 0.1
+# Models made before 0.38.1 lack the far versions of the recordings: they should be recorded again.
+VERSION = 2
 
 
 def decode(text, tail=(WINDOW, DIMS)):
@@ -89,20 +93,20 @@ def other_windows(sequence, end, margin=6):
 
 
 def voice_prints(recordings, noisy, center):
-    """The voice prints, and how close a real « Nexus » comes to them.
+    """The voice prints, and how close a « Nexus » said again comes to them.
 
-    `recordings` are clean (frames, end) pairs; `noisy` are (frames, end, recording) made noisier in the page, so that
-    the word is still found with the television on. Each clean recording is compared with the prints of the other
-    recordings (best shift): the weakest of these is how close the word comes when it is said again."""
+    `recordings` are clean (frames, end) pairs; `noisy` are (frames, end, recording) made harder in the page (noise, a
+    softer voice, the reverberation of a room), so that the word is still found from across the room. Each version of
+    a recording is compared with the prints of the other recordings: the low end of these scores is how close the word
+    comes when it is said again, near or far; the clean ones alone are far too optimistic."""
     prints = [unit(word_windows(frames, end, (1,))[0], center) for frames, end in recordings]
     owner = list(range(len(recordings)))
     for frames, end, source in noisy:
         prints.append(unit(word_windows(frames, end, (1,))[0], center))
         owner.append(source)
     prints, owner = np.stack(prints), np.asarray(owner)
-    # Compared with the other clean prints only: a noisy print is close to everything a little.
-    clean = np.arange(len(prints)) < len(recordings)
-    own = [float(print_scores(prints[clean & (owner != i)], unit(word_windows(frames, end), center)).max()) for i, (frames, end) in enumerate(recordings)]
+    versions = [(frames, end, i) for i, (frames, end) in enumerate(recordings)] + list(noisy)
+    own = [float(print_scores(prints[owner != i], unit(word_windows(frames, end), center)).max()) for frames, end, i in versions]
     return prints, own
 
 
@@ -171,12 +175,13 @@ def train_judge(positives, negatives, hard=None, seed=0):
 
 
 # How much closer than the recordings among themselves a sound must come, by sensitivity (the page applies it).
-SENSITIVITY = {"high": -0.04, "normal": -0.01, "low": 0.02}
+# `own` is the low end (a tenth) of how the versions of each recording score against the other recordings.
+SENSITIVITY = {"high": -0.08, "normal": -0.05, "low": -0.02}
 
 
 def threshold(own, near, sensitivity="normal"):
     """The prints' threshold: near the recordings' own closeness, always above the closest background sound."""
-    return float(min(0.97, max(own + SENSITIVITY.get(sensitivity, -0.01), near + 0.03)))
+    return float(min(0.97, max(own + SENSITIVITY.get(sensitivity, -0.05), near + 0.03)))
 
 
 def windows_of(frames):
@@ -218,9 +223,9 @@ def build(recordings, noisy, background, sentences=(), ambient=None, hard=None, 
     model = {
         "center": center.astype(np.float32),
         "prints": prints.astype(np.float32),
-        "own": float(min(own)),
+        "own": float(np.quantile(own, OWN_QUANTILE)),
         "near": near,
-        "stats": {"own": round(min(own), 3), "near": round(near, 3), "negatives": int(len(negatives) + len(hard)), "positives": int(len(positives))},
+        "stats": {"own": round(float(np.quantile(own, OWN_QUANTILE)), 3), "near": round(near, 3), "negatives": int(len(negatives) + len(hard)), "positives": int(len(positives))},
     }
     if judge is not None and judge["recall"] >= MIN_RECALL:
         model["judge"] = judge
@@ -230,7 +235,7 @@ def build(recordings, noisy, background, sentences=(), ambient=None, hard=None, 
 
 def to_client(model):
     """The model as the page reads it: plain numbers and base64 float32."""
-    out = {"kind": "voice", "center": encode(model["center"]), "prints": encode(model["prints"]), "count": int(len(model["prints"])),
+    out = {"kind": "voice", "version": VERSION, "center": encode(model["center"]), "prints": encode(model["prints"]), "count": int(len(model["prints"])),
            "own": model["own"], "near": model["near"], "stats": model["stats"]}
     if judge := model.get("judge"):
         out["judge"] = {"mean": encode(judge["mean"]), "std": encode(judge["std"]), "w1": encode(judge["w1"]), "b1": encode(judge["b1"]),

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.35.3 — Nexus trouve les outils de Home Assistant 2026.10
+
+- **Correction** : depuis Home Assistant 2026.10, chaque outil porte le nom de son intégration (« intent__HassTurnOff »). L'IA appelait l'ancien nom (« HassTurnOff ») et Groq refusait la demande : « attempted to call tool 'HassTurnOff' which was not in request.tools ». MP Nexus propose maintenant les outils sous leur nom court et retrouve le vrai nom au moment d'agir.
+- Si le fournisseur refuse malgré tout un appel d'outil mal formé, Nexus réessaie une fois avant d'afficher l'erreur.
+
 ## 0.35.2 — Nexus tient dans le quota gratuit
 
 - **Plus de faux « quota atteint »** : quand l'IA avait déjà agi (la lumière s'éteignait bien) mais que le quota par minute de Groq bloquait sa phrase de confirmation, Nexus affichait une erreur. Il attend maintenant quelques secondes que le quota se libère, et s'il ne peut toujours pas, il confirme lui-même : « C'est fait : Cuisine. »

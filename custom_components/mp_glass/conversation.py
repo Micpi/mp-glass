@@ -16,8 +16,9 @@ from homeassistant.helpers import intent, llm
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .assistant_core import (
-    DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, base_url, build_request, clean_key, done_answer, household,
-    plain_command, provider_error, quota_wait, read_answer, to_messages, tool_result_data, tool_spec, touched_entities,
+    DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
+    household, plain_command, provider_error, quota_wait, read_answer, shorten_text, short_names, to_messages,
+    tool_result_data, tool_spec, touched_entities,
 )
 from .const import DOMAIN
 
@@ -53,12 +54,14 @@ class NexusAPI(llm.API):
                                tools=[*assist.tools, HouseholdTool()], custom_serializer=assist.custom_serializer)
 
 
-def _content(item):
-    """A chat log entry as assistant_core reads it."""
+def _content(item, names):
+    """A chat log entry as assistant_core reads it, with the tool names the model is offered."""
     if isinstance(item, conversation.AssistantContent):
-        return {"role": "assistant", "content": item.content, "tool_calls": [{"id": c.id, "name": c.tool_name, "args": c.tool_args} for c in item.tool_calls or ()]}
+        return {"role": "assistant", "content": item.content, "tool_calls": [{"id": c.id, "name": names.get(c.tool_name, c.tool_name), "args": c.tool_args} for c in item.tool_calls or ()]}
     if isinstance(item, conversation.ToolResultContent):
         return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": tool_result_data(item)}
+    if item.role == "system":
+        return {"role": "system", "content": shorten_text(item.content or "", names)}
     return {"role": item.role, "content": item.content}
 
 
@@ -139,26 +142,30 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
                     body = await response.read()
                     if response.status == 200:
                         return body
-                    wait = quota_wait(response.status, response.headers.get("retry-after"), body) if attempt == 0 else None
+                    wait = None
+                    if attempt == 0:
+                        wait = 0.0 if bad_tool_call(response.status, body) else quota_wait(response.status, response.headers.get("retry-after"), body)
                     if wait is None:
                         raise provider_error(response.status, body, key)
             except (ClientError, TimeoutError) as err:
                 raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
-            _LOGGER.debug("Nexus assistant: per-minute quota full, waiting %.1f s", wait)
+            _LOGGER.debug("Nexus assistant: provider refused (%s), new try in %.1f s", response.status, wait)
             await asyncio.sleep(wait + 0.3)
         raise AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
 
     async def _converse(self, chat_log, key, options):
         api = chat_log.llm_api
-        tools = [tool_spec(t.name, t.description, _schema(t, api.custom_serializer)) for t in api.tools] if api else []
+        names = short_names([t.name for t in api.tools]) if api else {}
+        real = {short: name for name, short in names.items()}
+        tools = [tool_spec(names[t.name], t.description, _schema(t, api.custom_serializer)) for t in api.tools] if api else []
         session, url = async_get_clientsession(self.hass), f"{base_url(options.get('assistant_url'))}/chat/completions"
         model = (options.get("assistant_model") or "").strip() or DEFAULT_MODEL
         for _ in range(MAX_TOOL_TURNS):
-            payload = build_request(model, to_messages([_content(c) for c in chat_log.content]), tools)
+            payload = build_request(model, to_messages([_content(c, names) for c in chat_log.content]), tools)
             body = await self._post(session, url, payload, key)
             text, calls = read_answer(body)
             content = conversation.AssistantContent(agent_id=self.entity_id, content=text or None,
-                                                    tool_calls=[llm.ToolInput(tool_name=c["name"], tool_args=c["args"], id=c["id"]) for c in calls] or None)
+                                                    tool_calls=[llm.ToolInput(tool_name=real.get(c["name"], c["name"]), tool_args=c["args"], id=c["id"]) for c in calls] or None)
             async for _ in chat_log.async_add_assistant_content(content):
                 pass
             if not chat_log.unresponded_tool_results:

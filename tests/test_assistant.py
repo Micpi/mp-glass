@@ -123,6 +123,17 @@ class AssistantCoreTests(unittest.TestCase):
         self.assertEqual(core.done_answer(["Cuisine"], "fr-FR"), "C'est fait : Cuisine.")
         self.assertEqual(core.done_answer([], "en"), "Done.")
 
+    def test_tool_names_without_the_integration_prefix(self):
+        names = core.short_names(["intent__HassTurnOn", "intent__HassTurnOff", "NexusHousehold", "a__Same", "b__Same", "x__HassTurnOn2", "HassTurnOn2"])
+        self.assertEqual(names["intent__HassTurnOff"], "HassTurnOff")
+        self.assertEqual(names["NexusHousehold"], "NexusHousehold")
+        self.assertEqual((names["a__Same"], names["b__Same"]), ("a__Same", "b__Same"))
+        self.assertEqual(names["x__HassTurnOn2"], "x__HassTurnOn2")
+        prompt = "Use intent__HassTurnOn to lock and intent__HassTurnOff to unlock a lock."
+        self.assertEqual(core.shorten_text(prompt, names), "Use HassTurnOn to lock and HassTurnOff to unlock a lock.")
+        self.assertTrue(core.bad_tool_call(400, b'{"error":{"message":"Tool call validation failed: attempted to call tool \'HassTurnOff\' which was not in request.tools"}}'))
+        self.assertFalse(core.bad_tool_call(400, b'{"error":{"message":"model"}}'))
+
     def test_household(self):
         self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
 

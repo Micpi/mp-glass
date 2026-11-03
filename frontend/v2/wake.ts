@@ -12,6 +12,8 @@ export const RATE = 16000, CHUNK = 1280, WINDOW = 76, BANDS = 32, FEATURES = 96;
 const MEL_OVERLAP = 160 * 3, MEL_KEEP = 10 * 97, FEATURES_KEEP = 120;
 /** Score above which the word counts, frames ignored while the buffers warm up, and the pause before it can count again. */
 export const THRESHOLD = 0.5, WARMUP = 5, DEBOUNCE_MS = 2000;
+/** Chunks (80 ms) between two ordinary sounds kept to teach a voice word: about one every 12 s. */
+const AMBIENT_EVERY = 150;
 
 /** The three models, as plain functions: easy to replace in tests. */
 export interface WakeModels {
@@ -63,6 +65,12 @@ export class WakePipeline {
       best = best === undefined ? score : Math.max(best, score);
     }
     return best;
+  }
+  /** The last 16 embeddings, as the word's model reads them: what a screen sends to teach a voice word. */
+  lastWindow(frames = 16) {
+    const out = new Float32Array(frames * FEATURES);
+    this.features.slice(-frames).forEach((f, i) => out.set(f, (frames - Math.min(frames, this.features.length) + i) * FEATURES));
+    return out;
   }
   private async chunk(chunk: Float32Array) {
     const raw = new Float32Array(Math.min(this.raw.length + CHUNK, CHUNK + MEL_OVERLAP));
@@ -129,20 +137,94 @@ async function session(source: string | Uint8Array) {
   return o.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
 }
 
-export async function loadWakeModels(word: string | Uint8Array, shared: { mel: string | Uint8Array; embed: string | Uint8Array } = { mel: wakeAsset('melspectrogram.onnx'), embed: wakeAsset('embedding_model.onnx') }): Promise<WakeModels> {
+type Shared = { mel: string | Uint8Array; embed: string | Uint8Array };
+const SHARED: Shared = { mel: '', embed: '' };
+const sharedSources = (): Shared => ({ mel: SHARED.mel || wakeAsset('melspectrogram.onnx'), embed: SHARED.embed || wakeAsset('embedding_model.onnx') });
+
+/** The two models every word shares: sound to mel frames, mel frames to speech embeddings. */
+export async function loadSpeechModels(shared: Shared = sharedSources()): Promise<Pick<WakeModels, 'mel' | 'embed'>> {
   const o = await ort();
-  const [mel, embed, kw] = await Promise.all([session(shared.mel), session(shared.embed), session(word)]);
-  const shape = (kw as unknown as { inputMetadata?: { shape?: readonly (number | string)[] }[] }).inputMetadata?.[0]?.shape;
-  const frames = typeof shape?.[1] === 'number' && shape[1] > 0 ? shape[1] : 16;
+  const [mel, embed] = await Promise.all([session(shared.mel), session(shared.embed)]);
   const run = async (s: typeof mel, data: Float32Array, dims: number[]) => {
     const out = await s.run({ [s.inputNames[0]!]: new o.Tensor('float32', data, dims) });
     return out[s.outputNames[0]!]!.data as Float32Array;
   };
   return {
-    frames,
     async mel(samples) { const out = await run(mel, samples, [1, samples.length]); return out.map(x => x / 10 + 2); },
     embed: (windows, count) => run(embed, windows, [count, WINDOW, BANDS, 1]),
-    async score(features) { return (await run(kw, features, [1, frames, FEATURES]))[0] ?? 0; },
+  };
+}
+
+export async function loadWakeModels(word: string | Uint8Array | VoiceModel, shared: Shared = sharedSources(), sensitivity: Sensitivity = 'normal'): Promise<WakeModels> {
+  if (isVoice(word)) {
+    const speech = await loadSpeechModels(shared), judge = voiceJudge(word, sensitivity);
+    return { ...speech, frames: 16, score: async features => judge(features) };
+  }
+  const o = await ort();
+  const [speech, kw] = await Promise.all([loadSpeechModels(shared), session(word)]);
+  const shape = (kw as unknown as { inputMetadata?: { shape?: readonly (number | string)[] }[] }).inputMetadata?.[0]?.shape;
+  const frames = typeof shape?.[1] === 'number' && shape[1] > 0 ? shape[1] : 16;
+  return {
+    ...speech, frames,
+    async score(features) {
+      const out = await kw.run({ [kw.inputNames[0]!]: new o.Tensor('float32', features, [1, frames, FEATURES]) });
+      return (out[kw.outputNames[0]!]!.data as Float32Array)[0] ?? 0;
+    },
+  };
+}
+
+// ——— Words made from the user's voice: prints and a small judge, trained by Home Assistant (wake_trainer.py) ———
+export type Sensitivity = 'high' | 'normal' | 'low';
+const SENSITIVITY: Record<Sensitivity, number> = { high: -0.04, normal: -0.01, low: 0.02 };
+export interface VoiceModel {
+  kind: 'voice'; center: string; prints: string; count: number; own: number; near: number;
+  judge?: { mean: string; std: string; w1: string; b1: string; w2: string; b2: number; hidden: number; threshold: number };
+  stats?: Record<string, number>; trained?: number;
+}
+const isVoice = (word: unknown): word is VoiceModel => typeof word === 'object' && !!word && (word as VoiceModel).kind === 'voice';
+export const floats = (text: string) => {
+  const bytes = Uint8Array.from(atob(text), c => c.charCodeAt(0));
+  return new Float32Array(bytes.buffer, bytes.byteOffset, bytes.byteLength >> 2);
+};
+export const base64Floats = (values: Float32Array) => {
+  const bytes = new Uint8Array(values.buffer, values.byteOffset, values.byteLength);
+  let text = '';
+  for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+  return btoa(text);
+};
+/** The prints' threshold: near the recordings' own closeness, always above the closest background sound. */
+export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal') => Math.min(0.97, Math.max(own + (SENSITIVITY[sensitivity] ?? -0.01), near + 0.03));
+
+/** Scores a window of 16 embeddings: 0.5 and above when it is the word (close to the prints, and the judge agrees). */
+export function voiceJudge(model: VoiceModel, sensitivity: Sensitivity = 'normal') {
+  const center = floats(model.center), prints = floats(model.prints), count = model.count, size = 16 * FEATURES;
+  const threshold = voiceThreshold(model.own, model.near, sensitivity);
+  const j = model.judge, hidden = j?.hidden ?? 0;
+  const mean = j ? floats(j.mean) : undefined, std = j ? floats(j.std) : undefined, w1 = j ? floats(j.w1) : undefined, b1 = j ? floats(j.b1) : undefined, w2 = j ? floats(j.w2) : undefined;
+  const frame = new Float32Array(FEATURES), sims = new Float64Array(count), x = new Float32Array(size), h = new Float64Array(hidden);
+  return (window: Float32Array) => {
+    sims.fill(0);
+    for (let f = 0; f < 16; f++) {
+      let norm = 0;
+      for (let d = 0; d < FEATURES; d++) { const v = window[f * FEATURES + d]! - center[d]!; frame[d] = v; norm += v * v; }
+      norm = Math.sqrt(norm) + 1e-6;
+      for (let t = 0; t < count; t++) {
+        let dot = 0;
+        const at = t * size + f * FEATURES;
+        for (let d = 0; d < FEATURES; d++) dot += frame[d]! * prints[at + d]!;
+        sims[t] = sims[t]! + dot / norm / 16;
+      }
+    }
+    const best = Array.from(sims).sort((a, b) => b - a), close = count > 1 ? (best[0]! + best[1]!) / 2 : best[0]!;
+    if (close < threshold) return 0.49 * Math.max(0, close) / threshold;
+    if (!j) return 0.5 + 0.5 * close;
+    for (let i = 0; i < size; i++) x[i] = (window[i]! - mean![i]!) / std![i]!;
+    h.fill(0);
+    for (let i = 0; i < size; i++) { const v = x[i]!; if (!v) continue; const row = i * hidden; for (let k = 0; k < hidden; k++) h[k] = h[k]! + v * w1![row + k]!; }
+    let z = j.b2;
+    for (let k = 0; k < hidden; k++) z += Math.max(0, h[k]! + b1![k]!) * w2![k]!;
+    const p = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
+    return p >= j.threshold ? 0.5 + 0.5 * p : 0.49 * p;
   };
 }
 
@@ -158,7 +240,11 @@ export class WakeListener {
   private hold = false;
   private pipeline?: WakePipeline;
   private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode;
-  private busy = false; private queue: Float32Array[] = []; private last = 0;
+  private busy = false; private queue: Float32Array[] = []; private last = 0; private chunks = 0;
+  /** The 16 embeddings that woke Nexus: a voice word learns from them, as the word or as a false wake. */
+  heard?: Float32Array;
+  /** Called with an ordinary sound of the home about every 12 s of listening, when set: a voice word learns from them. */
+  onAmbient?: (window: Float32Array) => void;
   constructor(private models: WakeModels, private onWake: () => void, private threshold = THRESHOLD) {}
   get running() { return !!this.context && this.context.state === 'running'; }
   get paused() { return this.hold; }
@@ -205,8 +291,18 @@ export class WakeListener {
       while (this.queue.length) {
         const samples = this.queue.shift()!;
         const score = await pipeline.push(samples);
+        this.chunks += samples.length / CHUNK;
+        // Sounds teach more than silence: one is taken when something is heard, or after a long quiet anyway.
+        let energy = 0;
+        for (let i = 0; i < samples.length; i++) energy += samples[i]! * samples[i]!;
+        const loud = Math.sqrt(energy / Math.max(1, samples.length)) > 300;
+        if (this.onAmbient && (loud ? this.chunks >= AMBIENT_EVERY : this.chunks >= AMBIENT_EVERY * 4) && score !== undefined && score < this.threshold / 2 && !this.paused) {
+          this.chunks = 0;
+          this.onAmbient(pipeline.lastWindow());
+        }
         if (score !== undefined && score >= this.threshold && !this.paused && performance.now() - this.last > DEBOUNCE_MS) {
           this.last = performance.now();
+          this.heard = pipeline.lastWindow();
           this.queue = [];
           pipeline.reset();
           this.onWake();
@@ -223,22 +319,23 @@ export class WakeListener {
 }
 
 // ——— The words this home can use ———
-export interface WakeWord { id: string; name: string; custom?: boolean }
+export interface WakeWord { id: string; name: string; custom?: boolean; kind?: 'model' | 'voice' }
 /** Ready to use: openWakeWord's « Hey Jarvis ». Words trained for this home (« Nexus ») are added in the integration. */
 export const BUILT_IN: WakeWord[] = [{ id: 'hey_jarvis', name: 'Hey Jarvis' }];
 
 export async function wakeWords(hass: Hass): Promise<WakeWord[]> {
   try {
-    const answer = await hass.callWS<{ words?: { id: string; name: string }[] }>({ type: 'mp_glass/assistant/wake_words' });
+    const answer = await hass.callWS<{ words?: { id: string; name: string; kind?: 'model' | 'voice' }[] }>({ type: 'mp_glass/assistant/wake_words' });
     return [...(answer.words ?? []).map(w => ({ ...w, custom: true })), ...BUILT_IN];
   } catch { return BUILT_IN; }
 }
 
 /** The model of a word: shipped with the integration, or trained for this home and kept by Home Assistant. */
-export async function wakeModel(hass: Hass, id: string): Promise<string | Uint8Array> {
+export async function wakeModel(hass: Hass, id: string): Promise<string | Uint8Array | VoiceModel> {
   if (BUILT_IN.some(w => w.id === id)) return wakeAsset(`${id}.onnx`);
-  const answer = await hass.callWS<{ model: string }>({ type: 'mp_glass/assistant/wake_word', word: id });
-  return Uint8Array.from(atob(answer.model), c => c.charCodeAt(0));
+  const answer = await hass.callWS<{ model?: string; voice?: VoiceModel }>({ type: 'mp_glass/assistant/wake_word', word: id });
+  if (answer.voice) return answer.voice;
+  return Uint8Array.from(atob(answer.model ?? ''), c => c.charCodeAt(0));
 }
 
 export async function addWakeWord(hass: Hass, file: File): Promise<WakeWord> {
@@ -252,4 +349,17 @@ export async function addWakeWord(hass: Hass, file: File): Promise<WakeWord> {
 
 export async function removeWakeWord(hass: Hass, id: string) {
   await hass.callWS({ type: 'mp_glass/assistant/wake_word/remove', word: id });
+}
+
+/** Teaches a voice word what a screen heard: ordinary sounds, the word that woke Nexus for a request, a cancelled false wake. */
+export async function learnWake(hass: Hass, id: string, lesson: { ambient?: Float32Array[]; confirmed?: Float32Array[]; cancelled?: Float32Array[] }) {
+  const pack = (list?: Float32Array[]) => {
+    if (!list?.length) return undefined;
+    const all = new Float32Array(list.length * 16 * FEATURES);
+    list.forEach((w, i) => all.set(w, i * 16 * FEATURES));
+    return base64Floats(all);
+  };
+  const message: Record<string, unknown> = { type: 'mp_glass/assistant/wake_word/learn', word: id };
+  for (const key of ['ambient', 'confirmed', 'cancelled'] as const) { const packed = pack(lesson[key]); if (packed) message[key] = packed; }
+  await hass.callWS(message);
 }

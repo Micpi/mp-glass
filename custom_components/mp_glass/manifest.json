@@ -10,6 +10,7 @@
   ],
   "config_flow": true,
   "dependencies": [
+    "conversation",
     "frontend",
     "http",
     "panel_custom",
@@ -22,5 +23,5 @@
   "requirements": [
     "jsonschema==4.25.1"
   ],
-  "version": "0.33.1"
+  "version": "0.34.0"
 }

@@ -22,6 +22,8 @@ from .wallpaper import COMMANDS as WALLPAPER_COMMANDS, VIEWS as WALLPAPER_VIEWS,
 from .scenes import KEY as SCENES_KEY, async_setup_scenes
 
 _LOGGER = logging.getLogger(__name__)
+# Nexus scenes, and Nexus the assistant.
+PLATFORMS = [Platform.SCENE, Platform.CONVERSATION]
 
 
 async def async_setup_entry(hass, entry):
@@ -63,7 +65,7 @@ async def async_setup_entry(hass, entry):
         hass.data["mp_glass_ws_registered"] = True
     await async_setup_guests(hass)
     await async_setup_scenes(hass)
-    await hass.config_entries.async_forward_entry_setups(entry, [Platform.SCENE])
+    await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     async_setup_kiosk(hass)
     await async_register_studio(hass, entry.options.get("show_settings", True))
     entry.async_on_unload(entry.add_update_listener(async_reload))
@@ -75,7 +77,7 @@ async def async_reload(hass, entry):
 
 
 async def async_unload_entry(hass, entry):
-    if not await hass.config_entries.async_unload_platforms(entry, [Platform.SCENE]):
+    if not await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         return False
     hass.data.pop(SCENES_KEY, None)
     runtime = hass.data.pop(SPATIAL_KEY, None)

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { HAState } from '../shared/models';
-import { fold, houseAlerts, people, unseen, type NexusPrefs } from '../frontend/v2/assist';
+import { askAssist, fold, houseAlerts, nexusAgent, people, unseen, type NexusPrefs } from '../frontend/v2/assist';
+import type { Hass } from '../frontend/ha/client';
 
 const s = (entity_id: string, state: string, attributes: Record<string, unknown> = {}, last_changed = '2026-10-24T20:00:00Z'): HAState => ({ entity_id, state, attributes, last_changed });
 const states = (...list: HAState[]) => Object.fromEntries(list.map(x => [x.entity_id, x]));
@@ -37,5 +38,15 @@ describe('MP Nexus v2 who is home, alerts and search', () => {
   });
   it('finds words without accents nor case', () => {
     expect(fold('Entrée Église')).toBe('entree eglise');
+  });
+  it('asks Nexus when MP Nexus installed it, keeps the conversation and reads the devices it acted on', async () => {
+    const entities = { 'conversation.home_assistant': { entity_id: 'conversation.home_assistant', platform: 'conversation' }, 'conversation.mp_nexus_nexus': { entity_id: 'conversation.mp_nexus_nexus', platform: 'mp_glass' } };
+    expect(nexusAgent({ entities })).toBe('conversation.mp_nexus_nexus');
+    expect(nexusAgent({ entities: { 'conversation.home_assistant': entities['conversation.home_assistant'] } })).toBeUndefined();
+    const sent: Record<string, unknown>[] = [];
+    const hass = { entities, callWS: async (msg: Record<string, unknown>) => { sent.push(msg); return { conversation_id: 'c1', response: { response_type: 'action_done', speech: { plain: { speech: 'Mode cinéma prêt.' } }, data: { success: [{ type: 'area', id: 'salon' }, { type: 'entity', id: 'light.salon' }, { type: 'entity', id: 'light.salon' }, { type: 'entity', id: 'cover.salon' }] } } }; } } as unknown as Hass;
+    const reply = await askAssist(hass, 'Mode cinéma', 'fr', 'c0');
+    expect(sent[0]).toEqual({ type: 'conversation/process', text: 'Mode cinéma', language: 'fr', agent_id: 'conversation.mp_nexus_nexus', conversation_id: 'c0' });
+    expect(reply).toEqual({ text: 'Mode cinéma prêt.', conversationId: 'c1', touched: ['light.salon', 'cover.salon'], failed: false });
   });
 });

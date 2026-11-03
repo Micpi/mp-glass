@@ -21,7 +21,7 @@ import { flag } from '../flags';
 import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
-import { askAssist, fold, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
+import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
@@ -235,7 +235,9 @@ export class MPNexusView extends LitElement {
   private prefs: NexusPrefs = readPrefs();
   private overlay: ''|'search'|'alerts'|'invite' = '';
   private query = '';
-  private answer?: { text: string };
+  private answer?: { text: string; touched?: string[] };
+  /** The conversation going on with the assistant, so « et dans la cuisine ? » follows the last request. */
+  private conversationId?: string;
   private listening = false;
   private draft: Routine = newRoutine();
   private routineState: ''|'saving'|'saved'|'error' = '';
@@ -1533,7 +1535,7 @@ export class MPNexusView extends LitElement {
       <button class="ib bell" aria-label=${bell} title=${bell} @click=${() => this.openOverlay('alerts')}>${mpIcon('bell', 17)}${count ? html`<span class="bdg">${count > 9 ? '9+' : count}</span>` : nothing}</button>`;
   }
   private openOverlay(which: 'search'|'alerts') {
-    this.overlay = which; this.query = ''; this.answer = undefined;
+    this.overlay = which; this.query = ''; this.answer = undefined; this.conversationId = undefined;
     if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
   }
   private closeOverlay = () => { this.overlay = ''; this.invitation = undefined; this.stopListening(); };
@@ -1544,31 +1546,34 @@ export class MPNexusView extends LitElement {
     const devices = q ? Object.values(states).filter(s => available(s) && !this.setAside.has(s.entity_id) && ['light', 'switch', 'cover', 'climate', 'media_player', 'fan', 'lock', 'scene', 'script', 'sensor', 'binary_sensor', 'input_boolean', 'vacuum'].includes(domainOf(s.entity_id))
       && fold(String(s.attributes.friendly_name ?? s.entity_id)).includes(q)).sort((a, b) => Number(SWITCHED.includes(domainOf(b.entity_id))) - Number(SWITCHED.includes(domainOf(a.entity_id)))).slice(0, 10) : [];
     const offRooms = rooms.filter(p => this.lightsIn(roomEntityIds(p.room)).some(id => this.on(id)));
-    const voice = !!speechRecognition();
+    const voice = !!speechRecognition(), nexus = !!nexusAgent(this.hass);
     const roomRow = (p: PlacedRoom) => { const lit = this.lightsIn(roomEntityIds(p.room)).filter(id => this.on(id)).length, t = this.temperature(p.room); return html`<button class="rw" @click=${() => { this.closeOverlay(); const path = this.areaPath(p.room.areaId); if (path) this.go(path); else this.room = p.room.id; }}><span class="ib">${mpIcon(roomIcon(p.room.name), 16)}</span><div><b>${p.room.name}</b><small>${[lit ? tr('{n} lumière|{n} lumières', { n: lit }) : '', t ? `${this.format(t.value)}°` : '', p.floor.name].filter(Boolean).join(' · ')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`; };
     const deviceRow = (s: HAState) => { const id = s.entity_id, switched = SWITCHED.includes(domainOf(id)), run = !!RUN_SERVICES[domainOf(id)]; return html`<div class="rw"><span class="ib">${mpIcon(entityIcon(id, s), 16)}</span><button class="txt" @click=${() => { this.detail = id; }}><b>${this.name(id)}</b><small>${[stateLabel(id, s), this.roomOfEntity(id) ?? ''].filter(Boolean).join(' · ')}</small></button>
       <span class="end">${switched ? html`<button role="switch" aria-checked=${this.on(id)} aria-label=${this.name(id)} @click=${() => this.act(id)}><span class=${`tgl ${this.on(id) ? '' : 'off'}`}></span></button>` : run ? html`<button class="pill" @click=${() => this.act(id)}>${mpIcon('play', 13)}${tr('Lancer')}</button>` : mpIcon('arrow', 16)}</span></div>`; };
     return html`<div class="hd srch">
         <label class="inp">${mpIcon('search', 17)}<input type="search" .value=${this.query} placeholder=${tr('Une pièce, un appareil, une question…')} aria-label=${tr('Rechercher')} @input=${(e: Event) => { this.query = (e.target as HTMLInputElement).value; this.answer = undefined; }} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && this.query.trim()) void this.ask(this.query.trim()); }}></label>
-        <button class=${`ib micb ${this.listening ? 'on' : ''}`} aria-label=${tr('Parler à Assist')} title=${voice ? tr('Parler à Assist') : tr('La dictée n’est pas disponible dans ce navigateur.')} ?disabled=${!voice} @click=${() => this.listening ? this.stopListening() : this.listen()}>${mpIcon('mic', 18)}</button>
+        <button class=${`ib micb ${this.listening ? 'on' : ''}`} aria-label=${nexus ? tr('Parler à Nexus') : tr('Parler à Assist')} title=${voice ? (nexus ? tr('Parler à Nexus') : tr('Parler à Assist')) : tr('La dictée n’est pas disponible dans ce navigateur.')} ?disabled=${!voice} @click=${() => this.listening ? this.stopListening() : this.listen()}>${mpIcon('mic', 18)}</button>
         <button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>
       </div>
       <div class="body">
         ${this.listening ? html`<div class="voice"><div class="mic">${mpIcon('mic', 30)}</div><div class="muted">${tr('J’écoute…')}</div><div class="serif">${this.query}</div></div>` : nothing}
-        ${this.answer ? html`<div class="live glass answer"><span class="ib">${mpIcon('sparkle', 16)}</span><div><small>${tr('Assist · Home Assistant')}</small><b>${this.answer.text}</b></div></div>` : nothing}
+        ${this.answer ? html`<div class="live glass answer"><span class="ib">${mpIcon('sparkle', 16)}</span><div><small>${nexus ? 'Nexus' : tr('Assist · Home Assistant')}</small><b>${this.answer.text}</b>${this.answer.touched?.length ? html`<div class="houses touched">${this.answer.touched.slice(0, 8).map(id => html`<button class="pill" @click=${() => { this.detail = id; }}>${mpIcon(entityIcon(id, states[id]), 13)}${[this.name(id), this.roomOfEntity(id)].filter(Boolean).join(' · ')}</button>`)}</div>` : nothing}</div></div>` : nothing}
         ${rooms.length ? html`<div class="rlab">${tr('Pièces')}</div><div class="sg">${rooms.map(roomRow)}</div>` : nothing}
         ${devices.length ? html`<div class="rlab">${tr('Appareils')}</div><div class="sg">${devices.map(deviceRow)}</div>` : nothing}
         ${offRooms.length ? html`<div class="rlab">${tr('Actions')}</div><div class="sg">${offRooms.map(p => html`<button class="rw" @click=${() => this.allOff(roomEntityIds(p.room))}><span class="ib">${mpIcon('power', 16)}</span><div><b>${tr('Éteindre : {room}', { room: p.room.name })}</b><small>${tr('Toutes les lumières de la pièce')}</small></div></button>`)}</div>` : nothing}
-        ${q ? html`<button class="rw ask" @click=${() => void this.ask(this.query.trim())}><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Demander à Assist : « {text} »', { text: this.query.trim() })}</b><small>${tr('Entrée pour envoyer')}</small></div></button>`
-          : html`<p class="muted" style="margin:0">${tr('Cherchez une pièce ou un appareil, ou parlez à Assist :')}</p><div class="houses">${[tr('Éteins tout au salon'), tr('Quelle température fait-il ?'), tr('Mets de la musique dans la cuisine')].map(text => html`<button class="pill" @click=${() => { this.query = text; void this.ask(text); }}>« ${text} »</button>`)}</div>`}
+        ${q ? html`<button class="rw ask" @click=${() => void this.ask(this.query.trim())}><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${nexus ? tr('Demander à Nexus : « {text} »', { text: this.query.trim() }) : tr('Demander à Assist : « {text} »', { text: this.query.trim() })}</b><small>${tr('Entrée pour envoyer')}</small></div></button>`
+          : html`<p class="muted" style="margin:0">${nexus ? tr('Cherchez une pièce ou un appareil, ou parlez à Nexus :') : tr('Cherchez une pièce ou un appareil, ou parlez à Assist :')}</p><div class="houses">${[tr('Éteins tout au salon'), tr('Quelle température fait-il ?'), tr('Mets de la musique dans la cuisine')].map(text => html`<button class="pill" @click=${() => { this.query = text; void this.ask(text); }}>« ${text} »</button>`)}</div>`}
       </div>`;
   }
   private async ask(text: string) {
     const hass = this.hass;
     if (!hass) return;
     this.answer = { text: tr('Je réfléchis…') };
-    try { this.answer = { text: await askAssist(hass, text, language()) || tr('C’est fait.') }; }
-    catch { this.answer = { text: tr('Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.') }; }
+    try {
+      const reply = await askAssist(hass, text, language(), this.conversationId);
+      this.conversationId = reply.conversationId;
+      this.answer = { text: reply.text || (reply.failed ? tr('Je n’ai pas compris.') : tr('C’est fait.')), touched: reply.touched };
+    } catch { this.answer = { text: nexusAgent(hass) ? tr('Nexus ne répond pas. Vérifiez l’intégration MP Nexus dans Home Assistant.') : tr('Assist ne répond pas. Vérifiez qu’il est activé dans Home Assistant.') }; }
   }
   private recognition?: { stop(): void };
   private listen() {

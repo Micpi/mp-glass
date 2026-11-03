@@ -279,6 +279,7 @@ export const nexusStyles = css`
   .art.tv,.cover.tv{display:grid;place-items:center;background:radial-gradient(circle at 50% 115%,rgba(110,150,255,.6),transparent 62%),radial-gradient(circle at 20% 15%,rgba(127,208,255,.35),transparent 45%),linear-gradient(160deg,#1c2a52,#0a1024)}
   .tv-glyph{filter:drop-shadow(0 0 8px rgba(110,170,255,.55))}.cover.tv .tv-glyph{width:48%;height:auto}
   .answer b{white-space:normal;font-size:14px;line-height:1.35}
+  .answer .touched{margin-top:8px;flex-wrap:wrap}
   .rw .txt{text-align:left;min-width:0;flex:1}
   .rw.ask b{white-space:normal}
   .al{display:flex;gap:10px;align-items:center;padding:10px;border-radius:calc(var(--mp-radius,22px) * 16 / 22);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 67.74%),100%),transparent)}

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.34.0 — Nexus, l’assistant de MP Nexus (phase 1 : le cerveau)
+
+- **Nouvel assistant « Nexus »** installé par l’intégration comme agent de conversation Home Assistant. Il répond dans la recherche de MP Nexus, mais aussi partout où Home Assistant propose un assistant (application, satellites vocaux, pipelines Assist) : il suffit de choisir « Nexus » comme agent de conversation.
+- **D’abord à la maison** : les ordres simples que Home Assistant comprend seul (« allume le salon », « volet de la chambre à 50 % ») sont traités localement, sans IA, et rien ne quitte la maison.
+- **Puis l’IA, au choix** : pour le reste (« mode cinéma », « qui est à la maison ? », « il fait froid dans le bureau »), Nexus interroge un modèle de langage, Groq par défaut (offre gratuite, clé à créer sur console.groq.com). Le modèle agit avec les outils Assist de Home Assistant, uniquement sur les appareils exposés à Assist, et avec les droits de la personne qui parle. Nexus sait aussi qui est à la maison.
+- **Suivi de conversation** : « et dans la cuisine ? » reprend la demande précédente tant que la recherche reste ouverte.
+- **Ce que Nexus a touché** s’affiche sous sa réponse : un bouton par appareil, avec sa pièce, qui ouvre sa fiche.
+- **Réglages** dans les options de l’intégration MP Nexus : clé IA, modèle (openai/gpt-oss-120b par défaut, le modèle de production de Groq qui sait utiliser des outils ; openai/gpt-oss-20b est plus rapide) et adresse du service (tout service compatible OpenAI). Sans clé, les ordres simples marchent toujours et Nexus explique quoi faire pour le reste. La clé n’apparaît jamais dans les messages d’erreur.
+- Avant de déverrouiller une serrure, désarmer une alarme ou ouvrir un portail, Nexus demande une confirmation. Home Assistant n’expose d’ailleurs pas ces appareils à Assist par défaut.
+
 ## 0.33.1 — L’apparence et les couleurs du plan s’appliquent partout sans recharger
 
 - **Correction** : un changement d’apparence ou de couleurs du plan fait dans Plus n’apparaissait sur l’Accueil (et les autres pages) qu’après avoir rechargé la page. Home Assistant garde chaque page ouverte en mémoire ; chacune reçoit maintenant aussitôt le nouveau style, y compris une page revenue à l’écran plus tard et un autre onglet du même appareil. Après un enregistrement pour toute la maison, les pages reprennent le style enregistré, et non plus celui du chargement.

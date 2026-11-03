@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.35.1 — Nexus dit ce qui ne va pas, et suit Home Assistant 2026.10
+
+- **Correction** : sur les Home Assistant récents (2026.10 et au-delà), Nexus répondait « Nexus ne répond pas » dès qu'une demande passait par l'IA. Home Assistant a changé la façon dont un outil rend son résultat et dont ses paramètres sont décrits ; MP Nexus accepte maintenant les deux formes, l'ancienne comme la nouvelle.
+- **Le vrai message s'affiche** : quand quelque chose échoue (clé refusée, quota atteint, service injoignable), Nexus l'écrit à l'écran au lieu du message générique. Toute autre erreur est nommée, avec le détail dans le journal de Home Assistant.
+
 ## 0.35.0 — Nexus parle : l’orbe vocale (phase 2)
 
 - **Orbe Nexus** dans l’en-tête de chaque page : on la touche, on parle, Nexus agit puis répond à voix haute. Pas besoin d’appuyer pour finir : il s’arrête seul après une courte pause (20 secondes au plus), ou dès qu’on retouche l’orbe.

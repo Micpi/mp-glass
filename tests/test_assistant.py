@@ -88,6 +88,16 @@ class AssistantCoreTests(unittest.TestCase):
         with self.assertRaises(core.AssistantError):
             core.read_transcript(b"oops")
 
+    def test_tool_results_from_either_home_assistant_shape(self):
+        class New:
+            class result:
+                data = {"ok": True}
+        class Old:
+            tool_result = {"ok": False}
+        self.assertEqual(core.tool_result_data(New()), {"ok": True})
+        self.assertEqual(core.tool_result_data(Old()), {"ok": False})
+        self.assertIsNone(core.tool_result_data(object()))
+
     def test_household(self):
         self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
 

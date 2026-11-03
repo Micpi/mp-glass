@@ -15,7 +15,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
 from .assistant_core import (
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, base_url, build_request, clean_key, household,
-    provider_error, read_answer, to_messages, tool_spec, touched_entities,
+    provider_error, read_answer, to_messages, tool_result_data, tool_spec, touched_entities,
 )
 from .const import DOMAIN
 
@@ -30,11 +30,16 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class HouseholdTool(llm.Tool):
     name = "NexusHousehold"
     description = "Qui habite la maison et qui est à la maison en ce moment."
+    # Home Assistant 2026.10+ records which integration provides each tool.
+    integration = DOMAIN
 
     async def async_call(self, hass, tool_input, llm_context):
         persons = [{"name": str(s.attributes.get("friendly_name") or s.entity_id[7:]), "state": s.state}
                    for s in hass.states.async_all("person") if s.state not in ("unavailable", "unknown")]
-        return household(persons)
+        data = household(persons)
+        # Since 2026.10 a tool returns a ToolResult; before, the data itself.
+        result = getattr(llm, "ToolResult", None)
+        return result(data=data) if result else data
 
 
 class NexusAPI(llm.API):
@@ -51,7 +56,7 @@ def _content(item):
     if isinstance(item, conversation.AssistantContent):
         return {"role": "assistant", "content": item.content, "tool_calls": [{"id": c.id, "name": c.tool_name, "args": c.tool_args} for c in item.tool_calls or ()]}
     if isinstance(item, conversation.ToolResultContent):
-        return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": item.tool_result}
+        return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": tool_result_data(item)}
     return {"role": item.role, "content": item.content}
 
 
@@ -77,6 +82,13 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         await super().async_will_remove_from_hass()
 
     async def _async_handle_message(self, user_input, chat_log):
+        try:
+            return await self._answer(user_input, chat_log)
+        except Exception as err:  # noqa: BLE001 - whatever breaks, the household hears why instead of silence.
+            _LOGGER.exception("Nexus assistant failed")
+            return self._error(user_input, chat_log, f"Nexus a rencontré une erreur ({type(err).__name__}). Le détail est dans le journal de Home Assistant.")
+
+    async def _answer(self, user_input, chat_log):
         # 1. At home first: the sentences Home Assistant understands on its own never leave the house.
         local = await conversation.async_handle_intents(self.hass, user_input, chat_log)
         if local is not None:
@@ -99,7 +111,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             _LOGGER.warning("Nexus assistant: %s", err.detail)
             return self._error(user_input, chat_log, err.detail)
         result = conversation.async_get_result_from_chat_log(user_input, chat_log)
-        touched = touched_entities([c.tool_result for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
+        touched = touched_entities([tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
         if touched and result.response.response_type != intent.IntentResponseType.ERROR:
             result.response.async_set_results([intent.IntentResponseTarget(name=_name(self.hass, e), type=intent.IntentResponseTargetType.ENTITY, id=e) for e in touched])
         return result
@@ -139,9 +151,16 @@ def _name(hass, entity_id):
 
 
 def _schema(tool, serializer):
-    from voluptuous_openapi import convert  # Shipped with Home Assistant.
+    """The tool's parameters as JSON schema: probatio since Home Assistant 2026.10, voluptuous before."""
     try:
+        try:
+            import probatio  # noqa: PLC0415
+        except ImportError:
+            probatio = None
+        if probatio is not None and isinstance(tool.parameters, probatio.Schema):
+            return probatio.to_openapi(tool.parameters, custom_serializer=serializer, openapi_version="3.1.0")
+        from voluptuous_openapi import convert  # noqa: PLC0415 - shipped with Home Assistant.
         return convert(tool.parameters, custom_serializer=serializer)
-    except (ValueError, TypeError):  # A tool whose parameters cannot be described is offered without them.
-        _LOGGER.debug("Nexus assistant: no schema for %s", tool.name)
+    except Exception:  # noqa: BLE001 - a tool whose parameters cannot be described is offered without them.
+        _LOGGER.warning("Nexus assistant: no schema for %s", tool.name, exc_info=True)
         return None

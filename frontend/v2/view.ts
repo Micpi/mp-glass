@@ -21,6 +21,7 @@ import { flag } from '../flags';
 import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
+import { canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
@@ -143,7 +144,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -233,7 +234,18 @@ export class MPNexusView extends LitElement {
   private sub?: SubPanel;
   private scenesOpen = false;
   private prefs: NexusPrefs = readPrefs();
-  private overlay: ''|'search'|'alerts'|'invite' = '';
+  private overlay: ''|'search'|'alerts'|'invite'|'voice' = '';
+  /** The voice of Nexus: what it is doing, how loud it hears, what it heard, and how it speaks on this screen. */
+  private voiceState: 'idle'|'listening'|'thinking'|'speaking' = 'idle';
+  private voiceLevel = 0;
+  private voiceHeard = '';
+  private voicePrefs: VoicePrefs = readVoicePrefs();
+  private voiceEngines?: { id: string; name: string }[];
+  private recorder?: Recorder;
+  private speech?: Speech;
+  private transcription?: boolean;
+  /** Each turn of the voice gets a number: an answer that comes back after the voice was closed or restarted is dropped. */
+  private voiceTurn = 0;
   private query = '';
   private answer?: { text: string; touched?: string[] };
   /** The conversation going on with the assistant, so « et dans la cuisine ? » follows the last request. */
@@ -334,6 +346,7 @@ export class MPNexusView extends LitElement {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.endVoice();
     if (this.header) releaseHeader(this.header, this);
     this.header = undefined;
     this.removeEventListener('hass-more-info', this.interceptMoreInfo);
@@ -1531,14 +1544,15 @@ export class MPNexusView extends LitElement {
   private headerActions() {
     const count = unseen(this.alerts, this.prefs).length;
     const bell = count ? tr('Alertes : {n} à voir', { n: count }) : tr('Alertes');
-    return html`<button class="ib" aria-label=${tr('Rechercher')} title=${tr('Rechercher')} @click=${() => this.openOverlay('search')}>${mpIcon('search', 17)}</button>
+    return html`<button class="ib orbb" aria-label=${tr('Parler à Nexus')} title=${tr('Parler à Nexus')} @click=${() => this.openVoice()}><i class="orb"></i></button>
+      <button class="ib" aria-label=${tr('Rechercher')} title=${tr('Rechercher')} @click=${() => this.openOverlay('search')}>${mpIcon('search', 17)}</button>
       <button class="ib bell" aria-label=${bell} title=${bell} @click=${() => this.openOverlay('alerts')}>${mpIcon('bell', 17)}${count ? html`<span class="bdg">${count > 9 ? '9+' : count}</span>` : nothing}</button>`;
   }
   private openOverlay(which: 'search'|'alerts') {
     this.overlay = which; this.query = ''; this.answer = undefined; this.conversationId = undefined;
     if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
   }
-  private closeOverlay = () => { this.overlay = ''; this.invitation = undefined; this.stopListening(); };
+  private closeOverlay = () => { this.overlay = ''; this.invitation = undefined; this.stopListening(); this.endVoice(); };
   /** The rooms, devices and actions whose name holds what was typed, then Assist for anything else. */
   private searchPanel() {
     const q = fold(this.query.trim()), states = this.hass?.states ?? {};
@@ -1552,7 +1566,7 @@ export class MPNexusView extends LitElement {
       <span class="end">${switched ? html`<button role="switch" aria-checked=${this.on(id)} aria-label=${this.name(id)} @click=${() => this.act(id)}><span class=${`tgl ${this.on(id) ? '' : 'off'}`}></span></button>` : run ? html`<button class="pill" @click=${() => this.act(id)}>${mpIcon('play', 13)}${tr('Lancer')}</button>` : mpIcon('arrow', 16)}</span></div>`; };
     return html`<div class="hd srch">
         <label class="inp">${mpIcon('search', 17)}<input type="search" .value=${this.query} placeholder=${tr('Une pièce, un appareil, une question…')} aria-label=${tr('Rechercher')} @input=${(e: Event) => { this.query = (e.target as HTMLInputElement).value; this.answer = undefined; }} @keydown=${(e: KeyboardEvent) => { if (e.key === 'Enter' && this.query.trim()) void this.ask(this.query.trim()); }}></label>
-        <button class=${`ib micb ${this.listening ? 'on' : ''}`} aria-label=${nexus ? tr('Parler à Nexus') : tr('Parler à Assist')} title=${voice ? (nexus ? tr('Parler à Nexus') : tr('Parler à Assist')) : tr('La dictée n’est pas disponible dans ce navigateur.')} ?disabled=${!voice} @click=${() => this.listening ? this.stopListening() : this.listen()}>${mpIcon('mic', 18)}</button>
+        <button class=${`ib micb ${this.listening ? 'on' : ''}`} aria-label=${nexus ? tr('Parler à Nexus') : tr('Parler à Assist')} title=${voice || canRecord() ? (nexus ? tr('Parler à Nexus') : tr('Parler à Assist')) : tr('La dictée n’est pas disponible dans ce navigateur.')} ?disabled=${!voice && !canRecord()} @click=${() => canRecord() ? this.openVoice() : this.listening ? this.stopListening() : this.listen()}>${mpIcon('mic', 18)}</button>
         <button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button>
       </div>
       <div class="body">
@@ -1612,7 +1626,94 @@ export class MPNexusView extends LitElement {
       </div>`;
   }
   private overlayPanel() {
-    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.alertsPanel()}</section>`;
+    return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.alertsPanel()}</section>`;
+  }
+
+  // ——— The voice of Nexus: touch the orb, speak, hear the answer ———
+  private openVoice() {
+    unlockAudio();
+    this.overlay = 'voice'; this.query = ''; this.answer = undefined; this.conversationId = undefined; this.voiceHeard = '';
+    void this.talk();
+  }
+  /** Listens to one request, sends it, then speaks the answer. Touching the orb while Nexus speaks cuts it short and listens again. */
+  private async talk() {
+    const hass = this.hass;
+    if (!hass) return;
+    this.speech?.stop(); this.speech = undefined;
+    this.recorder?.cancel(); this.stopListening();
+    const turn = ++this.voiceTurn;
+    this.answer = undefined; this.voiceHeard = '';
+    this.transcription ??= await canTranscribe(hass);
+    if (turn !== this.voiceTurn) return;
+    let text = '';
+    if (this.transcription && canRecord()) {
+      const recorder = this.recorder = new Recorder(level => { this.voiceLevel = level; });
+      this.voiceState = 'listening';
+      try { await recorder.start(); }
+      catch { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; } return; }
+      const audio = await recorder.done;
+      if (turn !== this.voiceTurn) return;
+      this.recorder = undefined; this.voiceLevel = 0;
+      if (!audio) { this.voiceState = 'idle'; return; }
+      this.voiceState = 'thinking';
+      try { text = await transcribe(hass, audio, locale()); }
+      catch (error) { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: (error as { message?: string })?.message || tr('Je n’ai pas pu entendre la demande.') }; } return; }
+    } else if (speechRecognition()) {
+      text = await new Promise<string>(resolve => {
+        const recognition = new (speechRecognition()!)();
+        recognition.lang = locale(); recognition.interimResults = true;
+        let heard = '';
+        recognition.onresult = (event: SpeechEvent) => { heard = Array.from(event.results).map(r => r[0]?.transcript ?? '').join(' '); this.voiceHeard = heard; };
+        recognition.onend = () => resolve(heard); recognition.onerror = () => resolve(heard);
+        this.recognition = recognition; this.voiceState = 'listening';
+        recognition.start();
+      });
+      this.recognition = undefined;
+    } else {
+      this.voiceState = 'idle';
+      this.answer = { text: tr('Pour parler à Nexus ici, ajoutez une clé IA dans les options de l’intégration MP Nexus, ou écrivez votre demande dans la recherche.') };
+      return;
+    }
+    if (turn !== this.voiceTurn) return;
+    text = text.trim();
+    if (!text) { this.voiceState = 'idle'; return; }
+    this.voiceHeard = text; this.voiceState = 'thinking';
+    await this.ask(text);
+    // Read again: `ask` set it meanwhile, which the type checker cannot see.
+    const reply = this.answer as { text: string } | undefined;
+    if (turn !== this.voiceTurn || !reply) return;
+    await this.say(reply.text, turn);
+  }
+  private async say(text: string, turn: number) {
+    const hass = this.hass, prefs = this.voicePrefs;
+    if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; return; }
+    this.voiceState = 'speaking';
+    try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine) : speakOnDevice(text, locale()); }
+    catch { this.speech = speakOnDevice(text, locale()); }
+    await this.speech.done;
+    if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.speech = undefined; }
+  }
+  private orbTouched() {
+    if (this.voiceState === 'listening') { if (this.recorder) this.recorder.stop(); else this.recognition?.stop(); }
+    else if (this.voiceState !== 'thinking') { unlockAudio(); void this.talk(); }
+  }
+  private endVoice() {
+    this.voiceTurn++;
+    this.recorder?.cancel(); this.recorder = undefined;
+    this.speech?.stop(); this.speech = undefined;
+    this.voiceState = 'idle'; this.voiceLevel = 0;
+  }
+  private voicePanel() {
+    const state = this.voiceState, states = this.hass?.states ?? {};
+    const status = state === 'listening' ? tr('J’écoute…') : state === 'thinking' ? tr('Je réfléchis…') : state === 'speaking' ? tr('Touchez l’orbe pour m’interrompre') : tr('Touchez l’orbe pour parler');
+    return html`<div class="hd"><b class="vtitle">Nexus</b><button class="ib vclose" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${this.closeOverlay}>${mpIcon('close', 16)}</button></div>
+      <div class="body nexus-voice">
+        <button class=${`vorb ${state}`} style=${`--lvl:${this.voiceLevel.toFixed(2)}`} aria-label=${state === 'listening' ? tr('Envoyer') : tr('Parler à Nexus')} @click=${() => this.orbTouched()}><i></i><i></i><i></i></button>
+        <div class="muted" aria-live="polite">${status}</div>
+        ${this.voiceHeard ? html`<div class="heard">« ${this.voiceHeard} »</div>` : nothing}
+        ${this.answer && state !== 'thinking' ? html`<div class="said serif" aria-live="polite">${this.answer.text}</div>
+          ${this.answer.touched?.length ? html`<div class="houses touched">${this.answer.touched.slice(0, 8).map(id => html`<button class="pill" @click=${() => { this.detail = id; }}>${mpIcon(entityIcon(id, states[id]), 13)}${[this.name(id), this.roomOfEntity(id)].filter(Boolean).join(' · ')}</button>`)}</div>` : nothing}` : nothing}
+      </div>`;
   }
   /** The choices this screen keeps for itself: who is home, comfort mode, silent night. */
   private screenPrefs() {
@@ -1628,7 +1729,26 @@ export class MPNexusView extends LitElement {
       ${row('user', tr('Qui est à la maison'), this.prefs.people ? tr('Affiché sur l’accueil') : tr('Masqué'), this.prefs.people, () => this.setPrefs({ people: !this.prefs.people }))}
       ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
       ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
+      ${this.voiceChoice()}
     </div>`;
+  }
+
+  /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence. */
+  private voiceChoice() {
+    const hass = this.hass, prefs = this.voicePrefs;
+    if (hass && !this.voiceEngines) { this.voiceEngines = []; void speechEngines(hass, language()).then(list => { this.voiceEngines = list; }); }
+    const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
+    const change = (e: Event) => {
+      const v = (e.target as HTMLSelectElement).value;
+      this.voicePrefs = v.startsWith('ha:') ? { speak: 'ha', engine: v.slice(3) } : { speak: v === 'off' ? 'off' : 'device' };
+      writeVoicePrefs(this.voicePrefs);
+    };
+    return html`<label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Voix de Nexus')}</b><small>${tr('Comment Nexus répond à voix haute')}</small></div>
+      <select class="end" aria-label=${tr('Voix de Nexus')} @change=${change}>
+        <option value="device" .selected=${value === 'device'}>${tr('Voix de l’appareil')}</option>
+        ${(this.voiceEngines ?? []).map(e => html`<option value=${`ha:${e.id}`} .selected=${value === `ha:${e.id}`}>${e.name}</option>`)}
+        <option value="off" .selected=${value === 'off'}>${tr('Muette')}</option>
+      </select></label>`;
   }
 
   // ——— Plus: routines, energy, outdoor, access, history, backup, screensaver ———

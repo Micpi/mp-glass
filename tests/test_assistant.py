@@ -77,6 +77,17 @@ class AssistantCoreTests(unittest.TestCase):
         ]
         self.assertEqual(core.touched_entities(results), ["light.salon", "cover.salon"])
 
+    def test_voice_recordings_and_languages(self):
+        self.assertEqual(core.audio_name("audio/webm;codecs=opus"), "voice.webm")
+        self.assertEqual(core.audio_name("audio/mp4"), "voice.m4a")
+        self.assertIsNone(core.audio_name("video/mp4"))
+        self.assertEqual(core.stt_language("fr-FR"), "fr")
+        self.assertEqual(core.stt_language("en"), "en")
+        self.assertIsNone(core.stt_language(""))
+        self.assertEqual(core.read_transcript(b'{"text": "  Mode   cin\u00e9ma "}'), "Mode cinéma")
+        with self.assertRaises(core.AssistantError):
+            core.read_transcript(b"oops")
+
     def test_household(self):
         self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
 

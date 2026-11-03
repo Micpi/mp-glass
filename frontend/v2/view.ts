@@ -22,6 +22,7 @@ import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
+import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
@@ -60,7 +61,7 @@ interface PlacedRoom { room: SpatialRoom; floor: SpatialFloor }
 /** The four faces of the Multimédia page. */
 type MediaTab = 'play'|'foryou'|'rooms'|'remote';
 /** A panel opened over the page: a thermostat (or the list of them), or the covers of the house or of one room. */
-interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'|'users'|'guest'|'appearance'|'customize'; id: string }
+interface SubPanel { type: 'climate'|'covers'|'routines'|'routine'|'energy'|'outdoor'|'access'|'history'|'backup'|'saver'|'users'|'guest'|'appearance'|'customize'|'educate'; id: string }
 interface LogEntry { when: number; entity_id?: string; name?: string; message?: string; state?: string }
 const EXPORT_KEY = 'mp-nexus.last-export';
 const newGuest = (): GuestDraft => ({ name: '', kind: 'temporary', profile: 'read', local_only: true, until: defaultUntil() });
@@ -263,6 +264,9 @@ export class MPNexusView extends LitElement {
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
+  /** The lesson Nexus is giving, when the voice panel is one; lessons run longer than a command. */
+  private lesson = '';
+  private facts?: FactsListing; private factText = ''; private factNote = '';
   private handsFreeTurns = 0;
   /** A voice word learns on this screen: ordinary sounds, and what woke Nexus (kept until the request tells which it was). */
   private wakeAmbient: Float32Array[] = [];
@@ -1547,7 +1551,7 @@ export class MPNexusView extends LitElement {
   private subPanel() {
     const sub = this.sub!;
     const body = sub.type === 'climate' ? this.climatePanel(sub.id) : sub.type === 'covers' ? this.coversPanel(sub.id) : sub.type === 'routines' ? this.routinesPanel() : sub.type === 'routine' ? this.routinePanel()
-      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : sub.type === 'users' ? this.usersPanel() : sub.type === 'guest' ? this.guestPanel() : sub.type === 'appearance' ? this.appearancePanel() : sub.type === 'customize' ? this.customizePanel() : this.saverPanel();
+      : sub.type === 'energy' ? this.energyPanel() : sub.type === 'outdoor' ? this.outdoorPanel() : sub.type === 'access' ? this.accessPanel() : sub.type === 'history' ? this.historyPanel() : sub.type === 'backup' ? this.backupPanel() : sub.type === 'users' ? this.usersPanel() : sub.type === 'guest' ? this.guestPanel() : sub.type === 'appearance' ? this.appearancePanel() : sub.type === 'customize' ? this.customizePanel() : sub.type === 'educate' ? this.educatePanel() : this.saverPanel();
     return html`<section class=${`${this.layout === 'phone' ? 'main' : 'side'} panel card glass`}>${body}</section>`;
   }
 
@@ -1742,10 +1746,59 @@ export class MPNexusView extends LitElement {
     return html`<div class="scrim" @click=${this.closeOverlay}></div><section class=${`modal panel glass ${this.overlay}`} role="dialog" aria-modal="true" aria-label=${this.overlay === 'search' ? tr('Rechercher') : this.overlay === 'invite' ? tr('Invitation') : this.overlay === 'voice' ? 'Nexus' : this.overlay === 'enroll' ? tr('Créer un mot d’éveil') : this.overlay === 'timers' ? tr('Minuteurs et réveils') : this.overlay === 'ring' ? tr('Minuteur') : tr('Alertes')}>${this.overlay === 'search' ? this.searchPanel() : this.overlay === 'invite' ? this.invitePanel() : this.overlay === 'voice' ? this.voicePanel() : this.overlay === 'enroll' ? this.enrollPanel() : this.overlay === 'timers' ? this.timersPanel() : this.overlay === 'ring' ? this.ringPanel() : this.alertsPanel()}</section>`;
   }
 
+  // ——— Éduquer Nexus: guided lessons, and what the home taught it ———
+  private async refreshFacts() {
+    if (this.hass) { try { this.facts = await loadFacts(this.hass); } catch { /* An older integration has no lessons. */ } }
+    this.requestUpdate();
+  }
+  /** A lesson is a conversation Nexus leads: it asks, the person answers aloud, and each useful answer becomes a fact. */
+  private startLesson(id: string) {
+    const hass = this.hass;
+    if (!hass) return;
+    unlockAudio();
+    this.handsFree = true; this.handsFreeTurns = 0; this.lesson = id;
+    this.overlay = 'voice'; this.query = ''; this.answer = undefined; this.conversationId = undefined; this.voiceHeard = '';
+    const turn = ++this.voiceTurn;
+    this.voiceState = 'thinking';
+    void (async () => {
+      await this.ask(lessonMarker(id));
+      const reply = this.answer as { text: string } | undefined;
+      if (turn !== this.voiceTurn || !reply) { if (turn === this.voiceTurn) this.voiceState = 'idle'; return; }
+      await this.say(reply.text, turn);
+      void this.refreshFacts();
+    })();
+  }
+  private async teach() {
+    const hass = this.hass, text = this.factText.trim();
+    if (!hass || !text) return;
+    try { this.facts = await addFact(hass, text); this.factText = ''; this.factNote = ''; }
+    catch { this.factNote = tr('Nexus ne garde pas les mots de passe ni les codes.'); }
+    this.requestUpdate();
+  }
+  private educatePanel() {
+    const hass = this.hass, listing = this.facts;
+    const names: Record<string, string> = { maison: tr('Maison'), pieces: tr('Pièces'), appareils: tr('Appareils'), habitudes: tr('Habitudes'), ambiances: tr('Ambiances'), style: tr('Style'), autre: tr('Autre') };
+    return html`${this.head(tr('Éduquer Nexus'), tr('Nexus apprend ce que vous lui dites'), nothing, this.back)}
+      <div class="body">
+        <p class="note info">${tr('Chaque réponse utile devient un fait retenu pour la maison. Une leçon utilise quelques requêtes IA.')}</p>
+        <div class="rlab">${tr('Leçons')}</div>
+        <div class="sg">${(listing?.lessons ?? []).map(l => { const known = listing?.progress[l.id] ?? 0; return html`<button class="rw" @click=${() => this.startLesson(l.id)}><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr(l.title as Parameters<typeof tr>[0])}</b><small>${tr(l.blurb as Parameters<typeof tr>[0])}${known ? ` · ${tr('{n} fait|{n} faits', { n: known })}` : ''}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>`; })}</div>
+        <div class="rlab">${tr('Ajouter un fait')}</div>
+        <form class="sg" style="display:flex;gap:8px" @submit=${(e: Event) => { e.preventDefault(); void this.teach(); }}>
+          <input style="flex:1" maxlength="200" .value=${this.factText} placeholder=${tr('Ex. : le salon, c’est la pièce Living')} @input=${(e: Event) => { this.factText = (e.target as HTMLInputElement).value; }}>
+          <button class="btn primary" type="submit" ?disabled=${!hass}>${tr('Retenir')}</button>
+        </form>
+        ${this.factNote ? html`<p class="note warn">${this.factNote}</p>` : nothing}
+        <div class="rlab">${tr('Ce que Nexus sait')}</div>
+        ${listing?.facts.length ? TOPICS.map(topic => { const facts = factsOf(listing, topic); return facts.length ? html`<div class="rh"><b>${names[topic]}</b><small>${facts.length}</small></div><div class="sg">${facts.map(f => html`<div class="al"><div><b>${f.text}</b></div><button class="pill" @click=${() => { if (hass) void removeFact(hass, f).then(l => { this.facts = l; this.requestUpdate(); }).catch(() => undefined); }}>${tr('Oublier')}</button></div>`)}</div>` : nothing; })
+          : html`<p class="empty">${tr('Nexus ne sait encore rien de votre maison. Lancez une leçon : il vous posera quelques questions.')}</p>`}
+      </div>`;
+  }
+
   // ——— The voice of Nexus: touch the orb, speak, hear the answer ———
   private openVoice(handsFree = false) {
     if (!handsFree) unlockAudio();
-    this.handsFree = handsFree; this.handsFreeTurns = 0;
+    this.handsFree = handsFree; this.handsFreeTurns = 0; this.lesson = '';
     this.overlay = 'voice'; this.query = ''; this.answer = undefined; this.conversationId = undefined; this.voiceHeard = '';
     void this.talk();
   }
@@ -1823,7 +1876,7 @@ export class MPNexusView extends LitElement {
   /** Hands free, the conversation goes on: Nexus listens for a follow-up, and closes after a silence or a few requests. */
   private followUp() {
     if (!this.handsFree || this.overlay !== 'voice') return;
-    if (++this.handsFreeTurns < HANDS_FREE_TURNS) void this.talk();
+    if (++this.handsFreeTurns < (this.lesson ? LESSON_TURNS : HANDS_FREE_TURNS)) void this.talk();
     else this.closeOverlay();
   }
   private orbTouched() {
@@ -1834,7 +1887,7 @@ export class MPNexusView extends LitElement {
   private endVoice() {
     audioSession('auto');
     this.voiceTurn++;
-    this.handsFree = false;
+    this.handsFree = false; this.lesson = '';
     this.recorder?.cancel(); this.recorder = undefined;
     this.speech?.stop(); this.speech = undefined;
     this.voiceState = 'idle'; this.voiceLevel = 0;
@@ -2758,6 +2811,7 @@ export class MPNexusView extends LitElement {
         <div class="sg">
           ${open('appearance', 'palette', tr('Apparence'), this.lookSummary())}
           ${open('customize', 'tune', tr('Personnaliser'), this.customizeSummary())}
+          ${nexusAgent(this.hass) ? html`<button class="rw" aria-pressed=${this.sub?.type === 'educate'} @click=${() => { this.sub = { type: 'educate', id: '' }; void this.refreshFacts(); }}><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Éduquer Nexus')}</b><small>${this.facts ? tr('{n} fait appris|{n} faits appris', { n: this.facts.facts.length }) : tr('Leçons guidées pour mieux connaître la maison')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>` : nothing}
           ${open('saver', 'moon', tr('Écran de veille'), saver.enabled ? tr('{content} · après {n} min', { content: tr(saver.content === 'photos' ? 'Photos' : saver.content === 'plan' ? 'Plan 3D' : 'Horloge'), n: saver.delayMinutes }) : tr('Désactivé sur cet écran'))}
           ${admin ? open('users', 'user', tr('Utilisateurs'), tr('Invités par lien ou QR code')) : nothing}
           ${admin ? open('backup', 'layers', tr('Sauvegarde & partage'), this.lastExport ? tr('Dernière exportation : {when}', { when: new Intl.DateTimeFormat(locale(), { dateStyle: 'short' }).format(this.lastExport) }) : tr('Exporter, restaurer, partager')) : nothing}

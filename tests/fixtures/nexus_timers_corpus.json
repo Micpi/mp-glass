@@ -1,0 +1,750 @@
+[
+{
+"say": "mets un minuteur de 5 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 300,
+"label": ""
+}
+},
+{
+"say": "minuteur de 10 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 600,
+"label": ""
+}
+},
+{
+"say": "lance un minuteur de 15 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 900,
+"label": ""
+}
+},
+{
+"say": "Nexus, un minuteur de vingt minutes s'il te plaît",
+"expect": {
+"action": "start_timer",
+"seconds": 1200,
+"label": ""
+}
+},
+{
+"say": "minuteur de 45 secondes",
+"expect": {
+"action": "start_timer",
+"seconds": 45,
+"label": ""
+}
+},
+{
+"say": "mets un minuteur d'une heure",
+"expect": {
+"action": "start_timer",
+"seconds": 3600,
+"label": ""
+}
+},
+{
+"say": "minuteur de 2 heures",
+"expect": {
+"action": "start_timer",
+"seconds": 7200,
+"label": ""
+}
+},
+{
+"say": "minuteur d'une heure et demie",
+"expect": {
+"action": "start_timer",
+"seconds": 5400,
+"label": ""
+}
+},
+{
+"say": "minuteur de 1 heure 15",
+"expect": {
+"action": "start_timer",
+"seconds": 4500,
+"label": ""
+}
+},
+{
+"say": "un minuteur de trois minutes pour les œufs",
+"expect": {
+"action": "start_timer",
+"seconds": 180,
+"label": "œufs"
+}
+},
+{
+"say": "programme un minuteur de 12 minutes pour la pizza",
+"expect": {
+"action": "start_timer",
+"seconds": 720,
+"label": "pizza"
+}
+},
+{
+"say": "mets un minuteur de 25 minutes pour le linge",
+"expect": {
+"action": "start_timer",
+"seconds": 1500,
+"label": "linge"
+}
+},
+{
+"say": "démarre un minuteur de 30 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 1800,
+"label": ""
+}
+},
+{
+"say": "minuteur 8 min",
+"expect": {
+"action": "start_timer",
+"seconds": 480,
+"label": ""
+}
+},
+{
+"say": "règle un minuteur sur 7 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 420,
+"label": ""
+}
+},
+{
+"say": "fais un minuteur de dix minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 600,
+"label": ""
+}
+},
+{
+"say": "timer de 20 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 1200,
+"label": ""
+}
+},
+{
+"say": "mets un compte à rebours de 90 secondes",
+"expect": {
+"action": "start_timer",
+"seconds": 90,
+"label": ""
+}
+},
+{
+"say": "rappelle-moi dans 10 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 600,
+"label": ""
+}
+},
+{
+"say": "rappelle-moi dans une heure de sortir la voiture",
+"expect": {
+"action": "start_timer",
+"seconds": 3600,
+"label": "sortir la voiture"
+}
+},
+{
+"say": "prévenez-moi dans 5 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 300,
+"label": ""
+}
+},
+{
+"say": "réveille-moi dans 20 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 1200,
+"label": ""
+}
+},
+{
+"say": "réveille-moi dans une demi-heure",
+"expect": {
+"action": "start_timer",
+"seconds": 1800,
+"label": ""
+}
+},
+{
+"say": "minuteur d'un quart d'heure",
+"expect": {
+"action": "start_timer",
+"seconds": 900,
+"label": ""
+}
+},
+{
+"say": "set a timer for 10 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 600,
+"label": ""
+}
+},
+{
+"say": "set a timer for 1 hour",
+"expect": {
+"action": "start_timer",
+"seconds": 3600,
+"label": ""
+}
+},
+{
+"say": "start a 5 minute timer",
+"expect": {
+"action": "start_timer",
+"seconds": 300,
+"label": ""
+}
+},
+{
+"say": "timer for 30 seconds",
+"expect": {
+"action": "start_timer",
+"seconds": 30,
+"label": ""
+}
+},
+{
+"say": "set a timer for 2 hours and 15 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 8100,
+"label": ""
+}
+},
+{
+"say": "remind me in 15 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 900,
+"label": ""
+}
+},
+{
+"say": "réveille-moi à 7h",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 0,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveille-moi à 7h30",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveille-moi à 6 heures et demie",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "mets un réveil à 6h45",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 45,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveil à 8 heures",
+"expect": {
+"action": "set_alarm",
+"hour": 8,
+"minute": 0,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "règle une alarme à 5h30",
+"expect": {
+"action": "set_alarm",
+"hour": 5,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveil demain à 7h",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 0,
+"days": [],
+"tomorrow": true,
+"weekday": null
+}
+},
+{
+"say": "réveille-moi demain à 6 heures 15",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 15,
+"days": [],
+"tomorrow": true,
+"weekday": null
+}
+},
+{
+"say": "réveil à 7h en semaine",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 0,
+"days": [
+0,
+1,
+2,
+3,
+4
+],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveille-moi à 6h45 tous les jours",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 45,
+"days": [
+0,
+1,
+2,
+3,
+4,
+5,
+6
+],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveil à 9h le week-end",
+"expect": {
+"action": "set_alarm",
+"hour": 9,
+"minute": 0,
+"days": [
+5,
+6
+],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveil le samedi à 8h30",
+"expect": {
+"action": "set_alarm",
+"hour": 8,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": 5
+}
+},
+{
+"say": "alarme à 7h le lundi et le jeudi",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 0,
+"days": [
+0,
+3
+],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "réveil à 7 heures moins le quart",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 45,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "wake me up at 7:30",
+"expect": {
+"action": "set_alarm",
+"hour": 7,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "set an alarm for 6 am",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 0,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "wake me up at 7:30 pm",
+"expect": {
+"action": "set_alarm",
+"hour": 19,
+"minute": 30,
+"days": [],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "set an alarm for 6:45 on weekdays",
+"expect": {
+"action": "set_alarm",
+"hour": 6,
+"minute": 45,
+"days": [
+0,
+1,
+2,
+3,
+4
+],
+"tomorrow": false,
+"weekday": null
+}
+},
+{
+"say": "annule le minuteur",
+"expect": {
+"action": "cancel",
+"kind": "timer"
+}
+},
+{
+"say": "supprime le minuteur",
+"expect": {
+"action": "cancel",
+"kind": "timer"
+}
+},
+{
+"say": "arrête le minuteur",
+"expect": {
+"action": "cancel",
+"kind": "timer"
+}
+},
+{
+"say": "annule le réveil",
+"expect": {
+"action": "cancel",
+"kind": "alarm"
+}
+},
+{
+"say": "supprime l'alarme",
+"expect": {
+"action": "cancel",
+"kind": "alarm"
+}
+},
+{
+"say": "cancel the timer",
+"expect": {
+"action": "cancel",
+"kind": "timer"
+}
+},
+{
+"say": "cancel the alarm",
+"expect": {
+"action": "cancel",
+"kind": "alarm"
+}
+},
+{
+"say": "quels minuteurs j'ai",
+"expect": {
+"action": "list",
+"kind": "timer"
+}
+},
+{
+"say": "combien de temps il reste sur le minuteur",
+"expect": {
+"action": "list",
+"kind": "timer"
+}
+},
+{
+"say": "quels réveils sont programmés",
+"expect": {
+"action": "list",
+"kind": "alarm"
+}
+},
+{
+"say": "liste les minuteurs",
+"expect": {
+"action": "list",
+"kind": "timer"
+}
+},
+{
+"say": "how long is left on the timer",
+"expect": {
+"action": "list",
+"kind": "timer"
+}
+},
+{
+"say": "allume la cuisine",
+"expect": null
+},
+{
+"say": "éteins tout",
+"expect": null
+},
+{
+"say": "quelle heure est-il",
+"expect": null
+},
+{
+"say": "quelle est la température du salon",
+"expect": null
+},
+{
+"say": "mets de la musique",
+"expect": null
+},
+{
+"say": "mets la lumière à 50 %",
+"expect": null
+},
+{
+"say": "règle le thermostat à 20 degrés",
+"expect": null
+},
+{
+"say": "ferme les volets",
+"expect": null
+},
+{
+"say": "baisse le volume",
+"expect": null
+},
+{
+"say": "lance la scène cinéma",
+"expect": null
+},
+{
+"say": "désarme l'alarme",
+"expect": null
+},
+{
+"say": "active l'alarme de la maison",
+"expect": null
+},
+{
+"say": "l'alarme est-elle armée",
+"expect": null
+},
+{
+"say": "mets le réveil de la TV",
+"expect": null
+},
+{
+"say": "combien de lampes sont allumées",
+"expect": null
+},
+{
+"say": "minuteur",
+"expect": null
+},
+{
+"say": "un minuteur",
+"expect": null
+},
+{
+"say": "réveille-moi",
+"expect": null
+},
+{
+"say": "dans combien de temps le soleil se couche",
+"expect": null
+},
+{
+"say": "il est quelle heure à New York",
+"expect": null
+},
+{
+"say": "mets le chauffage à 19",
+"expect": null
+},
+{
+"say": "ouvre le garage",
+"expect": null
+},
+{
+"say": "tu peux répéter",
+"expect": null
+},
+{
+"say": "merci beaucoup",
+"expect": null
+},
+{
+"say": "bonne nuit",
+"expect": null
+},
+{
+"say": "qui est à la maison",
+"expect": null
+},
+{
+"say": "mets un film",
+"expect": null
+},
+{
+"say": "mets la playlist du matin",
+"expect": null
+},
+{
+"say": "passe en mode nuit",
+"expect": null
+},
+{
+"say": "coupe le son",
+"expect": null
+},
+{
+"say": "minuteur de 6 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 360,
+"label": ""
+}
+},
+{
+"say": "mets un minuteur de 35 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 2100,
+"label": ""
+}
+},
+{
+"say": "minuteur de 50 secondes",
+"expect": {
+"action": "start_timer",
+"seconds": 50,
+"label": ""
+}
+},
+{
+"say": "un minuteur de 4 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 240,
+"label": ""
+}
+},
+{
+"say": "lance un minuteur de 14 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 840,
+"label": ""
+}
+},
+{
+"say": "minuteur de 3 heures",
+"expect": {
+"action": "start_timer",
+"seconds": 10800,
+"label": ""
+}
+},
+{
+"say": "set a timer for 25 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 1500,
+"label": ""
+}
+},
+{
+"say": "start a timer for 40 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 2400,
+"label": ""
+}
+},
+{
+"say": "timer for 3 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 180,
+"label": ""
+}
+},
+{
+"say": "mets un minuteur de 9 minutes",
+"expect": {
+"action": "start_timer",
+"seconds": 540,
+"label": ""
+}
+}
+]

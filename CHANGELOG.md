@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.40.0 — Éduquer Nexus : des leçons pour qu'il connaisse vraiment votre maison
+
+- **Programme d'éducation** : Plus → **Éduquer Nexus**. Six leçons guidées (faire connaissance, les pièces et leurs surnoms, vos appareils au quotidien, vos habitudes, vos ambiances, comment Nexus vous parle). Nexus mène la conversation à voix haute : il pose une question à la fois, vous répondez, et chaque réponse utile devient un **fait retenu** (« le salon, c'est la pièce Living », « on se réveille à 6 h 45 en semaine »). La leçon dure jusqu'à 12 échanges, on peut l'arrêter en disant « stop ».
+- **Il s'en sert ensuite** : les faits appris accompagnent chaque demande à l'IA, donc ses réponses et ses actions suivent vos mots et vos habitudes. Quand il y en a beaucoup, seuls les plus pertinents pour la phrase sont envoyés, pour ménager le quota gratuit.
+- **Vous gardez la main** : la liste « Ce que Nexus sait » se consulte, se complète (« Ajouter un fait ») et s'efface fait par fait. Nexus peut aussi retenir ou oublier de lui-même quand on le lui demande (« retiens que… », « oublie ce que je t'ai dit sur… »). Il **refuse** de garder mots de passe, codes, clés ou IBAN.
+- **Un Nexus plus précis et plus interactif** : instructions réécrites (réponses courtes et exactes, jamais d'action inventée, une question de précision quand la demande est ambiguë, confirmation des actions sensibles), et un corpus de 100 phrases pour mesurer la compréhension des minuteurs et des réveils.
+- Corrections : « une heure et demie », « le week-end », « prévenez-moi dans… » et les libellés comme « pour les œufs » pour les minuteurs.
+
 ## 0.39.0 — Minuteurs, réveils et le bip qui dit « je t'écoute »
 
 - **Minuteurs** : « Nexus, mets un minuteur de 10 minutes pour les pâtes », « minuteur d'une demi-heure », « rappelle-moi dans 20 minutes de sortir le pain ». Compris à la maison, sans IA ni quota.

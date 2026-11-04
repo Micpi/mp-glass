@@ -179,9 +179,12 @@ def train_judge(positives, negatives, hard=None, seed=0):
 SENSITIVITY = {"high": -0.08, "normal": -0.05, "low": -0.02}
 
 
-def threshold(own, near, sensitivity="normal"):
-    """The prints' threshold: near the recordings' own closeness, always above the closest background sound."""
-    return float(min(0.97, max(own + SENSITIVITY.get(sensitivity, -0.05), near + 0.03)))
+def threshold(own, near, sensitivity="normal", judged=False):
+    """The prints' threshold: near the recordings' own closeness. Without a judge, it stays above the closest background
+    sound too. With one, the judge keeps the background out: a voice whose word comes no closer than the background
+    (own 0.43, near 0.72 in a real home) was never heard again when the prints alone had to clear the background."""
+    gate = own + SENSITIVITY.get(sensitivity, -0.05)
+    return float(min(0.97, gate if judged else max(gate, near + 0.03)))
 
 
 def windows_of(frames):
@@ -246,7 +249,7 @@ def to_client(model):
 def detect(model, windows, sensitivity="normal"):
     """What the page decides for each window (the same rule as frontend/v2/wake.ts), for tests: close enough to the
     prints, and the judge agrees when there is one."""
-    found = print_scores(model["prints"], unit(windows, model["center"])) >= threshold(model["own"], model["near"], sensitivity)
+    found = print_scores(model["prints"], unit(windows, model["center"])) >= threshold(model["own"], model["near"], sensitivity, "judge" in model)
     if judge := model.get("judge"):
         found &= judge_scores(judge, windows) >= judge["threshold"]
     return found

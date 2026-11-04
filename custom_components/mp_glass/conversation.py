@@ -26,8 +26,8 @@ from .assistant_core import (
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
 from .const import DOMAIN
-from .facts import TOOLS as FACT_TOOLS, prompt_block as facts_block
-from .facts_core import LESSON_MARK, lesson_marker, lesson_prompt
+from .facts import TOOLS as FACT_TOOLS, prompt_block as facts_block, KEY as FACTS_KEY, runtime as facts_runtime, style_block
+from .facts_core import LESSON_MARK, dress, lesson_marker, lesson_prompt
 from .timers import TOOLS as TIMER_TOOLS, handle_sentence as timers_handle
 
 _LOGGER = logging.getLogger(__name__)
@@ -167,12 +167,16 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             _LOGGER.exception("Nexus assistant failed")
             return self._error(user_input, chat_log, f"Nexus a rencontré une erreur ({type(err).__name__}). Le détail est dans le journal de Home Assistant.")
 
+    def _persona(self):
+        return facts_runtime(self.hass).facts.persona if FACTS_KEY in self.hass.data else "standard"
+
     async def _answer(self, user_input, chat_log):
         first = next((c for c in chat_log.content if isinstance(c, conversation.UserContent)), None)
         lesson_id = lesson_marker(first.content) if first else None
         # 0. Timers and alarms, understood at home: « un minuteur de 10 minutes », « réveille-moi à 7 h », « stop » while it rings.
         spoken = None if lesson_id else timers_handle(self.hass, user_input.text, user_input.language)
         if spoken:
+            spoken = dress(spoken, self._persona(), user_input.language)
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(agent_id=user_input.agent_id, content=spoken))
             response = intent.IntentResponse(language=user_input.language)
             response.async_set_speech(spoken)
@@ -187,8 +191,12 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             # « Personne », « Aucun appareil »: Home Assistant only sees what is exposed to Assist; the AI looks further and says it better.
             local = None
         if local is not None:
+            said = local.speech.get("plain", {}).get("speech", "")
+            styled = dress(said, self._persona(), user_input.language)
+            if styled != said:
+                local.async_set_speech(styled)
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
-                agent_id=user_input.agent_id, content=local.speech.get("plain", {}).get("speech", "")))
+                agent_id=user_input.agent_id, content=styled))
             return conversation.ConversationResult(response=local, conversation_id=chat_log.conversation_id)
         options = self.entry.options
         key = clean_key(options.get("assistant_api_key"))
@@ -198,7 +206,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         try:
             # What the household taught Nexus goes with the instructions, and a lesson turns the conversation into an interview.
             known = facts_block(self.hass, "" if lesson_id else user_input.text)
-            instructions = PROMPT + known + (lesson_prompt(lesson_id, known.count("\n- ")) if lesson_id else "")
+            instructions = PROMPT + style_block(self.hass) + known + (lesson_prompt(lesson_id, known.count("\n- ")) if lesson_id else "")
             await chat_log.async_provide_llm_data(user_input.as_llm_context(DOMAIN), NexusAPI(hass=self.hass, id=API_ID, name="MP Nexus"), instructions, user_input.extra_system_prompt)
         except conversation.ConverseError as err:
             return err.as_conversation_result()
@@ -225,7 +233,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
                 return self._error(user_input, chat_log, err.detail)
             # The house already did what was asked; only the sentence saying so is missing.
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
-                agent_id=self.entity_id, content=done_answer([_name(self.hass, e) for e in touched], user_input.language)))
+                agent_id=self.entity_id, content=dress(done_answer([_name(self.hass, e) for e in touched], user_input.language), self._persona(), user_input.language)))
         else:
             if self.learning and fresh and not lesson_id:
                 self.memory.learn(phrase, lesson(self._calls(chat_log, start), self._last_answer(chat_log, start)))

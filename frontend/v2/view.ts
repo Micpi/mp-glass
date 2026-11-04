@@ -22,9 +22,9 @@ import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
-import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, TOPICS, type FactsListing } from './facts';
+import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -154,7 +154,7 @@ const HOLD_MS = 520;
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, voiceList:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -266,7 +266,7 @@ export class MPNexusView extends LitElement {
   private handsFree = false;
   /** The lesson Nexus is giving, when the voice panel is one; lessons run longer than a command. */
   private lesson = '';
-  private facts?: FactsListing; private factText = ''; private factNote = '';
+  private facts?: FactsListing; private factsAsked = false; private voiceList?: { key: string; voices: { id: string; name: string }[] }; private factText = ''; private factNote = '';
   private handsFreeTurns = 0;
   /** A voice word learns on this screen: ordinary sounds, and what woke Nexus (kept until the request tells which it was). */
   private wakeAmbient: Float32Array[] = [];
@@ -1865,7 +1865,7 @@ export class MPNexusView extends LitElement {
     if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
     if (turn !== this.voiceTurn) return;
     audioSession('playback');
-    try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine) : speakOnDevice(text, locale()); }
+    try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
     catch { this.speech = speakOnDevice(text, locale()); }
     await this.speech.done;
     audioSession('auto');
@@ -2186,22 +2186,71 @@ export class MPNexusView extends LitElement {
         <button class="end" role="switch" aria-checked=${learn} aria-label=${tr('Apprendre en arrière-plan')} @click=${() => set({ wakeLearn: learn ? false : undefined })}><span class=${`tgl ${learn ? '' : 'off'}`}></span></button></div>`;
   }
 
-  /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence. */
+  /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence; which voice, and its colour. */
   private voiceChoice() {
     const hass = this.hass, prefs = this.voicePrefs;
     if (hass && !this.voiceEngines) { this.voiceEngines = []; void speechEngines(hass, language()).then(list => { this.voiceEngines = list; }); }
+    if (hass && !this.facts && !this.factsAsked && nexusAgent(hass)) { this.factsAsked = true; void this.refreshFacts(); }
     const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
+    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime };
+    const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
     const change = (e: Event) => {
       const v = (e.target as HTMLSelectElement).value;
-      this.voicePrefs = v.startsWith('ha:') ? { speak: 'ha', engine: v.slice(3) } : { speak: v === 'off' ? 'off' : 'device' };
+      this.voicePrefs = { ...keep, ...(v.startsWith('ha:') ? { speak: 'ha' as const, engine: v.slice(3) } : { speak: v === 'off' ? 'off' as const : 'device' as const }), effect: prefs.effect };
+      this.voiceList = undefined;
       writeVoicePrefs(this.voicePrefs);
+    };
+    const listKey = prefs.speak === 'ha' ? `ha:${prefs.engine}` : prefs.speak === 'device' ? 'device' : '';
+    if (listKey && this.voiceList?.key !== listKey) {
+      this.voiceList = { key: listKey, voices: [] };
+      if (prefs.speak === 'device') {
+        const load = () => { if (this.voiceList?.key === 'device') this.voiceList = { key: 'device', voices: deviceVoices(locale()).map(v => ({ id: v.name, name: v.name })) }; };
+        load();
+        if (typeof speechSynthesis !== 'undefined') speechSynthesis.onvoiceschanged = load;
+      } else if (hass && prefs.engine) {
+        void engineVoices(hass, prefs.engine, language()).then(voices => { if (this.voiceList?.key === listKey) this.voiceList = { key: listKey, voices }; });
+      }
+    }
+    const voices = this.voiceList?.key === listKey ? this.voiceList.voices : [];
+    const persona = this.facts?.persona ?? 'standard', butler = persona === 'majordome', holo = prefs.effect === 'holo';
+    const setPersona = async (next: string) => {
+      if (!hass) return;
+      try { this.facts = await setPersonaWS(hass, next); } catch { /* An older integration. */ }
+      // The butler comes with his colour; it can be taken off afterwards.
+      if (next === 'majordome' && !this.voicePrefs.effect) set({ effect: 'holo' });
+      this.requestUpdate();
     };
     return html`<label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Voix de Nexus')}</b><small>${tr('Comment Nexus répond à voix haute')}</small></div>
       <select class="end" aria-label=${tr('Voix de Nexus')} @change=${change}>
         <option value="device" .selected=${value === 'device'}>${tr('Voix de l’appareil')}</option>
         ${(this.voiceEngines ?? []).map(e => html`<option value=${`ha:${e.id}`} .selected=${value === `ha:${e.id}`}>${e.name}</option>`)}
         <option value="off" .selected=${value === 'off'}>${tr('Muette')}</option>
-      </select></label>`;
+      </select></label>
+      ${voices.length > 1 ? html`<label class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><b>${tr('Timbre')}</b><small>${tr('Une des voix proposées')}</small></div>
+        <select class="end" aria-label=${tr('Timbre')} @change=${(e: Event) => set({ voice: (e.target as HTMLSelectElement).value || undefined })}>
+          <option value="" .selected=${!prefs.voice}>${tr('Automatique')}</option>
+          ${voices.map(v => html`<option value=${v.id} .selected=${prefs.voice === v.id}>${v.name}</option>`)}
+        </select></label>` : nothing}
+      ${this.facts ? html`<label class="rw"><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Personnalité')}</b><small>${butler ? tr('Majordome : « Monsieur », flegme et humour pince-sans-rire') : tr('Pour toute la maison')}</small></div>
+        <select class="end" aria-label=${tr('Personnalité')} @change=${(e: Event) => { void setPersona((e.target as HTMLSelectElement).value); }}>
+          <option value="standard" .selected=${!butler}>${tr('Standard')}</option>
+          <option value="majordome" .selected=${butler}>${tr('Majordome')}</option>
+        </select></label>` : nothing}
+      ${prefs.speak !== 'off' ? html`<div class="rw"><span class="ib">${mpIcon('volume', 16)}</span><div><b>${tr('Effet hologramme')}</b><small>${prefs.speak === 'ha' ? tr('Une voix un peu irréelle, comme projetée') : tr('Avec une voix Home Assistant seulement')}</small></div>
+        <button class="end" role="switch" aria-checked=${holo} aria-label=${tr('Effet hologramme')} ?disabled=${prefs.speak !== 'ha'} @click=${() => set({ effect: holo ? undefined : 'holo' })}><span class=${`tgl ${holo ? '' : 'off'}`}></span></button></div>
+      <button class="rw" @click=${() => this.previewVoice()}><span class="ib">${mpIcon('play', 16)}</span><div><b>${tr('Écouter la voix')}</b><small>${tr('Une phrase, avec ces réglages')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>` : nothing}`;
+  }
+  /** A sentence in the chosen voice, style and colour. */
+  private previewVoice() {
+    const butler = this.facts?.persona === 'majordome';
+    unlockAudio();
+    this.speech?.stop();
+    const text = butler ? tr('Bonjour Monsieur. Tout est en ordre dans la maison, à l’exception peut-être de la pile de linge.') : tr('Bonjour ! Je suis Nexus. Voici ma voix sur cet écran.');
+    const prefs = this.voicePrefs, hass = this.hass;
+    void (async () => {
+      try { this.speech = prefs.speak === 'ha' && prefs.engine && hass ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
+      catch { this.speech = speakOnDevice(text, locale()); }
+    })();
   }
 
   // ——— Plus: routines, energy, outdoor, access, history, backup, screensaver ———

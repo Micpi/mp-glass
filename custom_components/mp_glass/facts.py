@@ -30,7 +30,8 @@ class FactsRuntime:
 
     def listing(self):
         return {"facts": self.facts.listing(), "progress": self.facts.progress(), "max": core.MAX_FACTS,
-                "lessons": [{"id": l["id"], "title": l["title"], "blurb": l["blurb"]} for l in core.LESSONS]}
+                "lessons": [{"id": l["id"], "title": l["title"], "blurb": l["blurb"]} for l in core.LESSONS],
+                "persona": self.facts.persona, "personas": list(core.PERSONAS)}
 
 
 def runtime(hass):
@@ -102,6 +103,12 @@ def prompt_block(hass, text=""):
     return rt.facts.block(text) if rt else ""
 
 
+def style_block(hass):
+    """The paragraph of the household's chosen style (« majordome »…), empty for the standard one."""
+    rt = hass.data.get(KEY)
+    return rt.facts.style() if rt else ""
+
+
 # ——— WebSocket: the screens list, add and remove facts ———
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/facts"})
 @callback
@@ -131,4 +138,13 @@ def websocket_remove(hass, connection, msg):
     connection.send_result(msg["id"], rt.listing())
 
 
-COMMANDS = (websocket_facts, websocket_add, websocket_remove)
+@websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/persona", vol.Required("persona"): vol.In(list(core.PERSONAS))})
+@callback
+def websocket_persona(hass, connection, msg):
+    rt = runtime(hass)
+    rt.facts.set_persona(msg["persona"])
+    rt.save()
+    connection.send_result(msg["id"], rt.listing())
+
+
+COMMANDS = (websocket_facts, websocket_add, websocket_remove, websocket_persona)

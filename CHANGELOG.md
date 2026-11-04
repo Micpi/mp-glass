@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.45.0 — Nexus ne tombe plus à court d'IA
+
+- **Quand le quota gratuit du modèle principal est épuisé, un autre modèle prend le relais.** Groq compte le quota de chaque modèle à part : Nexus passe à gpt-oss-20b, puis Qwen3, puis Llama 3.1, et revient au modèle principal dès que son quota est rétabli. Le message « quota du jour atteint » n'apparaît plus que si tous les modèles sont épuisés. Un modèle de secours que Groq ne propose plus est simplement sauté.
+- **Les bruits ne deviennent plus des demandes.** Dans un silence ou un bruit, Whisper « entend » parfois un mot au hasard (« Michel. », « Merci. », des crédits de sous-titres). Ces passages douteux sont maintenant écartés : rien n'est envoyé à l'IA, et le quota n'est plus gaspillé.
+
 ## 0.44.1 — Un seul Nexus répond au mot
 
 - **Deux bips et deux réponses pour un seul « Nexus »** : quand la page était cachée puis réaffichée, ou que Home Assistant déplaçait la vue pendant que l'écoute démarrait, une deuxième écoute se lançait sans que la première s'arrête. Elle continuait dans une page invisible, et chaque mot déclenchait deux fois Nexus. L'écoute interrompue pendant son démarrage rend maintenant le micro et s'arrête vraiment.

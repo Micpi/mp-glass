@@ -60,7 +60,8 @@ async def websocket_transcribe(hass, connection, msg):
     form = FormData()
     form.add_field("file", audio, filename=name, content_type=msg["mime"].split(";")[0])
     form.add_field("model", STT_MODEL)
-    form.add_field("response_format", "json")
+    # verbose_json says, for each segment, how likely it was silence and how sure Whisper was.
+    form.add_field("response_format", "verbose_json")
     form.add_field("temperature", "0")
     if language := stt_language(msg.get("language")):
         form.add_field("language", language)

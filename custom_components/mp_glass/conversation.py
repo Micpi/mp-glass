@@ -8,6 +8,7 @@ import asyncio
 import dataclasses
 import json
 import logging
+import time
 
 from aiohttp import ClientError, ClientTimeout
 
@@ -21,7 +22,7 @@ from homeassistant.util.ulid import ulid_now
 from .assistant_core import (
     NUDGE, claims_action, compact_live, honest_answer, pick_tools,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
-    household, plain_command, provider_error, quota_wait, read_answer, shorten_text, short_names, to_messages,
+    ModelShelf, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
@@ -31,6 +32,20 @@ from .facts_core import LESSON_MARK, dress, lesson_marker, lesson_prompt
 from .timers import TOOLS as TIMER_TOOLS, handle_sentence as timers_handle
 
 _LOGGER = logging.getLogger(__name__)
+# The models whose daily quota is spent, for the whole Home Assistant (every conversation shares the same key).
+SHELF_KEY = "mp_glass_model_shelf"
+DAILY_SPENT = "Le quota gratuit du jour de l'IA est atteint, sur tous les modèles. Les commandes simples marchent toujours ; le reste reviendra plus tard."
+
+
+MINUTE_SPENT = "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute."
+
+
+class _DailyQuota(Exception):
+    """The chosen model's quota of the day is spent; `seconds` until it comes back."""
+
+    def __init__(self, seconds):
+        super().__init__(seconds)
+        self.seconds = seconds
 API_ID = "mp_nexus"
 MEMORY_KEY = f"{DOMAIN}.nexus_learned"
 
@@ -311,7 +326,26 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         return touched_entities([tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
 
     async def _post(self, session, url, payload, key):
-        """The model's answer; when the per-minute quota is full, waits for it once if that is short."""
+        """The model's answer. When the chosen model's quota of the day is spent, the next free model answers instead
+        (Groq counts each model apart), until the first one comes back."""
+        shelf = self.hass.data.setdefault(SHELF_KEY, ModelShelf())
+        for model in shelf.candidates(payload["model"], self.entry.options.get("assistant_url"), time.time()):
+            try:
+                return await self._post_once(session, url, with_model(payload, model) if model != payload["model"] else payload, key)
+            except _DailyQuota as spent:
+                _LOGGER.warning("Nexus assistant: quota of %s spent for %d s, next model", model, spent.seconds)
+                shelf.spend(model, spent.seconds, time.time())
+            except AssistantError as err:
+                # A stand-in the provider no longer offers is skipped for a day; the chosen model's own errors are said.
+                if err.code != "model" or model == payload["model"]:
+                    raise
+                _LOGGER.warning("Nexus assistant: stand-in model %s is not offered, skipped", model)
+                shelf.spend(model, 86400, time.time())
+        back = shelf.back_in(time.time())
+        raise AssistantError("quota", MINUTE_SPENT if back <= 120 else DAILY_SPENT)
+
+    async def _post_once(self, session, url, payload, key):
+        """One model's answer; when the per-minute quota is full, waits for it once if that is short."""
         for attempt in range(2):
             try:
                 async with session.post(url, json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=45), allow_redirects=False) as response:
@@ -322,6 +356,12 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
                     if attempt == 0:
                         wait = 0.0 if bad_tool_call(response.status, body) else quota_wait(response.status, response.headers.get("retry-after"), body)
                     if wait is None:
+                        if is_daily_quota(response.status, body):
+                            raise _DailyQuota(retry_in(body))
+                        if response.status == 429:
+                            # The minute is full for this model, too long to wait: another model has its own minute.
+                            _LOGGER.warning("Nexus assistant: quota refused a request of about %d characters", len(json.dumps(payload, ensure_ascii=False)))
+                            raise _DailyQuota(60.0)
                         error = provider_error(response.status, body, key)
                         if error.code == "quota":
                             _LOGGER.warning("Nexus assistant: quota refused a request of about %d characters: %s", len(json.dumps(payload, ensure_ascii=False)),
@@ -331,7 +371,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
                 raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
             _LOGGER.debug("Nexus assistant: provider refused (%s), new try in %.1f s", response.status, wait)
             await asyncio.sleep(wait + 0.3)
-        raise AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
+        raise _DailyQuota(60.0)
 
     def _acted(self, chat_log, start):
         """True when a tool that changes the house (or a timer, or a fact) succeeded since `start`."""

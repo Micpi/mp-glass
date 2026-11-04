@@ -88,6 +88,36 @@ class AssistantCoreTests(unittest.TestCase):
         with self.assertRaises(core.AssistantError):
             core.read_transcript(b"oops")
 
+    def test_what_whisper_imagines_is_not_a_request(self):
+        seg = lambda text, silent, guess: {"text": text, "no_speech_prob": silent, "avg_logprob": guess}
+        doubtful = json.dumps({"text": " Michel.", "segments": [seg(" Michel.", 0.82, -0.9)]})
+        self.assertEqual(core.read_transcript(doubtful), "")
+        sure = json.dumps({"text": " Allume la cuisine.", "segments": [seg(" Allume la cuisine.", 0.02, -0.15)]})
+        self.assertEqual(core.read_transcript(sure), "Allume la cuisine.")
+        mixed = json.dumps({"text": "x", "segments": [seg(" Éteins le salon.", 0.05, -0.2), seg(" Merci.", 0.7, -0.8)]})
+        self.assertEqual(core.read_transcript(mixed), "Éteins le salon.")
+        for phantom in ("Merci.", "Sous-titrage ST' 501", "Sous-titres réalisés par la communauté d'Amara.org", "Thank you for watching!", "..."):
+            self.assertEqual(core.read_transcript(json.dumps({"text": phantom})), "", phantom)
+        self.assertEqual(core.read_transcript(json.dumps({"text": "Merci de baisser le chauffage"})), "Merci de baisser le chauffage")
+
+    def test_a_spent_model_hands_over_to_the_next(self):
+        body = json.dumps({"error": {"message": "Rate limit reached for model `openai/gpt-oss-120b` on tokens per day (TPD): Limit 200000. Please try again in 1h2m3.5s."}})
+        self.assertTrue(core.is_daily_quota(429, body))
+        self.assertFalse(core.is_daily_quota(429, json.dumps({"error": {"message": "tokens per minute (TPM)"}})))
+        self.assertAlmostEqual(core.retry_in(body), 3723.5)
+        self.assertEqual(core.retry_in(b"{}"), 3600.0)
+        shelf = core.ModelShelf()
+        self.assertEqual(shelf.candidates("openai/gpt-oss-120b", "", 0)[:2], ["openai/gpt-oss-120b", "openai/gpt-oss-20b"])
+        self.assertEqual(shelf.candidates("my-model", "https://example.com/v1", 0), ["my-model"])
+        shelf.spend("openai/gpt-oss-120b", 3600, 0)
+        self.assertNotIn("openai/gpt-oss-120b", shelf.candidates("openai/gpt-oss-120b", "", 100))
+        self.assertIn("openai/gpt-oss-120b", shelf.candidates("openai/gpt-oss-120b", "", 3700))
+        self.assertEqual(shelf.back_in(100), 3500)
+        payload = core.build_request("openai/gpt-oss-120b", [], [])
+        self.assertNotIn("reasoning_effort", core.with_model(payload, "llama-3.1-8b-instant"))
+        self.assertEqual(core.with_model(payload, "qwen/qwen3-32b")["reasoning_effort"], "none")
+        self.assertEqual(payload["model"], "openai/gpt-oss-120b")
+
     def test_tool_results_from_either_home_assistant_shape(self):
         class New:
             class result:

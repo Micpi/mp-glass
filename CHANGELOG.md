@@ -5,6 +5,7 @@
 - **Plus d'action inventée** : quand l'IA annonçait « J'ai baissé le thermostat à 24 °C » sans avoir rien fait, Nexus le répétait. Désormais, une réponse qui prétend avoir agi sans qu'aucun outil n'ait agi est renvoyée une fois à l'IA pour qu'elle fasse vraiment l'action ; si elle insiste, Nexus dit honnêtement qu'il n'a rien changé.
 - **Fini les « Personne » et « Aucun appareil »** : quand Home Assistant répond seul à une question sans rien trouver (souvent parce que l'entité n'est pas exposée à Assist), la question passe à l'IA, qui cherche plus loin et répond par une vraie phrase.
 - **Météo, prévisions, présences et consommation** : l'outil NexusHousehold donne maintenant la météo du moment et des prochains jours, qui est à la maison et la puissance consommée (compteur principal en premier), comme le tableau de bord, même si ces entités ne sont pas exposées à Assist.
+- **Une liste d'appareils plus propre pour l'IA** : les appareils exposés mais indisponibles (anciennes scènes, écrans éteints, prises débranchées) ne sont plus envoyés à l'IA. Chez certains foyers c'est plus de la moitié de la liste : moins de quota consommé et moins de confusions.
 
 ## 0.40.0 — Éduquer Nexus : des leçons pour qu'il connaisse vraiment votre maison
 

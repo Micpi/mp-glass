@@ -58,12 +58,30 @@ class WakeTrainerTest(unittest.TestCase):
         self.assertFalse(wt.detect(after_model, stream(speech(close))).any())
         self.assertTrue(wt.detect(after_model, stream(speech(WORD))).any())
 
-    def test_sensitivity_moves_the_threshold_but_never_below_the_background(self):
+    def test_sensitivity_moves_the_threshold_and_only_a_judge_lets_it_below_the_background(self):
         own, near = self.model["own"], self.model["near"]
         self.assertLess(wt.threshold(own, near, "high"), wt.threshold(own, near, "normal"))
         self.assertLess(wt.threshold(own, near, "normal"), wt.threshold(own, near, "low"))
         self.assertGreaterEqual(wt.threshold(0.2, 0.8, "high"), 0.83)
         self.assertLessEqual(wt.threshold(0.99, 0.5, "low"), 0.97)
+        self.assertAlmostEqual(wt.threshold(0.43, 0.72, "high", judged=True), 0.35)
+
+    def test_a_loosely_said_word_closer_to_the_voice_than_to_itself_is_still_heard(self):
+        # A real home: the word's own closeness 0.43, the background (the same voice reading) 0.72. The prints alone
+        # had to clear the background and the word was never heard again; with a judge, the judge keeps it out.
+        rng = np.random.default_rng(3)
+        said = lambda: WORD + rng.normal(0, 3.5, WORD.shape).astype(np.float32)
+        recordings = [(speech(said(), stretch=s, noise=1.2), 24) for s in (1.0, 0.9, 1.1, 1.0, 0.95)]
+        noisy = [(speech(said(), stretch=s, noise=2), 24, i) for i, s in enumerate((1.0, 0.9, 1.1, 1.0, 0.95))]
+        alike = WORD.copy()
+        alike[9:] = OTHER[9:]
+        model = wt.build(recordings, noisy, self.background, [speech(alike, length=60, end=40) for _ in range(6)])
+        self.assertIn("judge", model)
+        self.assertGreater(model["near"], model["own"])
+        heard = [wt.detect(model, stream(speech(said(), stretch=s, noise=1.2)), "high").any() for s in np.linspace(0.9, 1.1, 20)]
+        self.assertGreaterEqual(sum(heard), 16)
+        self.assertLess(wt.detect(model, stream(speech(length=3000)), "high").mean(), 0.002)
+        self.assertFalse(any(wt.detect(model, stream(speech(alike, length=60, end=40)), "high").any() for _ in range(10)))
 
     def test_the_page_reads_what_the_server_computes(self):
         client = wt.to_client(self.model)

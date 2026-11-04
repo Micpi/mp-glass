@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.43.0 — Le mot d'éveil se déclenche vraiment
+
+- **« Nexus » n'était jamais reconnu avec un mot enregistré de sa propre voix.** Le seuil exigeait que le mot ressemble plus aux enregistrements que les phrases lues de la même voix. Chez un vrai utilisateur, le mot atteignait 0,43 et le seuil était à 0,75 : il ne pouvait jamais être franchi. Quand le petit « juge » entraîné par Home Assistant est disponible, c'est lui qui écarte maintenant les bruits et les autres phrases. Le seuil des empreintes revient au niveau de la voix. Il n'y a rien à réenregistrer.
+- **L'écoute démarre en quelques secondes au lieu de plusieurs minutes.** Le moteur d'écoute pèse 12 Mo. À travers l'accès à distance de la box, il mettait plus de cinq minutes à se télécharger, à chaque ouverture de page. Le mot restait sur « Préparation… ». Les fichiers sont maintenant envoyés compressés (2 Mo) et gardés par le navigateur, si bien qu'ils ne sont téléchargés qu'une fois par version.
+
 ## 0.42.2 — La sphère s'affiche dès que le mot est prononcé
 
 - **La sphère s'ouvre tout de suite** quand le mot d'éveil est reconnu. Avant, l'écran attendait d'avoir relâché le micro et joué le bip d'écoute avant de l'afficher.

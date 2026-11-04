@@ -192,14 +192,21 @@ export const base64Floats = (values: Float32Array) => {
   for (let i = 0; i < bytes.length; i += 0x8000) text += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(text);
 };
-/** The prints' threshold: near the recordings' own closeness, always above the closest background sound. */
-export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal') => Math.min(0.97, Math.max(own + (SENSITIVITY[sensitivity] ?? -0.05), near + 0.03));
+/**
+ * The prints' threshold: near the recordings' own closeness (the same rule as wake_trainer.py). Without a judge it stays
+ * above the closest background sound too; with one, the judge keeps the background out, or a voice whose word comes no
+ * closer than the background is never heard.
+ */
+export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal', judged = false) => {
+  const gate = own + (SENSITIVITY[sensitivity] ?? -0.05);
+  return Math.min(0.97, judged ? gate : Math.max(gate, near + 0.03));
+};
 
 /** Scores a window of 16 embeddings: 0.5 and above when it is the word (close to the prints, and the judge agrees). */
 export function voiceJudge(model: VoiceModel, sensitivity: Sensitivity = 'normal') {
   const center = floats(model.center), prints = floats(model.prints), count = model.count, size = 16 * FEATURES;
-  const threshold = voiceThreshold(model.own, model.near, sensitivity);
-  const j = model.judge, hidden = j?.hidden ?? 0;
+  const j = model.judge, threshold = voiceThreshold(model.own, model.near, sensitivity, !!j);
+  const hidden = j?.hidden ?? 0;
   const mean = j ? floats(j.mean) : undefined, std = j ? floats(j.std) : undefined, w1 = j ? floats(j.w1) : undefined, b1 = j ? floats(j.b1) : undefined, w2 = j ? floats(j.w2) : undefined;
   const frame = new Float32Array(FEATURES), sims = new Float64Array(count), x = new Float32Array(size), h = new Float64Array(hidden);
   return (window: Float32Array) => {

@@ -11,8 +11,10 @@ async def async_register_module(hass):
     register_module = getattr(frontend, "add_extra_js_url", None)
     if not callable(register_module):
         raise HomeAssistantError("MP Nexus: frontend module registration unavailable")
+    # Cached by the browser: the bundle is versioned (?v=) and its chunks and assets carry a hash in their names. Without
+    # it, the wake word's 12 MB speech engine was fetched again on every page.
     if not hass.data.get("mp_glass_static_registered"):
-        await hass.http.async_register_static_paths([StaticPathConfig("/mp_glass_static", str(Path(__file__).parent / "www"), False)])
+        await hass.http.async_register_static_paths([StaticPathConfig("/mp_glass_static", str(Path(__file__).parent / "www"), True)])
         hass.data["mp_glass_static_registered"] = True
     register_module(hass, BOOTSTRAP_URL)
 

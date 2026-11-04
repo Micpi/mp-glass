@@ -135,7 +135,7 @@ class AssistantCoreTests(unittest.TestCase):
         self.assertFalse(core.bad_tool_call(400, b'{"error":{"message":"model"}}'))
 
     def test_household(self):
-        self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
+        self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa (work)"]})
 
         self.assertEqual(core.household([], {"lieu": "Marnes"}, [{"nom": "Linky", "puissance": "850 W"}])["météo"], {"lieu": "Marnes"})
 
@@ -157,6 +157,8 @@ class AssistantCoreTests(unittest.TestCase):
         self.assertIn("NexusStartTimer", core.pick_tools(names, "rappelle-moi de sortir le pain"))
         self.assertIn("NexusRemember", core.pick_tools(names, "retiens que le salon c'est Living"))
         self.assertIn("NexusRemember", core.pick_tools(names, "Commençons", lesson=True))
+        # Home Assistant 2026.10 names its tools after their integration
+        self.assertEqual(core.pick_tools(["intent__HassTurnOn", "intent__HassMediaPause", "intent__HassCancelAllTimers"], "allume la cuisine"), ["intent__HassTurnOn"])
 
     def test_slim_schema(self):
         schema = {"type": "object", "properties": {"device_class": {"type": "array", "items": {"type": "string", "enum": list("abcdefghij")}}, "mode": {"enum": ["on", "off"]}}, "required": []}

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.42.1 — Le tri des outils marche aussi sur Home Assistant 2026.10
+
+- **Le tri des outils de la 0.42.0 ne s'appliquait pas sur Home Assistant 2026.10** : ses outils portent le nom de leur intégration (« intent__HassMediaPause »), et Nexus ne les reconnaissait pas. Une requête pesait donc encore 17 000 caractères (3 200 tokens) et le quota gratuit sautait dès la deuxième question. C'est corrigé.
+- **« Qui est à la maison ? »** : Nexus sait maintenant où sont les absents quand leur zone est connue (« Mickael est au Bureau »).
+
 ## 0.42.0 — Nexus économe : deux fois moins de quota par question
 
 - **Le quota gratuit sautait dès la deuxième question** : chaque requête à l'IA pesait environ 4 500 tokens (23 outils décrits en entier, plus la liste des appareils), et une question en demande souvent deux. Avec 8 000 tokens par minute chez Groq, le quota était épuisé presque à chaque fois.

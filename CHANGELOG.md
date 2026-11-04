@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.44.0 — Nexus en majordome
+
+- **Personnalité « Majordome »**, au choix pour toute la maison (Plus → Sur cet écran → Personnalité). Nexus vous appelle « Monsieur », reste flegmatique et glisse un humour pince-sans-rire, sans jamais perdre en clarté. Même les réponses que Home Assistant donne seul (« Éteint ») passent en « Éteint, Monsieur. ».
+- **Choix du timbre** : chaque écran peut choisir une voix précise, parmi les voix de l'appareil ou celles d'un moteur Home Assistant (Piper, Microsoft Edge TTS, ElevenLabs…). Toute voix ajoutée dans Home Assistant apparaît dans la liste.
+- **Effet hologramme** : la voix devient légèrement irréelle, comme projetée, avec un fin miroitement et une petite résonance. Il est disponible avec les voix Home Assistant ; la voix de l'appareil ne peut pas être traitée par la page.
+- **« Écouter la voix »** fait entendre une phrase avec les réglages choisis.
+
 ## 0.43.0 — Le mot d'éveil se déclenche vraiment
 
 - **« Nexus » n'était jamais reconnu avec un mot enregistré de sa propre voix.** Le seuil exigeait que le mot ressemble plus aux enregistrements que les phrases lues de la même voix. Chez un vrai utilisateur, le mot atteignait 0,43 et le seuil était à 0,75 : il ne pouvait jamais être franchi. Quand le petit « juge » entraîné par Home Assistant est disponible, c'est lui qui écarte maintenant les bruits et les autres phrases. Le seuil des empreintes revient au niveau de la voix. Il n'y a rien à réenregistrer.

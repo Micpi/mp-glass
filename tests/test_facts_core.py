@@ -74,6 +74,23 @@ class FactsTests(unittest.TestCase):
         self.assertEqual(again.listing(), facts.listing())
         self.assertEqual(again.progress(), {"pieces": 1})
 
+    def test_the_butler_style_is_kept_and_dresses_home_answers(self):
+        facts = core.Facts()
+        self.assertEqual(facts.persona, "standard")
+        self.assertEqual(facts.style(), "")
+        facts.set_persona("majordome")
+        self.assertIn("Monsieur", facts.style())
+        self.assertEqual(core.Facts(facts.as_dict()).persona, "majordome")
+        self.assertEqual(core.Facts({"persona": "jarvis"}).persona, "standard")
+        with self.assertRaises(ValueError):
+            facts.set_persona("jarvis")
+        self.assertEqual(core.dress("Éteint", "majordome", "fr"), "Éteint, Monsieur.")
+        self.assertEqual(core.dress("C'est fait : Cuisine.", "majordome", "fr-FR"), "C'est fait : Cuisine, Monsieur.")
+        self.assertEqual(core.dress("Laquelle, la cuisine ou le salon ?", "majordome", "fr"), "Laquelle, la cuisine ou le salon, Monsieur ?")
+        self.assertEqual(core.dress("Bien, Monsieur.", "majordome", "fr"), "Bien, Monsieur.")
+        self.assertEqual(core.dress("Turned off", "majordome", "en"), "Turned off")
+        self.assertEqual(core.dress("Éteint", "standard", "fr"), "Éteint")
+
 
 if __name__ == "__main__":
     unittest.main()

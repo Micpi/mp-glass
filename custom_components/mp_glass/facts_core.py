@@ -60,14 +60,43 @@ def clean_fact(text):
     return None if _SECRET.search(fact) else fact
 
 
+# How Nexus speaks, chosen for the whole household. « Majordome » is a style, not anyone's imitation.
+PERSONAS = {
+    "standard": "",
+    "majordome": """
+
+Style : tu es le majordome numérique de la maison. Tu appelles la personne « Monsieur » (ou « Madame », ou le titre que la maison t'a appris), tu restes flegmatique et d'une politesse impeccable, avec un humour pince-sans-rire discret : une petite remarque ironique de temps en temps, jamais aux dépens de la clarté ni de la sécurité. Tes phrases restent courtes, faites pour être dites à voix haute (« C'est fait, Monsieur. La cuisine est plongée dans l'obscurité. »).""",
+}
+
+
+def dress(text, persona, language):
+    """A sentence Home Assistant phrased on its own, in the household's style: « Éteint » → « Éteint, Monsieur. »."""
+    text = (text or "").strip()
+    if persona != "majordome" or not text or not (language or "").lower().startswith("fr") or len(text) > 120 or "Monsieur" in text or "Madame" in text:
+        return text
+    body = re.sub(r"[.!?…\s]+$", "", text)
+    return body + (", Monsieur ?" if text.rstrip().endswith("?") else ", Monsieur.")
+
+
 class Facts:
-    """The facts taught to Nexus: id → {id, topic, text, at}."""
+    """The facts taught to Nexus: id → {id, topic, text, at}; and the style it speaks in."""
 
     def __init__(self, data=None):
         self.items = {str(k): v for k, v in ((data or {}).get("facts") or {}).items() if isinstance(v, dict) and v.get("text")}
+        persona = (data or {}).get("persona")
+        self.persona = persona if persona in PERSONAS else "standard"
 
     def as_dict(self):
-        return {"facts": self.items}
+        return {"facts": self.items, "persona": self.persona}
+
+    def set_persona(self, persona):
+        if persona not in PERSONAS:
+            raise ValueError("unknown persona")
+        self.persona = persona
+
+    def style(self):
+        """The paragraph of the chosen style, for the instructions of a request."""
+        return PERSONAS[self.persona]
 
     def __len__(self):
         return len(self.items)

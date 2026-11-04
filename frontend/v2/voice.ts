@@ -1,9 +1,14 @@
 import type { Hass } from '../ha/client';
+import { speakAsHologram } from './hologram';
 import { unlockSound } from './sound';
 
 /** How Nexus speaks on this screen: with the voice of the device, with a Home Assistant voice (Piper, Nabu Casa…), or not at all. */
 export interface VoicePrefs {
   speak: 'device'|'ha'|'off'; engine?: string;
+  /** The voice chosen within the device's voices (its name) or within the engine's (its id); the best one when unset. */
+  voice?: string;
+  /** The « hologram » colour of the butler, for Home Assistant voices (the device's voice cannot be processed). */
+  effect?: 'holo';
   /** The wake word this screen listens for, if any. */ wake?: string;
   /** For a word made from the voice: how readily it wakes, and whether the screen teaches it what it hears. */
   wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
@@ -15,6 +20,7 @@ export function readVoicePrefs(): VoicePrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(VOICE_KEY) ?? '{}') as Partial<VoicePrefs>;
     return { speak: saved.speak === 'ha' || saved.speak === 'off' ? saved.speak : 'device', engine: typeof saved.engine === 'string' && saved.engine ? saved.engine : undefined,
+      voice: typeof saved.voice === 'string' && saved.voice ? saved.voice.slice(0, 200) : undefined, effect: saved.effect === 'holo' ? 'holo' : undefined,
       wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
       wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
       wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined };
@@ -119,16 +125,22 @@ export async function transcribe(hass: Hass, audio: Blob, language: string) {
 export interface Speech { done: Promise<void>; stop(): void }
 const silent: Speech = { done: Promise.resolve(), stop: () => undefined };
 
-/** The voice of the device: free, offline on most phones and tablets. */
-export function speakOnDevice(text: string, locale: string): Speech {
+/** The device's voices for a language (they may arrive a moment after the page opens: see `onvoiceschanged`). */
+export function deviceVoices(locale: string) {
+  const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined;
+  const lang = locale.toLowerCase().split('-')[0] ?? '';
+  return (synth?.getVoices() ?? []).filter(v => v.lang.toLowerCase().startsWith(lang));
+}
+
+/** The voice of the device: free, offline on most phones and tablets. `voice` is the name of one of its voices. */
+export function speakOnDevice(text: string, locale: string, voice?: string): Speech {
   const synth = typeof speechSynthesis !== 'undefined' ? speechSynthesis : undefined;
   if (!synth || !text) return silent;
   synth.cancel();
   const utterance = new SpeechSynthesisUtterance(text);
   utterance.lang = locale;
-  const lang = locale.toLowerCase().split('-')[0] ?? '';
-  const voices = synth.getVoices().filter(v => v.lang.toLowerCase().startsWith(lang));
-  utterance.voice = voices.find(v => v.lang.toLowerCase() === locale.toLowerCase() && /premium|enhanced|neural|natural|google/i.test(v.name)) ?? voices.find(v => v.lang.toLowerCase() === locale.toLowerCase()) ?? voices[0] ?? null;
+  const voices = deviceVoices(locale);
+  utterance.voice = (voice ? voices.find(v => v.name === voice) : undefined) ?? voices.find(v => v.lang.toLowerCase() === locale.toLowerCase() && /premium|enhanced|neural|natural|google/i.test(v.name)) ?? voices.find(v => v.lang.toLowerCase() === locale.toLowerCase()) ?? voices[0] ?? null;
   const done = new Promise<void>(resolve => { utterance.onend = () => resolve(); utterance.onerror = () => resolve(); });
   synth.speak(utterance);
   return { done, stop: () => synth.cancel() };
@@ -139,6 +151,14 @@ export async function speechEngines(hass: Hass, language: string) {
   try {
     const answer = await hass.callWS<{ providers?: { engine_id: string; name?: string; deprecated?: boolean }[] }>({ type: 'tts/engine/list', language });
     return (answer.providers ?? []).filter(p => !p.deprecated).map(p => ({ id: p.engine_id, name: p.name ?? p.engine_id }));
+  } catch { return []; }
+}
+
+/** The voices of a Home Assistant engine for a language (Piper, Edge TTS, ElevenLabs… each has its own). */
+export async function engineVoices(hass: Hass, engine: string, language: string) {
+  try {
+    const answer = await hass.callWS<{ voices?: { voice_id: string; name?: string }[] | null }>({ type: 'tts/engine/voices', engine_id: engine, language });
+    return (answer.voices ?? []).map(v => ({ id: v.voice_id, name: v.name ?? v.voice_id }));
   } catch { return []; }
 }
 
@@ -164,9 +184,13 @@ export function unlockAudio() {
 }
 
 /** A Home Assistant voice: the engine renders the sentence, the page plays it. */
-export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string): Promise<Speech> {
+export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo'): Promise<Speech> {
   if (!text || !hass.callApi) return silent;
-  const { url } = await hass.callApi<{ url: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language });
+  const { url } = await hass.callApi<{ url: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language, ...(voice ? { options: { voice } } : {}) });
+  if (effect === 'holo') {
+    // The colour is a bonus: when the page cannot process the sound, the plain voice plays.
+    try { return await speakAsHologram(url); } catch { /* Plain voice below. */ }
+  }
   player ??= new Audio();
   const audio = player;
   audio.src = url;

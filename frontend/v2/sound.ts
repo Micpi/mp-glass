@@ -30,7 +30,9 @@ export async function playTones(tones: Tone[]) {
   const c = audioContext();
   if (!c || !tones.length) return;
   try {
-    if (c.state === 'suspended') await c.resume();
+    // Without a recent touch a browser may leave resume() pending forever: wait a moment, then go on in silence.
+    if (c.state === 'suspended') await Promise.race([c.resume(), new Promise(resolve => window.setTimeout(resolve, 300))]);
+    if (c.state !== 'running') return;
     const t0 = c.currentTime + 0.02;
     for (const tone of tones) {
       const o = c.createOscillator(), g = c.createGain(), start = t0 + tone.at, peak = tone.gain ?? 0.2;

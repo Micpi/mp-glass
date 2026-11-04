@@ -68,6 +68,10 @@ class MemoryTests(unittest.TestCase):
         self.assertTrue(compact.startswith("Intro\n") and compact.endswith("Follow these rules."))
         self.assertLess(len(compact), len(prompt))
         self.assertEqual(memory.compact_context("no list"), "no list")
+        # unavailable devices are left out
+        alive = memory.compact_context(prompt, {("cover", "volet"), ("light", "autre")})
+        self.assertIn("Cuisine: Lampe cuisine (light)\n", alive)
+        self.assertNotIn("Volet", alive)
 
 
 if __name__ == "__main__":

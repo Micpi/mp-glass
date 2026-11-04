@@ -135,9 +135,11 @@ def question_request(model, question, readings, language):
 _STATIC = re.compile(r"(Static Context: An overview of the areas and the devices in this smart home:\n)((?:(?:- |  ).*(?:\n|$))+)")
 
 
-def compact_context(prompt):
+def compact_context(prompt, dead=None):
     """Home Assistant lists every exposed device in YAML, three lines each; the same list grouped by room takes
-    about a third of the tokens: « Cuisine: Lampe cuisine (light); Volet cuisine (cover) »."""
+    about a third of the tokens: « Cuisine: Lampe cuisine (light); Volet cuisine (cover) ».
+    `dead` holds (domain, lower-case name) pairs of devices that are unavailable: the model never sees them."""
+    dead = dead or set()
     found = _STATIC.search(prompt or "")
     if not found:
         return prompt
@@ -151,6 +153,8 @@ def compact_context(prompt):
     rooms = {}
     for device in devices:
         if not isinstance(device, dict) or not device.get("names"):
+            continue
+        if (str(device.get("domain") or ""), str(device["names"]).split(",")[0].strip().lower()) in dead:
             continue
         area = str(device.get("areas") or "").split(",")[0].strip() or "Sans pièce"
         rooms.setdefault(area, []).append(f"{device['names']} ({device.get('domain', '?')})")

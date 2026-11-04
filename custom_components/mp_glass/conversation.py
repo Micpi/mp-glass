@@ -101,7 +101,7 @@ class NexusAPI(llm.API):
     async def async_get_api_instance(self, llm_context):
         assist = await llm.async_get_api(self.hass, llm.LLM_API_ASSIST, llm_context)
         # The list of devices, grouped by room: a third of the tokens of Home Assistant's YAML.
-        return llm.APIInstance(api=self, api_prompt=compact_context(assist.api_prompt), llm_context=llm_context,
+        return llm.APIInstance(api=self, api_prompt=compact_context(assist.api_prompt, _dead(self.hass)), llm_context=llm_context,
                                tools=[*assist.tools, HouseholdTool(), *(tool() for tool in TIMER_TOOLS), *(tool() for tool in FACT_TOOLS)], custom_serializer=assist.custom_serializer)
 
 
@@ -355,6 +355,26 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         response = intent.IntentResponse(language=user_input.language)
         response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, text)
         return conversation.ConversationResult(response=response, conversation_id=chat_log.conversation_id)
+
+
+def _dead(hass):
+    """(domain, name) of the exposed devices that are unavailable or gone: dozens of them only cost tokens and mislead the model."""
+    from homeassistant.helpers import entity_registry as er  # noqa: PLC0415
+
+    registry = er.async_get(hass)
+    dead = set()
+    for entry in registry.entities.values():
+        state = hass.states.get(entry.entity_id)
+        # « unknown » is a normal state (a scene never played): only devices that are unavailable or gone are left out.
+        if state is not None and state.state != "unavailable":
+            continue
+        for name in (state.attributes.get("friendly_name") if state else None, entry.name, entry.original_name):
+            if name:
+                dead.add((entry.domain, str(name).strip().lower()))
+    for state in hass.states.async_all():
+        if state.state == "unavailable":
+            dead.add((state.domain, str(state.attributes.get("friendly_name") or "").strip().lower()))
+    return dead
 
 
 def _empty_answer(response):

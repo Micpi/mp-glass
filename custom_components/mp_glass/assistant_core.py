@@ -18,10 +18,11 @@ Tu agis avec les outils fournis plutôt que de décrire ce qu'il faudrait faire.
 
 Précision :
 - Lis l'état avec les outils avant de répondre sur la maison, en filtrant par nom, pièce ou domaine, et donne les valeurs avec leur unité, arrondies (« 21,5 °C », « trois lampes allumées »). N'invente jamais un état.
-- Ne dis « c'est fait » que si l'outil a réussi. S'il a échoué ou n'a rien trouvé, dis-le simplement et propose l'appareil ou la pièce la plus proche.
+- Ne dis jamais que tu as fait une action sans avoir appelé l'outil qui la fait, et ne dis « c'est fait » que s'il a réussi. S'il a échoué ou n'a rien trouvé, dis-le simplement et propose l'appareil ou la pièce la plus proche.
 - Si plusieurs appareils ou pièces correspondent, ou si la demande est ambiguë (« allume la lumière » sans pièce), pose UNE question courte avec deux choix au plus au lieu de deviner. Si une seule pièce est plausible (on vient d'en parler), prends-la.
 - Une demande vague (« plus chaud », « plus fort », « moins lumineux ») est un petit pas (+1 °C, +10 %) : fais-le et dis de combien.
 - Si un appareil ou une pièce n'existe pas, dis-le simplement.
+- Qui est à la maison, la météo, les prévisions et la consommation électrique : appelle NexusHousehold.
 
 Conversation :
 - « Et dans la chambre ? », « pareil », « l'autre », « remets-le » reprennent la demande précédente.
@@ -229,11 +230,40 @@ def tool_result_data(item):
     return getattr(item, "tool_result", None)
 
 
-def household(persons):
-    """Who lives here and who is home, from person states (entity_id, name, state)."""
+def household(persons, weather=None, power=None):
+    """Who lives here and who is home (person states), and what the dashboard shows beside them: the weather and the power used now."""
     home = [p["name"] for p in persons if p["state"] == "home"]
     away = [p["name"] for p in persons if p["state"] != "home"]
-    return {"à_la_maison": home, "absents": away}
+    data = {"à_la_maison": home, "absents": away}
+    if weather:
+        data["météo"] = weather
+    if power:
+        data["consommation"] = power
+    return data
+
+
+# ——— Honesty: Nexus never says it did what no tool did ———
+_CLAIM = re.compile(
+    r"\bj['’]ai (?:bien |donc |aussi |déjà )?(?:allumé|éteint|baissé|monté|remonté|augmenté|diminué|réduit|réglé|mis|remis|ouvert|fermé|lancé|"
+    r"activé|désactivé|coupé|démarré|arrêté|changé|passé|programmé|verrouillé|déverrouillé|modifié|ajusté|armé|désarmé|tamisé|relevé)\b"
+    r"|\b(?:c['’]est fait|c['’]est réglé|voilà qui est fait)\b"
+    r"|\b(?:est|sont) (?:maintenant|désormais) (?:allumée?s?|éteinte?s?|réglée?s?|ouverte?s?|fermée?s?|à \d)"
+    r"|\bI(?:['’]ve| have)? (?:just )?(?:turned|set|switched|opened|closed|started|stopped|locked|unlocked|changed|adjusted|lowered|raised|dimmed|armed|disarmed)\b",
+    re.I)
+NUDGE = ("Attention : tu n'as appelé aucun outil, donc rien n'a changé dans la maison. Si la demande est une action, appelle maintenant l'outil adapté "
+         "avec les noms exacts de la liste ; sinon réponds sans prétendre avoir agi.")
+
+
+def claims_action(text):
+    """True when an answer says something was done in the house (« J'ai baissé le thermostat », « c'est fait »)."""
+    return bool(_CLAIM.search(text or ""))
+
+
+def honest_answer(language):
+    """What Nexus says instead of a made-up action."""
+    if (language or "").lower().startswith("fr"):
+        return "Je n'ai rien changé : je n'ai pas réussi à faire cette action. Précisez l'appareil ou la pièce ?"
+    return "I didn't change anything: I couldn't do that. Which device or room do you mean?"
 
 
 # ——— Voice: speech to text with Whisper on the same provider ———

@@ -137,6 +137,17 @@ class AssistantCoreTests(unittest.TestCase):
     def test_household(self):
         self.assertEqual(core.household([{"name": "Mickael", "state": "home"}, {"name": "Léa", "state": "work"}]), {"à_la_maison": ["Mickael"], "absents": ["Léa"]})
 
+        self.assertEqual(core.household([], {"lieu": "Marnes"}, [{"nom": "Linky", "puissance": "850 W"}])["météo"], {"lieu": "Marnes"})
+
+    def test_claims_action(self):
+        for said in ("J’ai baissé la température du thermostat Solemio à 24 °C.", "J'ai allumé la cuisine.", "C'est fait.", "Les lumières sont maintenant éteintes.",
+                     "I've turned off the kitchen light.", "J'ai bien réglé le chauffage sur 21 °C."):
+            self.assertTrue(core.claims_action(said), said)
+        for said in ("Il fait 26,8 °C dans le salon.", "Aucune lumière n'est allumée.", "Voulez-vous que je baisse le chauffage ?", "Noté.",
+                     "Le chauffage est allumé.", "The kitchen light is on.", ""):
+            self.assertFalse(core.claims_action(said), said)
+        self.assertIn("rien changé", core.honest_answer("fr"))
+
 
 if __name__ == "__main__":
     unittest.main()

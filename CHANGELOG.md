@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.42.0 — Nexus économe : deux fois moins de quota par question
+
+- **Le quota gratuit sautait dès la deuxième question** : chaque requête à l'IA pesait environ 4 500 tokens (23 outils décrits en entier, plus la liste des appareils), et une question en demande souvent deux. Avec 8 000 tokens par minute chez Groq, le quota était épuisé presque à chaque fois.
+- **Seulement les outils utiles** : les outils multimédia ne sont envoyés que si l'on parle de musique, de volume ou de télé ; ceux des minuteurs, que si l'on parle de minuteur ou de réveil ; ceux de la mémoire, que si l'on dit « retiens » ou « oublie », ou pendant une leçon. Un outil déjà utilisé dans la conversation reste proposé pour les questions de suivi. Les descriptions d'outils sont aussi allégées (listes de valeurs trop longues retirées). Résultat : environ 2 900 caractères d'outils au lieu de 10 600.
+- **États de la maison en une ligne par appareil** : la réponse de GetLiveContext (YAML de cinq lignes par appareil) est condensée en « Solemio (climate, Salon): heat; temperature=20.5 », et les appareils indisponibles en sont retirés.
+- Quand le quota refuse malgré tout une requête, le journal de Home Assistant indique sa taille et la raison donnée par le fournisseur.
+
 ## 0.41.0 — Nexus dit vrai, et voit la météo, les présences et la consommation
 
 - **Plus d'action inventée** : quand l'IA annonçait « J'ai baissé le thermostat à 24 °C » sans avoir rien fait, Nexus le répétait. Désormais, une réponse qui prétend avoir agi sans qu'aucun outil n'ait agi est renvoyée une fois à l'IA pour qu'elle fasse vraiment l'action ; si elle insiste, Nexus dit honnêtement qu'il n'a rien changé.

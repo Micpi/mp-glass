@@ -149,5 +149,29 @@ class AssistantCoreTests(unittest.TestCase):
         self.assertIn("rien changé", core.honest_answer("fr"))
 
 
+    def test_only_the_tools_a_request_may_need(self):
+        names = ["HassTurnOn", "HassMediaPause", "HassSetVolume", "GetLiveContext", "NexusHousehold", "NexusStartTimer", "HassCancelAllTimers", "NexusRemember"]
+        self.assertEqual(core.pick_tools(names, "quelles lumières sont allumées"), ["HassTurnOn", "GetLiveContext", "NexusHousehold"])
+        self.assertIn("HassMediaPause", core.pick_tools(names, "mets la musique en pause"))
+        self.assertIn("HassSetVolume", core.pick_tools(names, "monte le volume de la télé"))
+        self.assertIn("NexusStartTimer", core.pick_tools(names, "rappelle-moi de sortir le pain"))
+        self.assertIn("NexusRemember", core.pick_tools(names, "retiens que le salon c'est Living"))
+        self.assertIn("NexusRemember", core.pick_tools(names, "Commençons", lesson=True))
+
+    def test_slim_schema(self):
+        schema = {"type": "object", "properties": {"device_class": {"type": "array", "items": {"type": "string", "enum": list("abcdefghij")}}, "mode": {"enum": ["on", "off"]}}, "required": []}
+        self.assertEqual(core.slim_schema(schema), {"type": "object", "properties": {"device_class": {"type": "array", "items": {"type": "string"}}, "mode": {"enum": ["on", "off"]}}})
+
+    def test_compact_live(self):
+        live = ("Live Context: An overview of the areas and the devices in this smart home:\n- names: Solemio\n  domain: climate\n  state: heat\n  areas: Salon\n"
+                "  attributes:\n    current_temperature: 19.9\n    temperature: 20.5\n- names: Cuisine\n  domain: light\n  state: 'off'\n- names: Ghost\n  domain: scene\n  state: unavailable\n")
+        short = core.compact_live(live)
+        self.assertIn("Solemio (climate, Salon): heat; current_temperature=19.9; temperature=20.5", short)
+        self.assertIn("Cuisine (light): off", short)
+        self.assertNotIn("Ghost", short)
+        self.assertTrue(short.startswith("Live Context") and len(short) < len(live))
+        self.assertEqual(core.compact_live("no list"), "no list")
+
+
 if __name__ == "__main__":
     unittest.main()

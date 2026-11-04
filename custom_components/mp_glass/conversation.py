@@ -18,6 +18,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util.ulid import ulid_now
 
 from .assistant_core import (
+    NUDGE, claims_action, honest_answer,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
     household, plain_command, provider_error, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
@@ -39,17 +40,59 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
 class HouseholdTool(llm.Tool):
     name = "NexusHousehold"
-    description = "Qui habite la maison et qui est à la maison en ce moment."
+    description = ("Qui habite la maison et qui est à la maison en ce moment, la météo actuelle et les prévisions des prochains jours, "
+                   "et la consommation électrique du moment. Fonctionne même si ces entités ne sont pas exposées à Assist.")
     # Home Assistant 2026.10+ records which integration provides each tool.
     integration = DOMAIN
 
     async def async_call(self, hass, tool_input, llm_context):
         persons = [{"name": str(s.attributes.get("friendly_name") or s.entity_id[7:]), "state": s.state}
                    for s in hass.states.async_all("person") if s.state not in ("unavailable", "unknown")]
-        data = household(persons)
+        data = household(persons, await _weather(hass), _power(hass))
         # Since 2026.10 a tool returns a ToolResult; before, the data itself.
         result = getattr(llm, "ToolResult", None)
         return result(data=data) if result else data
+
+
+async def _weather(hass):
+    """The weather the dashboard shows: now, and the next two days when the integration forecasts them."""
+    state = next((s for s in hass.states.async_all("weather") if s.state not in ("unavailable", "unknown")), None)
+    if state is None:
+        return None
+    a = state.attributes
+    unit = a.get("temperature_unit") or "°C"
+    now = {"ciel": state.state, "température": f"{a.get('temperature')} {unit}" if a.get("temperature") is not None else None,
+           "humidité": f"{a.get('humidity')} %" if a.get("humidity") is not None else None,
+           "vent": f"{a.get('wind_speed')} {a.get('wind_speed_unit') or ''}".strip() if a.get("wind_speed") is not None else None}
+    weather = {"lieu": str(a.get("friendly_name") or ""), "maintenant": {k: v for k, v in now.items() if v is not None}}
+    try:
+        answer = await hass.services.async_call("weather", "get_forecasts", {"entity_id": state.entity_id, "type": "daily"}, blocking=True, return_response=True)
+        days = ((answer or {}).get(state.entity_id) or {}).get("forecast") or []
+        weather["prévisions"] = [{k: d.get(k) for k in ("datetime", "condition", "temperature", "templow", "precipitation", "precipitation_probability") if d.get(k) is not None} for d in days[:3]]
+    except Exception:  # noqa: BLE001 - a weather integration without daily forecasts still gives the weather now.
+        pass
+    return weather
+
+
+_MAIN_METER = ("total", "maison", "house", "home", "linky", "compteur", "general", "général", "main", "grid", "réseau")
+
+
+def _power(hass):
+    """The power used now: the house meter when one is recognised, otherwise the largest readings."""
+    found = []
+    for s in hass.states.async_all("sensor"):
+        if s.attributes.get("device_class") != "power":
+            continue
+        try:
+            value = float(s.state)
+        except (TypeError, ValueError):
+            continue
+        unit = s.attributes.get("unit_of_measurement") or "W"
+        watts = value * 1000 if unit == "kW" else value
+        name = str(s.attributes.get("friendly_name") or s.entity_id)
+        found.append((any(w in (name + s.entity_id).lower() for w in _MAIN_METER), watts, name, f"{value:g} {unit}"))
+    found.sort(key=lambda f: (not f[0], -f[1]))
+    return [{"nom": name, "puissance": shown} for _, _, name, shown in found[:4]]
 
 
 class NexusAPI(llm.API):
@@ -135,6 +178,9 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         if local is None and not lesson_id and plain and plain != user_input.text.strip():
             # « Nexus, éteins la cuisine s'il te plaît » is still « éteins la cuisine ».
             local = await conversation.async_handle_intents(self.hass, dataclasses.replace(user_input, text=plain), chat_log)
+        if local is not None and _empty_answer(local) and clean_key(self.entry.options.get("assistant_api_key")):
+            # « Personne », « Aucun appareil »: Home Assistant only sees what is exposed to Assist; the AI looks further and says it better.
+            local = None
         if local is not None:
             chat_log.async_add_assistant_content_without_tools(conversation.AssistantContent(
                 agent_id=user_input.agent_id, content=local.speech.get("plain", {}).get("speech", "")))
@@ -166,7 +212,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             self._save()
             start = len(chat_log.content)
         try:
-            await self._converse(chat_log, key, options)
+            await self._converse(chat_log, key, options, start, user_input.language)
         except AssistantError as err:
             _LOGGER.warning("Nexus assistant: %s", err.detail)
             touched = self._touched(chat_log, start)
@@ -270,17 +316,33 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
             await asyncio.sleep(wait + 0.3)
         raise AssistantError("quota", "Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.")
 
-    async def _converse(self, chat_log, key, options):
+    def _acted(self, chat_log, start):
+        """True when a tool that changes the house (or a timer, or a fact) succeeded since `start`."""
+        return any(c["ok"] and not c["read_only"] for c in self._calls(chat_log, start))
+
+    async def _converse(self, chat_log, key, options, start=None, language="fr"):
         api = chat_log.llm_api
         names = short_names([t.name for t in api.tools]) if api else {}
         real = {short: name for name, short in names.items()}
         tools = [tool_spec(names[t.name], t.description, _schema(t, api.custom_serializer)) for t in api.tools] if api else []
         session, url = async_get_clientsession(self.hass), f"{base_url(options.get('assistant_url'))}/chat/completions"
         model = (options.get("assistant_model") or "").strip() or DEFAULT_MODEL
+        start = len(chat_log.content) if start is None else start
+        nudged = False
         for _ in range(MAX_TOOL_TURNS):
-            payload = build_request(model, to_messages([_content(c, names) for c in chat_log.content]), tools)
+            messages = to_messages([_content(c, names) for c in chat_log.content])
+            if nudged:
+                messages.append({"role": "user", "content": NUDGE})
+            payload = build_request(model, messages, tools)
             body = await self._post(session, url, payload, key)
             text, calls = read_answer(body)
+            # An answer that says it acted while no tool acted is a made-up action: the model is told so once, then Nexus says the truth.
+            if not calls and claims_action(text) and not self._acted(chat_log, start):
+                if not nudged:
+                    _LOGGER.info("Nexus assistant: an action was announced without a tool call, asking again")
+                    nudged = True
+                    continue
+                text = honest_answer(language)
             content = conversation.AssistantContent(agent_id=self.entity_id, content=text or None,
                                                     tool_calls=[llm.ToolInput(tool_name=real.get(c["name"], c["name"]), tool_args=c["args"], id=c["id"]) for c in calls] or None)
             async for _ in chat_log.async_add_assistant_content(content):
@@ -293,6 +355,11 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         response = intent.IntentResponse(language=user_input.language)
         response.async_set_error(intent.IntentResponseErrorCode.UNKNOWN, text)
         return conversation.ConversationResult(response=response, conversation_id=chat_log.conversation_id)
+
+
+def _empty_answer(response):
+    """A question Home Assistant answered at home with nothing found (« Personne », « Aucun appareil »)."""
+    return response.response_type == intent.IntentResponseType.QUERY_ANSWER and not response.matched_states
 
 
 def _succeeded(result, data):

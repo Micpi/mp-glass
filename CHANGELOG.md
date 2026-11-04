@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.41.0 — Nexus dit vrai, et voit la météo, les présences et la consommation
+
+- **Plus d'action inventée** : quand l'IA annonçait « J'ai baissé le thermostat à 24 °C » sans avoir rien fait, Nexus le répétait. Désormais, une réponse qui prétend avoir agi sans qu'aucun outil n'ait agi est renvoyée une fois à l'IA pour qu'elle fasse vraiment l'action ; si elle insiste, Nexus dit honnêtement qu'il n'a rien changé.
+- **Fini les « Personne » et « Aucun appareil »** : quand Home Assistant répond seul à une question sans rien trouver (souvent parce que l'entité n'est pas exposée à Assist), la question passe à l'IA, qui cherche plus loin et répond par une vraie phrase.
+- **Météo, prévisions, présences et consommation** : l'outil NexusHousehold donne maintenant la météo du moment et des prochains jours, qui est à la maison et la puissance consommée (compteur principal en premier), comme le tableau de bord, même si ces entités ne sont pas exposées à Assist.
+
 ## 0.40.0 — Éduquer Nexus : des leçons pour qu'il connaisse vraiment votre maison
 
 - **Programme d'éducation** : Plus → **Éduquer Nexus**. Six leçons guidées (faire connaissance, les pièces et leurs surnoms, vos appareils au quotidien, vos habitudes, vos ambiances, comment Nexus vous parle). Nexus mène la conversation à voix haute : il pose une question à la fois, vous répondez, et chaque réponse utile devient un **fait retenu** (« le salon, c'est la pièce Living », « on se réveille à 6 h 45 en semaine »). La leçon dure jusqu'à 12 échanges, on peut l'arrêter en disant « stop ».

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.42.2 — La sphère s'affiche dès que le mot est prononcé
+
+- **La sphère s'ouvre tout de suite** quand le mot d'éveil est reconnu. Avant, l'écran attendait d'avoir relâché le micro et joué le bip d'écoute avant de l'afficher.
+- **Le bip ne peut plus tout bloquer** : sans toucher récent de l'écran, certains navigateurs (notamment sur iPhone et sur les tablettes murales) laissent le son en attente indéfiniment. La sphère ne s'ouvrait alors jamais. Si le son n'est pas prêt en 0,3 s, Nexus passe sans bip et écoute quand même.
+
 ## 0.42.1 — Le tri des outils marche aussi sur Home Assistant 2026.10
 
 - **Le tri des outils de la 0.42.0 ne s'appliquait pas sur Home Assistant 2026.10** : ses outils portent le nom de leur intégration (« intent__HassMediaPause »), et Nexus ne les reconnaissait pas. Une requête pesait donc encore 17 000 caractères (3 200 tokens) et le quota gratuit sautait dès la deuxième question. C'est corrigé.

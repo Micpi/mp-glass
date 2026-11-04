@@ -1987,11 +1987,17 @@ export class MPNexusView extends LitElement {
     const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
     this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
     if (this.saving) this.wake();
-    // The page lets go of the microphone first (an iPhone plays quietly while it is held), then a short tone says « I listen ».
+    // The sphere shows at once; then the page lets go of the microphone (an iPhone plays quietly while it is held),
+    // a short tone says « I listen », and the recording starts.
+    this.handsFree = true; this.handsFreeTurns = 0; this.lesson = '';
+    this.overlay = 'voice'; this.query = ''; this.answer = undefined; this.conversationId = undefined; this.voiceHeard = '';
+    this.voiceState = 'listening';
+    const turn = ++this.voiceTurn;
     const listener = this.wakeListener;
     if (listener) { listener.paused = true; await listener.mic(false); }
     await this.listenSignal();
-    this.openVoice(true);
+    if (turn !== this.voiceTurn || this.overlay !== 'voice') return;
+    void this.talk();
   };
   /** The short tone before each time Nexus listens (it can be turned off in the wake word's settings). */
   private async listenSignal() {

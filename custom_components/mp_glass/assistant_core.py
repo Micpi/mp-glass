@@ -43,8 +43,24 @@ def base_url(url):
     return (url or "").strip().rstrip("/") or GROQ_URL
 
 
+def slim_schema(schema):
+    """A tool's parameters with what costs tokens and helps little taken out: long enumerations, empty lists of required fields."""
+    if isinstance(schema, list):
+        return [slim_schema(s) for s in schema]
+    if not isinstance(schema, dict):
+        return schema
+    slim = {}
+    for key, value in schema.items():
+        if key == "enum" and isinstance(value, list) and len(value) > 8:
+            continue
+        if key == "required" and value == []:
+            continue
+        slim[key] = slim_schema(value)
+    return slim
+
+
 def tool_spec(name, description, parameters):
-    spec = {"name": name, "parameters": parameters or {"type": "object", "properties": {}}}
+    spec = {"name": name, "parameters": slim_schema(parameters) or {"type": "object", "properties": {}}}
     if description:
         spec["description"] = description
     return {"type": "function", "function": spec}
@@ -240,6 +256,54 @@ def household(persons, weather=None, power=None):
     if power:
         data["consommation"] = power
     return data
+
+
+# ——— Thrift: the free tier counts every token, so a request carries only the tools it may need ———
+_MEDIA_TOOL = re.compile(r"^(?:HassMedia|HassSetVolume|HassMediaPlayer)")
+_TIMER_TOOL = re.compile(r"^(?:NexusStartTimer|NexusSetAlarm|NexusListTimers|NexusCancelTimer|HassCancelAllTimers|HassStartTimer|HassCancelTimer|HassIncreaseTimer|HassDecreaseTimer|HassPauseTimer|HassUnpauseTimer|HassTimerStatus)$")
+_FACT_TOOL = re.compile(r"^(?:NexusRemember|NexusForget)$")
+_MEDIA_WORDS = re.compile(r"musique|chanson|morceau|titre|album|artiste|playlist|radio|podcast|spotify|sonos|volume|son\b|plus fort|moins fort|muet|mute|t[ée]l[ée]|\btv\b|film|s[ée]rie|joue|lecture|pause|reprend|suivant|pr[ée]c[ée]dent|enceinte|music|song|play|track|louder|quieter|next|previous|resume", re.I)
+_TIMER_WORDS_ANY = re.compile(r"minuteur|timer|r[ée]veil|alarme|alarm|rappel|remind|compte [àa] rebours|sonnerie|countdown", re.I)
+_FACT_WORDS = re.compile(r"retiens|souviens|m[ée]morise|oublie|note que|appelle[sz]? |appelons|d['’]habitude|chez nous|on dit|remember|forget|we call", re.I)
+
+
+def pick_tools(names, said, lesson=False):
+    """The tools worth offering for what was said in the conversation: media, timers and memory only when they are talked about."""
+    said = said or ""
+    keep = []
+    for name in names:
+        if _MEDIA_TOOL.search(name) and not _MEDIA_WORDS.search(said):
+            continue
+        if _TIMER_TOOL.search(name) and not _TIMER_WORDS_ANY.search(said):
+            continue
+        if _FACT_TOOL.search(name) and not (lesson or _FACT_WORDS.search(said)):
+            continue
+        keep.append(name)
+    return keep
+
+
+def compact_live(text):
+    """Home Assistant's live states (YAML, five lines a device) in one line a device: « Solemio (climate, Salon): heat; temperature=20.5 »."""
+    found = re.search(r"((?:^|\n)- names:[\s\S]*)$", text or "")
+    if not found:
+        return text
+    try:
+        import yaml  # noqa: PLC0415 - shipped with Home Assistant.
+        devices = yaml.safe_load(found.group(1))
+    except Exception:  # noqa: BLE001 - an unreadable list is kept as it is.
+        return text
+    if not isinstance(devices, list):
+        return text
+    lines = []
+    for d in devices:
+        # Unavailable devices (old scenes, screens switched off) only cost tokens.
+        if not isinstance(d, dict) or not d.get("names") or d.get("state") == "unavailable":
+            continue
+        where = ", ".join(str(x) for x in (d.get("domain"), d.get("areas")) if x)
+        attrs = d.get("attributes") or {}
+        extra = "; ".join(f"{k}={v}" for k, v in attrs.items() if v not in (None, "", [])) if isinstance(attrs, dict) else ""
+        lines.append(f"{d['names']} ({where}): {d.get('state', '?')}" + (f"; {extra}" if extra else ""))
+    return text[: found.start(1)].rstrip() + "\n" + "\n".join(lines)
 
 
 # ——— Honesty: Nexus never says it did what no tool did ———

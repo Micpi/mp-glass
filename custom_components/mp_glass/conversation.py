@@ -6,6 +6,7 @@ on the entities exposed to Assist only, plus what MP Nexus adds about the househ
 """
 import asyncio
 import dataclasses
+import json
 import logging
 
 from aiohttp import ClientError, ClientTimeout
@@ -18,7 +19,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util.ulid import ulid_now
 
 from .assistant_core import (
-    NUDGE, claims_action, honest_answer,
+    NUDGE, claims_action, compact_live, honest_answer, pick_tools,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
     household, plain_command, provider_error, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
@@ -110,7 +111,11 @@ def _content(item, names):
     if isinstance(item, conversation.AssistantContent):
         return {"role": "assistant", "content": item.content, "tool_calls": [{"id": c.id, "name": names.get(c.tool_name, c.tool_name), "args": c.tool_args} for c in item.tool_calls or ()]}
     if isinstance(item, conversation.ToolResultContent):
-        return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": tool_result_data(item)}
+        result = tool_result_data(item)
+        # The live states of the whole house come back as YAML: the same in one line a device costs half the tokens.
+        if isinstance(result, dict) and isinstance(result.get("result"), str):
+            result = {**result, "result": compact_live(result["result"])}
+        return {"role": "tool_result", "tool_call_id": item.tool_call_id, "result": result}
     if item.role == "system":
         return {"role": "system", "content": shorten_text(item.content or "", names)}
     # The screen opens a lesson with a marker; the model reads it as the person asking to begin.
@@ -309,7 +314,11 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
                     if attempt == 0:
                         wait = 0.0 if bad_tool_call(response.status, body) else quota_wait(response.status, response.headers.get("retry-after"), body)
                     if wait is None:
-                        raise provider_error(response.status, body, key)
+                        error = provider_error(response.status, body, key)
+                        if error.code == "quota":
+                            _LOGGER.warning("Nexus assistant: quota refused a request of about %d characters: %s", len(json.dumps(payload, ensure_ascii=False)),
+                                            body[:300].decode(errors="replace").replace(key, "***") if key else body[:300])
+                        raise error
             except (ClientError, TimeoutError) as err:
                 raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
             _LOGGER.debug("Nexus assistant: provider refused (%s), new try in %.1f s", response.status, wait)
@@ -324,7 +333,12 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         api = chat_log.llm_api
         names = short_names([t.name for t in api.tools]) if api else {}
         real = {short: name for name, short in names.items()}
-        tools = [tool_spec(names[t.name], t.description, _schema(t, api.custom_serializer)) for t in api.tools] if api else []
+        said = " ".join(c.content or "" for c in chat_log.content if isinstance(c, conversation.UserContent))
+        lesson_on = any((c.content or "").startswith(LESSON_MARK) for c in chat_log.content if isinstance(c, conversation.UserContent))
+        offered = set(pick_tools([t.name for t in api.tools], said, lesson_on)) if api else set()
+        # Tools already used in this conversation stay offered, so that a follow-up works the same way.
+        offered |= {call.tool_name for c in chat_log.content if isinstance(c, conversation.AssistantContent) for call in (c.tool_calls or ())}
+        tools = [tool_spec(names[t.name], t.description, _schema(t, api.custom_serializer)) for t in api.tools if t.name in offered] if api else []
         session, url = async_get_clientsession(self.hass), f"{base_url(options.get('assistant_url'))}/chat/completions"
         model = (options.get("assistant_model") or "").strip() or DEFAULT_MODEL
         start = len(chat_log.content) if start is None else start

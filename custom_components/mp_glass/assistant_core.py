@@ -115,6 +115,64 @@ def to_messages(contents):
     return system + rest
 
 
+# Groq counts each model's daily quota apart: when the chosen one is spent, the next one answers until it comes back.
+FALLBACK_MODELS = ("openai/gpt-oss-20b", "qwen/qwen3-32b", "llama-3.1-8b-instant")
+
+
+def is_daily_quota(status, body):
+    """The provider's refusal is the quota of the day (tokens or requests), not the one of the minute."""
+    if status != 429:
+        return False
+    try:
+        message = str((json.loads(body).get("error") or {}).get("message") or "")
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return bool(re.search(r"per day|\(RPD\)|\(TPD\)|\(ASPD\)|\(ASH\)", message, re.I))
+
+
+def retry_in(body, default=3600.0):
+    """Seconds until the provider says a spent quota comes back (« try again in 1h2m3.5s »), or `default`."""
+    try:
+        message = str((json.loads(body).get("error") or {}).get("message") or "")
+    except (ValueError, AttributeError, TypeError):
+        return default
+    found = re.search(r"try again in (?:(\d+)h)?(?:(\d+)m)?(?:([\d.]+)s)?", message)
+    if not found or not any(found.groups()):
+        return default
+    hours, minutes, seconds = found.groups()
+    return int(hours or 0) * 3600 + int(minutes or 0) * 60 + float(seconds or 0)
+
+
+class ModelShelf:
+    """The models whose daily quota is spent, and until when; the models to try for a request, the chosen one first."""
+
+    def __init__(self):
+        self.spent = {}
+
+    def spend(self, model, seconds, now):
+        self.spent[model] = now + max(60.0, seconds)
+
+    def back_in(self, now):
+        """Seconds until the first spent model comes back."""
+        waits = [until - now for until in self.spent.values() if until > now]
+        return min(waits) if waits else 0.0
+
+    def candidates(self, model, url, now):
+        chain = [model] + ([m for m in FALLBACK_MODELS if m != model] if base_url(url) == GROQ_URL else [])
+        return [m for m in chain if self.spent.get(m, 0) <= now]
+
+
+def with_model(payload, model):
+    """The same request for another model, with the reasoning setting that model understands."""
+    payload = {**payload, "model": model}
+    payload.pop("reasoning_effort", None)
+    if "gpt-oss" in model:
+        payload["reasoning_effort"] = "low"
+    elif "qwen3" in model:
+        payload["reasoning_effort"] = "none"
+    return payload
+
+
 def build_request(model, messages, tools):
     model = model or DEFAULT_MODEL
     # The free tier counts the tokens a request may produce against its per-minute quota: short answers, little reasoning.
@@ -352,9 +410,29 @@ def stt_language(language):
     return code if re.fullmatch(r"[a-z]{2}", code) else None
 
 
+# What Whisper « hears » in silence or noise: subtitle credits, thanks, a lone name. Never a request.
+_PHANTOMS = re.compile(r"^(?:merci(?: (?:beaucoup|à tous|d'avoir regardé|de votre attention))?|sous-titr\w*.*|.*amara\.org.*|thank you(?: for watching)?|thanks for watching|bye|au revoir|\.+|…)[.!…\s]*$", re.I)
+
+
 def read_transcript(body):
+    """What was said. Segments Whisper itself doubts (probably no speech, or a weak guess) are left out: a false wake
+    or a noise must not become a request (« Michel. » sent to the AI, its quota spent for nothing)."""
     try:
-        text = (json.loads(body) if isinstance(body, (str, bytes, bytearray)) else body).get("text")
+        data = json.loads(body) if isinstance(body, (str, bytes, bytearray)) else body
+        text = data.get("text")
+        segments = data.get("segments")
     except (ValueError, AttributeError) as err:
         raise AssistantError("bad_answer", "Transcription illisible.") from err
-    return " ".join(str(text or "").split())
+    if isinstance(segments, list) and segments:
+        kept = [str(seg.get("text") or "") for seg in segments if isinstance(seg, dict) and not _doubtful(seg)]
+        text = " ".join(kept)
+    text = " ".join(str(text or "").split())
+    return "" if _PHANTOMS.match(text) else text
+
+
+def _doubtful(segment):
+    try:
+        silent, guess = float(segment.get("no_speech_prob") or 0), float(segment.get("avg_logprob") or 0)
+    except (TypeError, ValueError):
+        return False
+    return (silent > 0.6 and guess < -0.4) or guess < -1.0 or silent > 0.9

@@ -249,7 +249,8 @@ def tool_result_data(item):
 def household(persons, weather=None, power=None):
     """Who lives here and who is home (person states), and what the dashboard shows beside them: the weather and the power used now."""
     home = [p["name"] for p in persons if p["state"] == "home"]
-    away = [p["name"] for p in persons if p["state"] != "home"]
+    # Where the others are, when their zone is known (« Mickael (Bureau) »).
+    away = [p["name"] if p["state"] in ("not_home", "away") else f"{p['name']} ({p['state']})" for p in persons if p["state"] != "home"]
     data = {"à_la_maison": home, "absents": away}
     if weather:
         data["météo"] = weather
@@ -271,14 +272,16 @@ def pick_tools(names, said, lesson=False):
     """The tools worth offering for what was said in the conversation: media, timers and memory only when they are talked about."""
     said = said or ""
     keep = []
-    for name in names:
+    for full in names:
+        # Since Home Assistant 2026.10 the tools carry their integration: « intent__HassMediaPause ».
+        name = full.rsplit("__", 1)[-1]
         if _MEDIA_TOOL.search(name) and not _MEDIA_WORDS.search(said):
             continue
         if _TIMER_TOOL.search(name) and not _TIMER_WORDS_ANY.search(said):
             continue
         if _FACT_TOOL.search(name) and not (lesson or _FACT_WORDS.search(said)):
             continue
-        keep.append(name)
+        keep.append(full)
     return keep
 
 

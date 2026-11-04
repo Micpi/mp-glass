@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.44.1 — Un seul Nexus répond au mot
+
+- **Deux bips et deux réponses pour un seul « Nexus »** : quand la page était cachée puis réaffichée, ou que Home Assistant déplaçait la vue pendant que l'écoute démarrait, une deuxième écoute se lançait sans que la première s'arrête. Elle continuait dans une page invisible, et chaque mot déclenchait deux fois Nexus. L'écoute interrompue pendant son démarrage rend maintenant le micro et s'arrête vraiment.
+- **Plusieurs onglets du tableau de bord sur le même appareil** : seul le premier qui entend le mot répond, les autres restent silencieux jusqu'à la fin de la conversation.
+
 ## 0.44.0 — Nexus en majordome
 
 - **Personnalité « Majordome »**, au choix pour toute la maison (Plus → Sur cet écran → Personnalité). Nexus vous appelle « Monsieur », reste flegmatique et glisse un humour pince-sans-rire, sans jamais perdre en clarté. Même les réponses que Home Assistant donne seul (« Éteint ») passent en « Éteint, Monsieur. ».

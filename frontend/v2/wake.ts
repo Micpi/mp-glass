@@ -249,7 +249,7 @@ export class WakeListener {
   private hold = false;
   private pipeline?: WakePipeline;
   private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode; private source?: MediaStreamAudioSourceNode;
-  private micBusy?: Promise<void>; private micOff = false;
+  private micBusy?: Promise<void>; private micOff = false; private stopped = false;
   private busy = false; private queue: Float32Array[] = []; private last = 0; private chunks = 0;
   /** The 16 embeddings that woke Nexus: a voice word learns from them, as the word or as a false wake. */
   heard?: Float32Array;
@@ -268,10 +268,24 @@ export class WakeListener {
     if (!on) this.pipeline?.reset();
   }
   async start() {
+    if (this.stopped) return;
     if (this.context) { if (this.context.state === 'suspended') await this.context.resume(); return; }
+    if (this.starting) return this.starting;
+    this.starting = this.open().finally(() => { this.starting = undefined; });
+    return this.starting;
+  }
+  private starting?: Promise<void>;
+  /**
+   * Stopped while it was still starting (the page was hidden, Home Assistant moved the view), it lets go of everything
+   * it took: a listener left running in a page nobody sees answered a second time, with a second tone.
+   */
+  private async open() {
     const pipeline = this.pipeline = new WakePipeline(this.models);
     await pipeline.warm();
-    this.stream = await microphone();
+    if (this.stopped) return;
+    const stream = await microphone();
+    if (this.stopped) { stream.getTracks().forEach(t => t.stop()); return; }
+    this.stream = stream;
     const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     const context = this.context = new Context();
     const resampler = new Resampler(context.sampleRate);
@@ -284,6 +298,7 @@ export class WakeListener {
     if (context.audioWorklet) {
       const url = URL.createObjectURL(new Blob([WORKLET], { type: 'application/javascript' }));
       try { await context.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
+      if (this.stopped) { this.stop(); return; }
       const node = new AudioWorkletNode(context, 'mp-wake-tap');
       node.port.onmessage = e => feed(e.data as Float32Array);
       source.connect(node);
@@ -324,7 +339,7 @@ export class WakeListener {
     });
   }
   private async drain(pipeline: WakePipeline) {
-    if (this.busy) return;
+    if (this.busy || this.stopped) return;
     this.busy = true;
     try {
       while (this.queue.length) {
@@ -340,6 +355,7 @@ export class WakeListener {
           this.chunks = 0;
           this.onAmbient(pipeline.lastWindow());
         }
+        if (this.stopped) return;
         if (score !== undefined && score >= this.threshold && !this.paused && performance.now() - this.last > DEBOUNCE_MS) {
           this.last = performance.now();
           this.heard = pipeline.lastWindow();
@@ -351,6 +367,7 @@ export class WakeListener {
     } finally { this.busy = false; }
   }
   stop() {
+    this.stopped = true;
     this.micOff = true;
     this.source?.disconnect(); this.source = undefined;
     this.node?.disconnect();

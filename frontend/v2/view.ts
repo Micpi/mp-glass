@@ -24,7 +24,7 @@ import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -261,6 +261,7 @@ export class MPNexusView extends LitElement {
   private wakeOld = false;
   private wakePeak = 0; private wakePeakAt = 0;
   private wakeListener?: WakeListener;
+  private waking = false; private voiceRelease?: () => void;
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
@@ -381,6 +382,7 @@ export class MPNexusView extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.endVoice();
+    this.voiceRelease?.(); this.voiceRelease = undefined;
     this.stopWake();
     this.stopTimers();
     document.removeEventListener('visibilitychange', this.wakeVisibility);
@@ -411,6 +413,7 @@ export class MPNexusView extends LitElement {
   }
   protected updated() {
     this.watchConnection();
+    if (this.voiceRelease && this.overlay !== 'voice') { this.voiceRelease(); this.voiceRelease = undefined; }
     queueMicrotask(() => this.keepWake());
     queueMicrotask(() => this.keepTimers());
     this.observeProtectedImages();
@@ -1932,28 +1935,30 @@ export class MPNexusView extends LitElement {
     if (!wanted) { if (this.wakeListener || this.wakeState !== 'off') this.stopWake(); return; }
     if (!this.wakeList) { this.wakeList = []; void wakeWords(this.hass!).then(list => { this.wakeList = list; }); }
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
-    if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, key); return; }
+    if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, ++this.wakeGen); return; }
     if (this.wakeListener) {
       const busy = (this.overlay === 'voice' && this.voiceState !== 'idle') || this.overlay === 'ring';
       this.wakeListener.paused = busy;
       if (!busy) void this.wakeListener.mic(true);
     }
   }
-  private async startWake(word: string, key: string) {
+  /** Each start of the listening has its number: a start overtaken while it loaded (stopped, then started again) gives up. */
+  private wakeGen = 0;
+  private async startWake(word: string, gen: number) {
     const hass = this.hass;
     if (!hass) return;
     this.wakeState = 'loading';
     try {
       const model = await wakeModel(hass, word), voice = typeof model === 'object' && !(model instanceof Uint8Array);
       const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
-      if (this.wakeFor !== key) return;
+      if (gen !== this.wakeGen || !this.isConnected) return;
       const listener = this.wakeListener = new WakeListener(models, () => { void this.woke(); });
       if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
       listener.onScore = score => this.showWakeScore(score);
       this.wakeOld = voice && !((model as { version?: number }).version! >= 2);
       await this.armWake();
     } catch (error) {
-      if (this.wakeFor !== key) return;
+      if (gen !== this.wakeGen) return;
       console.warn('MP Nexus: wake word', error);
       this.wakeState = 'error';
     }
@@ -1975,6 +1980,7 @@ export class MPNexusView extends LitElement {
     addEventListener('pointerdown', this.armWake, { once: true });
   };
   private stopWake() {
+    this.wakeGen++;
     removeEventListener('pointerdown', this.armWake);
     this.flushAmbient(5);
     this.wakeListener?.stop(); this.wakeListener = undefined; this.wakeFor = undefined;
@@ -1983,7 +1989,13 @@ export class MPNexusView extends LitElement {
   private wakeVisibility = () => { if (document.visibilityState !== 'visible') this.stopWake(); this.requestUpdate(); };
   private woke = async () => {
     if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
-    if (this.overlay === 'enroll' || this.overlay === 'ring') return;
+    if (this.overlay === 'enroll' || this.overlay === 'ring' || this.waking || !this.isConnected) return;
+    // Two tabs of the dashboard on this device both hear the word: the first one answers, the others stay quiet.
+    this.waking = true;
+    const release = await claimVoice();
+    this.waking = false;
+    if (!release) return;
+    this.voiceRelease?.(); this.voiceRelease = release;
     const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
     this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
     if (this.saving) this.wake();

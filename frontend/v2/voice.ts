@@ -121,6 +121,21 @@ export async function transcribe(hass: Hass, audio: Blob, language: string) {
   return (answer.text ?? '').trim();
 }
 
+/**
+ * Only one tab of this device answers the wake word: each tab that hears it asks for the same lock, and the ones that
+ * do not get it stay quiet. Resolves with the release of the lock, or undefined when another tab already answers.
+ */
+export function claimVoice(): Promise<(() => void) | undefined> {
+  const locks = (navigator as unknown as { locks?: LockManager }).locks;
+  if (!locks?.request) return Promise.resolve(() => undefined);
+  return new Promise(resolve => {
+    locks.request('mp-nexus-voice', { ifAvailable: true }, lock => {
+      if (!lock) { resolve(undefined); return undefined; }
+      return new Promise<void>(release => resolve(release));
+    }).catch(() => resolve(() => undefined));
+  });
+}
+
 /** A sentence being spoken, which can be cut short. */
 export interface Speech { done: Promise<void>; stop(): void }
 const silent: Speech = { done: Promise.resolve(), stop: () => undefined };

@@ -24,7 +24,7 @@ import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -362,6 +362,10 @@ export class MPNexusView extends LitElement {
   connectedCallback() {
     super.connectedCallback();
     this.header = claimHeader(this);
+    // Home Assistant keeps each view and plugs it back in: the voice may have been changed in another one meanwhile.
+    this.voicePrefs = readVoicePrefs();
+    addEventListener(VOICE_EVENT, this.voicePrefsChanged);
+    addEventListener('storage', this.voicePrefsStored);
     this.toggleAttribute('comfort', this.prefs.comfort);
     this.addEventListener('hass-more-info', this.interceptMoreInfo);
     addEventListener('resize', this.measure);
@@ -382,6 +386,8 @@ export class MPNexusView extends LitElement {
   disconnectedCallback() {
     super.disconnectedCallback();
     this.endVoice();
+    removeEventListener(VOICE_EVENT, this.voicePrefsChanged);
+    removeEventListener('storage', this.voicePrefsStored);
     this.voiceRelease?.(); this.voiceRelease = undefined;
     this.stopWake();
     this.stopTimers();
@@ -1860,6 +1866,8 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn || !reply) return;
     await this.say(reply.text, turn);
   }
+  private voicePrefsChanged = (e: Event) => { const prefs = (e as CustomEvent<VoicePrefs>).detail; if (prefs && prefs !== this.voicePrefs) this.voicePrefs = { ...prefs }; };
+  private voicePrefsStored = (e: StorageEvent) => { if (e.key === null || e.key === 'mp-nexus.voice') this.voicePrefs = readVoicePrefs(); };
   private async say(text: string, turn: number) {
     const hass = this.hass, prefs = this.voicePrefs;
     if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; this.followUp(); return; }
@@ -1869,7 +1877,7 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn) return;
     audioSession('playback');
     try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
-    catch { this.speech = speakOnDevice(text, locale()); }
+    catch (error) { console.warn('MP Nexus: voice', error); this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     await this.speech.done;
     audioSession('auto');
     if (turn !== this.voiceTurn) return;
@@ -2261,7 +2269,7 @@ export class MPNexusView extends LitElement {
     const prefs = this.voicePrefs, hass = this.hass;
     void (async () => {
       try { this.speech = prefs.speak === 'ha' && prefs.engine && hass ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
-      catch { this.speech = speakOnDevice(text, locale()); }
+      catch (error) { console.warn('MP Nexus: voice', error); this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     })();
   }
 

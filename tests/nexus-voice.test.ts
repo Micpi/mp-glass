@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LONGEST_MS, NOBODY_MS, PAUSE_MS, readVoicePrefs, recordingFormat, shouldStop, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+import { LONGEST_MS, NOBODY_MS, PAUSE_MS, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
 
 describe('the voice of Nexus', () => {
   it('stops listening after a pause once someone spoke', () => {
@@ -37,5 +37,16 @@ describe('the voice of Nexus', () => {
     expect(readVoicePrefs()).toEqual({ speak: 'ha', engine: 'tts.piper' });
     store.set('mp-nexus.voice', '{"speak":"shout"}');
     expect(readVoicePrefs().speak).toBe('device');
+  });
+  it('tells every view of the dashboard when the voice changes', () => {
+    const store = new Map<string, string>(), heard: unknown[] = [];
+    globalThis.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } } as unknown as Storage;
+    const target = new EventTarget();
+    target.addEventListener(VOICE_EVENT, e => heard.push((e as CustomEvent).detail));
+    const saved = globalThis.window;
+    (globalThis as { window?: unknown }).window = target;
+    try { writeVoicePrefs({ speak: 'ha', engine: 'tts.voix_nexus', voice: 'fr-FR-HenriNeural' }); }
+    finally { (globalThis as { window?: unknown }).window = saved; }
+    expect(heard).toEqual([{ speak: 'ha', engine: 'tts.voix_nexus', voice: 'fr-FR-HenriNeural' }]);
   });
 });

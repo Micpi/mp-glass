@@ -26,7 +26,7 @@ from .scenes import KEY as SCENES_KEY, async_setup_scenes
 
 _LOGGER = logging.getLogger(__name__)
 # Nexus scenes, and Nexus the assistant.
-PLATFORMS = [Platform.SCENE, Platform.CONVERSATION]
+PLATFORMS = [Platform.SCENE, Platform.CONVERSATION, Platform.TTS]
 
 
 async def async_setup_entry(hass, entry):

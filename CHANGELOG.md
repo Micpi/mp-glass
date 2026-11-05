@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.46.0 — De nouvelles voix, et l'orbe parle avec celle choisie
+
+- **L'orbe garde maintenant la voix choisie.** Home Assistant garde chaque vue du tableau de bord en mémoire : la vue de l'orbe gardait l'ancien réglage de voix tant que la page n'était pas rechargée, alors que la page Plus prenait le nouveau. Toutes les vues reprennent maintenant la voix, le timbre et l'effet choisis, aussitôt.
+- **Une vingtaine de voix naturelles, gratuites, sans compte : « Voix Nexus ».** L'intégration ajoute un moteur de synthèse vocale à Home Assistant, avec les voix neuronales de Microsoft Edge : Henri, Denise, Rémy, Vivienne, Éloïse (France), Gérard et Charline (Belgique), Thierry, Sylvie, Antoine et Jean (Canada), Fabrice et Ariane (Suisse), et d'autres en anglais, allemand, italien, espagnol et russe. Choisissez dans Plus → Sur cet écran : voix « Home Assistant », moteur « Voix Nexus », puis le timbre. Ce moteur sert aussi aux automatisations et à Assist.
+- **Les voix Home Assistant qui ne répondaient pas avec « fr » marchent.** Certains moteurs (Pico TTS par exemple) n'acceptent que « fr-FR » : Nexus réessaie avec la langue régionale au lieu de retomber sur la voix de l'appareil.
+
 ## 0.45.1 — La transcription a aussi son modèle de secours
 
 - **La reconnaissance de la voix ne s'arrête plus avec son quota du jour.** Whisper a son propre quota gratuit chez Groq. Quand celui de whisper-large-v3-turbo est épuisé, whisper-large-v3, qui a son propre quota, prend le relais, jusqu'au retour du premier.

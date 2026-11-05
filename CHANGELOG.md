@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.48.0 — Douze voix multilingues
+
+- **« Voix Nexus » ne propose plus que des voix multilingues.** Chacune parle toutes les langues du tableau de bord, avec un léger accent de son pays : Rémy et Vivienne (accent français), Andrew, Ava, Brian et Emma (américain), William (australien), Florian et Seraphina (allemand), Giuseppe (italien), Thalita (brésilienne) et Hyunsu (coréen). La voix choisie reste la même quand l'écran change de langue.
+- Sans choix, Nexus prend Rémy en français, Andrew en anglais, Florian en allemand et Giuseppe en italien. Une ancienne voix non multilingue (Henri, Denise…) est remplacée par Rémy.
+
 ## 0.47.0 — Nexus répond dans la langue de l'écran
 
 - **Sur un écran en anglais, allemand, italien ou russe, Nexus répond dans cette langue.** Ses instructions et les notes du foyer sont en français, et l'IA finissait par répondre en français. La langue choisie dans le tableau de bord passe maintenant avant tout le reste.

@@ -2052,7 +2052,7 @@ export class MPNexusView extends LitElement {
     this.voiceRelease?.(); this.voiceRelease = release;
     const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
     this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
-    if (this.saving) this.wake();
+    // On the screensaver, Nexus answers over it: the screensaver stays.
     // The sphere shows at once; then the page lets go of the microphone (an iPhone plays quietly while it is held),
     // a short tone says « I listen », and the recording starts.
     this.handsFree = true; this.handsFreeTurns = 0; this.lesson = '';
@@ -3029,9 +3029,10 @@ export class MPNexusView extends LitElement {
       <div class="app">${this.layout === 'desk' ? this.navigationBar() : nothing}${main}${side}${this.layout !== 'desk' ? this.navigationBar() : nothing}</div>
       ${!big && placed && !this.full && (this.kind === 'home' || this.kind === 'rooms') ? html`<div class="scrim" @click=${() => { this.room = ''; }}></div><section class="sheet panel">${this.roomCard(placed, 'sheet')}</section>` : nothing}
       ${this.full && this.plan ? this.fullPlan(background) : nothing}
-      ${this.overlay ? this.overlayPanel() : nothing}
+      ${this.overlay && !(this.saving && this.overlay === 'voice') ? this.overlayPanel() : nothing}
       ${this.scenesOpen && this.hass ? html`<mp-nexus-scenes .hass=${this.hass} @mp-scenes-close=${() => { this.scenesOpen = false; }}></mp-nexus-scenes>` : nothing}
       ${this.saving ? this.screensaver(background) : nothing}
+      ${this.saving && this.overlay === 'voice' ? html`<section class="svoice panel glass" role="dialog" aria-label="Nexus" @pointerdown=${(e: Event) => e.stopPropagation()}>${this.voicePanel()}</section>` : nothing}
       ${this.detail && this.hass ? html`<mp-glass-detail .hass=${this.hass} .entity=${this.detail} @mp-glass-detail-close=${() => { this.detail = ''; }}></mp-glass-detail>` : nothing}`;
   }
 }

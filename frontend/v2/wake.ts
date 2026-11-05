@@ -1,4 +1,6 @@
 import type { Hass } from '../ha/client';
+// The same file the runtime would fetch by itself; handing it over lets it come from the browser's storage.
+import wasmUrl from '../../node_modules/onnxruntime-web/dist/ort-wasm-simd-threaded.wasm?url';
 
 /**
  * The wake word, heard on the screen itself: openWakeWord's models run in the page (ONNX in WebAssembly), on the
@@ -125,15 +127,38 @@ export class Resampler {
 // ——— The models, with ONNX Runtime in WebAssembly ———
 type Ort = typeof import('onnxruntime-web/wasm');
 let runtime: Promise<Ort> | undefined;
-const ort = () => runtime ??= import('onnxruntime-web/wasm').then(m => { m.env.wasm.numThreads = 1; m.env.logLevel = 'error'; return m; });
+
+/**
+ * The runtime and the models are kept in the browser's own storage: through a slow connection they took up to twenty
+ * seconds at every page load, and the HTTP cache did not always keep them. The key leaves out the query, so an update of
+ * the dashboard does not download them again; a new runtime has a new file name.
+ */
+const STORE = 'mp-nexus-wake-1';
+export async function cachedBytes(url: string): Promise<Uint8Array> {
+  const key = url.split('?')[0]!;
+  let store: Cache | undefined;
+  try { store = typeof caches !== 'undefined' ? await caches.open(STORE) : undefined; } catch { /* Private window: no storage. */ }
+  try { const hit = await store?.match(key); if (hit) return new Uint8Array(await hit.arrayBuffer()); } catch { /* Read again below. */ }
+  const response = await fetch(url);
+  if (!response.ok) throw new Error(`${url}: ${response.status}`);
+  const bytes = new Uint8Array(await response.arrayBuffer());
+  try { await store?.put(key, new Response(bytes.slice(), { headers: { 'content-type': 'application/octet-stream' } })); } catch { /* Full: next time from the network. */ }
+  return bytes;
+}
+
+const ort = () => runtime ??= Promise.all([import('onnxruntime-web/wasm'), cachedBytes(wasmUrl).catch(() => undefined)]).then(([m, wasm]) => {
+  m.env.wasm.numThreads = 1; m.env.logLevel = 'error';
+  if (wasm) m.env.wasm.wasmBinary = wasm;
+  return m;
+});
 /** The shared models ship with the integration, next to the bundle (…/mp_glass_static/wake/). */
 // The base in a variable keeps Vite from treating the path as an asset of the bundle: these files are copied as they are.
 const here = import.meta.url;
 export const wakeAsset = (name: string) => new URL(`../wake/${name}`, here).href;
 
 async function session(source: string | Uint8Array) {
-  const o = await ort();
-  const bytes = typeof source === 'string' ? new Uint8Array(await (await fetch(source)).arrayBuffer()) : source;
+  // The runtime and the file download together.
+  const [o, bytes] = await Promise.all([ort(), typeof source === 'string' ? cachedBytes(source) : source]);
   return o.InferenceSession.create(bytes, { executionProviders: ['wasm'], graphOptimizationLevel: 'all' });
 }
 
@@ -421,4 +446,15 @@ export async function learnWake(hass: Hass, id: string, lesson: { ambient?: Floa
   const message: Record<string, unknown> = { type: 'mp_glass/assistant/wake_word/learn', word: id };
   for (const key of ['ambient', 'confirmed', 'cancelled'] as const) { const packed = pack(lesson[key]); if (packed) message[key] = packed; }
   await hass.callWS(message);
+}
+
+/** Words with the same name are told apart by a number: « Nexus », « Nexus · 2 »… */
+export function wakeLabels(words: WakeWord[]): [WakeWord, string][] {
+  const seen = new Map<string, number>(), total = new Map<string, number>();
+  for (const w of words) total.set(w.name.toLowerCase(), (total.get(w.name.toLowerCase()) ?? 0) + 1);
+  return words.map(w => {
+    const key = w.name.toLowerCase(), n = (seen.get(key) ?? 0) + 1;
+    seen.set(key, n);
+    return [w, (total.get(key) ?? 0) > 1 ? `${w.name} · ${n}` : w.name];
+  });
 }

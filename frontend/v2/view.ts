@@ -25,7 +25,7 @@ import { listenTone, ringSound, unlockSound } from './sound';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
-import { addWakeWord, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
+import { addWakeWord, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
@@ -2181,10 +2181,18 @@ export class MPNexusView extends LitElement {
       this.voicePrefs = { ...this.voicePrefs, wake: undefined };
       writeVoicePrefs(this.voicePrefs);
     };
+    const labels = wakeLabels(this.wakeList ?? []), label = labels.find(([w]) => w.id === custom?.id)?.[1] ?? custom?.name ?? '';
+    const twins = custom ? (this.wakeList ?? []).filter(w => w.custom && w.id !== custom.id && w.name.toLowerCase() === custom.name.toLowerCase()) : [];
+    const keepOnly = async () => {
+      if (!hass) return;
+      const gone = new Set<string>();
+      for (const w of twins) { try { await removeWakeWord(hass, w.id); gone.add(w.id); } catch { /* Kept; it can be removed by itself. */ } }
+      this.wakeList = (this.wakeList ?? []).filter(w => !gone.has(w.id));
+    };
     return html`<label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Mot d’éveil')}</b><small>${status}</small></div>
       <select class="end" aria-label=${tr('Mot d’éveil')} @change=${change}>
         <option value="" .selected=${!current}>${tr('Aucun')}</option>
-        ${(this.wakeList ?? []).map(w => html`<option value=${w.id} .selected=${current === w.id}>${w.name}</option>`)}
+        ${labels.map(([w, label]) => html`<option value=${w.id} .selected=${current === w.id}>${label}</option>`)}
         ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
       ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
@@ -2192,7 +2200,8 @@ export class MPNexusView extends LitElement {
         <button class="end" role="switch" aria-checked=${this.voicePrefs.wakeChime !== false} aria-label=${tr('Bip d’écoute')} @click=${() => { this.voicePrefs = { ...this.voicePrefs, wakeChime: this.voicePrefs.wakeChime === false ? undefined : false }; writeVoicePrefs(this.voicePrefs); if (this.voicePrefs.wakeChime !== false) { unlockSound(); void listenTone(); } }}><span class=${`tgl ${this.voicePrefs.wakeChime !== false ? '' : 'off'}`}></span></button></div>` : nothing}
       ${admin && custom?.kind === 'voice' ? html`<button class="rw" @click=${() => this.startEnroll({ id: custom.id, name: custom.name })}><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Réenregistrer « {word} »', { word: custom.name })}</b><small>${tr('Nouvelles prises de votre voix, mêmes réglages. Ce que la maison lui a appris est gardé.')}</small></div></button>` : nothing}
       ${admin ? html`<input class="wakefile" type="file" accept=".onnx" hidden @change=${add}>` : nothing}
-      ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: custom.name })}</b></div></button>` : nothing}`;
+      ${admin && custom && twins.length ? html`<button class="rw" @click=${keepOnly}><span class="ib">${mpIcon('check', 16)}</span><div><b>${tr('Garder seulement ce « {word} »', { word: custom.name })}</b><small>${tr('Retire les autres mots du même nom. Un écran qui en utilisait un devra choisir celui-ci.')}</small></div></button>` : nothing}
+      ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: label })}</b></div></button>` : nothing}`;
   }
 
   /** For a word made from the voice: how readily it wakes, and whether this screen teaches it what it hears. */

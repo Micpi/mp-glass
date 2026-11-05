@@ -40,28 +40,36 @@ export function hologramChain(c: BaseAudioContext, input: AudioNode, output: Aud
   air.connect(room).connect(roomGain).connect(level);
   level.connect(trim).connect(output);
   lfo.start();
-  return () => { try { lfo.stop(); } catch { /* Already stopped. */ } trim.disconnect(); };
+  return () => { try { lfo.stop(); } catch { /* Already stopped. */ } trim.disconnect(); try { input.disconnect(low); } catch { /* Not connected. */ } };
 }
 
 /**
  * Plays a Home Assistant voice through the hologram. The sound is read from this page's own address (Home Assistant may
- * give its internal one, which the page could play but not process), and decoded whole: a sentence is small.
+ * give its internal one, which the page could play but not process).
  */
+let holoPlayer: { audio: HTMLAudioElement; source: MediaElementAudioSourceNode; context: AudioContext } | undefined;
 export async function speakAsHologram(url: string): Promise<Speech> {
   const c = audioContext();
-  if (!c) throw new Error('no audio');
+  if (!c || typeof Audio === 'undefined') throw new Error('no audio');
   if (c.state === 'suspended') await Promise.race([c.resume(), new Promise(resolve => window.setTimeout(resolve, 300))]);
   if (c.state !== 'running') throw new Error('audio locked');
+  if (holoPlayer?.context !== c) {
+    const audio = new Audio();
+    // An element can feed one source node only: it is made once and kept.
+    holoPlayer = { audio, source: c.createMediaElementSource(audio), context: c };
+  }
+  const { audio, source } = holoPlayer;
   const at = new URL(url, location.href);
-  const response = await fetch(`${location.origin}${at.pathname}${at.search}`, { credentials: 'same-origin' });
-  if (!response.ok) throw new Error(`audio ${response.status}`);
-  const buffer = await c.decodeAudioData(await response.arrayBuffer());
-  const source = c.createBufferSource();
-  source.buffer = buffer;
+  // Same origin, so the effect may read the sound.
+  audio.src = `${location.origin}${at.pathname}${at.search}`;
   const stopChain = hologramChain(c, source, c.destination);
   let finish: () => void = () => undefined;
   // The room rings a little after the last word.
-  const done = new Promise<void>(resolve => { finish = resolve; source.onended = () => window.setTimeout(() => { stopChain(); resolve(); }, 400); });
-  source.start();
-  return { done, stop: () => { try { source.stop(); } catch { /* Ended. */ } stopChain(); finish(); } };
+  const done = new Promise<void>(resolve => {
+    finish = () => { stopChain(); resolve(); };
+    audio.onended = () => window.setTimeout(finish, 400);
+    audio.onerror = () => finish();
+  });
+  try { await audio.play(); } catch (error) { stopChain(); throw error; }
+  return { done, stop: () => { audio.pause(); finish(); } };
 }

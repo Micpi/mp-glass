@@ -8,6 +8,10 @@ import logging
 import time
 
 from homeassistant.components.tts import TextToSpeechEntity, Voice
+try:  # Home Assistant 2025.6+: the sound goes out while it is being made.
+    from homeassistant.components.tts import TTSAudioRequest, TTSAudioResponse
+except ImportError:  # pragma: no cover - older Home Assistant
+    TTSAudioRequest = TTSAudioResponse = None
 from homeassistant.exceptions import HomeAssistantError
 
 from .tts_core import CATALOGUE, LANGUAGES, default_voice, pick_voice, voices_for
@@ -53,25 +57,35 @@ class NexusVoices(TextToSpeechEntity):
     def async_get_supported_voices(self, language):
         return [Voice(v["id"], v["name"]) for v in voices_for(language, self._listed)]
 
-    async def async_get_tts_audio(self, message, language, options):
+    async def _chunks(self, message, language, options):
+        """The sound, piece by piece, as the service makes it."""
         try:
             import edge_tts
         except ImportError as err:
             raise HomeAssistantError("La bibliothèque edge-tts n'est pas installée") from err
         voice = pick_voice(options.get("voice"), language, self._listed)
         extra = {k: options[k] for k in ("rate", "pitch") if isinstance(options.get(k), str)}
+        sent = False
         try:
-            audio = bytearray()
             async with asyncio.timeout(30):
                 async for chunk in edge_tts.Communicate(message, voice, **extra).stream():
-                    if chunk.get("type") == "audio":
-                        audio.extend(chunk["data"])
+                    if chunk.get("type") == "audio" and chunk.get("data"):
+                        sent = True
+                        yield chunk["data"]
         except Exception as err:  # noqa: BLE001 - network, service or voice error.
             _LOGGER.warning("Nexus voices: %s failed: %s", voice, err)
             raise HomeAssistantError(f"Voix Nexus indisponible : {err}") from err
-        if not audio:
+        if not sent:
             raise HomeAssistantError("Voix Nexus : aucun son reçu")
-        return "mp3", bytes(audio)
+
+    async def async_get_tts_audio(self, message, language, options):
+        return "mp3", b"".join([c async for c in self._chunks(message, language, options)])
+
+    if TTSAudioResponse is not None:
+        async def async_stream_tts_audio(self, request):
+            """The first words play while the rest is still being made, instead of after the whole sentence."""
+            message = "".join([part async for part in request.message_gen])
+            return TTSAudioResponse("mp3", self._chunks(message, request.language, request.options))
 
 
 __all__ = ["NexusVoices", "CATALOGUE", "default_voice"]

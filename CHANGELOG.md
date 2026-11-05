@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.2 — Nexus ignore les consignes cachées dans les données de la maison
+
+- **Les données de Home Assistant restent des données.** Nexus ignore les instructions qui pourraient se trouver dans un nom d'appareil, un état, une description, une note du foyer ou un résultat d'outil. Elles ne peuvent pas remplacer ses règles ni lui faire révéler ses instructions internes, sa clé ou d'autres secrets.
+- **Même protection pour les réponses mémorisées.** Quand Nexus reformule des relevés frais pour répondre à une question déjà connue, il traite aussi ces relevés comme des données non fiables.
+
 ## 0.52.1 — Parler à Nexus sans quitter l'écran de veille
 
 - **Le mot d'éveil marche sur l'écran de veille, et l'écran de veille reste.** Nexus répond dans une bulle par-dessus le plan 3D, la photo ou l'horloge, puis la bulle disparaît et l'écran de veille continue. Toucher l'écran le quitte toujours, comme avant.

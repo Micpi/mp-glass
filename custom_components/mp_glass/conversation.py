@@ -20,7 +20,7 @@ from homeassistant.helpers.storage import Store
 from homeassistant.util.ulid import ulid_now
 
 from .assistant_core import (
-    NUDGE, claims_action, language_block, localized, compact_live, honest_answer, pick_tools,
+    NUDGE, DATA_BOUNDARY, claims_action, language_block, localized, compact_live, honest_answer, pick_tools,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
     SHELF_KEY, GROQ_URL, ModelShelf, offered_models, too_large, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
@@ -226,7 +226,7 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         try:
             # What the household taught Nexus goes with the instructions, and a lesson turns the conversation into an interview.
             known = facts_block(self.hass, "" if lesson_id else user_input.text)
-            instructions = PROMPT + style_block(self.hass) + known + (lesson_prompt(lesson_id, known.count("\n- ")) if lesson_id else "") + language_block(user_input.language)
+            instructions = PROMPT + style_block(self.hass) + known + (lesson_prompt(lesson_id, known.count("\n- ")) if lesson_id else "") + DATA_BOUNDARY + language_block(user_input.language)
             await chat_log.async_provide_llm_data(user_input.as_llm_context(DOMAIN), NexusAPI(hass=self.hass, id=API_ID, name="MP Nexus"), instructions, user_input.extra_system_prompt)
         except conversation.ConverseError as err:
             return err.as_conversation_result()

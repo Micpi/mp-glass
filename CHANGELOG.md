@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.45.1 — La transcription a aussi son modèle de secours
+
+- **La reconnaissance de la voix ne s'arrête plus avec son quota du jour.** Whisper a son propre quota gratuit chez Groq. Quand celui de whisper-large-v3-turbo est épuisé, whisper-large-v3, qui a son propre quota, prend le relais, jusqu'au retour du premier.
+
 ## 0.45.0 — Nexus ne tombe plus à court d'IA
 
 - **Quand le quota gratuit du modèle principal est épuisé, un autre modèle prend le relais.** Groq compte le quota de chaque modèle à part : Nexus passe à gpt-oss-20b, puis Qwen3, puis Llama 3.1, et revient au modèle principal dès que son quota est rétabli. Le message « quota du jour atteint » n'apparaît plus que si tous les modèles sont épuisés. Un modèle de secours que Groq ne propose plus est simplement sauté.

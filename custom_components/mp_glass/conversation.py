@@ -22,7 +22,7 @@ from homeassistant.util.ulid import ulid_now
 from .assistant_core import (
     NUDGE, claims_action, compact_live, honest_answer, pick_tools,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
-    ModelShelf, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
+    SHELF_KEY, ModelShelf, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
@@ -32,8 +32,6 @@ from .facts_core import LESSON_MARK, dress, lesson_marker, lesson_prompt
 from .timers import TOOLS as TIMER_TOOLS, handle_sentence as timers_handle
 
 _LOGGER = logging.getLogger(__name__)
-# The models whose daily quota is spent, for the whole Home Assistant (every conversation shares the same key).
-SHELF_KEY = "mp_glass_model_shelf"
 DAILY_SPENT = "Le quota gratuit du jour de l'IA est atteint, sur tous les modèles. Les commandes simples marchent toujours ; le reste reviendra plus tard."
 
 

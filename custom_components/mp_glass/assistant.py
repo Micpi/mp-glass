@@ -1,5 +1,6 @@
 """What the MP Nexus pages ask of the assistant besides a conversation: whether voice is ready, and speech to text."""
 import base64
+import time
 import binascii
 import json
 import logging
@@ -13,7 +14,8 @@ from aiohttp import ClientError, ClientTimeout, FormData
 from homeassistant.components import websocket_api
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 
-from .assistant_core import MAX_AUDIO_BYTES, STT_MODEL, AssistantError, audio_name, base_url, clean_key, provider_error, read_transcript, stt_language
+from .assistant_core import (GROQ_URL, MAX_AUDIO_BYTES, STT_FALLBACKS, STT_MODEL, SHELF_KEY, AssistantError, ModelShelf, audio_name, base_url, clean_key, is_daily_quota,
+                             provider_error, read_transcript, retry_in, stt_language)
 from . import wake_trainer as trainer, wake_voice as voice
 from .const import DOMAIN
 
@@ -57,25 +59,39 @@ async def websocket_transcribe(hass, connection, msg):
     if not audio or len(audio) > MAX_AUDIO_BYTES:
         connection.send_error(msg["id"], "invalid_audio", "Enregistrement vide ou trop long.")
         return
-    form = FormData()
-    form.add_field("file", audio, filename=name, content_type=msg["mime"].split(";")[0])
-    form.add_field("model", STT_MODEL)
-    # verbose_json says, for each segment, how likely it was silence and how sure Whisper was.
-    form.add_field("response_format", "verbose_json")
-    form.add_field("temperature", "0")
-    if language := stt_language(msg.get("language")):
-        form.add_field("language", language)
-    try:
-        async with async_get_clientsession(hass).post(f"{base_url(options.get('assistant_url'))}/audio/transcriptions", data=form,
-                                                       headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=30), allow_redirects=False) as response:
-            body = await response.read()
-            if response.status != 200:
-                raise provider_error(response.status, body, key)
-        text = read_transcript(body)
-    except (ClientError, TimeoutError):
-        connection.send_error(msg["id"], "unavailable", "Le service de transcription ne répond pas pour le moment.")
-        return
-    except AssistantError as err:
+    shelf = hass.data.setdefault(SHELF_KEY, ModelShelf())
+    # The transcription has its own daily quota, per model too: the second Whisper takes over when the first is spent.
+    models = [m for m in (STT_MODEL, *STT_FALLBACKS) if shelf.spent.get(m, 0) <= time.time()] if base_url(options.get("assistant_url")) == GROQ_URL else [STT_MODEL]
+    text, failure = None, None
+    for model in models:
+        form = FormData()
+        form.add_field("file", audio, filename=name, content_type=msg["mime"].split(";")[0])
+        form.add_field("model", model)
+        # verbose_json says, for each segment, how likely it was silence and how sure Whisper was.
+        form.add_field("response_format", "verbose_json")
+        form.add_field("temperature", "0")
+        if language := stt_language(msg.get("language")):
+            form.add_field("language", language)
+        try:
+            async with async_get_clientsession(hass).post(f"{base_url(options.get('assistant_url'))}/audio/transcriptions", data=form,
+                                                           headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=30), allow_redirects=False) as response:
+                body = await response.read()
+                if response.status == 429 and model != models[-1]:
+                    _LOGGER.warning("Nexus transcription: quota of %s spent, next model", model)
+                    shelf.spend(model, retry_in(body) if is_daily_quota(response.status, body) else 60.0, time.time())
+                    continue
+                if response.status != 200:
+                    raise provider_error(response.status, body, key)
+            text = read_transcript(body)
+            break
+        except (ClientError, TimeoutError):
+            connection.send_error(msg["id"], "unavailable", "Le service de transcription ne répond pas pour le moment.")
+            return
+        except AssistantError as err:
+            failure = err
+            break
+    if text is None:
+        err = failure or AssistantError("quota", "Le quota gratuit de transcription est atteint pour le moment. Réessayez plus tard.")
         _LOGGER.warning("Nexus transcription: %s", err.detail)
         connection.send_error(msg["id"], err.code, err.detail)
         return

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.52.0 — Nexus parle plus vite, et « Nexus » le coupe
+
+Mesuré chez toi : Home Assistant prépare la voix en 0,1 s, mais le service de voix de Microsoft mettait 1,5 à 3 s à ouvrir sa connexion, à chaque réponse.
+
+- **La voix démarre presque aussitôt.** La connexion de « Voix Nexus » s'ouvre dès que tu parles à Nexus, pendant qu'il comprend la demande, et reste prête pour les réponses suivantes. Mesuré sur ton PC : le premier son arrive en 0,2 s au lieu de 1,5 à 3 s. Si cette connexion n'est plus valable, Nexus en ouvre une autre sans rien changer pour toi.
+- **Dire « Nexus » quand la fenêtre est ouverte** coupe la réponse en cours et le remet à l'écoute (sur ordinateur et Android ; l'iPhone ne permet pas d'écouter pendant que la page parle).
+- **« Nexus » dit pendant qu'il écoute** ne part plus comme une question : il réécoute simplement, après son bip.
+
 ## 0.51.1 — Le mot d'éveil repart tout seul
 
 Sur ton écran, le mot d'éveil affichait « Aucun » et « n'a pas pu démarrer », alors que ton mot « Nexus » existait bien. Le tableau de bord s'était ouvert pendant que Home Assistant redémarrait après la mise à jour : la liste des mots et le modèle n'avaient pas répondu, et l'écran ne redemandait jamais.

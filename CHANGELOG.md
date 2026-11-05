@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.46.1 — « Voix Nexus » se trouve facilement
+
+- **Les moteurs de voix portent leur nom.** Dans Plus → Sur cet écran → Voix de Nexus, on lit « Voix Nexus » au lieu de « tts.voix_nexus ».
+- **Un moteur ajouté apparaît sans recharger la page.** La liste des moteurs est relue quand on revient sur le réglage.
+
 ## 0.46.0 — De nouvelles voix, et l'orbe parle avec celle choisie
 
 - **L'orbe garde maintenant la voix choisie.** Home Assistant garde chaque vue du tableau de bord en mémoire : la vue de l'orbe gardait l'ancien réglage de voix tant que la page n'était pas rechargée, alors que la page Plus prenait le nouveau. Toutes les vues reprennent maintenant la voix, le timbre et l'effet choisis, aussitôt.

@@ -153,6 +153,12 @@ const HOLD_MS = 520;
 /** The translated plan of the areas or of the example, made once per plan and language: the 3D plan redraws only when it changes. */
 const translated = new WeakMap<SpatialPlan, Map<string, SpatialPlan>>();
 
+/** An engine by the name Home Assistant shows, not its entity id. */
+function engineLabel(hass: Hass | undefined, e: { id: string; name: string }) {
+  const friendly = hass?.states[e.id]?.attributes?.friendly_name;
+  return typeof friendly === 'string' && friendly ? friendly : e.name;
+}
+
 export class MPNexusView extends LitElement {
   static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, voiceList:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
@@ -2207,9 +2213,14 @@ export class MPNexusView extends LitElement {
   }
 
   /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence; which voice, and its colour. */
+  private enginesAt = 0;
   private voiceChoice() {
     const hass = this.hass, prefs = this.voicePrefs;
-    if (hass && !this.voiceEngines) { this.voiceEngines = []; void speechEngines(hass, language()).then(list => { this.voiceEngines = list; }); }
+    // The list is read again now and then: an engine added to Home Assistant shows up without reloading the page.
+    if (hass && (!this.voiceEngines || Date.now() - this.enginesAt > 30_000)) {
+      this.enginesAt = Date.now(); this.voiceEngines ??= [];
+      void speechEngines(hass, language()).then(list => { this.voiceEngines = list; });
+    }
     if (hass && !this.facts && !this.factsAsked && nexusAgent(hass)) { this.factsAsked = true; void this.refreshFacts(); }
     const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
     const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime };
@@ -2243,7 +2254,7 @@ export class MPNexusView extends LitElement {
     return html`<label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Voix de Nexus')}</b><small>${tr('Comment Nexus répond à voix haute')}</small></div>
       <select class="end" aria-label=${tr('Voix de Nexus')} @change=${change}>
         <option value="device" .selected=${value === 'device'}>${tr('Voix de l’appareil')}</option>
-        ${(this.voiceEngines ?? []).map(e => html`<option value=${`ha:${e.id}`} .selected=${value === `ha:${e.id}`}>${e.name}</option>`)}
+        ${(this.voiceEngines ?? []).map(e => html`<option value=${`ha:${e.id}`} .selected=${value === `ha:${e.id}`}>${engineLabel(hass, e)}</option>`)}
         <option value="off" .selected=${value === 'off'}>${tr('Muette')}</option>
       </select></label>
       ${voices.length > 1 ? html`<label class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><b>${tr('Timbre')}</b><small>${tr('Une des voix proposées')}</small></div>

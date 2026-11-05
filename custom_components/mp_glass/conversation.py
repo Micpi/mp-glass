@@ -22,7 +22,7 @@ from homeassistant.util.ulid import ulid_now
 from .assistant_core import (
     NUDGE, claims_action, language_block, localized, compact_live, honest_answer, pick_tools,
     DEFAULT_MODEL, MAX_TOOL_TURNS, PROMPT, AssistantError, bad_tool_call, base_url, build_request, clean_key, done_answer,
-    SHELF_KEY, ModelShelf, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
+    SHELF_KEY, GROQ_URL, ModelShelf, offered_models, too_large, household, is_daily_quota, plain_command, provider_error, retry_in, with_model, quota_wait, read_answer, shorten_text, short_names, to_messages,
     tool_result_data, tool_spec, touched_entities,
 )
 from .assistant_memory import Memory, compact_context, is_read_only, lesson, question_request
@@ -55,7 +55,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
 class HouseholdTool(llm.Tool):
     name = "NexusHousehold"
     description = ("Qui habite la maison et qui est à la maison en ce moment, la météo actuelle et les prévisions des prochains jours, "
-                   "et la consommation électrique du moment. Fonctionne même si ces entités ne sont pas exposées à Assist.")
+                   "et la consommation électrique du moment. Fonctionne même si ces entités ne sont pas exposées à Assist. "
+                   "Une personne absente dont l'état est un nom de lieu (« Bureau ») est à cet endroit : dites-le.")
     # Home Assistant 2026.10+ records which integration provides each tool.
     integration = DOMAIN
 
@@ -324,52 +325,63 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
         return touched_entities([tool_result_data(c) for c in chat_log.content[start:] if isinstance(c, conversation.ToolResultContent)])
 
     async def _post(self, session, url, payload, key):
-        """The model's answer. When the chosen model's quota of the day is spent, the next free model answers instead
-        (Groq counts each model apart), until the first one comes back."""
+        """The model's answer. When the chosen model's quota is spent (the minute or the day), the next free model answers
+        at once instead of waiting (Groq counts each model apart), until the first one comes back."""
         shelf = self.hass.data.setdefault(SHELF_KEY, ModelShelf())
-        for model in shelf.candidates(payload["model"], self.entry.options.get("assistant_url"), time.time()):
-            try:
-                return await self._post_once(session, url, with_model(payload, model) if model != payload["model"] else payload, key)
-            except _DailyQuota as spent:
-                _LOGGER.warning("Nexus assistant: quota of %s spent for %d s, next model", model, spent.seconds)
-                shelf.spend(model, spent.seconds, time.time())
-            except AssistantError as err:
-                # A stand-in the provider no longer offers is skipped for a day; the chosen model's own errors are said.
-                if err.code != "model" or model == payload["model"]:
-                    raise
-                _LOGGER.warning("Nexus assistant: stand-in model %s is not offered, skipped", model)
-                shelf.spend(model, 86400, time.time())
+        custom = self.entry.options.get("assistant_url")
+        if base_url(custom) == GROQ_URL and shelf.needs_list(time.time()):
+            shelf.listed(await self._models(session, key), time.time())
+        for round_ in range(2):
+            for model in shelf.candidates(payload["model"], custom, time.time()):
+                try:
+                    return await self._post_once(session, url, with_model(payload, model) if model != payload["model"] else payload, key)
+                except _DailyQuota as spent:
+                    _LOGGER.info("Nexus assistant: %s is busy for %d s, next model", model, spent.seconds)
+                    shelf.spend(model, spent.seconds, time.time())
+                except AssistantError as err:
+                    # A stand-in the provider no longer offers is skipped for a day; the chosen model's own errors are said.
+                    if err.code != "model" or model == payload["model"]:
+                        raise
+                    _LOGGER.warning("Nexus assistant: stand-in model %s refused: %s", model, err.detail)
+                    shelf.spend(model, 86400, time.time())
+            back = shelf.back_in(time.time())
+            # Every model's minute is full: when one frees up soon, it is worth the wait.
+            if round_ or not 0 < back <= 15:
+                break
+            await asyncio.sleep(back + 0.3)
         back = shelf.back_in(time.time())
         raise AssistantError("quota", MINUTE_SPENT if back <= 120 else DAILY_SPENT)
 
+    async def _models(self, session, key):
+        """The models the key may use (Groq lists them for free); None when the list cannot be read."""
+        try:
+            async with session.get(f"{GROQ_URL}/models", headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=6)) as response:
+                return offered_models(await response.read()) if response.status == 200 else None
+        except Exception:  # noqa: BLE001 - the list only narrows the stand-ins; without it, all are tried.
+            return None
+
     async def _post_once(self, session, url, payload, key):
-        """One model's answer; when the per-minute quota is full, waits for it once if that is short."""
+        """One model's answer. A full quota is not waited for here: the next model is tried first."""
         for attempt in range(2):
             try:
                 async with session.post(url, json=payload, headers={"Authorization": f"Bearer {key}"}, timeout=ClientTimeout(total=45), allow_redirects=False) as response:
                     body = await response.read()
                     if response.status == 200:
                         return body
-                    wait = None
-                    if attempt == 0:
-                        wait = 0.0 if bad_tool_call(response.status, body) else quota_wait(response.status, response.headers.get("retry-after"), body)
-                    if wait is None:
-                        if is_daily_quota(response.status, body):
-                            raise _DailyQuota(retry_in(body))
-                        if response.status == 429:
-                            # The minute is full for this model, too long to wait: another model has its own minute.
-                            _LOGGER.warning("Nexus assistant: quota refused a request of about %d characters", len(json.dumps(payload, ensure_ascii=False)))
-                            raise _DailyQuota(60.0)
-                        error = provider_error(response.status, body, key)
-                        if error.code == "quota":
-                            _LOGGER.warning("Nexus assistant: quota refused a request of about %d characters: %s", len(json.dumps(payload, ensure_ascii=False)),
-                                            body[:300].decode(errors="replace").replace(key, "***") if key else body[:300])
-                        raise error
+                    if attempt == 0 and bad_tool_call(response.status, body):
+                        continue
+                    if too_large(response.status, body):
+                        _LOGGER.info("Nexus assistant: a request of about %d characters is too large for %s", len(json.dumps(payload, ensure_ascii=False)), payload.get("model"))
+                        raise _DailyQuota(3600.0)
+                    if is_daily_quota(response.status, body):
+                        raise _DailyQuota(retry_in(body))
+                    if response.status == 429:
+                        wait = quota_wait(response.status, response.headers.get("retry-after"), body)
+                        raise _DailyQuota(wait if wait is not None else retry_in(body, 60.0))
+                    raise provider_error(response.status, body, key)
             except (ClientError, TimeoutError) as err:
                 raise AssistantError("unavailable", "Le service d'IA ne répond pas pour le moment.") from err
-            _LOGGER.debug("Nexus assistant: provider refused (%s), new try in %.1f s", response.status, wait)
-            await asyncio.sleep(wait + 0.3)
-        raise _DailyQuota(60.0)
+        raise AssistantError("request", "Le service d'IA a refusé la demande.")
 
     def _acted(self, chat_log, start):
         """True when a tool that changes the house (or a timer, or a fact) succeeded since `start`."""

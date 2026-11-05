@@ -115,8 +115,34 @@ def to_messages(contents):
     return system + rest
 
 
-# Groq counts each model's daily quota apart: when the chosen one is spent, the next one answers until it comes back.
-FALLBACK_MODELS = ("openai/gpt-oss-20b", "qwen/qwen3-32b", "llama-3.1-8b-instant")
+# Groq counts each model's quotas apart: when the chosen one is spent, the next one answers until it comes back.
+# Llama 4 Scout first: on the free tier its minute holds about four times more than the others.
+FALLBACK_MODELS = ("meta-llama/llama-4-scout-17b-16e-instruct", "openai/gpt-oss-20b", "moonshotai/kimi-k2-instruct-0905",
+                   "qwen/qwen3-32b", "llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+# Chat models that cannot act through tools, or are not meant for a conversation.
+_NOT_CHAT = re.compile(r"whisper|tts|guard|embed|playai|orpheus|compound|allam|safeguard", re.I)
+
+
+def too_large(status, body):
+    """The request is larger than what the model's minute can ever hold (Groq: 413 « Request too large »)."""
+    if status == 413:
+        return True
+    try:
+        message = str((json.loads(body).get("error") or {}).get("message") or "")
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return status in (400, 429) and "request too large" in message.lower()
+
+
+def offered_models(body):
+    """The ids of the chat models the key may use, from the provider's model list; None when unreadable."""
+    try:
+        data = json.loads(body).get("data")
+    except (ValueError, AttributeError, TypeError):
+        return None
+    if not isinstance(data, list):
+        return None
+    return {str(m.get("id")) for m in data if isinstance(m, dict) and m.get("id") and m.get("active", True) is not False and not _NOT_CHAT.search(str(m.get("id")))}
 
 
 def is_daily_quota(status, body):
@@ -152,9 +178,20 @@ class ModelShelf:
 
     def __init__(self):
         self.spent = {}
+        # The models the key may use, from the provider's list (None: not read yet), and when it was read.
+        self.offered = None
+        self.listed_at = 0.0
+
+    def needs_list(self, now):
+        return now - self.listed_at > 6 * 3600
+
+    def listed(self, models, now):
+        self.listed_at = now
+        if models:
+            self.offered = set(models)
 
     def spend(self, model, seconds, now):
-        self.spent[model] = now + max(60.0, seconds)
+        self.spent[model] = now + max(1.0, seconds)
 
     def back_in(self, now):
         """Seconds until the first spent model comes back."""
@@ -163,6 +200,9 @@ class ModelShelf:
 
     def candidates(self, model, url, now):
         chain = [model] + ([m for m in FALLBACK_MODELS if m != model] if base_url(url) == GROQ_URL else [])
+        if self.offered:
+            # Stand-ins the key cannot use are left out; the chosen model is always tried, its error is the one to say.
+            chain = [model] + [m for m in chain[1:] if m in self.offered]
         return [m for m in chain if self.spent.get(m, 0) <= now]
 
 
@@ -180,7 +220,7 @@ def with_model(payload, model):
 def build_request(model, messages, tools):
     model = model or DEFAULT_MODEL
     # The free tier counts the tokens a request may produce against its per-minute quota: short answers, little reasoning.
-    payload = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": 700}
+    payload = {"model": model, "messages": messages, "temperature": 0.3, "max_tokens": 500}
     if "gpt-oss" in model:
         payload["reasoning_effort"] = "low"
     if tools:

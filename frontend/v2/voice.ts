@@ -28,7 +28,11 @@ export function readVoicePrefs(): VoicePrefs {
 }
 export function writeVoicePrefs(prefs: VoicePrefs) {
   try { localStorage.setItem(VOICE_KEY, JSON.stringify(prefs)); } catch { /* The choice holds for this page only. */ }
+  // Every view of the dashboard keeps its own copy: the one that answers must hear about the change.
+  try { window.dispatchEvent(new CustomEvent(VOICE_EVENT, { detail: prefs })); } catch { /* No window. */ }
 }
+/** Sent on the window when the voice settings change, so that every view of the dashboard speaks the same way. */
+export const VOICE_EVENT = 'mp-nexus-voice-prefs';
 
 /** Whether the integration can turn speech into text (an AI key is set). */
 export async function canTranscribe(hass: Hass) {
@@ -201,7 +205,11 @@ export function unlockAudio() {
 /** A Home Assistant voice: the engine renders the sentence, the page plays it. */
 export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo'): Promise<Speech> {
   if (!text || !hass.callApi) return silent;
-  const { url } = await hass.callApi<{ url: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language, ...(voice ? { options: { voice } } : {}) });
+  const ask = (lang: string) => hass.callApi!<{ url: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language: lang, ...(voice ? { options: { voice } } : {}) });
+  // Engines want an exact language tag: some take « fr », others only « fr-FR ».
+  const regional = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith(language.toLowerCase()) ? navigator.language : `${language}-${language.toUpperCase()}`;
+  let url: string;
+  try { ({ url } = await ask(language)); } catch (error) { if (regional === language) throw error; ({ url } = await ask(regional)); }
   if (effect === 'holo') {
     // The colour is a bonus: when the page cannot process the sound, the plain voice plays.
     try { return await speakAsHologram(url); } catch { /* Plain voice below. */ }

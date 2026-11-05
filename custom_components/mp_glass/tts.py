@@ -20,6 +20,15 @@ _LOGGER = logging.getLogger(__name__)
 LIST_TTL = 86400
 
 
+async def _edge(hass):
+    """The edge-tts library, imported outside the event loop: it reads the certificates on import."""
+    import importlib  # noqa: PLC0415
+    try:
+        return await hass.async_add_executor_job(importlib.import_module, "edge_tts")
+    except ImportError as err:
+        raise HomeAssistantError("La bibliothèque edge-tts n'est pas installée") from err
+
+
 async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([NexusVoices(entry)])
 
@@ -47,7 +56,7 @@ class NexusVoices(TextToSpeechEntity):
             return
         async with self._lock:
             try:
-                import edge_tts
+                edge_tts = await _edge(self.hass)
                 listed = await asyncio.wait_for(edge_tts.list_voices(), 15)
                 self._listed = [v for v in listed if isinstance(v, dict) and v.get("ShortName")]
             except Exception as err:  # noqa: BLE001 - the catalogue below still works.
@@ -59,10 +68,7 @@ class NexusVoices(TextToSpeechEntity):
 
     async def _chunks(self, message, language, options):
         """The sound, piece by piece, as the service makes it."""
-        try:
-            import edge_tts
-        except ImportError as err:
-            raise HomeAssistantError("La bibliothèque edge-tts n'est pas installée") from err
+        edge_tts = await _edge(self.hass)
         voice = pick_voice(options.get("voice"), language, self._listed)
         extra = {k: options[k] for k in ("rate", "pitch") if isinstance(options.get(k), str)}
         sent = False

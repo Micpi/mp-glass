@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.51.0 — Nexus ne cale plus sur les quotas
+
+Testé sur ta maison avec dix questions d'affilée : après six réponses, Nexus a répondu « quota atteint » aux trois suivantes, et l'une d'elles a fait attendre près de 8 secondes avant d'échouer. Voici les causes et les corrections.
+
+- **Un modèle occupé passe la main tout de suite.** Quand la minute gratuite d'un modèle était pleine, Nexus attendait jusqu'à 12 secondes avant d'essayer un autre modèle. Il passe maintenant aussitôt au suivant, et n'attend que si tous sont occupés, et jamais plus de 15 secondes.
+- **Plus de modèles de secours, choisis selon ta clé.** Nexus lit la liste des modèles que ta clé Groq peut utiliser (gratuitement, sans dépenser de quota) et enchaîne Llama 4 Scout (une minute environ quatre fois plus large), gpt-oss-20b, Kimi K2, Qwen3, Llama 3.3 et Llama 3.1. Avant, deux des trois secours étaient refusés par ta clé et mis de côté pour la journée.
+- **Une demande trop grosse pour un modèle va directement à un autre**, au lieu d'être prise pour un modèle disparu.
+- **Moins de jetons par réponse**, pour qu'une minute gratuite tienne plus de questions.
+- **« Qui est à la maison ? »** dit aussi où sont les absents quand Home Assistant le sait (« Mickael est au Bureau »).
+- **Correctif « Voix Nexus »** : la bibliothèque de voix se charge hors de la boucle de Home Assistant, ce qui supprime l'avertissement « Detected blocking call » du journal.
+
 ## 0.50.0 — Le mot d'éveil prêt plus vite, sans doublons
 
 - **Le mot d'éveil se prépare bien plus vite.** Le moteur d'écoute et ses modèles (environ 4 Mo) étaient retéléchargés à chaque ouverture de la page : 15 à 20 secondes mesurées à travers la Freebox. Ils sont maintenant gardés dans le navigateur, même après une mise à jour du tableau de bord : seule la toute première préparation les télécharge.

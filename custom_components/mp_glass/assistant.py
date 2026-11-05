@@ -318,6 +318,10 @@ async def websocket_wake_word_create(hass, connection, msg):
     name = wake_name(msg["name"])
     again = msg.get("word")
     async with runtime.lock:
+        if not again:
+            # The same name said again is the same word recorded again, not a second « Nexus » in the list.
+            index = await hass.async_add_executor_job(_wake_index, wake_folder(hass))
+            again = next((k for k, v in index.items() if v.get("kind") == "voice" and str(v.get("name", "")).casefold() == name.casefold()), None)
         if again:
             made = await hass.async_add_executor_job(_redo_voice, wake_folder(hass), again, name, data, background)
             if made is None:

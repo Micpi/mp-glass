@@ -162,6 +162,11 @@ export const nexusStyles = css`
   .vol{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:10px}
   input[type=range]{width:100%;accent-color:var(--accent)}
   select{min-height:38px;padding:0 10px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 96.77%),100%),transparent);color:inherit;font:inherit;font-size:13px}
+  /* The open list is drawn by the system: a solid background in the house's tint, light text, like the rest of the glass. */
+  select{color-scheme:dark}
+  select option,select optgroup{background:color-mix(in srgb,var(--mp-tint,#12344f) 55%,#0c0c10);color:#f4f1ec}
+  select option:checked{background:color-mix(in srgb,var(--mp-accent,#69b7ff) 45%,#0c0c10);color:#fff}
+  select option:disabled{color:#f4f1ec80}
 
   :host([layout=phone]) .mtabs button:not([aria-pressed=true]) span,.side .mtabs button:not([aria-pressed=true]) span{display:none}
   :host([layout=phone]) .mtabs button[aria-pressed=true],.side .mtabs button[aria-pressed=true]{flex:2.2}

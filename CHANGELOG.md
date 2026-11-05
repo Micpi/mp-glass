@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.50.0 — Le mot d'éveil prêt plus vite, sans doublons
+
+- **Le mot d'éveil se prépare bien plus vite.** Le moteur d'écoute et ses modèles (environ 4 Mo) étaient retéléchargés à chaque ouverture de la page : 15 à 20 secondes mesurées à travers la Freebox. Ils sont maintenant gardés dans le navigateur, même après une mise à jour du tableau de bord : seule la toute première préparation les télécharge.
+- **Plus de « Nexus » en double.** Créer un mot avec un nom déjà pris réenregistre ce mot au lieu d'en ajouter un second. Les doublons existants sont numérotés dans la liste (« Nexus · 1 », « Nexus · 2 »…), et le bouton « Garder seulement ce « Nexus » » retire les autres d'un coup.
+- **Les listes déroulantes sont lisibles.** La liste ouverte a maintenant un fond sombre aux couleurs de la maison et un texte clair, au lieu du gris pâle illisible.
+
 ## 0.49.0 — Nexus parle tout de suite
 
 - **La voix démarre pendant qu'elle se fabrique.** Avec « Voix Nexus », Home Assistant attendait la phrase entière (environ 2,5 secondes mesurées) avant d'envoyer le moindre son. Le son part maintenant morceau par morceau : les premiers mots se font entendre presque aussitôt, et la suite arrive pendant qu'il parle.

@@ -143,6 +143,10 @@ def retry_in(body, default=3600.0):
     return int(hours or 0) * 3600 + int(minutes or 0) * 60 + float(seconds or 0)
 
 
+# Where Home Assistant keeps the shelf, shared by the conversations and the transcriptions.
+SHELF_KEY = "mp_glass_model_shelf"
+
+
 class ModelShelf:
     """The models whose daily quota is spent, and until when; the models to try for a request, the chosen one first."""
 
@@ -393,6 +397,8 @@ def honest_answer(language):
 
 # ——— Voice: speech to text with Whisper on the same provider ———
 STT_MODEL = "whisper-large-v3-turbo"
+# The other Whisper of Groq, with its own daily quota.
+STT_FALLBACKS = ("whisper-large-v3",)
 # Half a minute of speech is about 150 kB; Home Assistant refuses WebSocket messages over 4 MB, base64 included.
 MAX_AUDIO_BYTES = 2 * 1024 * 1024
 AUDIO_TYPES = {"audio/webm": "webm", "audio/ogg": "ogg", "audio/mp4": "m4a", "audio/mpeg": "mp3", "audio/wav": "wav", "audio/x-m4a": "m4a", "audio/aac": "m4a"}

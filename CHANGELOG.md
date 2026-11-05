@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.4 — Mesurer Nexus dans le bruit
+
+- Ajout d'un banc reproductible comparant les scores du mot « Nexus » et de deux autres mots à plusieurs niveaux de bruit synthétique, avec et sans réduction RNNoise et avec deux sensibilités.
+- Ces mesures servent au développement : elles ne changent pas encore le filtre utilisé par les écrans. Les essais sur voix et micros réels restent nécessaires.
+
 ## 0.52.3 — Une écoute plus fiable
 
 - **Une écoute annulée libère le micro**, même si sa demande d'accès n'a pas encore reçu de réponse.

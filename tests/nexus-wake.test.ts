@@ -71,6 +71,47 @@ describe('wake word', () => {
     model: VoiceModel; clip: { file: string; frames: string; end: number };
     cases: { label: string; windows: string; found: Record<Sensitivity, boolean[]> }[];
   };
+  it('measures the voice word and another word in repeatable background noise', async () => {
+    const measurements: Record<string, number> = {};
+    // @ts-expect-error Experimental RNNoise build has no TypeScript declaration.
+    const factory = (await import('../node_modules/@jitsi/rnnoise-wasm/dist/rnnoise-sync.js')).default;
+    const rn = await factory().ready;
+    function denoise(samples: Float32Array) {
+      const state = rn._rnnoise_create(0), input = rn._malloc(480 * 4), output = rn._malloc(480 * 4);
+      const result = new Float32Array(samples.length);
+      for (let at = 0; at < samples.length; at += 160) {
+        for (let i = 0; i < 480; i++) { const index = at + Math.floor(i / 3), f = (i % 3) / 3; rn.HEAPF32[input / 4 + i] = (samples[index] ?? 0) * (1 - f) + (samples[index + 1] ?? 0) * f; }
+        rn._rnnoise_process_frame(state, output, input);
+        for (let i = 0; i < 160 && at + i < result.length; i++) result[at + i] = rn.HEAPF32[output / 4 + i * 3];
+      }
+      rn._rnnoise_destroy(state); rn._free(input); rn._free(output);
+      return result;
+    }
+    for (const mode of ['normal', 'rnnoise', 'high', 'rnnoise-high'] as const) {
+     const models = await loadWakeModels(voice.model, shared, mode.includes('high') ? 'high' : 'normal');
+     for (const file of [voice.clip.file, 'alexa_test.wav', 'hey_mycroft_test.wav']) {
+      for (const amplitude of [0, 300, 1000, 2500]) {
+        const pipeline = new WakePipeline(models);
+        await pipeline.warm(seeded());
+        let audio = wav(file); const noise = seeded(audio.length);
+        audio = audio.map((v, i) => Math.max(-32768, Math.min(32767, v + noise[i]! * amplitude / 1000)));
+        if (mode.startsWith('rnnoise')) audio = denoise(audio);
+        let peak = 0;
+        for (let i = 0; i < audio.length; i += CHUNK) {
+          const block = audio.slice(i, i + CHUNK);
+          peak = Math.max(peak, (await pipeline.push(block)) ?? 0);
+        }
+        measurements[`${file}:${amplitude}:${mode}`] = peak;
+      }
+     }
+    }
+    console.info('Wake benchmark (peak scores)', measurements);
+    expect(measurements[`${voice.clip.file}:0:normal`]).toBeGreaterThanOrEqual(0.5);
+    expect(measurements['alexa_test.wav:0:normal']).toBeLessThan(0.5);
+    expect(measurements[`${voice.clip.file}:1000:rnnoise-high`]).toBeGreaterThanOrEqual(0.5);
+    expect(measurements['alexa_test.wav:1000:rnnoise-high']).toBeLessThan(0.5);
+    expect(measurements['hey_mycroft_test.wav:1000:rnnoise-high']).toBeLessThan(0.5);
+  }, 120_000);
   it('decides on a voice word exactly as Home Assistant’s trainer does', () => {
     for (const sensitivity of ['high', 'normal', 'low'] as const) {
       const judge = voiceJudge(voice.model, sensitivity);

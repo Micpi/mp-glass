@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.49.0 — Nexus parle tout de suite
+
+- **La voix démarre pendant qu'elle se fabrique.** Avec « Voix Nexus », Home Assistant attendait la phrase entière (environ 2,5 secondes mesurées) avant d'envoyer le moindre son. Le son part maintenant morceau par morceau : les premiers mots se font entendre presque aussitôt, et la suite arrive pendant qu'il parle.
+- **L'effet hologramme n'attend plus non plus.** Il téléchargeait toute la phrase avant de la jouer ; il colore maintenant le son pendant qu'il arrive.
+
 ## 0.48.0 — Douze voix multilingues
 
 - **« Voix Nexus » ne propose plus que des voix multilingues.** Chacune parle toutes les langues du tableau de bord, avec un léger accent de son pays : Rémy et Vivienne (accent français), Andrew, Ava, Brian et Emma (américain), William (australien), Florian et Seraphina (allemand), Giuseppe (italien), Thalita (brésilienne) et Hyunsu (coréen). La voix choisie reste la même quand l'écran change de langue.

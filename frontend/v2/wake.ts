@@ -276,6 +276,7 @@ export class WakeListener {
   private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode; private source?: MediaStreamAudioSourceNode;
   private micBusy?: Promise<void>; private micOff = false; private stopped = false;
   private busy = false; private queue: Float32Array[] = []; private last = 0; private chunks = 0;
+  private generation = 0;
   /** The 16 embeddings that woke Nexus: a voice word learns from them, as the word or as a false wake. */
   heard?: Float32Array;
   /** Called with an ordinary sound of the home about every 12 s of listening, when set: a voice word learns from them. */
@@ -289,6 +290,7 @@ export class WakeListener {
   set paused(on: boolean) {
     if (on === this.hold) return;
     this.hold = on;
+    this.generation++;
     this.queue = [];
     if (!on) this.pipeline?.reset();
   }
@@ -372,7 +374,9 @@ export class WakeListener {
     try {
       while (this.queue.length) {
         const samples = this.queue.shift()!;
+        const generation = this.generation;
         const score = await pipeline.push(samples);
+        if (generation !== this.generation) { pipeline.reset(); continue; }
         this.chunks += samples.length / CHUNK;
         if (score !== undefined && !this.paused) this.onScore?.(score);
         // Sounds teach more than silence: one is taken when something is heard, or after a long quiet anyway.

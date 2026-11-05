@@ -1,7 +1,23 @@
-import { describe, expect, it } from 'vitest';
-import { LONGEST_MS, NOBODY_MS, PAUSE_MS, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+import { describe, expect, it, vi } from 'vitest';
+import { LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
 
 describe('the voice of Nexus', () => {
+  it('releases a microphone granted after the recording was cancelled', async () => {
+    let grant!: (stream: MediaStream) => void;
+    const stop = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => new Promise<MediaStream>(resolve => { grant = resolve; }) } });
+    vi.stubGlobal('MediaRecorder', class { static isTypeSupported() { return true; } });
+    vi.stubGlobal('window', { clearTimeout });
+    try {
+      const recorder = new Recorder();
+      const starting = recorder.start();
+      recorder.cancel();
+      grant({ getTracks: () => [{ stop }] } as unknown as MediaStream);
+      await starting;
+      expect(await recorder.done).toBeUndefined();
+      expect(stop).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
+  });
   it('stops listening after a pause once someone spoke', () => {
     const state: Endpoint = {};
     expect(shouldStop(state, 0.01, 100, 0)).toBe('go');

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.3 — Une écoute plus fiable
+
+- **Une écoute annulée libère le micro**, même si sa demande d'accès n'a pas encore reçu de réponse.
+- **Les sons analysés avant une pause ne déclenchent plus Nexus après la reprise.** Cela évite qu'un ancien résultat d'analyse ouvre la conversation au mauvais moment.
+
 ## 0.52.2 — Nexus ignore les consignes cachées dans les données de la maison
 
 - **Les données de Home Assistant restent des données.** Nexus ignore les instructions qui pourraient se trouver dans un nom d'appareil, un état, une description, une note du foyer ou un résultat d'outil. Elles ne peuvent pas remplacer ses règles ni lui faire révéler ses instructions internes, sa clé ou d'autres secrets.

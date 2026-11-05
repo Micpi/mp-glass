@@ -64,6 +64,7 @@ export function shouldStop(state: Endpoint, level: number, now: number, startedA
 
 /** A recording of one request, which ends by itself at the pause and reports how loud it hears. */
 export class Recorder {
+  private cancelled = false;
   private stream?: MediaStream; private recorder?: MediaRecorder; private context?: AudioContext; private timer?: number;
   private chunks: Blob[] = []; private settle?: (blob: Blob | undefined) => void;
   readonly done: Promise<Blob | undefined>;
@@ -73,7 +74,9 @@ export class Recorder {
   async start() {
     const type = recordingFormat();
     if (!type) throw new Error('unsupported');
-    this.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true } });
+    if (this.cancelled) { stream.getTracks().forEach(track => track.stop()); return; }
+    this.stream = stream;
     this.recorder = new MediaRecorder(this.stream, { mimeType: type, audioBitsPerSecond: 32000 });
     this.recorder.ondataavailable = e => { if (e.data.size) this.chunks.push(e.data); };
     let heard = false;
@@ -104,7 +107,7 @@ export class Recorder {
   stop() { this.stopNow(); }
   private stopNow = () => { if (this.recorder?.state === 'recording') this.recorder.stop(); };
   /** Ends the recording and drops it. */
-  cancel() { this.settle?.(undefined); this.settle = undefined; if (this.recorder?.state === 'recording') this.recorder.stop(); else this.release(); }
+  cancel() { this.cancelled = true; this.settle?.(undefined); this.settle = undefined; if (this.recorder?.state === 'recording') this.recorder.stop(); else this.release(); }
   private release() {
     window.clearTimeout(this.timer);
     this.stream?.getTracks().forEach(track => track.stop());

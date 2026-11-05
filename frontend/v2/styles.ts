@@ -341,6 +341,8 @@ export const nexusStyles = css`
   .meter{display:block;height:4px;margin-top:6px;border-radius:calc(var(--mp-radius,22px) * 9 / 22);background:rgba(206,226,246,.12);overflow:hidden}.meter b{display:block;height:100%;border-radius:calc(var(--mp-radius,22px) * 9 / 22);background:linear-gradient(90deg,var(--accent),#b9dcff)}
   .cams{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:10px}
   .cam{display:flex;flex-direction:column;gap:6px;text-align:left}.cam span{aspect-ratio:16/9;border-radius:calc(var(--mp-radius,22px) * 14 / 22);border:1px solid var(--line);background:#0a1a2a center/cover no-repeat}.cam b{font-size:12px}
+  .svoice{position:absolute;z-index:41;left:50%;bottom:max(24px,5%);transform:translateX(-50%);width:min(460px,calc(100% - 32px));max-height:70%;overflow:auto;border-radius:28px;animation:fade .4s ease-out}
+  .svoice .nexus-voice{padding:12px 18px 22px;gap:8px}.svoice .vorb{width:92px;height:92px}.svoice .said{font-size:18px}
   .saver{position:absolute;inset:0;z-index:40;background:#02070d;overflow:hidden;cursor:none;animation:fade .6s ease-out}
   .saver .backdrop{z-index:0}
   .saver .kb{animation:kb 60s ease-in-out infinite alternate}

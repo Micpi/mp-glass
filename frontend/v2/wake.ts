@@ -318,6 +318,9 @@ export class WakeListener {
     const feed = (samples: Float32Array) => {
       if (this.paused) return;
       this.queue.push(resampler.push(samples));
+      // A busy screen (the 3D plan of the screensaver on a tablet) falls behind: what is late by seconds is let go,
+      // so the word is heard when it is said rather than long after, or never.
+      if (this.queue.length > 64) this.queue.splice(0, this.queue.length - 32);
       void this.drain(pipeline);
     };
     if (context.audioWorklet) {

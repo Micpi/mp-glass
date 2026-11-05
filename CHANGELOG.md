@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.1 — Parler à Nexus sans quitter l'écran de veille
+
+- **Le mot d'éveil marche sur l'écran de veille, et l'écran de veille reste.** Nexus répond dans une bulle par-dessus le plan 3D, la photo ou l'horloge, puis la bulle disparaît et l'écran de veille continue. Toucher l'écran le quitte toujours, comme avant.
+- **Un écran chargé ne fait plus rater le mot.** Quand la tablette peinait (le plan 3D qui tourne sur l'écran de veille), le son attendait d'être analysé et le mot était reconnu trop tard, ou jamais. Le retard est maintenant rattrapé aussitôt.
+
 ## 0.52.0 — Nexus parle plus vite, et « Nexus » le coupe
 
 Mesuré chez toi : Home Assistant prépare la voix en 0,1 s, mais le service de voix de Microsoft mettait 1,5 à 3 s à ouvrir sa connexion, à chaque réponse.

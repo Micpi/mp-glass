@@ -43,6 +43,7 @@ async def websocket_info(hass, connection, msg):
 })
 @websocket_api.async_response
 async def websocket_transcribe(hass, connection, msg):
+    _warm_voices(hass)
     options = _options(hass)
     key, name = clean_key(options.get("assistant_api_key")), audio_name(msg["mime"])
     if not key:
@@ -255,6 +256,14 @@ def _voice_words(folder):
 def looks_like_onnx(model):
     """An ONNX model is a protobuf ModelProto, which starts with its ir_version (field 1, a varint)."""
     return len(model) > 1024 and model[:1] == b"\x08"
+
+
+def _warm_voices(hass):
+    from .tts import warm_voices  # noqa: PLC0415 - the voices load with the integration's platforms.
+    try:
+        warm_voices(hass)
+    except Exception:  # noqa: BLE001 - only a head start.
+        pass
 
 
 def wake_name(name):

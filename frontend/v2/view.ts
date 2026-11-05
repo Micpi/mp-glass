@@ -24,7 +24,7 @@ import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -1864,6 +1864,12 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn) return;
     text = text.trim();
     if (!text) { this.voiceState = 'idle'; return; }
+    if (onlyWakeWord(text, this.wakeName())) {
+      // « Nexus » said again while it listened: it listens afresh, after its tone.
+      this.handsFree = true; this.handsFreeTurns = Math.max(1, this.handsFreeTurns);
+      void this.talk();
+      return;
+    }
     this.teachWake('confirmed');
     this.voiceHeard = text; this.voiceState = 'thinking';
     await this.ask(text);
@@ -1879,7 +1885,9 @@ export class MPNexusView extends LitElement {
     if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; this.followUp(); return; }
     this.voiceState = 'speaking';
     // The page lets go of the microphone first: on iPhones, a page that listens speaks quietly, in the earpiece.
-    if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
+    // Elsewhere it keeps hearing the wake word, so that « Nexus » cuts the answer short and listens.
+    if (this.wakeListener && !micWhileSpeaking()) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
+    else if (this.wakeListener) { this.wakeListener.paused = false; void this.wakeListener.mic(true); }
     if (turn !== this.voiceTurn) return;
     audioSession('playback');
     try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
@@ -1962,7 +1970,7 @@ export class MPNexusView extends LitElement {
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
     if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, ++this.wakeGen); return; }
     if (this.wakeListener) {
-      const busy = (this.overlay === 'voice' && this.voiceState !== 'idle') || this.overlay === 'ring';
+      const busy = (this.overlay === 'voice' && (this.voiceState === 'listening' || this.voiceState === 'thinking' || (this.voiceState === 'speaking' && !micWhileSpeaking()))) || this.overlay === 'ring';
       this.wakeListener.paused = busy;
       if (!busy) void this.wakeListener.mic(true);
     }
@@ -2032,7 +2040,9 @@ export class MPNexusView extends LitElement {
   }
   private wakeVisibility = () => { if (document.visibilityState !== 'visible') this.stopWake(); this.requestUpdate(); };
   private woke = async () => {
-    if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
+    // While Nexus speaks, its name cuts the answer short and it listens again.
+    if (this.overlay === 'voice' && this.voiceState === 'speaking') { this.speech?.stop(); this.speech = undefined; this.voiceTurn++; }
+    else if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
     if (this.overlay === 'enroll' || this.overlay === 'ring' || this.waking || !this.isConnected) return;
     // Two tabs of the dashboard on this device both hear the word: the first one answers, the others stay quiet.
     this.waking = true;

@@ -10,6 +10,13 @@ spec.loader.exec_module(core)
 
 
 class AssistantCoreTests(unittest.TestCase):
+    def test_answers_in_the_language_of_the_screen(self):
+        self.assertEqual(core.language_block("fr"), "")
+        self.assertIn("Always answer in German", core.language_block("de-DE"))
+        self.assertIn("Always answer in English", core.language_block("en"))
+        self.assertEqual(core.localized("Le service d'IA ne répond pas pour le moment.", "it"), "The AI service is not answering right now.")
+        self.assertEqual(core.localized("Le service d'IA ne répond pas pour le moment.", "fr"), "Le service d'IA ne répond pas pour le moment.")
+
     def test_reads_text_and_tool_calls_and_drops_empty_arguments(self):
         body = json.dumps({"choices": [{"message": {"content": None, "tool_calls": [
             {"id": "call_1", "type": "function", "function": {"name": "HassTurnOn", "arguments": '{"area": "Salon", "domain": ["light"], "name": ""}'}},

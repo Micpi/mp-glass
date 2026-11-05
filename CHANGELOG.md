@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.47.0 — Nexus répond dans la langue de l'écran
+
+- **Sur un écran en anglais, allemand, italien ou russe, Nexus répond dans cette langue.** Ses instructions et les notes du foyer sont en français, et l'IA finissait par répondre en français. La langue choisie dans le tableau de bord passe maintenant avant tout le reste.
+- **Ses propres messages aussi** (quota atteint, clé manquante, service indisponible) sont dits en anglais quand l'écran n'est pas en français.
+- **La voix suit la langue.** Avec « Voix Nexus », une voix française comme Henri ne lit plus l'anglais avec un accent : sur un écran dans une autre langue, Nexus prend une voix de cette langue, sauf si la voix choisie est multilingue (Rémy, Vivienne…).
+
 ## 0.46.1 — « Voix Nexus » se trouve facilement
 
 - **Les moteurs de voix portent leur nom.** Dans Plus → Sur cet écran → Voix de Nexus, on lit « Voix Nexus » au lieu de « tts.voix_nexus ».

@@ -14,10 +14,12 @@ except ImportError:  # pragma: no cover - older Home Assistant
     TTSAudioRequest = TTSAudioResponse = None
 from homeassistant.exceptions import HomeAssistantError
 
+from .edge_warm import WarmEdge
 from .tts_core import CATALOGUE, LANGUAGES, default_voice, pick_voice, voices_for
 
 _LOGGER = logging.getLogger(__name__)
 LIST_TTL = 86400
+VOICES = "mp_glass_voices"
 
 
 async def _edge(hass):
@@ -33,6 +35,13 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([NexusVoices(entry)])
 
 
+def warm_voices(hass):
+    """Someone is talking to Nexus: the connection for the spoken answer opens now, while the request is understood."""
+    entity = hass.data.get(VOICES)
+    if entity is not None and entity.hass is not None:
+        entity.warm()
+
+
 class NexusVoices(TextToSpeechEntity):
     _attr_has_entity_name = True
     _attr_name = "Voix Nexus"
@@ -45,10 +54,24 @@ class NexusVoices(TextToSpeechEntity):
         self._listed: list[dict] | None = None
         self._listed_at = 0.0
         self._lock = asyncio.Lock()
+        self._warm: WarmEdge | None = None
 
     async def async_added_to_hass(self):
         await super().async_added_to_hass()
+        self._warm = WarmEdge(lambda: _edge(self.hass))
+        self.hass.data[VOICES] = self
         self.hass.async_create_background_task(self._refresh(), "mp_glass voices")
+
+    async def async_will_remove_from_hass(self):
+        if self.hass.data.get(VOICES) is self:
+            self.hass.data.pop(VOICES)
+        if self._warm:
+            await self._warm.close()
+        await super().async_will_remove_from_hass()
+
+    def warm(self):
+        if self._warm:
+            self._warm.warm()
 
     async def _refresh(self):
         """The full list of the service, refreshed once a day; the built-in catalogue meanwhile, or when it is unreachable."""
@@ -72,6 +95,19 @@ class NexusVoices(TextToSpeechEntity):
         voice = pick_voice(options.get("voice"), language, self._listed)
         extra = {k: options[k] for k in ("rate", "pitch") if isinstance(options.get(k), str)}
         sent = False
+        if self._warm and len(message) < 3000:
+            # The connection opened ahead: the first sound comes about two seconds sooner.
+            try:
+                async with asyncio.timeout(30):
+                    async for audio in self._warm.speak(message, voice, **extra):
+                        sent = True
+                        yield audio
+                return
+            except Exception as err:  # noqa: BLE001 - edge-tts itself below, unless the sound had started.
+                if sent:
+                    _LOGGER.warning("Nexus voices: %s cut: %s", voice, err)
+                    return
+                _LOGGER.debug("Nexus voices: early connection unused (%s)", err)
         try:
             async with asyncio.timeout(30):
                 async for chunk in edge_tts.Communicate(message, voice, **extra).stream():

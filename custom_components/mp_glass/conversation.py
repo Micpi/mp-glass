@@ -176,6 +176,12 @@ class NexusAgent(conversation.ConversationEntity, conversation.AbstractConversat
 
     async def _async_handle_message(self, user_input, chat_log):
         try:
+            # The spoken answer's connection opens while the request is understood.
+            from .tts import warm_voices  # noqa: PLC0415
+            warm_voices(self.hass)
+        except Exception:  # noqa: BLE001 - only a head start.
+            pass
+        try:
             return await self._answer(user_input, chat_log)
         except Exception as err:  # noqa: BLE001 - whatever breaks, the household hears why instead of silence.
             _LOGGER.exception("Nexus assistant failed")

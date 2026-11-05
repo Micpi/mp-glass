@@ -50,3 +50,13 @@ describe('the voice of Nexus', () => {
     expect(heard).toEqual([{ speak: 'ha', engine: 'tts.voix_nexus', voice: 'fr-FR-HenriNeural' }]);
   });
 });
+
+describe('the wake word while Nexus is open', () => {
+  it('knows a request that is only the wake word', async () => {
+    const { onlyWakeWord } = await import('../frontend/v2/voice');
+    expect(onlyWakeWord('Nexus.', 'Nexus')).toBe(true);
+    expect(onlyWakeWord('Hey, Nexus !', 'Nexus')).toBe(true);
+    expect(onlyWakeWord('Nexus, allume la cuisine', 'Nexus')).toBe(false);
+    expect(onlyWakeWord('Néxus', 'Nexus')).toBe(true);
+  });
+});

@@ -8,29 +8,25 @@ import tts_core as t  # noqa: E402
 
 class VoicesTest(unittest.TestCase):
     def test_languages_take_short_and_regional_tags(self):
-        for tag in ("fr", "fr-FR", "fr-CA", "en", "en-GB", "de", "it", "ru"):
+        for tag in ("fr", "fr-FR", "fr-CA", "en", "en-GB", "de", "it", "ru", "es"):
             self.assertIn(tag, t.LANGUAGES)
 
-    def test_french_first_from_france(self):
-        voices = t.voices_for("fr")
-        self.assertEqual(voices[0]["id"], "fr-FR-HenriNeural")
-        self.assertGreaterEqual(len(voices), 10)
-        self.assertTrue(all(v["locale"].startswith("fr-") for v in voices))
-        self.assertEqual(t.voices_for("fr-CA")[0]["locale"], "fr-CA")
+    def test_only_multilingual_voices_for_every_language(self):
+        self.assertEqual(len(t.CATALOGUE), 12)
+        self.assertTrue(all("Multilingual" in v["id"] for v in t.CATALOGUE))
+        for lang in ("fr", "en", "ru", "es"):
+            self.assertEqual(len(t.voices_for(lang)), 12)
+        self.assertTrue(t.voices_for("fr")[0]["id"].startswith("fr-FR-"))
 
-    def test_service_list_adds_voices(self):
-        listed = [{"ShortName": "fr-FR-NouveauNeural", "Locale": "fr-FR", "Gender": "Female"}, {"ShortName": "bad"}]
-        ids = [v["id"] for v in t.voices_for("fr", listed)]
-        self.assertIn("fr-FR-NouveauNeural", ids)
-        self.assertEqual(ids[0], "fr-FR-HenriNeural")
+    def test_service_list_removes_gone_voices(self):
+        listed = [{"ShortName": "fr-FR-RemyMultilingualNeural"}, {"ShortName": "fr-FR-HenriNeural"}]
+        self.assertEqual([v["id"] for v in t.voices_for("fr", listed)], ["fr-FR-RemyMultilingualNeural"])
 
     def test_pick_voice(self):
         self.assertEqual(t.pick_voice("en-US-AvaMultilingualNeural", "fr"), "en-US-AvaMultilingualNeural")
-        self.assertEqual(t.pick_voice("Google français", "fr"), "fr-FR-HenriNeural")
-        self.assertEqual(t.pick_voice(None, "en-GB"), "en-GB-RyanNeural")
-        # Henri does not read English; a multilingual voice does.
-        self.assertEqual(t.pick_voice("fr-FR-HenriNeural", "en"), "en-US-AndrewMultilingualNeural")
-        self.assertEqual(t.pick_voice("fr-FR-RemyMultilingualNeural", "en"), "fr-FR-RemyMultilingualNeural")
+        self.assertEqual(t.pick_voice("fr-FR-HenriNeural", "fr"), "fr-FR-RemyMultilingualNeural")
+        self.assertEqual(t.pick_voice(None, "en-GB"), "en-US-AndrewMultilingualNeural")
+        self.assertEqual(t.pick_voice(None, "ru"), "en-US-AndrewMultilingualNeural")
 
 
 if __name__ == "__main__":

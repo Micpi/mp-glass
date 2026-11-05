@@ -407,17 +407,20 @@ export interface WakeWord { id: string; name: string; custom?: boolean; kind?: '
 /** Ready to use: openWakeWord's « Hey Jarvis ». Words trained for this home (« Nexus ») are added in the integration. */
 export const BUILT_IN: WakeWord[] = [{ id: 'hey_jarvis', name: 'Hey Jarvis' }];
 
-export async function wakeWords(hass: Hass): Promise<WakeWord[]> {
+/** `failed` marks a list made while Home Assistant did not answer (restarting, integration loading): to ask again. */
+export async function wakeWords(hass: Hass): Promise<WakeWord[] & { failed?: boolean }> {
   try {
     const answer = await hass.callWS<{ words?: { id: string; name: string; kind?: 'model' | 'voice' }[] }>({ type: 'mp_glass/assistant/wake_words' });
     return [...(answer.words ?? []).map(w => ({ ...w, custom: true })), ...BUILT_IN];
-  } catch { return BUILT_IN; }
+  } catch { return Object.assign([...BUILT_IN], { failed: true }); }
 }
 
 /** The model of a word: shipped with the integration, or trained for this home and kept by Home Assistant. */
-export async function wakeModel(hass: Hass, id: string): Promise<string | Uint8Array | VoiceModel> {
+/** `moved` hears the id of the twin that replaced a word removed from another screen. */
+export async function wakeModel(hass: Hass, id: string, moved?: (id: string) => void): Promise<string | Uint8Array | VoiceModel> {
   if (BUILT_IN.some(w => w.id === id)) return wakeAsset(`${id}.onnx`);
-  const answer = await hass.callWS<{ model?: string; voice?: VoiceModel }>({ type: 'mp_glass/assistant/wake_word', word: id });
+  const answer = await hass.callWS<{ id?: string; model?: string; voice?: VoiceModel }>({ type: 'mp_glass/assistant/wake_word', word: id });
+  if (answer.id && answer.id !== id) moved?.(answer.id);
   if (answer.voice) return answer.voice;
   return Uint8Array.from(atob(answer.model ?? ''), c => c.charCodeAt(0));
 }
@@ -430,6 +433,9 @@ export async function addWakeWord(hass: Hass, file: File): Promise<WakeWord> {
   const answer = await hass.callWS<{ id: string; name: string }>({ type: 'mp_glass/assistant/wake_word/add', name: name || 'Nexus', model: btoa(text) });
   return { ...answer, custom: true };
 }
+
+/** Home Assistant's answer when the word was removed (from another screen) and nothing of its name replaced it. */
+export const wakeGone = (error: unknown) => typeof error === 'object' && !!error && (error as { code?: string }).code === 'not_found';
 
 export async function removeWakeWord(hass: Hass, id: string) {
   await hass.callWS({ type: 'mp_glass/assistant/wake_word/remove', word: id });

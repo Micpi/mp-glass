@@ -188,6 +188,22 @@ def _redo_voice(folder, word, name, data, background):
     return word, model
 
 
+def _moved(folder):
+    try:
+        with open(os.path.join(folder, "moved.json"), encoding="utf-8") as handle:
+            moved = json.load(handle)
+        return {k: v for k, v in moved.items() if isinstance(k, str) and isinstance(v, str)} if isinstance(moved, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_moved(folder, moved):
+    tmp = os.path.join(folder, "moved.json.tmp")
+    with open(tmp, "w", encoding="utf-8") as handle:
+        json.dump(dict(list(moved.items())[-64:]), handle)
+    os.replace(tmp, os.path.join(folder, "moved.json"))
+
+
 def _remove_wake(folder, word):
     index = _wake_index(folder)
     entry = index.pop(word, None)
@@ -198,7 +214,26 @@ def _remove_wake(folder, word):
     else:
         os.remove(os.path.join(folder, f"{word}.onnx"))
     _write_index(folder, index)
+    # A twin of the same name stays: the screens that listened for the one removed now listen for it.
+    name = str(entry.get("name", "")).casefold()
+    twin = next((k for k, v in index.items() if v["kind"] == entry["kind"] and str(v.get("name", "")).casefold() == name), None)
+    moved = {k: v for k, v in _moved(folder).items() if k != word}
+    if twin:
+        moved = {k: (twin if v == word else v) for k, v in moved.items()}
+        moved[word] = twin
+    else:
+        moved = {k: v for k, v in moved.items() if v != word}
+    _write_moved(folder, moved)
     return True
+
+
+def _resolve_wake(folder, word):
+    """The word itself, or the twin that replaced it when it was removed; None when it is gone."""
+    index = _wake_index(folder)
+    if word in index:
+        return word
+    target = _moved(folder).get(word)
+    return target if target in index else None
 
 
 def _read_wake(folder, word):
@@ -244,14 +279,16 @@ async def websocket_wake_words(hass, connection, msg):
 @websocket_api.websocket_command({vol.Required("type"): "mp_glass/assistant/wake_word", vol.Required("word"): _WORD})
 @websocket_api.async_response
 async def websocket_wake_word(hass, connection, msg):
-    found = await hass.async_add_executor_job(_read_wake, wake_folder(hass), msg["word"])
+    folder = wake_folder(hass)
+    word = await hass.async_add_executor_job(_resolve_wake, folder, msg["word"])
+    found = await hass.async_add_executor_job(_read_wake, folder, word) if word else None
     if found is None:
         connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
         return
     if "voice" in found:
-        connection.send_result(msg["id"], {"voice": found["voice"]})
+        connection.send_result(msg["id"], {"id": word, "voice": found["voice"]})
         return
-    connection.send_result(msg["id"], {"model": base64.b64encode(found["model"]).decode()})
+    connection.send_result(msg["id"], {"id": word, "model": base64.b64encode(found["model"]).decode()})
 
 
 @websocket_api.require_admin

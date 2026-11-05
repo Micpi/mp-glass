@@ -25,7 +25,7 @@ import { listenTone, ringSound, unlockSound } from './sound';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
-import { addWakeWord, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
+import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
@@ -262,7 +262,7 @@ export class MPNexusView extends LitElement {
   private voiceEngines?: { id: string; name: string }[];
   /** The wake word: the words this home can use, and whether this screen is listening for its own. */
   private wakeList?: WakeWord[];
-  private wakeState: 'off'|'loading'|'touch'|'armed'|'error' = 'off';
+  private wakeState: 'off'|'loading'|'touch'|'armed'|'error'|'gone' = 'off';
   /** A voice word recorded before 0.38.1, without its far versions: it hears poorly from across the room. */
   private wakeOld = false;
   private wakePeak = 0; private wakePeakAt = 0;
@@ -1942,12 +1942,23 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— The wake word: heard on this screen, nothing leaves it before ———
-  private wakeName() { return this.wakeList?.find(w => w.id === this.voicePrefs.wake)?.name ?? this.voicePrefs.wake ?? ''; }
+  /** The list of words; asked again a little later when Home Assistant did not answer (it was restarting after an update). */
+  private wakeListRetry?: number;
+  private loadWakeList(delay = 5000) {
+    const hass = this.hass;
+    if (!hass) return;
+    this.wakeList = this.wakeList?.length ? this.wakeList : [];
+    void wakeWords(hass).then(list => {
+      this.wakeList = list;
+      if (list.failed && this.isConnected) { clearTimeout(this.wakeListRetry); this.wakeListRetry = window.setTimeout(() => this.loadWakeList(Math.min(delay * 2, 60000)), delay); }
+    });
+  }
+  private wakeName() { return this.wakeList?.find(w => w.id === this.voicePrefs.wake)?.name ?? 'Nexus'; }
   /** Starts, follows or stops listening for the word as the choice, the page and the voice change. */
   private keepWake() {
     const word = this.voicePrefs.wake, wanted = !!word && !!this.hass && canRecord() && document.visibilityState === 'visible' && this.overlay !== 'enroll';
     if (!wanted) { if (this.wakeListener || this.wakeState !== 'off') this.stopWake(); return; }
-    if (!this.wakeList) { this.wakeList = []; void wakeWords(this.hass!).then(list => { this.wakeList = list; }); }
+    if (!this.wakeList) this.loadWakeList();
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
     if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, ++this.wakeGen); return; }
     if (this.wakeListener) {
@@ -1963,20 +1974,39 @@ export class MPNexusView extends LitElement {
     if (!hass) return;
     this.wakeState = 'loading';
     try {
-      const model = await wakeModel(hass, word), voice = typeof model === 'object' && !(model instanceof Uint8Array);
+      const model = await wakeModel(hass, word, id => {
+        // Removed from another screen, its twin of the same name took its place: this screen follows.
+        word = id; this.voicePrefs = { ...this.voicePrefs, wake: id }; writeVoicePrefs(this.voicePrefs); this.wakeList = undefined;
+        this.wakeFor = `${id}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
+      }), voice = typeof model === 'object' && !(model instanceof Uint8Array);
       const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
       if (gen !== this.wakeGen || !this.isConnected) return;
       const listener = this.wakeListener = new WakeListener(models, () => { void this.woke(); });
       if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
       listener.onScore = score => this.showWakeScore(score);
       this.wakeOld = voice && !((model as { version?: number }).version! >= 2);
+      this.wakeTries = 0;
       await this.armWake();
     } catch (error) {
       if (gen !== this.wakeGen) return;
       console.warn('MP Nexus: wake word', error);
+      if (wakeGone(error)) {
+        // The word no longer exists: the screen says so instead of failing at every page.
+        this.voicePrefs = { ...this.voicePrefs, wake: undefined }; writeVoicePrefs(this.voicePrefs); this.wakeList = undefined;
+        this.wakeState = 'gone';
+        return;
+      }
       this.wakeState = 'error';
+      // Most often Home Assistant was restarting (after an update): the screen tries again by itself.
+      const tries = this.wakeTries = (this.wakeTries ?? 0) + 1;
+      if (tries <= 6) window.setTimeout(() => {
+        if (gen !== this.wakeGen || !this.isConnected || this.wakeState !== 'error' || this.voicePrefs.wake !== word) return;
+        if (this.wakeList?.length && !this.wakeList.some(w => w.custom)) this.loadWakeList();
+        this.wakeGen++; void this.startWake(word, this.wakeGen);
+      }, Math.min(5000 * 2 ** (tries - 1), 60000));
     }
   }
+  private wakeTries?: number;
   /** Browsers start the microphone's sound only after a touch on the page: until then, the first touch does it. */
   private armWake = async () => {
     const wake = this.wakeListener;
@@ -2150,11 +2180,11 @@ export class MPNexusView extends LitElement {
   private wakeChoice() {
     const hass = this.hass, admin = !!hass?.user?.is_admin;
     if (!canRecord()) return nothing;
-    if (hass && !this.wakeList?.length) { this.wakeList = []; void wakeWords(hass).then(list => { this.wakeList = list; }); }
+    if (hass && !this.wakeList?.length) this.loadWakeList();
     const current = this.voicePrefs.wake ?? '';
     const custom = this.wakeList?.find(w => w.id === current && w.custom);
     const status = this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : this.wakeState === 'loading' ? tr('Préparation…') : this.wakeState === 'touch' ? tr('Touchez l’écran pour activer le micro')
-      : this.wakeState === 'error' ? tr('Le mot d’éveil n’a pas pu démarrer.') : current ? tr('Le micro reste sur cet écran tant que le mot n’est pas entendu.') : tr('Dites-le pour parler à Nexus sans toucher l’écran');
+      : this.wakeState === 'error' ? tr('Le mot d’éveil n’a pas pu démarrer.') : this.wakeState === 'gone' ? tr('Ce mot d’éveil a été retiré depuis un autre écran : choisissez-en un dans la liste.') : current ? tr('Le micro reste sur cet écran tant que le mot n’est pas entendu.') : tr('Dites-le pour parler à Nexus sans toucher l’écran');
     const change = (e: Event) => {
       const value = (e.target as HTMLSelectElement).value;
       if (value === '+') { (e.target as HTMLSelectElement).value = current; this.renderRoot.querySelector<HTMLInputElement>('input.wakefile')?.click(); return; }

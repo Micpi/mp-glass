@@ -24,3 +24,24 @@ describe('wake models storage', () => {
     } finally { g.caches = saved.caches; g.fetch = saved.fetch; }
   });
 });
+
+describe('wake word after a restart or a removal', () => {
+  it('marks the list made while Home Assistant did not answer, to ask again', async () => {
+    const { wakeWords, wakeGone } = await import('../frontend/v2/wake');
+    const down = { callWS: async () => { throw { code: 'unknown_command', message: 'Unknown command.' }; } };
+    const up = { callWS: async () => ({ words: [{ id: 'ab', name: 'Nexus', kind: 'voice' }] }) };
+    expect((await wakeWords(down as never)).failed).toBe(true);
+    const list = await wakeWords(up as never);
+    expect(list.failed).toBeUndefined();
+    expect(list[0]).toMatchObject({ id: 'ab', custom: true });
+    expect(wakeGone({ code: 'not_found' })).toBe(true);
+    expect(wakeGone({ code: 'unknown_command' })).toBe(false);
+  });
+  it('follows the twin that replaced a removed word', async () => {
+    const { wakeModel } = await import('../frontend/v2/wake');
+    let moved = '';
+    const hass = { callWS: async () => ({ id: 'kept', voice: { kind: 'voice' } }) };
+    await wakeModel(hass as never, 'gone', id => { moved = id; });
+    expect(moved).toBe('kept');
+  });
+});

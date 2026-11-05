@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.51.1 — Le mot d'éveil repart tout seul
+
+Sur ton écran, le mot d'éveil affichait « Aucun » et « n'a pas pu démarrer », alors que ton mot « Nexus » existait bien. Le tableau de bord s'était ouvert pendant que Home Assistant redémarrait après la mise à jour : la liste des mots et le modèle n'avaient pas répondu, et l'écran ne redemandait jamais.
+
+- **L'écran réessaie de lui-même** (après 5 s, puis de plus en plus espacé) quand Home Assistant ne répond pas encore, pour la liste des mots comme pour le démarrage de l'écoute.
+- **Un « Nexus » retiré sur un autre écran** : les écrans qui l'écoutaient passent tout seuls au « Nexus » gardé. S'il n'en reste aucun du même nom, l'écran le dit clairement au lieu d'échouer à chaque ouverture.
+- **Plus d'identifiant illisible** : « À l'écoute de « ab351cdc… » » affiche maintenant le nom du mot.
+
 ## 0.51.0 — Nexus ne cale plus sur les quotas
 
 Testé sur ta maison avec dix questions d'affilée : après six réponses, Nexus a répondu « quota atteint » aux trois suivantes, et l'une d'elles a fait attendre près de 8 secondes avant d'échouer. Voici les causes et les corrections.

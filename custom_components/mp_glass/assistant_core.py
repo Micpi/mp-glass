@@ -280,6 +280,47 @@ def plain_command(text):
     return " ".join(plain.split()).strip(" ,;.!?")
 
 
+_LANGUAGE_NAMES = {"en": "English", "de": "German (Deutsch)", "it": "Italian (italiano)", "ru": "Russian (русский)", "es": "Spanish (español)",
+                   "nl": "Dutch (Nederlands)", "pt": "Portuguese (português)"}
+
+
+def language_block(language):
+    """The language of the screen, stated last so that it wins over the French of the instructions and of the household's notes."""
+    code = (language or "").lower().replace("_", "-").split("-")[0]
+    if not code or code == "fr":
+        return ""
+    name = _LANGUAGE_NAMES.get(code, language)
+    return (f"\n\nLANGUAGE: the dashboard is set to {name}. Always answer in {name}, whatever the language of these instructions, "
+            f"of the notes above or of the data returned by tools. Translate names of rooms or devices only when it reads naturally. "
+            f"If the persona above addresses the user as « Monsieur », use the {name} equivalent.")
+
+
+# The messages Nexus says itself, for a screen in another language than French.
+_ENGLISH = (
+    ("Le quota gratuit du jour de l'IA est atteint, sur tous les modèles.", "The AI's free daily quota is used up, on every model."),
+    ("Le quota gratuit du jour de l'IA est atteint.", "The AI's free daily quota is used up."),
+    ("Le quota gratuit de l'IA est atteint pour le moment. Réessayez dans une minute.", "The AI's free quota is used up for now. Try again in a minute."),
+    ("Les commandes simples marchent toujours ; le reste reviendra plus tard.", "Simple commands still work; the rest will be back later."),
+    ("Les commandes simples marchent toujours ; le reste reviendra demain.", "Simple commands still work; the rest will be back tomorrow."),
+    ("Je n'ai compris cette demande qu'avec l'IA, et aucune clé n'est configurée. Ajoutez une clé Groq gratuite dans les options de l'intégration MP Nexus.",
+     "Only the AI could understand this request, and no key is set. Add a free Groq key in the options of the MP Nexus integration."),
+    ("La clé de l'IA est refusée : vérifiez-la dans les options de l'intégration MP Nexus.", "The AI key is refused: check it in the options of the MP Nexus integration."),
+    ("Le service d'IA ne répond pas pour le moment.", "The AI service is not answering right now."),
+    ("Je n'ai pas réussi à terminer cette demande.", "I couldn't finish this request."),
+)
+
+
+def localized(text, language):
+    """A message of Nexus in English when the screen is not in French (the AI answers in the screen's own language)."""
+    if not text or (language or "fr").lower().startswith("fr"):
+        return text
+    for fr, en in _ENGLISH:
+        text = text.replace(fr, en)
+    text = re.sub(r"^Nexus a rencontré une erreur \((\w+)\)\. Le détail est dans le journal de Home Assistant\.$", r"Nexus ran into an error (\1). The details are in the Home Assistant log.", text)
+    text = re.sub(r"^Le service d'IA a refusé la demande \((.*)\)\.$", r"The AI service refused the request (\1).", text)
+    return text
+
+
 def done_answer(names, language):
     """What Nexus says when the actions are done but the AI could not phrase the answer."""
     listed = ", ".join(names)

@@ -71,6 +71,8 @@ def pick_voice(wanted, language, listed=None):
     """The chosen voice when it is one of ours (any language: multilingual voices read French too), else the language's first."""
     if isinstance(wanted, str) and wanted:
         ids = {v["id"] for v in CATALOGUE} | {v["id"] for v in _listed_entries(listed)}
-        if wanted in ids:
+        # A French voice reading English sounds wrong: on a screen in another language, only a multilingual voice stays.
+        same = wanted.lower().startswith(_norm(language)[0] + "-")
+        if wanted in ids and (same or "Multilingual" in wanted or not language):
             return wanted
     return default_voice(language, listed)

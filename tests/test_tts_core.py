@@ -28,6 +28,9 @@ class VoicesTest(unittest.TestCase):
         self.assertEqual(t.pick_voice("en-US-AvaMultilingualNeural", "fr"), "en-US-AvaMultilingualNeural")
         self.assertEqual(t.pick_voice("Google français", "fr"), "fr-FR-HenriNeural")
         self.assertEqual(t.pick_voice(None, "en-GB"), "en-GB-RyanNeural")
+        # Henri does not read English; a multilingual voice does.
+        self.assertEqual(t.pick_voice("fr-FR-HenriNeural", "en"), "en-US-AndrewMultilingualNeural")
+        self.assertEqual(t.pick_voice("fr-FR-RemyMultilingualNeural", "en"), "fr-FR-RemyMultilingualNeural")
 
 
 if __name__ == "__main__":

@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.53.1 — Conversations plus fluides
+
+- Après une réponse en mains libres, Nexus accepte désormais jusqu’à 100 demandes successives sans répéter son nom, et ferme la fenêtre après une absence de réponse.
+- Le temps laissé pour répondre est réglable sur chaque écran : 5, 7, 10 ou 15 secondes, lorsque la transcription Nexus est utilisée. La reconnaissance vocale de secours conserve son délai propre.
+
 ## 0.53.0 — Le son de la tablette baisse pendant l’écoute
 
 - Nexus peut réduire temporairement le volume multimédia Android pendant son écoute et demander son rétablissement avant sa réponse. Les autres applications utilisant ce volume retrouvent elles aussi leur niveau sonore.

@@ -40,6 +40,11 @@ describe('the voice of Nexus', () => {
     for (let t = 0; t <= LONGEST_MS && verdict === 'go'; t += 100) verdict = shouldStop(state, 0.3, t, 0);
     expect(verdict).toBe('done');
   });
+  it('waits for the configured follow-up silence', () => {
+    const state: Endpoint = {};
+    expect(shouldStop(state, 0, 9999, 0, 10000)).toBe('go');
+    expect(shouldStop(state, 0, 10000, 0, 10000)).toBe('nothing');
+  });
   it('records in a format Whisper reads: webm first, mp4 on Safari', () => {
     expect(recordingFormat(type => type.startsWith('audio/webm'))).toBe('audio/webm;codecs=opus');
     expect(recordingFormat(type => type === 'audio/mp4')).toBe('audio/mp4');

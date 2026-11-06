@@ -128,7 +128,6 @@ interface Enrollment { step: 'name'|'word'|'sentence'|'saving'|'done'|'error'; n
 /** Read aloud while making a wake word: ordinary speech, so that Nexus learns what is not its name. */
 const ENROLL_SENTENCES = ['Ce soir, je voudrais écouter un peu de musique dans le salon.', 'Pense à éteindre les lumières de la cuisine avant de partir.'] as const;
 /** Requests in a row without touching the screen, after the wake word; then Nexus waits for its name again. */
-const HANDS_FREE_TURNS = 3;
 /** The colour of a thermostat's arc: what it is doing, as the plan and the detail window show it. */
 /** The usual presets and fan speeds of thermostats, named in the interface language; others keep the name their integration gives. */
 const CLIMATE_NAMES: Record<string, 'Aucun'|'Éco'|'Confort'|'Absent'|'Nuit'|'Boost'|'Programme'|'Automatique'|'Faible'|'Moyenne'|'Forte'> = {
@@ -1845,7 +1844,7 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn) return;
     let text = '';
     if (this.transcription && canRecord()) {
-      const recorder = this.recorder = new Recorder(level => { this.voiceLevel = level; });
+      const recorder = this.recorder = new Recorder(level => { this.voiceLevel = level; }, this.handsFree && this.handsFreeTurns > 0 ? (this.voicePrefs.followWait ?? 7) * 1000 : undefined);
       this.voiceState = 'listening';
       // One recording at a time: phones silence the first when a second one starts.
       if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
@@ -1922,7 +1921,7 @@ export class MPNexusView extends LitElement {
   private followUp() {
     if (this.overlay !== 'voice') return;
     if (!this.handsFree) { this.scheduleVoiceClose(); return; }
-    if (++this.handsFreeTurns < (this.lesson ? LESSON_TURNS : HANDS_FREE_TURNS)) void this.talk();
+    if (++this.handsFreeTurns < (this.lesson ? LESSON_TURNS : 100)) void this.talk();
     else this.closeOverlay();
   }
   private voiceCloseTimer?: number;
@@ -1976,6 +1975,7 @@ export class MPNexusView extends LitElement {
       ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
       ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
       ${this.voiceChoice()}
+      <label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Temps pour continuer la conversation')}</b><small>${tr('Après une réponse, Nexus attend votre prochaine demande puis se ferme en cas de silence.')}</small></div><select class="end" aria-label=${tr('Temps pour continuer la conversation')} @change=${(e: Event) => { this.voicePrefs = { ...this.voicePrefs, followWait: Number((e.target as HTMLSelectElement).value) as 5|7|10|15 }; writeVoicePrefs(this.voicePrefs); }}>${[5, 7, 10, 15].map(n => html`<option value=${n} .selected=${(this.voicePrefs.followWait ?? 7) === n}>${n} s</option>`)}</select></label>
       ${this.tabletVolumeChoice()}
       ${this.wakeChoice()}
     </div>`;
@@ -2323,7 +2323,7 @@ export class MPNexusView extends LitElement {
     }
     if (hass && !this.facts && !this.factsAsked && nexusAgent(hass)) { this.factsAsked = true; void this.refreshFacts(); }
     const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
-    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime, tabletVolume: prefs.tabletVolume };
+    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime, tabletVolume: prefs.tabletVolume, followWait: prefs.followWait };
     const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
     const change = (e: Event) => {
       const v = (e.target as HTMLSelectElement).value;

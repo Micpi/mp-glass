@@ -15,6 +15,7 @@ export interface VoicePrefs {
   wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
   /** The short tone that says Nexus is listening after its name (on unless turned off). */
   wakeChime?: boolean;
+  followWait?: 5|7|10|15;
   /** This screen's Home Assistant Android device and music-volume sensor. */
   tabletVolume?: TabletVolumeChoice;
 }
@@ -27,6 +28,7 @@ export function readVoicePrefs(): VoicePrefs {
       wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
       wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
       wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined,
+      followWait: saved.followWait === 5 || saved.followWait === 10 || saved.followWait === 15 ? saved.followWait : undefined,
       ...(saved.tabletVolume && (saved.tabletVolume.service === '' || /^mobile_app_[a-z0-9_]+$/.test(saved.tabletVolume.service ?? '')) && (saved.tabletVolume.sensor === '' || /^sensor\.[a-z0-9_]+$/.test(saved.tabletVolume.sensor ?? '')) ? { tabletVolume: saved.tabletVolume } : {}) };
   } catch { return { speak: 'device' }; }
 }
@@ -57,12 +59,12 @@ export const canRecord = () => typeof navigator !== 'undefined' && !!navigator.m
  */
 export interface Endpoint { spokeAt?: number; quietSince?: number }
 export const SPEECH_LEVEL = 0.045, PAUSE_MS = 1300, NOBODY_MS = 7000, LONGEST_MS = 20000;
-export function shouldStop(state: Endpoint, level: number, now: number, startedAt: number): 'go'|'done'|'nothing' {
+export function shouldStop(state: Endpoint, level: number, now: number, startedAt: number, nobodyMs = NOBODY_MS): 'go'|'done'|'nothing' {
   if (level >= SPEECH_LEVEL) { state.spokeAt = now; state.quietSince = undefined; }
   else if (state.quietSince === undefined) state.quietSince = now;
   if (now - startedAt >= LONGEST_MS) return state.spokeAt ? 'done' : 'nothing';
   if (state.spokeAt && state.quietSince !== undefined && now - state.quietSince >= PAUSE_MS) return 'done';
-  if (!state.spokeAt && now - startedAt >= NOBODY_MS) return 'nothing';
+  if (!state.spokeAt && now - startedAt >= nobodyMs) return 'nothing';
   return 'go';
 }
 
@@ -72,7 +74,7 @@ export class Recorder {
   private stream?: MediaStream; private recorder?: MediaRecorder; private context?: AudioContext; private timer?: number;
   private chunks: Blob[] = []; private settle?: (blob: Blob | undefined) => void;
   readonly done: Promise<Blob | undefined>;
-  constructor(private onLevel: (level: number) => void = () => undefined) {
+  constructor(private onLevel: (level: number) => void = () => undefined, private nobodyMs = NOBODY_MS) {
     this.done = new Promise(resolve => { this.settle = resolve; });
   }
   async start() {
@@ -99,7 +101,7 @@ export class Recorder {
       let sum = 0; for (const v of samples) sum += v * v;
       const level = Math.sqrt(sum / samples.length);
       this.onLevel(Math.min(1, level * 8));
-      const verdict = shouldStop(state, level, performance.now(), startedAt);
+      const verdict = shouldStop(state, level, performance.now(), startedAt, this.nobodyMs);
       if (verdict === 'go') { this.timer = window.setTimeout(tick, 50); return; }
       heard = verdict === 'done'; this.recorder.stop();
     };

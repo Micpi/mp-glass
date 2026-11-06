@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.55.0 — Nexus au quotidien
+
+- Annonces vocales facultatives par écran pour les nouvelles alertes persistantes ; réglage alarmes ou toutes les alertes, avec respect de la nuit silencieuse.
+- Proposition de routines vocales pour des lumières ou volets identifiés, avec confirmation explicite avant l’enregistrement par un administrateur.
+- Commandes vocales de lecture et de volume pour un lecteur actif unique ; les situations ambiguës ne déclenchent aucune action.
+- Transfert vocal d’une lecture Music Assistant vers un lecteur ou une pièce identifiée sans ambiguïté.
+- Lecture des événements des prochaines 24 heures et consultation ou ajout à une liste de courses identifiée dans Home Assistant, sous réserve des autorisations.
+- Les rappels acceptent aujourd’hui ou un jour de la semaine à heure précise ; une heure déjà passée aujourd’hui est refusée.
+
 ## 0.54.0 — Nexus connaît mieux la maison
 
 - Un bilan vocal local résume les lumières allumées, les alertes et les équipements indisponibles selon les données du tableau de bord.

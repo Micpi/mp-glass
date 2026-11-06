@@ -2,6 +2,12 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Batterie faible': ['Low battery', 'Низкий заряд батареи'],
+  'Alerte': ['Alert', 'Оповещение'],
+  'Aucune': ['None', 'Нет'],
+  'Annonces vocales': ['Voice announcements', 'Голосовые объявления'],
+  'Nouvelles alertes persistantes, avec la voix de cet appareil.': ['New persistent alerts, using this device’s voice.', 'Новые постоянные оповещения голосом этого устройства.'],
+  'Toutes les alertes': ['All alerts', 'Все оповещения'],
   'Pièce de cet écran': ['Room for this screen', 'Комната этого экрана'],
   'Utilisée pour les commandes vocales de lumière sans pièce précisée.': ['Used for spoken lighting commands when no room is specified.', 'Используется для голосовых команд освещения без указания комнаты.'],
   'Temps pour continuer la conversation': ['Time to continue the conversation', 'Время для продолжения разговора'],

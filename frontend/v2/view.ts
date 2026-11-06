@@ -23,6 +23,10 @@ import './scene-editor';
 import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
 import { TabletVolume } from './tablet-volume';
+import { voiceMedia, voiceTransfer } from './voice-media';
+import { confirmation, isVoiceRoutineRequest, parseVoiceRoutine, voiceRoutineAutomation, type VoiceRoutine, type VoiceScope } from './voice-routine';
+import { householdRequest } from './organization';
+import { AlertAnnouncements } from './announcements';
 import { withScreenArea } from './assist';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
@@ -273,6 +277,9 @@ export class MPNexusView extends LitElement {
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
   private tabletVolume = new TabletVolume(() => this.hass);
+  private announcements = new AlertAnnouncements();
+  private announceMode: 'off'|'alarm'|'all' = (() => { try { const s = localStorage.getItem('mp-nexus.announcements'); return s === 'alarm' || s === 'all' ? s : 'off'; } catch { return 'off'; } })();
+  private announcementSpeech?: Speech;
   private tabletServices?: string[];
   private tabletServicesAt = 0;
   /** The lesson Nexus is giving, when the voice panel is one; lessons run longer than a command. */
@@ -294,6 +301,7 @@ export class MPNexusView extends LitElement {
   private answer?: { text: string; touched?: string[] };
   /** The conversation going on with the assistant, so « et dans la cuisine ? » follows the last request. */
   private conversationId?: string;
+  private pendingVoiceRoutine?: { routine: VoiceRoutine; expires: number };
   private listening = false;
   private draft: Routine = newRoutine();
   private routineState: ''|'saving'|'saved'|'error' = '';
@@ -395,6 +403,7 @@ export class MPNexusView extends LitElement {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    this.announcementSpeech?.stop(); this.announcementSpeech = undefined; this.announcements.reset();
     void this.tabletVolume.set(false);
     this.endVoice();
     removeEventListener(VOICE_EVENT, this.voicePrefsChanged);
@@ -430,6 +439,7 @@ export class MPNexusView extends LitElement {
   }
   protected updated() {
     this.watchConnection();
+    this.checkAnnouncements();
     void this.tabletVolume.set(this.overlay === 'voice' && this.voiceState === 'listening', this.voicePrefs.tabletVolume);
     // Every path back to the idle orb gets a deadline, including interrupted or empty conversations.
     if (this.overlay === 'voice' && this.voiceState === 'idle') {
@@ -1607,6 +1617,16 @@ export class MPNexusView extends LitElement {
   }
   private roomOfEntity = (id: string) => this.placedAll.find(p => roomEntityIds(p.room).includes(id))?.room.name;
   private get alerts(): Alert[] { return houseAlerts(this.hass?.states ?? {}, this.roomOfEntity); }
+  private checkAnnouncements() {
+    if (this.announceMode === 'off' || !this.hass) { this.announcements.reset(); return; }
+    const alerts = this.alerts.filter(a => this.announceMode === 'all' || a.level === 'alarm');
+    const ready = document.visibilityState === 'visible' && !this.overlay && !this.announcementSpeech && this.voicePrefs.speak !== 'off' && !(this.prefs.quietNight && inQuietHours());
+    const alert = this.announcements.next(alerts, Date.now(), ready);
+    if (!alert) return;
+    const message = alert.kind === 'battery' ? tr('Batterie faible') : alert.kind === 'heating-open' ? tr('En marche avec une fenêtre ouverte') : alert.kind === 'open' ? tr('Ouvert') : alert.kind === 'unlocked' ? tr('Déverrouillé') : alert.kind === 'update' ? tr('Mise à jour disponible') : tr('Alerte');
+    const speech = this.announcementSpeech = speakOnDevice(`${message} : ${this.name(alert.entity)}.`, locale());
+    void speech.done.then(() => { if (this.announcementSpeech === speech) this.announcementSpeech = undefined; });
+  }
   private headerActions() {
     const count = unseen(this.alerts, this.prefs).length;
     const bell = count ? tr('Alertes : {n} à voir', { n: count }) : tr('Alertes');
@@ -1657,6 +1677,40 @@ export class MPNexusView extends LitElement {
   private async ask(text: string, voice = false) {
     const hass = this.hass;
     if (!hass) return;
+    if (voice && language() === 'fr' && this.pendingVoiceRoutine) {
+      const pending = this.pendingVoiceRoutine;
+      this.pendingVoiceRoutine = undefined;
+      const result = confirmation(text);
+      if (result === 'yes') {
+        if (Date.now() > pending.expires) { this.answer = { text: 'La proposition a expiré. Redemandez-moi de créer la routine.' }; return; }
+        if (this.mediaReadOnlyGuest) { this.answer = { text: 'Cet accès invité est en lecture seule.' }; return; }
+        if (!hass.user?.is_admin || !hass.fetchWithAuth) { this.answer = { text: 'Un compte administrateur est nécessaire pour enregistrer cette routine.' }; return; }
+        try {
+          const response = await hass.fetchWithAuth(`/api/config/automation/config/${automationId()}`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(voiceRoutineAutomation(pending.routine)) });
+          this.answer = { text: response.ok ? `La routine « ${pending.routine.phrase} » est enregistrée dans Home Assistant.` : 'Home Assistant a refusé la routine ; elle n’a pas été enregistrée.' };
+        } catch { this.answer = { text: 'Je n’ai pas pu joindre Home Assistant. Vérifiez les routines avant de réessayer.' }; }
+        return;
+      }
+      if (result === 'no') { this.answer = { text: 'D’accord, la routine est annulée.' }; return; }
+      this.answer = { text: 'La proposition est annulée. Redemandez-moi de créer la routine si vous le souhaitez.' };
+      return;
+    }
+    if (voice && language() === 'fr' && isVoiceRoutineRequest(text)) {
+      if (this.mediaReadOnlyGuest) { this.answer = { text: 'Cet accès invité est en lecture seule.' }; return; }
+      if (!hass.user?.is_admin) { this.answer = { text: 'Un compte administrateur est nécessaire pour créer une routine.' }; return; }
+      const placed = this.placedAll;
+      const scope = (name: string, ids: string[]): VoiceScope => ({ name, lights: ids.filter(id => id.startsWith('light.') && !!hass.states[id] && !this.setAside.has(id)), covers: ids.filter(id => id.startsWith('cover.') && !!hass.states[id] && !this.setAside.has(id)) });
+      const scopes: VoiceScope[] = placed.map(p => scope(p.room.name, roomEntityIds(p.room)));
+      const floors = new Map<string, { name: string; ids: string[] }>();
+      for (const p of placed) { const floor = floors.get(p.floor.id) ?? { name: p.floor.name, ids: [] }; floor.ids.push(...roomEntityIds(p.room)); floors.set(p.floor.id, floor); }
+      for (const floor of floors.values()) scopes.push(scope(floor.name, floor.ids));
+      const routine = parseVoiceRoutine(text, scopes);
+      if (!routine) { this.answer = { text: 'Je ne peux pas préparer cette routine sans ambiguïté. Dites par exemple : quand je dis bonne nuit, éteins les lumières du salon. Chaque action doit préciser sa pièce.' }; return; }
+      this.pendingVoiceRoutine = { routine, expires: Date.now() + 60_000 };
+      this.handsFree = true;
+      this.answer = { text: `Je propose : quand vous dites « ${routine.phrase} », ${routine.summary}. Confirmez-vous l’enregistrement ? Dites oui pour confirmer ou non pour annuler.` };
+      return;
+    }
     if (language() === 'fr' && wantsHouseSummary(text)) {
       const report = houseSummary(hass.states, this.alerts);
       const descriptions: Record<Alert['kind'], string> = { alarm: 'alarme détectée', open: 'ouvert', unlocked: 'serrure non verrouillée', battery: 'batterie faible', 'heating-open': 'chauffage ou climatisation en marche avec une ouverture', update: 'mise à jour disponible' };
@@ -1676,7 +1730,27 @@ export class MPNexusView extends LitElement {
         : `Home Assistant indique pour ${this.name(diagnosis.entity_id)} : ${stateLabel(diagnosis.entity_id, diagnosis)}. Cet état seul ne permet pas de déterminer la cause du problème.` };
       return;
     }
+    const voicePlayers = voice && language() === 'fr' ? this.players.map(id => hass.states[id]).filter((state): state is HAState => !!state) : [];
+    const transfer = voicePlayers.length ? voiceTransfer(text, voicePlayers, this.roomOfEntity, id => this.isMusicAssistantPlayer(id)) : undefined;
+    if (transfer) {
+      if (this.mediaReadOnlyGuest) { this.answer = { text: 'Cet accès invité est en lecture seule.' }; return; }
+      if (typeof transfer === 'string') { this.answer = { text: transfer === 'ambiguous' ? 'Plusieurs lecteurs correspondent. Précisez le lecteur ou la pièce.' : 'Je ne trouve pas de source et de destination Music Assistant disponibles.' }; return; }
+      try { await hass.callService('music_assistant', 'transfer_queue', { entity_id: transfer.target, source_player: transfer.source, auto_play: true }); this.answer = { text: `Lecture transférée vers ${this.name(transfer.target)}.`, touched: [transfer.target] }; }
+      catch { this.answer = { text: 'Le transfert a échoué. Vérifiez Music Assistant et les lecteurs.' }; }
+      return;
+    }
+    const mediaCommand = voicePlayers.length ? voiceMedia(text, voicePlayers) : undefined;
+    if (mediaCommand) {
+      if (this.mediaReadOnlyGuest) { this.answer = { text: 'Cet accès invité est en lecture seule.' }; return; }
+      if (mediaCommand.kind !== 'action') { this.answer = { text: mediaCommand.kind === 'ambiguous' ? 'Plusieurs lecteurs sont actifs. Précisez le lecteur ou la pièce.' : 'Aucun lecteur disponible ne permet cette commande.' }; return; }
+      const { service, entity_id, volume_level, message } = mediaCommand.action;
+      try { await hass.callService('media_player', service, { entity_id, ...(volume_level !== undefined ? { volume_level } : {}) }); this.answer = { text: message, touched: [entity_id] }; }
+      catch { this.answer = { text: 'La commande multimédia a échoué. Vérifiez le lecteur et les autorisations.' }; }
+      return;
+    }
     this.answer = { text: tr('Je réfléchis…') };
+    const householdAnswer = await householdRequest(hass, text, language(), this.mediaReadOnlyGuest);
+    if (householdAnswer !== undefined) { this.answer = { text: householdAnswer }; return; }
     try {
       const query = voice ? withScreenArea(text, language(), this.prefs.screenArea, this.areas) : text;
       const reply = await askAssist(hass, query, language(), this.conversationId);
@@ -1851,6 +1925,7 @@ export class MPNexusView extends LitElement {
   }
   /** Listens to one request, sends it, then speaks the answer. Touching the orb while Nexus speaks cuts it short and listens again. */
   private async talk() {
+    this.announcementSpeech?.stop(); this.announcementSpeech = undefined;
     clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     const hass = this.hass;
     if (!hass) return;
@@ -1959,6 +2034,7 @@ export class MPNexusView extends LitElement {
     else if (this.voiceState !== 'thinking') { unlockAudio(); void this.talk(); }
   }
   private endVoice() {
+    this.pendingVoiceRoutine = undefined;
     void this.tabletVolume.set(false);
     clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     audioSession('auto');
@@ -1995,6 +2071,7 @@ export class MPNexusView extends LitElement {
       ${row('user', tr('Qui est à la maison'), this.prefs.people ? tr('Affiché sur l’accueil') : tr('Masqué'), this.prefs.people, () => this.setPrefs({ people: !this.prefs.people }))}
       ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
       ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
+      <label class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Annonces vocales')}</b><small>${tr('Nouvelles alertes persistantes, avec la voix de cet appareil.')}</small></div><select class="end" aria-label=${tr('Annonces vocales')} @change=${(e: Event) => { const mode = (e.target as HTMLSelectElement).value; this.announceMode = mode === 'alarm' || mode === 'all' ? mode : 'off'; this.announcements.reset(); try { localStorage.setItem('mp-nexus.announcements', this.announceMode); } catch { /* This screen keeps it until closed. */ } this.requestUpdate(); }}><option value="off" .selected=${this.announceMode === 'off'}>${tr('Aucune')}</option><option value="alarm" .selected=${this.announceMode === 'alarm'}>${tr('Alarmes')}</option><option value="all" .selected=${this.announceMode === 'all'}>${tr('Toutes les alertes')}</option></select></label>
       <label class="rw"><span class="ib">${mpIcon('home', 16)}</span><div><b>${tr('Pièce de cet écran')}</b><small>${tr('Utilisée pour les commandes vocales de lumière sans pièce précisée.')}</small></div><select class="end" aria-label=${tr('Pièce de cet écran')} @change=${(e: Event) => this.setPrefs({ screenArea: (e.target as HTMLSelectElement).value || undefined })}><option value="" .selected=${!this.prefs.screenArea}>${tr('Aucun')}</option>${this.areas.map(a => html`<option value=${a.id} .selected=${this.prefs.screenArea === a.id}>${a.name}</option>`)}</select></label>
       ${this.voiceChoice()}
       <label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Temps pour continuer la conversation')}</b><small>${tr('Après une réponse, Nexus attend votre prochaine demande puis se ferme en cas de silence.')}</small></div><select class="end" aria-label=${tr('Temps pour continuer la conversation')} @change=${(e: Event) => { this.voicePrefs = { ...this.voicePrefs, followWait: Number((e.target as HTMLSelectElement).value) as 5|7|10|15 }; writeVoicePrefs(this.voicePrefs); }}>${[5, 7, 10, 15].map(n => html`<option value=${n} .selected=${(this.voicePrefs.followWait ?? 7) === n}>${n} s</option>`)}</select></label>

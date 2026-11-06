@@ -260,6 +260,10 @@ def handle_sentence(hass, text, language="fr"):
     if action == "set_alarm":
         if rt.full():
             return "Il y a déjà trop de minuteurs et de réveils." if fr else "There are too many timers and alarms already."
+        if asked.get("today"):
+            now = dt_util.now()
+            if now.replace(hour=asked["hour"], minute=asked["minute"], second=0, microsecond=0) <= now:
+                return "Cette heure est déjà passée aujourd’hui. Indiquez une heure future." if fr else "That time has already passed today."
         item = rt.set_alarm(asked["hour"], asked["minute"], asked["days"], asked["tomorrow"], asked["weekday"], asked["label"], asked.get("reminder", False))
         return ("C'est réglé : " if fr else "Done: ") + rt.describe(item, language) + "."
     kind = asked["kind"]

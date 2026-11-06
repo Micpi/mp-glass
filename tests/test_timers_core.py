@@ -59,7 +59,10 @@ class SentenceTests(unittest.TestCase):
             got = core.understand(text)
             self.assertEqual((got["action"], got["hour"], got["minute"], got["label"], got["tomorrow"], got["reminder"]),
                              ("set_alarm", 19, 0, "sortir les poubelles", True, True))
-        self.assertIsNone(core.understand("rappelle-moi de sortir les poubelles jeudi à 19h"))
+        self.assertEqual(core.understand("rappelle-moi de sortir les poubelles jeudi à 19h")["weekday"], 3)
+        self.assertTrue(core.understand("rappelle-moi aujourd'hui à 19h de sortir les poubelles")["today"])
+        self.assertIsNone(core.understand("rappelle-moi de sortir les poubelles demain à 24h30"))
+        self.assertIsNone(core.understand("rappelle-moi de sortir les poubelles chaque jeudi à 19h"))
 
     def test_cancel_and_list(self):
         self.assertEqual(core.understand("annule le minuteur")["action"], "cancel")

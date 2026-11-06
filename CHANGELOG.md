@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.58.1 — Retrouver la voix sur la tablette
+
+- Les fichiers vocaux du proxy TTS Home Assistant sont lus depuis l’adresse utilisée par le tableau de bord. Home Assistant peut renvoyer une adresse interne ou `127.0.0.1` que la tablette ne peut pas joindre, même lorsque la sonnerie locale fonctionne.
+- Les liens TTS qui ne proviennent pas du proxy Home Assistant conservent leur adresse d’origine ; les paramètres de l’URL sont conservés.
+- Le micro et son contexte audio sont libérés avant la réponse, avec une attente limitée. Sur Android, le son d’écoute utilise le lecteur média partagé, sans ouvrir de contexte audio supplémentaire lors de l’activation de la voix.
+- Vérifié avec des URL internes simulées et les tests de lecture audio. Le résultat reste à confirmer sur la tablette et l’enceinte réelles.
+
 ## 0.58.0 — Voix et sonnerie sur la sortie média Android
 
 - Sur Android, les réponses produites par une voix Home Assistant et les sonneries de minuteur ou de réveil utilisent le même lecteur média. Avec la voix de l’appareil choisie, Voix Nexus est utilisée automatiquement lorsqu’elle est disponible ; le choix Muette et les autres moteurs Home Assistant restent respectés.

@@ -12,6 +12,20 @@ beforeEach(() => { vi.resetModules(); AudioDouble.instances = []; vi.stubGlobal(
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('media output on Android', () => {
+  it('unlocks and plays the listening tone without opening a Web Audio context', async () => {
+    const Context = vi.fn();
+    vi.stubGlobal('window', { AudioContext: Context, setTimeout, clearTimeout });
+    const { unlockAudio } = await import('../frontend/v2/voice');
+    const { listenTone } = await import('../frontend/v2/sound');
+    unlockAudio();
+    const tone = listenTone();
+    await Promise.resolve();
+    expect(Context).not.toHaveBeenCalled();
+    expect(AudioDouble.instances).toHaveLength(1);
+    expect(AudioDouble.instances[0]!.src).toMatch(/^data:audio\/wav;base64,/);
+    AudioDouble.instances[0]!.onended?.();
+    await tone;
+  });
   it('plays the voice and timer through one media element without a stale stop silencing the timer', async () => {
     const { playMedia } = await import('../frontend/v2/media-output');
     const { ringSound } = await import('../frontend/v2/sound');

@@ -46,6 +46,19 @@ test('a blocked Android timer offers a button to retry playback', async ({ page 
   await expect(retry).toHaveCount(0);
 });
 
+test('an internal Home Assistant TTS URL plays through the address of the dashboard', async ({ page }) => {
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate(element => {
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3', url: 'http://127.0.0.1:8123/api/tts_proxy/voice.mp3' }) };
+    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+  });
+  await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toContain('/api/tts_proxy/voice.mp3');
+});
+
 test('a late voice preview cannot replace the sound of a ringing timer', async ({ page }) => {
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');

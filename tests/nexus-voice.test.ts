@@ -1,7 +1,13 @@
 import { describe, expect, it, vi } from 'vitest';
-import { audioSession, mediaVoiceEngine, micWhileSpeaking, LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+import { audioSession, mediaVoiceEngine, micWhileSpeaking, LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, ttsPlaybackUrl, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
 
 describe('the voice of Nexus', () => {
+  it('plays Home Assistant TTS from the dashboard origin even when HA returns an unreachable internal host', () => {
+    expect(ttsPlaybackUrl({ path: '/api/tts_proxy/a.mp3?token=abc', url: 'http://127.0.0.1:8123/api/tts_proxy/a.mp3?token=abc' })).toBe('/api/tts_proxy/a.mp3?token=abc');
+    expect(ttsPlaybackUrl({ url: 'http://homeassistant.local:8123/api/tts_proxy/b.mp3' })).toBe('/api/tts_proxy/b.mp3');
+    expect(ttsPlaybackUrl({ url: 'https://cdn.example.org/voice.mp3' })).toBe('https://cdn.example.org/voice.mp3');
+    expect(() => ttsPlaybackUrl({})).toThrow();
+  });
   it('uses Nexus TTS for the Android device-voice default when it is available, and respects explicit choices', () => {
     const hass = { entities: { 'tts.renamed': { entity_id: 'tts.renamed', platform: 'mp_glass' } }, states: { 'tts.renamed': { entity_id: 'tts.renamed', state: 'unknown', attributes: {} } } };
     expect(mediaVoiceEngine(hass, { speak: 'device' }, true)).toBe('tts.renamed');
@@ -49,6 +55,33 @@ describe('the voice of Nexus', () => {
       const recorder = new Recorder(); await recorder.start(); recorder.cancel();
       expect(stop).toHaveBeenCalledOnce();
       expect(await recorder.done).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('waits for the recording audio context to close before delivering the recording', async () => {
+    const stop = vi.fn();
+    let close!: () => void;
+    const closed = new Promise<void>(resolve => { close = resolve; });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop }] }) } });
+    vi.stubGlobal('MediaRecorder', class {
+      static isTypeSupported() { return true; }
+      state = 'inactive'; mimeType = 'audio/webm';
+      ondataavailable: ((event: { data: Blob }) => void) | null = null;
+      onstop: (() => void) | null = null;
+      start() { this.state = 'recording'; }
+      stop() { this.state = 'inactive'; this.ondataavailable?.({ data: new Blob(['voice']) }); this.onstop?.(); }
+    });
+    vi.stubGlobal('window', { clearTimeout, setTimeout, AudioContext: class {
+      createAnalyser() { return { fftSize: 1024, getFloatTimeDomainData: (samples: Float32Array) => samples.fill(0.2) }; }
+      createMediaStreamSource() { return { connect: () => undefined }; }
+      close() { return closed; }
+    } });
+    try {
+      const recorder = new Recorder(); await recorder.start();
+      let finished = false; void recorder.done.then(() => { finished = true; });
+      recorder.stop(); await Promise.resolve();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(finished).toBe(false);
+      close(); expect(await recorder.done).toBeInstanceOf(Blob);
     } finally { vi.unstubAllGlobals(); }
   });
   it('stops listening after a pause once someone spoke', () => {

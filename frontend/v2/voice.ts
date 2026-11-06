@@ -92,7 +92,11 @@ export class Recorder {
     this.recorder = new MediaRecorder(this.stream, { mimeType: type, audioBitsPerSecond: 32000 });
     this.recorder.ondataavailable = e => { if (e.data.size) this.chunks.push(e.data); };
     let heard = false;
-    this.recorder.onstop = () => { this.release(); this.settle?.(heard && this.chunks.length ? new Blob(this.chunks, { type: this.recorder?.mimeType || type }) : undefined); };
+    this.recorder.onstop = () => {
+      const result = heard && this.chunks.length ? new Blob(this.chunks, { type: this.recorder?.mimeType || type }) : undefined;
+      // Let Android release its recording audio session before the spoken answer starts.
+      void this.release().then(() => { this.settle?.(result); this.settle = undefined; });
+    };
     this.recorder.start(250);
     const Context = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
     const startedAt = performance.now(), state: Endpoint = {};
@@ -119,12 +123,17 @@ export class Recorder {
   stop() { this.stopNow(); }
   private stopNow = () => { if (this.recorder?.state === 'recording') this.recorder.stop(); };
   /** Ends the recording and drops it. */
-  cancel() { this.cancelled = true; this.settle?.(undefined); this.settle = undefined; if (this.recorder?.state === 'recording') this.recorder.stop(); this.release(); }
-  private release() {
+  cancel() { this.cancelled = true; this.settle?.(undefined); this.settle = undefined; if (this.recorder?.state === 'recording') this.recorder.stop(); void this.release(); }
+  private async release() {
     window.clearTimeout(this.timer);
-    this.stream?.getTracks().forEach(track => track.stop());
-    void this.context?.close().catch(() => undefined);
+    const stream = this.stream, context = this.context;
     this.stream = undefined; this.context = undefined;
+    stream?.getTracks().forEach(track => track.stop());
+    if (context) {
+      let timeout: number | undefined;
+      try { await Promise.race([context.close().catch(() => undefined), new Promise<void>(resolve => { timeout = window.setTimeout(resolve, 1000); })]); }
+      finally { window.clearTimeout(timeout); }
+    }
   }
 }
 
@@ -239,19 +248,34 @@ export function unlockAudio() {
   if (typeof Audio === 'undefined') return;
   unlockMedia();
   if (!isAndroid() && typeof speechSynthesis !== 'undefined') speechSynthesis.speak(new SpeechSynthesisUtterance(''));
-  unlockSound();
+  if (!isAndroid()) unlockSound();
 }
 
 /** A Home Assistant voice: the engine renders the sentence, the page plays it. */
+export function ttsPlaybackUrl(result: { url?: string; path?: string }) {
+  // HA may return an internal URL (even 127.0.0.1) that the tablet cannot reach. Its TTS proxy is also accessible
+  // from the same origin as this dashboard; preserve query parameters and do not rewrite unrelated provider URLs.
+  for (const candidate of [result.path, result.url]) {
+    if (!candidate) continue;
+    try {
+      const parsed = new URL(candidate, 'https://mp-nexus.invalid');
+      if (['http:', 'https:'].includes(parsed.protocol) && parsed.pathname.startsWith('/api/tts_proxy/')) return `${parsed.pathname}${parsed.search}`;
+    } catch { /* Try the next field. */ }
+  }
+  if (result.url) return result.url;
+  throw new Error('Home Assistant did not return a playable TTS URL');
+}
+
 export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo', failed?: () => void, wanted: () => boolean = () => true): Promise<Speech> {
   if (!text) return silent;
   if (!hass.callApi) throw new Error('Home Assistant TTS unavailable');
-  const ask = (lang: string) => hass.callApi!<{ url: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language: lang, ...(voice ? { options: { voice } } : {}) });
+  const ask = (lang: string) => hass.callApi!<{ url?: string; path?: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language: lang, ...(voice ? { options: { voice } } : {}) });
   // Engines want an exact language tag: some take « fr », others only « fr-FR ».
   const regional = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith(language.toLowerCase()) ? navigator.language : `${language}-${language.toUpperCase()}`;
-  let url: string;
-  try { ({ url } = await ask(language)); } catch (error) { if (regional === language) throw error; ({ url } = await ask(regional)); }
+  let result: { url?: string; path?: string };
+  try { result = await ask(language); } catch (error) { if (regional === language) throw error; result = await ask(regional); }
   if (!wanted()) return silent;
+  const url = ttsPlaybackUrl(result);
   if (effect === 'holo' && !isAndroid()) {
     // The colour is a bonus: when the page cannot process the sound, the plain voice plays.
     try { return await speakAsHologram(url); } catch { /* Plain voice below. */ }

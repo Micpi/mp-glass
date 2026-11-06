@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.58.4 — Voix courte et musique Android
+
+- Sur Android, Voix Nexus est décodée hors ligne puis lue sur le lecteur média partagé en segments WAV d’au plus quatre secondes, dont la durée est connue avant le démarrage. Cela permet à Chromium de traiter chaque segment comme un son court, comme la sonnerie, afin de favoriser la baisse du média plutôt que sa mise en pause.
+- Les segments restants sont abandonnés si l’utilisateur arrête la voix ou si un minuteur prend le lecteur. Si le décodage hors ligne est indisponible, la lecture vocale normale reste utilisée.
+- Tests de découpage, d’interruption et de lecture dans Chromium ; le mélange réel avec l’application musicale et le Bluetooth dépend d’Android et reste à confirmer sur la tablette.
+
 ## 0.58.3 — Voix Nexus par la connexion du tableau de bord
 
 - Sur Android, Voix Nexus reçoit son fichier audio par la connexion WebSocket authentifiée déjà utilisée par le tableau de bord. Le son est lu par le même lecteur média que la sonnerie, sans dépendre de la demande d’adresse TTS REST qui échouait sur la tablette.

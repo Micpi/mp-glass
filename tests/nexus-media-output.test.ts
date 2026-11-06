@@ -53,6 +53,23 @@ describe('media output on Android', () => {
     try { await expect(speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus')).rejects.toMatchObject({ stage: 'generation', reason: 'nexus_voice_unavailable' }); }
     finally { warn.mockRestore(); }
   });
+  it('stops the remaining voice clips when a timer takes the shared media player', async () => {
+    const { speakWithHomeAssistant } = await import('../frontend/v2/voice');
+    const { ringSound } = await import('../frontend/v2/sound');
+    const buffer = { sampleRate: 2, length: 17, numberOfChannels: 1, getChannelData: () => new Float32Array(17) };
+    vi.stubGlobal('window', { OfflineAudioContext: class { decodeAudioData() { return Promise.resolve(buffer); } } });
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValueOnce('blob:1').mockReturnValueOnce('blob:2').mockReturnValueOnce('blob:3');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    try {
+      const hass = { callWS: vi.fn().mockResolvedValue({ audio: 'SUQz', mime: 'audio/mpeg' }) };
+      const speech = await speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus');
+      expect(AudioDouble.instances[0]!.src).toBe('blob:1');
+      const ring = ringSound('timer'); await speech.done;
+      expect(AudioDouble.instances[0]!.src).toMatch(/^data:audio\/wav;base64,/);
+      expect(revoke).toHaveBeenCalledTimes(3);
+      ring.stop();
+    } finally { create.mockRestore(); revoke.mockRestore(); }
+  });
   it('plays the voice and timer through one media element without a stale stop silencing the timer', async () => {
     const { playMedia } = await import('../frontend/v2/media-output');
     const { ringSound } = await import('../frontend/v2/sound');

@@ -21,18 +21,28 @@ export function unlockMedia() {
   void p.play().catch(() => undefined);
 }
 
-export function playMedia(src: string, loop = false, failed: () => void = () => undefined) {
+export function playMedia(src: string, loop = false, failed: () => void = () => undefined, waitForMetadata = false) {
   const p = player();
   active?.finish(); p.pause();
-  let finished = false, finishDone: () => void = () => undefined;
+  let finished = false, ended = false, finishDone: () => void = () => undefined, cancelMetadata: () => void = () => undefined;
   const done = new Promise<void>(resolve => { finishDone = resolve; });
-  const owner = { finish() { if (finished) return; finished = true; if (active === owner) { p.pause(); p.onended = null; p.onerror = null; active = undefined; } finishDone(); } };
-  active = owner; p.loop = loop; p.src = src; p.onended = () => owner.finish(); p.onerror = () => { if (!finished) { failed(); owner.finish(); } };
+  const owner = { finish() { if (finished) return; finished = true; cancelMetadata(); if (active === owner) { p.pause(); p.onended = null; p.onerror = null; active = undefined; } finishDone(); } };
+  active = owner; p.loop = loop;
+  // Set the source only after registering the listener: known duration lets Chromium classify a short clip as transient.
+  const metadata = waitForMetadata && typeof p.addEventListener === 'function' ? new Promise<void>((resolve, reject) => {
+    const cleanup = () => { clearTimeout(timeout); p.removeEventListener('loadedmetadata', ready); p.removeEventListener('error', error); };
+    const ready = () => { cleanup(); resolve(); };
+    const error = () => { cleanup(); reject(new Error('Media metadata unavailable')); };
+    cancelMetadata = () => { cleanup(); resolve(); };
+    p.addEventListener('loadedmetadata', ready, { once: true }); p.addEventListener('error', error, { once: true });
+    const timeout = setTimeout(error, 10000); p.preload = 'auto';
+  }) : Promise.resolve();
+  p.src = src; p.onended = () => { ended = true; owner.finish(); }; p.onerror = () => { if (!finished) { failed(); owner.finish(); } };
   const resume = () => {
     if (finished || active !== owner) return Promise.resolve();
     try { return Promise.resolve(p.play()).catch(error => { if (!finished && active === owner) failed(); throw error; }); }
     catch (error) { if (!finished && active === owner) failed(); return Promise.reject(error); }
   };
-  const ready = resume();
-  return { done, ready, stop: () => owner.finish(), pause: () => { if (active === owner) p.pause(); }, resume };
+  const ready = waitForMetadata ? metadata.then(resume) : resume();
+  return { done, ready, endedNaturally: () => ended, stop: () => owner.finish(), pause: () => { if (active === owner) p.pause(); }, resume };
 }

@@ -3,6 +3,7 @@ import { speakAsHologram } from './hologram';
 import { unlockSound } from './sound';
 import { playMedia, unlockMedia } from './media-output';
 import { isAndroid } from './native-wake';
+import { voiceClips } from './voice-clips';
 import type { TabletVolumeChoice } from './tablet-volume';
 
 /** How Nexus speaks on this screen: with the voice of the device, with a Home Assistant voice (Piper, Nabu Casa…), or not at all. */
@@ -270,6 +271,30 @@ export class VoicePlaybackError extends Error {
   constructor(readonly stage: 'generation' | 'download' | 'blocked' | 'playback', readonly status?: number, readonly reason?: string) { super(`Voice ${stage}${status ? ` (${status})` : ''}`); }
 }
 
+async function speakClips(clips: Awaited<ReturnType<typeof voiceClips>>, failed: (() => void) | undefined, wanted: () => boolean): Promise<Speech> {
+  let disposed = false, stopped = false, current: ReturnType<typeof playMedia> | undefined;
+  const dispose = () => { if (!disposed) { disposed = true; clips.dispose(); } };
+  if (!wanted()) { dispose(); return silent; }
+  const start = (url: string) => current = playMedia(url, false, failed, true);
+  try {
+    const first = start(clips.urls[0]!);
+    await first.ready;
+    const done = (async () => {
+      try {
+        let part = first;
+        for (let i = 1; i < clips.urls.length; i++) {
+          await part.done;
+          if (stopped || !wanted() || !part.endedNaturally()) return;
+          part = start(clips.urls[i]!);
+          try { await part.ready; } catch { if (!stopped && wanted()) failed?.(); return; }
+        }
+        await part.done;
+      } finally { dispose(); }
+    })();
+    return { done, stop: () => { stopped = true; current?.stop(); dispose(); } };
+  } catch (error) { current?.stop(); dispose(); throw error; }
+}
+
 export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo', failed?: () => void, wanted: () => boolean = () => true): Promise<Speech> {
   if (!text) return silent;
   const nexusVoice = engine === 'tts.voix_nexus' || hass.entities?.[engine]?.platform === 'mp_glass';
@@ -280,6 +305,12 @@ export async function speakWithHomeAssistant(hass: Hass, text: string, language:
       const result = await hass.callWS<{ audio?: string; mime?: string }>({ type: 'mp_glass/assistant/voice_audio', engine, message: text, language, ...(voice ? { voice } : {}) });
       if (!wanted()) return silent;
       if (result.mime !== 'audio/mpeg' || !result.audio || result.audio.length > 5592412 || !/^[a-z0-9+/]+={0,2}$/i.test(result.audio)) throw new VoicePlaybackError('generation');
+      // Offline decoding does not take the device's output: short WAV clips can request transient audio focus like the timer.
+      let clips: Awaited<ReturnType<typeof voiceClips>> | undefined;
+      try { clips = await voiceClips(result.audio); }
+      catch (error) { console.debug('MP Nexus: short voice clips unavailable', error); }
+      if (clips) return await speakClips(clips, failed, wanted);
+      if (!wanted()) return silent;
       const playback = playMedia(`data:audio/mpeg;base64,${result.audio}`, false, failed);
       try { await playback.ready; } catch (error) { playback.stop(); throw new VoicePlaybackError((error as { name?: string })?.name === 'NotAllowedError' ? 'blocked' : 'playback'); }
       return { done: playback.done, stop: playback.stop };

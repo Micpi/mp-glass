@@ -48,6 +48,38 @@ test('Nexus voice uses the dashboard connection and the same media element as th
   expect(await page.evaluate(() => (window as unknown as { audioInstances: number }).audioInstances)).toBe(1);
 });
 
+test('a long voice is decoded offline and played as short clips by a real browser audio element', async ({ page }) => {
+  const samples = 81600, wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 440 / 16000) * 3000), 44 + i * 2);
+  await page.goto('/plus?v2');
+  await page.evaluate(() => {
+    const state = window as unknown as { realAudio: typeof Audio; clipDurations: number[] };
+    state.clipDurations = [];
+    Object.defineProperty(window, 'Audio', { configurable: true, value: function () {
+      const element = new state.realAudio();
+      element.addEventListener('playing', () => { if (element.src.startsWith('blob:')) state.clipDurations.push(element.duration); });
+      return element;
+    } });
+  });
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate((element, audio) => {
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callWS: (message: Record<string, unknown>) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
+    const original = view.hass.callWS.bind(view.hass);
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } },
+      callWS: message => message.type === 'mp_glass/assistant/voice_audio' ? Promise.resolve({ audio, mime: 'audio/mpeg' }) : original(message) };
+    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+  }, wav.toString('base64'));
+  await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { clipDurations: number[] }).clipDurations.length), { timeout: 15000 }).toBe(2);
+  const durations = await page.evaluate(() => (window as unknown as { clipDurations: number[] }).clipDurations);
+  expect(durations.every(duration => duration > 0 && duration <= 4.01)).toBe(true);
+});
+
 test('a blocked Android timer offers a button to retry playback', async ({ page }) => {
   await page.goto('/plus?v2');
   await page.evaluate(() => { (window as unknown as { blockAudio: boolean }).blockAudio = true; });

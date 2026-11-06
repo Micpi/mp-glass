@@ -26,6 +26,33 @@ describe('media output on Android', () => {
     AudioDouble.instances[0]!.onended?.();
     await tone;
   });
+  it('plays Nexus MP3 returned by the existing Home Assistant connection without requesting a TTS URL', async () => {
+    const { speakWithHomeAssistant } = await import('../frontend/v2/voice');
+    const callWS = vi.fn().mockResolvedValue({ audio: 'SUQz', mime: 'audio/mpeg' });
+    const callApi = vi.fn();
+    const hass = { callWS, callApi };
+    const speech = await speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus', 'fr-FR-RemyNeural');
+    expect(callWS).toHaveBeenCalledWith({ type: 'mp_glass/assistant/voice_audio', engine: 'tts.voix_nexus', message: 'Bonjour', language: 'fr', voice: 'fr-FR-RemyNeural' });
+    expect(callApi).not.toHaveBeenCalled();
+    expect(AudioDouble.instances[0]!.src).toBe('data:audio/mpeg;base64,SUQz');
+    speech.stop();
+  });
+  it('does not start a direct Nexus voice after the request is cancelled', async () => {
+    const { speakWithHomeAssistant } = await import('../frontend/v2/voice');
+    let finish!: (value: { audio: string; mime: string }) => void;
+    const hass = { callWS: () => new Promise<{ audio: string; mime: string }>(resolve => { finish = resolve; }) };
+    let wanted = true;
+    const speaking = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus', undefined, undefined, undefined, () => wanted);
+    wanted = false; finish({ audio: 'SUQz', mime: 'audio/mpeg' }); await speaking;
+    expect(AudioDouble.instances).toHaveLength(0);
+  });
+  it('keeps the direct Nexus service error code for the user-facing diagnostic', async () => {
+    const { speakWithHomeAssistant } = await import('../frontend/v2/voice');
+    const hass = { callWS: vi.fn().mockRejectedValue({ code: 'nexus_voice_unavailable' }) };
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => undefined);
+    try { await expect(speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus')).rejects.toMatchObject({ stage: 'generation', reason: 'nexus_voice_unavailable' }); }
+    finally { warn.mockRestore(); }
+  });
   it('plays the voice and timer through one media element without a stale stop silencing the timer', async () => {
     const { playMedia } = await import('../frontend/v2/media-output');
     const { ringSound } = await import('../frontend/v2/sound');
@@ -67,7 +94,7 @@ describe('media output on Android', () => {
     let answer!: (value: { url: string }) => void;
     const hass = { callApi: () => new Promise<{ url: string }>(resolve => { answer = resolve; }) };
     let wanted = true;
-    const speech = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus', undefined, undefined, undefined, () => wanted);
+    const speech = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.other', undefined, undefined, undefined, () => wanted);
     const ring = ringSound('timer'); await Promise.resolve();
     wanted = false; answer({ url: '/voice.mp3' }); await speech;
     expect(AudioDouble.instances).toHaveLength(1);
@@ -82,7 +109,7 @@ describe('media output on Android', () => {
     vi.stubGlobal('fetch', fetcher);
     try {
       const hass = { callApi: async () => ({ path: '/api/tts_proxy/test.mp3' }) };
-      const speech = await speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus');
+      const speech = await speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.other');
       expect(fetcher).toHaveBeenCalledWith('/api/tts_proxy/test.mp3');
       expect(AudioDouble.instances[0]!.src).toBe('blob:voice');
       speech.stop(); await speech.done;
@@ -93,7 +120,7 @@ describe('media output on Android', () => {
     const { speakWithHomeAssistant, VoicePlaybackError } = await import('../frontend/v2/voice');
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 500 })));
     const hass = { callApi: async () => ({ path: '/api/tts_proxy/test.mp3' }) };
-    const result = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus');
+    const result = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.other');
     await expect(result).rejects.toBeInstanceOf(VoicePlaybackError);
     await expect(result).rejects.toMatchObject({ stage: 'download', status: 500 });
     expect(AudioDouble.instances).toHaveLength(0);

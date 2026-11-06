@@ -20,14 +20,31 @@ test('the Android timer preview and Nexus voice use the same media player', asyn
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
-    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
-    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
-      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ url: '/test-voice.mp3' }) };
-    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string; engine?: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.other': { entity_id: 'tts.other', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.other': { entity_id: 'tts.other', platform: 'test' } }, callApi: async () => ({ url: '/test-voice.mp3' }) };
+    view.voicePrefs = { speak: 'ha', engine: 'tts.other' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Tester la sonnerie/ }).click();
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toEqual(expect.arrayContaining([expect.stringMatching(/^data:audio\/wav;base64,/), '/test-voice.mp3']));
+  expect(await page.evaluate(() => (window as unknown as { audioInstances: number }).audioInstances)).toBe(1);
+});
+
+test('Nexus voice uses the dashboard connection and the same media element as the timer', async ({ page }) => {
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate(element => {
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callWS: (message: Record<string, unknown>) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
+    const original = view.hass.callWS.bind(view.hass);
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } },
+      callWS: message => message.type === 'mp_glass/assistant/voice_audio' ? Promise.resolve({ audio: 'SUQz', mime: 'audio/mpeg' }) : original(message) };
+    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+  });
+  await nexus.getByRole('button', { name: /Tester la sonnerie/ }).click();
+  await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toContain('data:audio/mpeg;base64,SUQz');
   expect(await page.evaluate(() => (window as unknown as { audioInstances: number }).audioInstances)).toBe(1);
 });
 
@@ -52,10 +69,10 @@ test('an internal Home Assistant TTS URL plays through the address of the dashbo
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
-    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
-    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
-      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3', url: 'http://127.0.0.1:8123/api/tts_proxy/voice.mp3' }) };
-    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string; engine?: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.other': { entity_id: 'tts.other', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.other': { entity_id: 'tts.other', platform: 'test' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3', url: 'http://127.0.0.1:8123/api/tts_proxy/voice.mp3' }) };
+    view.voicePrefs = { speak: 'ha', engine: 'tts.other' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toEqual(expect.arrayContaining([expect.stringMatching(/^blob:/)]));
@@ -66,10 +83,10 @@ test('shows the HTTP failure when Home Assistant cannot provide the voice file',
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
-    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
-    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
-      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3' }) };
-    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string; engine?: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.other': { entity_id: 'tts.other', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.other': { entity_id: 'tts.other', platform: 'test' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3' }) };
+    view.voicePrefs = { speak: 'ha', engine: 'tts.other' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
   await expect(nexus.getByRole('alert')).toContainText('HTTP 500');
@@ -94,10 +111,10 @@ test('the downloaded Android voice starts playing in a real browser media elemen
   });
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
-    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
-    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
-      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.wav' }) };
-    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string; engine?: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.other': { entity_id: 'tts.other', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.other': { entity_id: 'tts.other', platform: 'test' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.wav' }) };
+    view.voicePrefs = { speak: 'ha', engine: 'tts.other' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
   await expect.poll(() => page.evaluate(() => (window as unknown as { actualMediaStarted: boolean }).actualMediaStarted)).toBe(true);
@@ -107,10 +124,10 @@ test('a late voice preview cannot replace the sound of a ringing timer', async (
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
-    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
-    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
-      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: () => new Promise(resolve => { (window as unknown as { finishTts: (v: unknown) => void }).finishTts = resolve; }) };
-    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string; engine?: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.other': { entity_id: 'tts.other', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.other': { entity_id: 'tts.other', platform: 'test' } }, callApi: () => new Promise(resolve => { (window as unknown as { finishTts: (v: unknown) => void }).finishTts = resolve; }) };
+    view.voicePrefs = { speak: 'ha', engine: 'tts.other' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
   await expect.poll(() => page.evaluate(() => typeof (window as unknown as { finishTts?: unknown }).finishTts)).toBe('function');

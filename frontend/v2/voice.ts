@@ -267,11 +267,31 @@ export function ttsPlaybackUrl(result: { url?: string; path?: string }) {
 }
 
 export class VoicePlaybackError extends Error {
-  constructor(readonly stage: 'generation' | 'download' | 'blocked' | 'playback', readonly status?: number) { super(`Voice ${stage}${status ? ` (${status})` : ''}`); }
+  constructor(readonly stage: 'generation' | 'download' | 'blocked' | 'playback', readonly status?: number, readonly reason?: string) { super(`Voice ${stage}${status ? ` (${status})` : ''}`); }
 }
 
 export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo', failed?: () => void, wanted: () => boolean = () => true): Promise<Speech> {
   if (!text) return silent;
+  const nexusVoice = engine === 'tts.voix_nexus' || hass.entities?.[engine]?.platform === 'mp_glass';
+  if (isAndroid() && nexusVoice && text.length <= 8000) {
+    // The dashboard is already connected over WebSocket. Receive Nexus's MP3 there and play it like the local ring,
+    // without depending on an additional authenticated REST request or a reachable server address on the tablet.
+    try {
+      const result = await hass.callWS<{ audio?: string; mime?: string }>({ type: 'mp_glass/assistant/voice_audio', engine, message: text, language, ...(voice ? { voice } : {}) });
+      if (!wanted()) return silent;
+      if (result.mime !== 'audio/mpeg' || !result.audio || result.audio.length > 5592412 || !/^[a-z0-9+/]+={0,2}$/i.test(result.audio)) throw new VoicePlaybackError('generation');
+      const playback = playMedia(`data:audio/mpeg;base64,${result.audio}`, false, failed);
+      try { await playback.ready; } catch (error) { playback.stop(); throw new VoicePlaybackError((error as { name?: string })?.name === 'NotAllowedError' ? 'blocked' : 'playback'); }
+      return { done: playback.done, stop: playback.stop };
+    } catch (error) {
+      if ((error as { code?: string })?.code !== 'unknown_command') {
+        console.warn('MP Nexus: direct voice request failed', error);
+        if (error instanceof VoicePlaybackError) throw error;
+        throw new VoicePlaybackError('generation', undefined, (error as { code?: string })?.code);
+      }
+      // During an update an old integration may not yet expose the command; retain the standard HA route.
+    }
+  }
   if (!hass.callApi) throw new Error('Home Assistant TTS unavailable');
   const ask = (lang: string) => hass.callApi!<{ url?: string; path?: string }>('POST', 'tts_get_url', { engine_id: engine, message: text, language: lang, ...(voice ? { options: { voice } } : {}) });
   // Engines want an exact language tag: some take « fr », others only « fr-FR ».

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.58.3 — Voix Nexus par la connexion du tableau de bord
+
+- Sur Android, Voix Nexus reçoit son fichier audio par la connexion WebSocket authentifiée déjà utilisée par le tableau de bord. Le son est lu par le même lecteur média que la sonnerie, sans dépendre de la demande d’adresse TTS REST qui échouait sur la tablette.
+- Le nouveau service est limité au moteur Voix Nexus installé ; les autres moteurs conservent leur fonctionnement. Un ancien serveur sans cette commande utilise le parcours précédent.
+- Si le nouveau service échoue, l’écran indique si le moteur est introuvable, si le son reçu est inutilisable ou si sa génération a échoué.
+- Tests du service et de l’interface avec moteur et lecteur simulés. Le résultat reste à confirmer sur la tablette et l’enceinte réelles.
+
 ## 0.58.2 — Lecture de la voix Android et diagnostic
 
 - Sur Android, le fichier vocal du proxy Home Assistant est récupéré avant sa lecture dans le lecteur média partagé. Le fichier temporaire est libéré à la fin ou à l’arrêt de la réponse.

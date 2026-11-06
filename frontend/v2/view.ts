@@ -50,6 +50,9 @@ import { connectedServices, engineSetup, engineStatus, entryVisible, formDefault
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
 function voiceErrorMessage(error: unknown) {
   if (error instanceof VoicePlaybackError) {
+    if (error.reason === 'nexus_voice_unavailable') return tr('Voix Nexus est introuvable ou ne correspond pas au moteur choisi.');
+    if (error.reason === 'nexus_voice_invalid') return tr('Voix Nexus a renvoyé un son vide ou trop long.');
+    if (error.reason === 'nexus_voice_failed') return tr('Voix Nexus ne parvient pas à générer le son. Consultez les journaux Home Assistant.');
     if (error.stage === 'generation') return tr('Home Assistant ne peut pas préparer la voix. Vérifiez le moteur vocal.');
     if (error.stage === 'download') return error.status ? tr('Le fichier vocal est inaccessible (HTTP {status}). Vérifiez les journaux Home Assistant.', { status: error.status }) : tr('Le fichier vocal est inaccessible sur cet écran. Vérifiez la connexion à Home Assistant.');
     if (error.stage === 'blocked') return tr('Android a bloqué la lecture de la voix. Touchez à nouveau « Écouter la voix ».');

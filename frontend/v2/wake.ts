@@ -224,13 +224,18 @@ export const base64Floats = (values: Float32Array) => {
  */
 export const voiceThreshold = (own: number, near: number, sensitivity: Sensitivity = 'normal', judged = false) => {
   const gate = own + (SENSITIVITY[sensitivity] ?? -0.05);
-  return Math.min(0.97, judged ? gate : Math.max(gate, near + 0.03));
+  // Spend only the separation measured during training, retaining a margin over the home's background.
+  // When background resembles the word, keep the previous rule: some real homes need the judge alone there.
+  const separation = own - near;
+  const adaptive = judged && separation > 0.07 ? Math.min(gate, Math.max(near + 0.02, gate - Math.min(0.14, separation - 0.07))) : gate;
+  return Math.min(0.97, judged ? adaptive : Math.max(gate, near + 0.03));
 };
 
 /** Scores a window of 16 embeddings: 0.5 and above when it is the word (close to the prints, and the judge agrees). */
 export function voiceJudge(model: VoiceModel, sensitivity: Sensitivity = 'normal') {
   const center = floats(model.center), prints = floats(model.prints), count = model.count, size = 16 * FEATURES;
   const j = model.judge, threshold = voiceThreshold(model.own, model.near, sensitivity, !!j);
+  const originalThreshold = Math.min(0.97, model.own + (SENSITIVITY[sensitivity] ?? -0.05));
   const hidden = j?.hidden ?? 0;
   const mean = j ? floats(j.mean) : undefined, std = j ? floats(j.std) : undefined, w1 = j ? floats(j.w1) : undefined, b1 = j ? floats(j.b1) : undefined, w2 = j ? floats(j.w2) : undefined;
   const frame = new Float32Array(FEATURES), sims = new Float64Array(count), x = new Float32Array(size), h = new Float64Array(hidden);
@@ -256,7 +261,9 @@ export function voiceJudge(model: VoiceModel, sensitivity: Sensitivity = 'normal
     let z = j.b2;
     for (let k = 0; k < hidden; k++) z += Math.max(0, h[k]! + b1![k]!) * w2![k]!;
     const p = 1 / (1 + Math.exp(-Math.max(-30, Math.min(30, z))));
-    return p >= j.threshold ? 0.5 + 0.5 * p : 0.49 * p;
+    // A weaker print only counts when the independent judge is exceptionally certain.
+    const needed = close < originalThreshold ? Math.max(j.threshold, 0.9995) : j.threshold;
+    return p >= needed ? 0.5 + 0.5 * p : 0.49 * p;
   };
 }
 

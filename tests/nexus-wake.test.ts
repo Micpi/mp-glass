@@ -1,6 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
-import { CHUNK, floats, loadSpeechModels, loadWakeModels, Resampler, voiceJudge, WakePipeline, type Sensitivity, type VoiceModel, type WakeModels } from '../frontend/v2/wake';
+import { CHUNK, floats, loadSpeechModels, loadWakeModels, Resampler, voiceJudge, voiceThreshold, WakePipeline, type Sensitivity, type VoiceModel, type WakeModels } from '../frontend/v2/wake';
 import { clipFrames, endFrame, speechSpan, variants } from '../frontend/v2/wake-enroll';
 
 const fixture = (name: string) => new Uint8Array(readFileSync(new URL(`./fixtures/wake/${name}`, import.meta.url)));
@@ -107,6 +107,9 @@ describe('wake word', () => {
     }
     console.info('Wake benchmark (peak scores)', measurements);
     expect(measurements[`${voice.clip.file}:0:normal`]).toBeGreaterThanOrEqual(0.5);
+    expect(measurements[`${voice.clip.file}:300:normal`]).toBeGreaterThanOrEqual(0.5);
+    expect(measurements['alexa_test.wav:300:normal']).toBeLessThan(0.5);
+    expect(measurements['hey_mycroft_test.wav:300:normal']).toBeLessThan(0.5);
     expect(measurements['alexa_test.wav:0:normal']).toBeLessThan(0.5);
     expect(measurements[`${voice.clip.file}:1000:rnnoise-high`]).toBeGreaterThanOrEqual(0.5);
     expect(measurements['alexa_test.wav:1000:rnnoise-high']).toBeLessThan(0.5);
@@ -123,6 +126,12 @@ describe('wake word', () => {
     }
     expect(voice.cases.find(c => c.label === 'nexus')!.found.normal.some(Boolean)).toBe(true);
     expect(voice.cases.find(c => c.label === 'sentence')!.found.high.some(Boolean)).toBe(false);
+  });
+  it('uses the measured separation only when the independent judge exists', () => {
+    expect(voiceThreshold(.87, .66, 'normal', true)).toBeCloseTo(.68);
+    expect(voiceThreshold(.43, .72, 'high', true)).toBeCloseTo(.35);
+    expect(voiceThreshold(.75, .67, 'high', true)).toBeCloseTo(.67);
+    expect(voiceThreshold(.87, .66, 'normal', false)).toBeCloseTo(.82);
   });
   it('turns a recording into the same embeddings as the trainer, and finds where the word ends', async () => {
     const speech = await loadSpeechModels(shared);

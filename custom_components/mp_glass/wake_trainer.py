@@ -184,7 +184,9 @@ def threshold(own, near, sensitivity="normal", judged=False):
     sound too. With one, the judge keeps the background out: a voice whose word comes no closer than the background
     (own 0.43, near 0.72 in a real home) was never heard again when the prints alone had to clear the background."""
     gate = own + SENSITIVITY.get(sensitivity, -0.05)
-    return float(min(0.97, gate if judged else max(gate, near + 0.03)))
+    separation = own - near
+    adaptive = min(gate, max(near + 0.02, gate - min(0.14, separation - 0.07))) if judged and separation > 0.07 else gate
+    return float(min(0.97, adaptive if judged else max(gate, near + 0.03)))
 
 
 def windows_of(frames):
@@ -249,7 +251,10 @@ def to_client(model):
 def detect(model, windows, sensitivity="normal"):
     """What the page decides for each window (the same rule as frontend/v2/wake.ts), for tests: close enough to the
     prints, and the judge agrees when there is one."""
-    found = print_scores(model["prints"], unit(windows, model["center"])) >= threshold(model["own"], model["near"], sensitivity, "judge" in model)
+    scores = print_scores(model["prints"], unit(windows, model["center"]))
+    found = scores >= threshold(model["own"], model["near"], sensitivity, "judge" in model)
     if judge := model.get("judge"):
-        found &= judge_scores(judge, windows) >= judge["threshold"]
+        original = min(0.97, model["own"] + SENSITIVITY.get(sensitivity, -0.05))
+        required = np.where(scores < original, max(judge["threshold"], 0.9995), judge["threshold"])
+        found &= judge_scores(judge, windows) >= required
     return found

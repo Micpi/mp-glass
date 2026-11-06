@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.52.5 — Nexus entend mieux son nom
+
+- **Une détection adaptée à chaque mot enregistré.** Quand les enregistrements du mot sont suffisamment distincts du bruit appris, Nexus accepte une ressemblance moins forte si son second classifieur est très sûr de lui. Les profils où le bruit ressemble au mot gardent leur seuil précédent.
+- Les modèles déjà enregistrés profitent de ce réglage sans être refaits. Le calcul côté écran et le calcul d'entraînement Home Assistant suivent la même règle.
+- Sur le banc synthétique, un appel « Nexus » bruité manqué auparavant est reconnu en sensibilité normale ; les deux autres mots de contrôle restent sous le seuil. Des essais sur les micros et voix réels restent nécessaires.
+
 ## 0.52.4 — Mesurer Nexus dans le bruit
 
 - Ajout d'un banc reproductible comparant les scores du mot « Nexus » et de deux autres mots à plusieurs niveaux de bruit synthétique, avec et sans réduction RNNoise et avec deux sensibilités.

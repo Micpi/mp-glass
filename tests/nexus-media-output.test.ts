@@ -74,4 +74,28 @@ describe('media output on Android', () => {
     expect(AudioDouble.instances[0]!.src).toMatch(/^data:audio\/wav;base64,/);
     ring.stop();
   });
+  it('downloads Android TTS into a local media source and revokes it after playback', async () => {
+    const { speakWithHomeAssistant } = await import('../frontend/v2/voice');
+    const create = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:voice');
+    const revoke = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined);
+    const fetcher = vi.fn().mockResolvedValue(new Response(new Blob(['audio'], { type: 'audio/mpeg' })));
+    vi.stubGlobal('fetch', fetcher);
+    try {
+      const hass = { callApi: async () => ({ path: '/api/tts_proxy/test.mp3' }) };
+      const speech = await speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus');
+      expect(fetcher).toHaveBeenCalledWith('/api/tts_proxy/test.mp3');
+      expect(AudioDouble.instances[0]!.src).toBe('blob:voice');
+      speech.stop(); await speech.done;
+      expect(revoke).toHaveBeenCalledWith('blob:voice');
+    } finally { create.mockRestore(); revoke.mockRestore(); }
+  });
+  it('reports an HTTP error from the TTS proxy rather than treating it as an audio output problem', async () => {
+    const { speakWithHomeAssistant, VoicePlaybackError } = await import('../frontend/v2/voice');
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response('', { status: 500 })));
+    const hass = { callApi: async () => ({ path: '/api/tts_proxy/test.mp3' }) };
+    const result = speakWithHomeAssistant(hass as never, 'Bonjour', 'fr', 'tts.voix_nexus');
+    await expect(result).rejects.toBeInstanceOf(VoicePlaybackError);
+    await expect(result).rejects.toMatchObject({ stage: 'download', status: 500 });
+    expect(AudioDouble.instances).toHaveLength(0);
+  });
 });

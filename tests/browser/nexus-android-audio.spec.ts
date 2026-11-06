@@ -3,7 +3,8 @@ import { expect, test } from '@playwright/test';
 test.beforeEach(async ({ page }) => {
   await page.addInitScript(() => {
     Object.defineProperty(navigator, 'userAgent', { configurable: true, value: 'Mozilla/5.0 (Linux; Android 14)' });
-    const state = window as unknown as { audioInstances: number; played: string[]; blockAudio: boolean };
+    const state = window as unknown as { audioInstances: number; played: string[]; blockAudio: boolean; realAudio: typeof Audio };
+    state.realAudio = Audio;
     state.audioInstances = 0; state.played = []; state.blockAudio = false;
     class FakeAudio {
       src = ''; loop = false; onended: (() => void) | null = null; onerror: (() => void) | null = null;
@@ -47,6 +48,7 @@ test('a blocked Android timer offers a button to retry playback', async ({ page 
 });
 
 test('an internal Home Assistant TTS URL plays through the address of the dashboard', async ({ page }) => {
+  await page.route('**/api/tts_proxy/voice.mp3', route => route.fulfill({ status: 200, contentType: 'audio/mpeg', body: 'voice data' }));
   await page.goto('/plus?v2');
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.evaluate(element => {
@@ -56,7 +58,49 @@ test('an internal Home Assistant TTS URL plays through the address of the dashbo
     view.voicePrefs = { speak: 'device' }; view.requestUpdate();
   });
   await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
-  await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toContain('/api/tts_proxy/voice.mp3');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { played: string[] }).played)).toEqual(expect.arrayContaining([expect.stringMatching(/^blob:/)]));
+});
+
+test('shows the HTTP failure when Home Assistant cannot provide the voice file', async ({ page }) => {
+  await page.route('**/api/tts_proxy/voice.mp3', route => route.fulfill({ status: 500, body: 'error' }));
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate(element => {
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.mp3' }) };
+    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+  });
+  await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
+  await expect(nexus.getByRole('alert')).toContainText('HTTP 500');
+});
+
+test('the downloaded Android voice starts playing in a real browser media element', async ({ page }) => {
+  const samples = 8000, wav = Buffer.alloc(44 + samples * 2);
+  wav.write('RIFF', 0); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
+  wav.writeUInt32LE(16, 16); wav.writeUInt16LE(1, 20); wav.writeUInt16LE(1, 22);
+  wav.writeUInt32LE(16000, 24); wav.writeUInt32LE(32000, 28); wav.writeUInt16LE(2, 32); wav.writeUInt16LE(16, 34);
+  wav.write('data', 36); wav.writeUInt32LE(samples * 2, 40);
+  for (let i = 0; i < samples; i++) wav.writeInt16LE(Math.round(Math.sin(i * 2 * Math.PI * 440 / 16000) * 3000), 44 + i * 2);
+  await page.route('**/api/tts_proxy/voice.wav', route => route.fulfill({ status: 200, contentType: 'audio/wav', body: wav }));
+  await page.goto('/plus?v2');
+  await page.evaluate(() => {
+    const state = window as unknown as { realAudio: typeof Audio; actualMediaStarted: boolean };
+    Object.defineProperty(window, 'Audio', { configurable: true, value: function () {
+      const element = new state.realAudio();
+      element.addEventListener('playing', () => { if (element.src.startsWith('blob:')) state.actualMediaStarted = true; });
+      return element;
+    } });
+  });
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate(element => {
+    const view = element as unknown as { hass: { states: Record<string, unknown>; entities?: Record<string, unknown>; callApi?: (...args: unknown[]) => Promise<unknown> }; voicePrefs: { speak: string }; requestUpdate(): void };
+    view.hass = { ...view.hass, states: { ...view.hass.states, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', state: 'unknown', attributes: {} } },
+      entities: { ...view.hass.entities, 'tts.voix_nexus': { entity_id: 'tts.voix_nexus', platform: 'mp_glass' } }, callApi: async () => ({ path: '/api/tts_proxy/voice.wav' }) };
+    view.voicePrefs = { speak: 'device' }; view.requestUpdate();
+  });
+  await nexus.getByRole('button', { name: /Écouter la voix/ }).click();
+  await expect.poll(() => page.evaluate(() => (window as unknown as { actualMediaStarted: boolean }).actualMediaStarted)).toBe(true);
 });
 
 test('a late voice preview cannot replace the sound of a ringing timer', async ({ page }) => {

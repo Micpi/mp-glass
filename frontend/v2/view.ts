@@ -35,7 +35,7 @@ import { replayRows, replayStates } from './replay';
 import type { HistoryRow } from '../history';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, mediaVoiceEngine, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, mediaVoiceEngine, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VoicePlaybackError, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, comfortSuggestions, diagnosticTarget, fold, nexusAgent, houseAlerts, houseSummary, wantsHouseSummary, roomOverview, roomOverviewRequest, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -48,6 +48,14 @@ import { serviceBrand } from './brands';
 import { connectedServices, engineSetup, engineStatus, entryVisible, formDefaults, MUSIC_SERVICES, MusicEngineSession, serviceLogo, type EngineStatus, type FlowEntry, type FlowStep, type MusicService, type ProviderInstance, type ProviderManifest } from './music-engine';
 
 type ViewKind = 'home'|'lights'|'rooms'|'area'|'inventory'|'info'|'media'|'plus';
+function voiceErrorMessage(error: unknown) {
+  if (error instanceof VoicePlaybackError) {
+    if (error.stage === 'generation') return tr('Home Assistant ne peut pas préparer la voix. Vérifiez le moteur vocal.');
+    if (error.stage === 'download') return error.status ? tr('Le fichier vocal est inaccessible (HTTP {status}). Vérifiez les journaux Home Assistant.', { status: error.status }) : tr('Le fichier vocal est inaccessible sur cet écran. Vérifiez la connexion à Home Assistant.');
+    if (error.stage === 'blocked') return tr('Android a bloqué la lecture de la voix. Touchez à nouveau « Écouter la voix ».');
+  }
+  return tr('Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.');
+}
 /** The four ways MP Nexus v2 lays itself out: phone, tablet held upright, tablet held sideways, computer. */
 type Layout = 'phone'|'portrait'|'rail'|'desk';
 type Tab = 'home'|'lights'|'rooms'|'media'|'plus';
@@ -2078,9 +2086,9 @@ export class MPNexusView extends LitElement {
     audioSession('playback');
     const engine = mediaVoiceEngine(hass, prefs);
     const wanted = () => turn === this.voiceTurn && this.overlay === 'voice';
-    const failed = () => { if (wanted()) { this.voiceSoundError = tr('Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.'); this.requestUpdate(); } };
+    const failed = (error?: unknown) => { if (wanted()) { this.voiceSoundError = voiceErrorMessage(error); this.requestUpdate(); } };
     try { this.speech = engine ? await speakWithHomeAssistant(hass, text, language(), engine, prefs.speak === 'ha' ? prefs.voice : undefined, prefs.effect, failed, wanted) : speakOnDevice(text, locale(), prefs.voice); }
-    catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(); this.voiceState = 'idle'; this.scheduleVoiceClose(); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
+    catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(error); this.voiceState = 'idle'; this.scheduleVoiceClose(); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     await this.speech.done;
     audioSession('auto');
     if (turn !== this.voiceTurn) return;
@@ -2595,9 +2603,9 @@ export class MPNexusView extends LitElement {
     void (async () => {
       const engine = hass ? mediaVoiceEngine(hass, prefs) : undefined;
       const wanted = () => sequence === this.previewSequence && !this.ringing && this.isConnected;
-      const failed = () => { if (wanted()) { this.voiceSoundError = tr('Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.'); this.requestUpdate(); } };
+      const failed = (error?: unknown) => { if (wanted()) { this.voiceSoundError = voiceErrorMessage(error); this.requestUpdate(); } };
       try { this.speech = engine && hass ? await speakWithHomeAssistant(hass, text, language(), engine, prefs.speak === 'ha' ? prefs.voice : undefined, prefs.effect, failed, wanted) : speakOnDevice(text, locale(), prefs.voice); }
-      catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
+      catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(error); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     })();
   }
 

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.58.2 — Lecture de la voix Android et diagnostic
+
+- Sur Android, le fichier vocal du proxy Home Assistant est récupéré avant sa lecture dans le lecteur média partagé. Le fichier temporaire est libéré à la fin ou à l’arrêt de la réponse.
+- Les erreurs distinguent la préparation de la voix, un fichier inaccessible et un blocage de lecture Android ; un code HTTP est affiché lorsqu’il est connu.
+- Tests de récupération et de diagnostic avec des réponses simulées. La lecture et le routage Bluetooth restent à confirmer sur la tablette réelle.
+
 ## 0.58.1 — Retrouver la voix sur la tablette
 
 - Les fichiers vocaux du proxy TTS Home Assistant sont lus depuis l’adresse utilisée par le tableau de bord. Home Assistant peut renvoyer une adresse interne ou `127.0.0.1` que la tablette ne peut pas joindre, même lorsque la sonnerie locale fonctionne.

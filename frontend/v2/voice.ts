@@ -266,6 +266,10 @@ export function ttsPlaybackUrl(result: { url?: string; path?: string }) {
   throw new Error('Home Assistant did not return a playable TTS URL');
 }
 
+export class VoicePlaybackError extends Error {
+  constructor(readonly stage: 'generation' | 'download' | 'blocked' | 'playback', readonly status?: number) { super(`Voice ${stage}${status ? ` (${status})` : ''}`); }
+}
+
 export async function speakWithHomeAssistant(hass: Hass, text: string, language: string, engine: string, voice?: string, effect?: 'holo', failed?: () => void, wanted: () => boolean = () => true): Promise<Speech> {
   if (!text) return silent;
   if (!hass.callApi) throw new Error('Home Assistant TTS unavailable');
@@ -273,14 +277,31 @@ export async function speakWithHomeAssistant(hass: Hass, text: string, language:
   // Engines want an exact language tag: some take « fr », others only « fr-FR ».
   const regional = typeof navigator !== 'undefined' && navigator.language?.toLowerCase().startsWith(language.toLowerCase()) ? navigator.language : `${language}-${language.toUpperCase()}`;
   let result: { url?: string; path?: string };
-  try { result = await ask(language); } catch (error) { if (regional === language) throw error; result = await ask(regional); }
+  try { try { result = await ask(language); } catch (error) { if (regional === language) throw error; result = await ask(regional); } }
+  catch (error) { console.warn('MP Nexus: TTS request failed', error); throw new VoicePlaybackError('generation'); }
   if (!wanted()) return silent;
   const url = ttsPlaybackUrl(result);
   if (effect === 'holo' && !isAndroid()) {
     // The colour is a bonus: when the page cannot process the sound, the plain voice plays.
     try { return await speakAsHologram(url); } catch { /* Plain voice below. */ }
   }
-  const playback = playMedia(url, false, failed);
-  try { await playback.ready; } catch (error) { playback.stop(); throw error; }
-  return { done: playback.done, stop: playback.stop };
+  let objectUrl: string | undefined;
+  if (isAndroid() && url.startsWith('/api/tts_proxy/')) {
+    // Download the complete response first: WebView gets a local media source and HTTP errors are no longer hidden as silence.
+    let response: Response;
+    try { response = await fetch(url); } catch { throw new VoicePlaybackError('download'); }
+    if (!response.ok) throw new VoicePlaybackError('download', response.status);
+    const type = response.headers.get('content-type') ?? '';
+    if (/text\/html|application\/json/i.test(type)) throw new VoicePlaybackError('download');
+    let blob: Blob;
+    try { blob = await response.blob(); } catch { throw new VoicePlaybackError('download'); }
+    if (!blob.size) throw new VoicePlaybackError('download');
+    if (!wanted()) return silent;
+    objectUrl = URL.createObjectURL(blob);
+  }
+  const playback = playMedia(objectUrl ?? url, false, failed);
+  const cleanup = () => { if (objectUrl) { URL.revokeObjectURL(objectUrl); objectUrl = undefined; } };
+  void playback.done.then(cleanup);
+  try { await playback.ready; } catch (error) { playback.stop(); cleanup(); throw new VoicePlaybackError((error as { name?: string })?.name === 'NotAllowedError' ? 'blocked' : 'playback'); }
+  return { done: playback.done, stop: () => { playback.stop(); cleanup(); } };
 }

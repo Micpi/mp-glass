@@ -2,6 +2,10 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Home Assistant ne peut pas préparer la voix. Vérifiez le moteur vocal.': ['Home Assistant could not prepare the voice. Check the voice engine.', 'Home Assistant не удалось подготовить голос. Проверьте голосовой движок.'],
+  'Le fichier vocal est inaccessible (HTTP {status}). Vérifiez les journaux Home Assistant.': ['The voice file is unavailable (HTTP {status}). Check the Home Assistant logs.', 'Голосовой файл недоступен (HTTP {status}). Проверьте журналы Home Assistant.'],
+  'Le fichier vocal est inaccessible sur cet écran. Vérifiez la connexion à Home Assistant.': ['The voice file is unavailable on this screen. Check the connection to Home Assistant.', 'Голосовой файл недоступен на этом экране. Проверьте подключение к Home Assistant.'],
+  'Android a bloqué la lecture de la voix. Touchez à nouveau « Écouter la voix ».': ['Android blocked voice playback. Tap “Listen to the voice” again.', 'Android заблокировал воспроизведение голоса. Нажмите «Прослушать голос» ещё раз.'],
   'La lecture a été bloquée sur cet écran.': ['Playback was blocked on this screen.', 'Воспроизведение заблокировано на этом экране.'],
   'Activer la sonnerie': ['Enable the ring', 'Включить сигнал'],
   'Tester la sonnerie': ['Test the ring', 'Проверить сигнал'],

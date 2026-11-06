@@ -2,6 +2,11 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Baisser le son pendant l’écoute': ['Lower the sound while listening', 'Уменьшать звук во время прослушивания'],
+  'Le volume multimédia de cette tablette baisse pendant l’écoute et revient avant la réponse.': ['This tablet’s media volume is lowered while listening and restored before the reply.', 'Громкость мультимедиа планшета снижается во время прослушивания и восстанавливается перед ответом.'],
+  'Tablette Android': ['Android tablet', 'Планшет Android'],
+  'Capteur de volume multimédia': ['Media volume sensor', 'Датчик громкости мультимедиа'],
+  'Choisissez les deux éléments de la même tablette. Activez le capteur « Volume level music » dans l’application Home Assistant.': ['Choose both items for the same tablet. Enable the “Volume level music” sensor in the Home Assistant app.', 'Выберите оба элемента одного планшета. Включите датчик «Volume level music» в приложении Home Assistant.'],
   'Multimédia': ['Media', 'Медиа'],
   'Médias': ['Media', 'Медиа'],
   'Plus': ['More', 'Ещё'],

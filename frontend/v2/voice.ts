@@ -1,6 +1,7 @@
 import type { Hass } from '../ha/client';
 import { speakAsHologram } from './hologram';
 import { unlockSound } from './sound';
+import type { TabletVolumeChoice } from './tablet-volume';
 
 /** How Nexus speaks on this screen: with the voice of the device, with a Home Assistant voice (Piper, Nabu Casa…), or not at all. */
 export interface VoicePrefs {
@@ -14,6 +15,8 @@ export interface VoicePrefs {
   wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
   /** The short tone that says Nexus is listening after its name (on unless turned off). */
   wakeChime?: boolean;
+  /** This screen's Home Assistant Android device and music-volume sensor. */
+  tabletVolume?: TabletVolumeChoice;
 }
 const VOICE_KEY = 'mp-nexus.voice';
 export function readVoicePrefs(): VoicePrefs {
@@ -23,7 +26,8 @@ export function readVoicePrefs(): VoicePrefs {
       voice: typeof saved.voice === 'string' && saved.voice ? saved.voice.slice(0, 200) : undefined, effect: saved.effect === 'holo' ? 'holo' : undefined,
       wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
       wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
-      wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined };
+      wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined,
+      ...(saved.tabletVolume && (saved.tabletVolume.service === '' || /^mobile_app_[a-z0-9_]+$/.test(saved.tabletVolume.service ?? '')) && (saved.tabletVolume.sensor === '' || /^sensor\.[a-z0-9_]+$/.test(saved.tabletVolume.sensor ?? '')) ? { tabletVolume: saved.tabletVolume } : {}) };
   } catch { return { speak: 'device' }; }
 }
 export function writeVoicePrefs(prefs: VoicePrefs) {

@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.53.0 — Le son de la tablette baisse pendant l’écoute
+
+- Nexus peut réduire temporairement le volume multimédia Android pendant son écoute et demander son rétablissement avant sa réponse. Les autres applications utilisant ce volume retrouvent elles aussi leur niveau sonore.
+- Dans les réglages de cet écran, sélectionnez la notification de la tablette et son capteur de volume multimédia de l’application Home Assistant. Le niveau relevé est mémorisé ; une modification manuelle pendant l’écoute est respectée.
+- La restauration prévoit les délais de livraison des commandes et laisse brièvement au capteur le temps de se mettre à jour avant la réponse. Son fonctionnement dépend de la disponibilité de l’application et des notifications Android.
+
 ## 0.52.7 — La fenêtre Nexus se ferme vraiment
 
 - **La fenêtre de l'orbe se ferme après cinq secondes d'inactivité**, quel que soit le chemin qui l'a laissée sur « Touchez l'orbe pour parler » après une conversation. Cela fonctionne aussi lorsque Nexus est ouvert par-dessus l'écran de veille.

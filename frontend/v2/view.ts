@@ -22,6 +22,7 @@ import { nexusStyles } from './styles';
 import './scene-editor';
 import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
+import { TabletVolume } from './tablet-volume';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
@@ -271,6 +272,9 @@ export class MPNexusView extends LitElement {
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
+  private tabletVolume = new TabletVolume(() => this.hass);
+  private tabletServices?: string[];
+  private tabletServicesAt = 0;
   /** The lesson Nexus is giving, when the voice panel is one; lessons run longer than a command. */
   private lesson = '';
   private facts?: FactsListing; private factsAsked = false; private voiceList?: { key: string; voices: { id: string; name: string }[] }; private factText = ''; private factNote = '';
@@ -391,6 +395,7 @@ export class MPNexusView extends LitElement {
   }
   disconnectedCallback() {
     super.disconnectedCallback();
+    void this.tabletVolume.set(false);
     this.endVoice();
     removeEventListener(VOICE_EVENT, this.voicePrefsChanged);
     removeEventListener('storage', this.voicePrefsStored);
@@ -425,6 +430,7 @@ export class MPNexusView extends LitElement {
   }
   protected updated() {
     this.watchConnection();
+    void this.tabletVolume.set(this.overlay === 'voice' && this.voiceState === 'listening', this.voicePrefs.tabletVolume);
     // Every path back to the idle orb gets a deadline, including interrupted or empty conversations.
     if (this.overlay === 'voice' && this.voiceState === 'idle') {
       if (this.voiceCloseTimer === undefined) this.scheduleVoiceClose();
@@ -1829,7 +1835,7 @@ export class MPNexusView extends LitElement {
     const hass = this.hass;
     if (!hass) return;
     // Do not treat the wait for transcription availability as an idle, finished conversation.
-    this.voiceState = 'thinking';
+    if (this.voiceState !== 'listening') this.voiceState = 'thinking';
     this.speech?.stop(); this.speech = undefined;
     this.recorder?.cancel(); this.stopListening();
     audioSession('auto');
@@ -1895,6 +1901,8 @@ export class MPNexusView extends LitElement {
   private async say(text: string, turn: number) {
     const hass = this.hass, prefs = this.voicePrefs;
     if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; this.followUp(); return; }
+    await this.tabletVolume.beforeReply();
+    if (turn !== this.voiceTurn) return;
     this.voiceState = 'speaking';
     // The page lets go of the microphone first: on iPhones, a page that listens speaks quietly, in the earpiece.
     // Elsewhere it keeps hearing the wake word, so that « Nexus » cuts the answer short and listens.
@@ -1931,6 +1939,7 @@ export class MPNexusView extends LitElement {
     else if (this.voiceState !== 'thinking') { unlockAudio(); void this.talk(); }
   }
   private endVoice() {
+    void this.tabletVolume.set(false);
     clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     audioSession('auto');
     this.voiceTurn++;
@@ -1967,6 +1976,7 @@ export class MPNexusView extends LitElement {
       ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
       ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
       ${this.voiceChoice()}
+      ${this.tabletVolumeChoice()}
       ${this.wakeChoice()}
     </div>`;
   }
@@ -2283,6 +2293,25 @@ export class MPNexusView extends LitElement {
         <button class="end" role="switch" aria-checked=${learn} aria-label=${tr('Apprendre en arrière-plan')} @click=${() => set({ wakeLearn: learn ? false : undefined })}><span class=${`tgl ${learn ? '' : 'off'}`}></span></button></div>`;
   }
 
+  /** The Android companion controls its music stream; pair its notification service with that same device's sensor. */
+  private tabletVolumeChoice() {
+    const hass = this.hass;
+    if (hass && (!this.tabletServices || Date.now() - this.tabletServicesAt > 30_000)) {
+      this.tabletServicesAt = Date.now(); this.tabletServices ??= [];
+      void hass.callWS<Record<string, Record<string, unknown>>>({ type: 'get_services' }).then(services => {
+        this.tabletServices = Object.keys(services.notify ?? {}).filter(name => /^mobile_app_[a-z0-9_]+$/.test(name)).sort();
+        this.requestUpdate();
+      }).catch(() => undefined);
+    }
+    const choice = this.voicePrefs.tabletVolume ?? { service: '', sensor: '' };
+    const set = (patch: Partial<typeof choice>) => { this.voicePrefs = { ...this.voicePrefs, tabletVolume: { ...choice, ...patch } }; writeVoicePrefs(this.voicePrefs); };
+    const services = [...new Set([...(this.tabletServices ?? []), ...(choice.service ? [choice.service] : [])])];
+    const sensors = Object.values(hass?.states ?? {}).filter(s => s.entity_id.startsWith('sensor.') && (/volume.*(music|media|multimedia|musique)/i.test(`${s.entity_id} ${String(s.attributes.friendly_name ?? '')}`) || s.entity_id === choice.sensor));
+    return html`<div class="rw"><span class="ib">${mpIcon('volume', 16)}</span><div><b>${tr('Baisser le son pendant l’écoute')}</b><small>${tr('Le volume multimédia de cette tablette baisse pendant l’écoute et revient avant la réponse.')}</small></div></div>
+      <label class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><b>${tr('Tablette Android')}</b></div><select class="end" aria-label=${tr('Tablette Android')} @change=${(e: Event) => set({ service: (e.target as HTMLSelectElement).value })}><option value="" .selected=${!choice.service}>${tr('Aucun')}</option>${services.map(service => html`<option value=${service} .selected=${choice.service === service}>${service.replace(/^mobile_app_/, '').replace(/_/g, ' ')}</option>`)}</select></label>
+      ${choice.service ? html`<label class="rw"><span class="ib">${mpIcon('volume', 16)}</span><div><b>${tr('Capteur de volume multimédia')}</b><small>${tr('Choisissez les deux éléments de la même tablette. Activez le capteur « Volume level music » dans l’application Home Assistant.')}</small></div><select class="end" aria-label=${tr('Capteur de volume multimédia')} @change=${(e: Event) => set({ sensor: (e.target as HTMLSelectElement).value })}><option value="" .selected=${!choice.sensor}>${tr('Aucun')}</option>${sensors.map(s => html`<option value=${s.entity_id} .selected=${choice.sensor === s.entity_id}>${String(s.attributes.friendly_name ?? s.entity_id)}</option>`)}</select></label>` : nothing}`;
+  }
+
   /** How Nexus answers aloud on this screen: the device's voice, a Home Assistant voice, or silence; which voice, and its colour. */
   private enginesAt = 0;
   private voiceChoice() {
@@ -2294,7 +2323,7 @@ export class MPNexusView extends LitElement {
     }
     if (hass && !this.facts && !this.factsAsked && nexusAgent(hass)) { this.factsAsked = true; void this.refreshFacts(); }
     const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
-    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime };
+    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime, tabletVolume: prefs.tabletVolume };
     const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
     const change = (e: Event) => {
       const v = (e.target as HTMLSelectElement).value;

@@ -2,6 +2,8 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Il apprend des réveils confirmés et de ceux fermés par erreur.': ['It learns from confirmed wakes and those closed by mistake.', 'Он учится на подтверждённых активациях и закрытых по ошибке.'],
+  'Les réveils confirmés et ceux fermés par erreur servent à améliorer le mot.': ['Confirmed wakes and those closed by mistake help improve the word.', 'Подтверждённые и ошибочные активации помогают улучшить распознавание.'],
   'Revoir les dernières 24 h': ['Replay the last 24 hours', 'Посмотреть последние 24 часа'],
   'Retour au direct': ['Back to live', 'Вернуться к текущему состоянию'],
   'Historique du plan': ['Plan history', 'История плана'],

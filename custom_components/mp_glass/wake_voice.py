@@ -27,6 +27,8 @@ MAX_RECORDINGS, MAX_NOISY, MAX_SENTENCES, MAX_FRAMES = 8, 48, 4, 120
 MAX_AMBIENT_SENT, MAX_EXAMPLES_SENT = 64, 4
 # A cancelled false wake is learned quickly; the rest waits for the night.
 RETRAIN_DELAY = 20
+# Models built before this revision may have learned missed wake words as background sounds.
+TRAINING_REVISION = 1
 _FRAMES = vol.All(str, vol.Length(max=MAX_FRAMES * trainer.DIMS * 4 * 4 // 3 + 8))
 _WINDOWS = vol.All(str, vol.Length(max=MAX_AMBIENT_SENT * trainer.SIZE * 4 * 4 // 3 + 8))
 _WORD = vol.All(str, vol.Match(r"^[a-f0-9]{16}$"))
@@ -153,9 +155,11 @@ def load_background():
 def train(folder, word, background):
     """Trains the word again with all it knows; returns the model for the pages."""
     data = load_voice(folder, word)
-    model = trainer.build(data["recordings"], data["noisy"], background, data["sentences"], ambient=load_ambient(folder),
+    # Unlabelled room audio can contain an unrecognised wake word. Never teach it as a negative.
+    # Keep the old file intact, but rebuild from recorded words, explicit feedback and the shipped background.
+    model = trainer.build(data["recordings"], data["noisy"], background, data["sentences"],
                           hard=data["hard"], confirmed=data["confirmed"])
-    client = {**trainer.to_client(model), "trained": time.time()}
+    client = {**trainer.to_client(model), "trained": time.time(), "training_revision": TRAINING_REVISION}
     write_model(folder, word, client)
     return client
 
@@ -163,9 +167,9 @@ def train(folder, word, background):
 def stale(folder, word):
     """Whether the screens taught something since the last training."""
     model = read_model(folder, word)
-    if model is None:
+    if model is None or model.get("training_revision") != TRAINING_REVISION:
         return True
-    newest = max((os.path.getmtime(p) for p in (voice_path(folder, word), ambient_path(folder)) if os.path.exists(p)), default=0)
+    newest = max((os.path.getmtime(p) for p in (voice_path(folder, word),) if os.path.exists(p)), default=0)
     return newest > float(model.get("trained", 0))
 
 
@@ -186,6 +190,15 @@ class WakeVoice:
     async def train(self, word):
         background = await self.background()
         async with self.lock:
+            return await self.hass.async_add_executor_job(train, self.folder, word, background)
+
+    async def current_model(self, word):
+        """Rebuild an older model once even when several screens request it together."""
+        async with self.lock:
+            model = await self.hass.async_add_executor_job(read_model, self.folder, word)
+            if model and model.get("training_revision") == TRAINING_REVISION:
+                return model
+            background = await self.background()
             return await self.hass.async_add_executor_job(train, self.folder, word, background)
 
     @callback

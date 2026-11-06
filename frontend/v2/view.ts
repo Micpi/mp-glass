@@ -289,7 +289,6 @@ export class MPNexusView extends LitElement {
   private facts?: FactsListing; private factsAsked = false; private voiceList?: { key: string; voices: { id: string; name: string }[] }; private factText = ''; private factNote = '';
   private handsFreeTurns = 0;
   /** A voice word learns on this screen: ordinary sounds, and what woke Nexus (kept until the request tells which it was). */
-  private wakeAmbient: Float32Array[] = [];
   private wakeLesson?: { word: string; heard: Float32Array };
   /** Making a wake word from the voice: the steps and what was recorded. */
   private enroll?: Enrollment;
@@ -2163,7 +2162,7 @@ export class MPNexusView extends LitElement {
       const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
       if (gen !== this.wakeGen || !this.isConnected) return;
       const listener = this.wakeListener = new WakeListener(models, () => { void this.woke(); });
-      if (voice && this.voicePrefs.wakeLearn !== false) listener.onAmbient = window => this.heardAmbient(word, window);
+      // Unlabelled room audio may contain an unsuccessful attempt at the wake word; do not teach it as noise.
       listener.onScore = score => this.showWakeScore(score);
       this.wakeOld = voice && !((model as { version?: number }).version! >= 2);
       this.wakeTries = 0;
@@ -2207,7 +2206,6 @@ export class MPNexusView extends LitElement {
   private stopWake() {
     this.wakeGen++;
     removeEventListener('pointerdown', this.armWake);
-    this.flushAmbient(5);
     this.wakeListener?.stop(); this.wakeListener = undefined; this.wakeFor = undefined;
     if (this.wakeState !== 'off') this.wakeState = 'off';
   }
@@ -2263,16 +2261,6 @@ export class MPNexusView extends LitElement {
     this.wakeLesson = undefined;
     if (!lesson || !hass) return;
     void learnWake(hass, lesson.word, { [kind]: [lesson.heard] }).catch(error => console.warn('MP Nexus: wake word lesson', error));
-  }
-  private heardAmbient(word: string, window: Float32Array) {
-    this.wakeAmbient.push(window);
-    if (this.wakeAmbient.length >= 30) this.flushAmbient(30, word);
-  }
-  private flushAmbient(least: number, word = this.voicePrefs.wake) {
-    const hass = this.hass, ambient = this.wakeAmbient;
-    if (ambient.length < least) return;
-    this.wakeAmbient = [];
-    if (hass && word) void learnWake(hass, word, { ambient }).catch(() => undefined);
   }
 
   // ——— A wake word made from the voice: the name, said five times, then two ordinary sentences ———
@@ -2352,7 +2340,7 @@ export class MPNexusView extends LitElement {
       body = html`${orb(tr('Préparation…'))}<div class="said serif">${tr('Nexus apprend votre voix…')}</div><div class="muted">${tr('Quelques secondes.')}</div>`;
     } else if (e.step === 'done') {
       body = html`<div class="said serif">${tr('C’est prêt ! Dites « {word} » pour essayer.', { word: e.name })}</div>
-        <p class="muted">${tr('Il s’améliore tout seul : avec les sons de la maison, et quand vous fermez Nexus après un réveil par erreur.')}</p>
+        <p class="muted">${tr('Il apprend des réveils confirmés et de ceux fermés par erreur.')}</p>
         <button class="btn primary" @click=${this.closeOverlay}>${tr('Terminer')}</button>`;
     } else {
       body = html`<div class="said serif">${e.note}</div><button class="btn" @click=${() => { this.enroll = { step: 'name', name: e.name, words: [], sentences: [], recording: false, level: 0, again: e.again }; }}>${tr('Recommencer')}</button>`;
@@ -2430,7 +2418,7 @@ export class MPNexusView extends LitElement {
           <option value="" .selected=${!prefs.wakeSensitivity}>${tr('Normale')}</option>
           <option value="low" .selected=${prefs.wakeSensitivity === 'low'}>${tr('Stricte')}</option>
         </select></label>
-      <div class="rw"><span class="ib">${mpIcon('moon', 16)}</span><div><b>${tr('Apprendre en arrière-plan')}</b><small>${tr('Les sons de la maison, en empreintes seulement, l’améliorent chaque nuit')}</small></div>
+      <div class="rw"><span class="ib">${mpIcon('moon', 16)}</span><div><b>${tr('Apprendre en arrière-plan')}</b><small>${tr('Les réveils confirmés et ceux fermés par erreur servent à améliorer le mot.')}</small></div>
         <button class="end" role="switch" aria-checked=${learn} aria-label=${tr('Apprendre en arrière-plan')} @click=${() => set({ wakeLearn: learn ? false : undefined })}><span class=${`tgl ${learn ? '' : 'off'}`}></span></button></div>`;
   }
 

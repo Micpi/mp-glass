@@ -295,6 +295,11 @@ async def websocket_wake_word(hass, connection, msg):
         connection.send_error(msg["id"], "not_found", "Ce mot d'éveil n'existe plus.")
         return
     if "voice" in found:
+        if found["voice"].get("training_revision") != voice.TRAINING_REVISION:
+            try:
+                found["voice"] = await _runtime(hass).current_model(word)
+            except Exception:  # noqa: BLE001 - retain the previous model if migration fails.
+                _LOGGER.exception("Nexus wake word: could not rebuild the voice model")
         connection.send_result(msg["id"], {"id": word, "voice": found["voice"]})
         return
     connection.send_result(msg["id"], {"id": word, "model": base64.b64encode(found["model"]).decode()})
@@ -391,11 +396,11 @@ async def websocket_wake_word_create(hass, connection, msg):
 })
 @websocket_api.async_response
 async def websocket_wake_word_learn(hass, connection, msg):
-    """What a screen heard while listening: ordinary sounds of the home, the word that woke Nexus for a real request,
-    and the false wakes the user cancelled (learned within a minute)."""
+    """Learn from confirmed and cancelled wakes; accept but ignore unlabelled audio from older screens."""
     folder = wake_folder(hass)
     try:
-        ambient = _windows(msg["ambient"], voice.MAX_AMBIENT_SENT) if msg.get("ambient") else None
+        if msg.get("ambient"):
+            _windows(msg["ambient"], voice.MAX_AMBIENT_SENT)
         confirmed = _windows(msg["confirmed"], voice.MAX_EXAMPLES_SENT) if msg.get("confirmed") else None
         cancelled = _windows(msg["cancelled"], voice.MAX_EXAMPLES_SENT) if msg.get("cancelled") else None
     except (binascii.Error, ValueError):
@@ -406,8 +411,7 @@ async def websocket_wake_word_learn(hass, connection, msg):
         return
     runtime = _runtime(hass)
     async with runtime.lock:
-        if ambient is not None:
-            await hass.async_add_executor_job(voice.add_ambient, folder, ambient)
+        # Older screens may still send unlabelled ambient windows, which could contain missed wake words.
         if confirmed is not None or cancelled is not None:
             await hass.async_add_executor_job(voice.add_examples, folder, msg["word"], confirmed, cancelled)
     if cancelled is not None:

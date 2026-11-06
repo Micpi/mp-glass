@@ -36,12 +36,13 @@ export class WakePipeline {
   private features: Float32Array[] = [];
   private scored = 0;
   private warmed: Float32Array[] = [];
+  private peakWindow?: Float32Array;
   constructor(private models: WakeModels) {
     this.reset();
   }
   /** Forgets what was heard: after the word, its sound must not count a second time once listening resumes. */
   reset() {
-    this.raw = new Float32Array(0); this.pending = []; this.scored = 0;
+    this.raw = new Float32Array(0); this.pending = []; this.scored = 0; this.peakWindow = undefined;
     this.mel = Array.from({ length: WINDOW }, () => new Float32Array(BANDS).fill(1));
     this.features = this.warmed.slice();
   }
@@ -61,13 +62,16 @@ export class WakePipeline {
   async push(samples: ArrayLike<number>): Promise<number | undefined> {
     for (let i = 0; i < samples.length; i++) this.pending.push(samples[i]!);
     let best: number | undefined;
+    this.peakWindow = undefined;
     while (this.pending.length >= CHUNK) {
       const chunk = Float32Array.from(this.pending.splice(0, CHUNK));
       const score = await this.chunk(chunk);
-      best = best === undefined ? score : Math.max(best, score);
+      if (best === undefined || score > best) { best = score; this.peakWindow = this.lastWindow(); }
     }
     return best;
   }
+  /** The actual window that produced the best score in the last push, including multi-chunk inputs. */
+  bestWindow() { return this.peakWindow?.slice(); }
   /** The last 16 embeddings, as the word's model reads them: what a screen sends to teach a voice word. */
   lastWindow(frames = 16) {
     const out = new Float32Array(frames * FEATURES);
@@ -401,7 +405,7 @@ export class WakeListener {
         if (this.stopped) return;
         if (score !== undefined && score >= this.threshold && !this.paused && performance.now() - this.last > DEBOUNCE_MS) {
           this.last = performance.now();
-          this.heard = pipeline.lastWindow();
+          this.heard = pipeline.bestWindow();
           this.queue = [];
           pipeline.reset();
           this.onWake();

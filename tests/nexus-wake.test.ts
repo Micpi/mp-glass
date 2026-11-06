@@ -52,6 +52,17 @@ describe('wake word', () => {
     expect(scores.slice(0, 5).every(s => s === 0)).toBe(true);
     expect(scores[5]).toBe(0.9);
   });
+  it('keeps the window that actually produced the best score in a multi-chunk microphone block', async () => {
+    let frame = 0, scored = 0;
+    const fake: WakeModels = { frames: 16, mel: async x => new Float32Array(Math.floor(x.length / 160) * 32), embed: async (_w, n) => new Float32Array(n * 96).fill(++frame), score: async () => ++scored === 6 ? 0.9 : 0.6 };
+    const pipeline = new WakePipeline(fake);
+    await pipeline.push(new Float32Array(CHUNK * 5));
+    expect(await pipeline.push(new Float32Array(CHUNK * 2))).toBe(0.9);
+    expect(pipeline.bestWindow()!.at(-1)).toBe(6);
+    expect(pipeline.lastWindow(1).at(-1)).toBe(7);
+    pipeline.reset();
+    expect(pipeline.bestWindow()).toBeUndefined();
+  });
   it('resamples 48 kHz and 44.1 kHz to 16 kHz in int16 range', () => {
     for (const rate of [48000, 44100]) {
       const r = new Resampler(rate);

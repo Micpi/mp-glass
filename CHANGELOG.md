@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.56.1 — Un apprentissage plus fiable du mot Nexus
+
+- Un appel manqué ne peut plus être enregistré automatiquement comme bruit de fond : l’audio ambiant non étiqueté n’est plus utilisé pour entraîner le mot, y compris lorsqu’il provient d’un écran avec une ancienne version.
+- Au premier chargement après la mise à jour, les modèles vocaux existants sont reconstruits à partir des enregistrements, du bruit fourni et des retours explicites. Les enregistrements et les anciennes données ambiantes sont conservés ; en cas d’échec, le modèle précédent reste utilisable.
+- Les réveils confirmés ou annulés mémorisent désormais la fenêtre sonore qui a produit le score le plus élevé, même lorsque le bloc du microphone contient plusieurs segments.
+- Tests sur voix synthétiques et modèles de test ; une vérification avec les micros et les voix de la maison reste nécessaire.
+
 ## 0.56.0 — Premiers pas vers la maison vivante
 
 - Demandez à Nexus « montre-moi ce qui se passe dans le salon » : le plan s’ouvre sur la pièce reconnue et Nexus résume ses états disponibles. Les pièces portant le même nom ne sont pas choisies au hasard ; aucune cause n’est inventée.

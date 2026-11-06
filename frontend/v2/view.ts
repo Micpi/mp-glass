@@ -1819,6 +1819,7 @@ export class MPNexusView extends LitElement {
   }
   /** Listens to one request, sends it, then speaks the answer. Touching the orb while Nexus speaks cuts it short and listens again. */
   private async talk() {
+    clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     const hass = this.hass;
     if (!hass) return;
     this.speech?.stop(); this.speech = undefined;
@@ -1837,15 +1838,17 @@ export class MPNexusView extends LitElement {
       if (turn !== this.voiceTurn) return;
       if (this.handsFree && this.handsFreeTurns > 0) { await this.listenSignal(); if (turn !== this.voiceTurn) return; }
       try { await recorder.start(); }
-      catch { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; } return; }
+      catch { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: tr('Le micro n’est pas accessible. Autorisez-le pour cette page dans le navigateur.') }; this.scheduleVoiceClose(); } return; }
       const audio = await recorder.done;
       if (turn !== this.voiceTurn) return;
       this.recorder = undefined; this.voiceLevel = 0;
-      if (!audio) { this.voiceState = 'idle'; if (this.handsFree && this.overlay === 'voice') this.closeOverlay(); return; }
+      if (!audio) { this.voiceState = 'idle'; if (this.handsFree && this.overlay === 'voice') this.closeOverlay(); else this.scheduleVoiceClose(); return; }
       this.voiceState = 'thinking';
       try { text = await transcribe(hass, audio, locale()); }
-      catch (error) { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: (error as { message?: string })?.message || tr('Je n’ai pas pu entendre la demande.') }; } return; }
+      catch (error) { if (turn === this.voiceTurn) { this.voiceState = 'idle'; this.answer = { text: (error as { message?: string })?.message || tr('Je n’ai pas pu entendre la demande.') }; this.scheduleVoiceClose(); } return; }
     } else if (speechRecognition()) {
+      if (this.wakeListener) { this.wakeListener.paused = true; await this.wakeListener.mic(false); }
+      if (turn !== this.voiceTurn) return;
       text = await new Promise<string>(resolve => {
         const recognition = new (speechRecognition()!)();
         recognition.lang = locale(); recognition.interimResults = true;
@@ -1859,11 +1862,12 @@ export class MPNexusView extends LitElement {
     } else {
       this.voiceState = 'idle';
       this.answer = { text: tr('Pour parler à Nexus ici, ajoutez une clé IA dans les options de l’intégration MP Nexus, ou écrivez votre demande dans la recherche.') };
+      this.scheduleVoiceClose();
       return;
     }
     if (turn !== this.voiceTurn) return;
     text = text.trim();
-    if (!text) { this.voiceState = 'idle'; return; }
+    if (!text) { this.voiceState = 'idle'; if (this.handsFree && this.overlay === 'voice') this.closeOverlay(); else this.scheduleVoiceClose(); return; }
     if (onlyWakeWord(text, this.wakeName())) {
       // « Nexus » said again while it listened: it listens afresh, after its tone.
       this.handsFree = true; this.handsFreeTurns = Math.max(1, this.handsFreeTurns);
@@ -1900,9 +1904,18 @@ export class MPNexusView extends LitElement {
   }
   /** Hands free, the conversation goes on: Nexus listens for a follow-up, and closes after a silence or a few requests. */
   private followUp() {
-    if (!this.handsFree || this.overlay !== 'voice') return;
+    if (this.overlay !== 'voice') return;
+    if (!this.handsFree) { this.scheduleVoiceClose(); return; }
     if (++this.handsFreeTurns < (this.lesson ? LESSON_TURNS : HANDS_FREE_TURNS)) void this.talk();
     else this.closeOverlay();
+  }
+  private voiceCloseTimer?: number;
+  private scheduleVoiceClose() {
+    clearTimeout(this.voiceCloseTimer);
+    this.voiceCloseTimer = window.setTimeout(() => {
+      this.voiceCloseTimer = undefined;
+      if (this.overlay === 'voice' && this.voiceState === 'idle') this.closeOverlay();
+    }, 5000);
   }
   private orbTouched() {
     this.handsFree = false;
@@ -1910,6 +1923,7 @@ export class MPNexusView extends LitElement {
     else if (this.voiceState !== 'thinking') { unlockAudio(); void this.talk(); }
   }
   private endVoice() {
+    clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     audioSession('auto');
     this.voiceTurn++;
     this.handsFree = false; this.lesson = '';

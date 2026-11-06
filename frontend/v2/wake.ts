@@ -280,7 +280,7 @@ const microphone = () => navigator.mediaDevices.getUserMedia({ audio: { echoCanc
 export class WakeListener {
   private hold = false;
   private pipeline?: WakePipeline;
-  private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode; private source?: MediaStreamAudioSourceNode;
+  private stream?: MediaStream; private context?: AudioContext; private node?: AudioNode; private source?: MediaStreamAudioSourceNode; private sink?: GainNode;
   private micBusy?: Promise<void>; private micOff = false; private stopped = false;
   private busy = false; private queue: Float32Array[] = []; private last = 0; private chunks = 0;
   private generation = 0;
@@ -305,7 +305,7 @@ export class WakeListener {
     if (this.stopped) return;
     if (this.context) { if (this.context.state === 'suspended') await this.context.resume(); return; }
     if (this.starting) return this.starting;
-    this.starting = this.open().finally(() => { this.starting = undefined; });
+    this.starting = this.open().catch(error => { this.releaseAudio(); throw error; }).finally(() => { this.starting = undefined; });
     return this.starting;
   }
   private starting?: Promise<void>;
@@ -337,9 +337,13 @@ export class WakeListener {
       try { await context.audioWorklet.addModule(url); } finally { URL.revokeObjectURL(url); }
       if (this.stopped) { this.stop(); return; }
       const node = new AudioWorkletNode(context, 'mp-wake-tap');
-      node.port.onmessage = e => feed(e.data as Float32Array);
-      source.connect(node);
       this.node = node;
+      node.port.onmessage = e => feed(e.data as Float32Array);
+      // An unconnected output may be suspended by the browser, especially when the screen is idle.
+      // Keep the graph active without ever playing the microphone through the speakers.
+      const sink = this.sink = context.createGain();
+      sink.gain.value = 0;
+      source.connect(node); node.connect(sink); sink.connect(context.destination);
     } else {
       const node = context.createScriptProcessor(2048, 1, 1);
       node.onaudioprocess = e => feed(new Float32Array(e.inputBuffer.getChannelData(0)));
@@ -408,8 +412,13 @@ export class WakeListener {
   stop() {
     this.stopped = true;
     this.micOff = true;
+    this.releaseAudio();
+  }
+  /** A failed start must not leave a running context that looks like a working listener on the next attempt. */
+  private releaseAudio() {
     this.source?.disconnect(); this.source = undefined;
     this.node?.disconnect();
+    this.sink?.disconnect(); this.sink = undefined;
     this.stream?.getTracks().forEach(t => t.stop());
     void this.context?.close().catch(() => undefined);
     this.node = undefined; this.stream = undefined; this.context = undefined; this.queue = [];

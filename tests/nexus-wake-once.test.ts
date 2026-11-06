@@ -8,6 +8,45 @@ const models = { frames: 16, mel: async (s: Float32Array) => new Float32Array(Ma
 afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('one Nexus answers the word', () => {
+  it('keeps the worklet graph active through a muted output and releases it on stop', async () => {
+    const track = { stop: vi.fn() }, node = { port: { onmessage: null }, connect: vi.fn(), disconnect: vi.fn() };
+    const source = { connect: vi.fn(), disconnect: vi.fn() }, sink = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+    const destination = {}, close = vi.fn().mockResolvedValue(undefined);
+    const context = { sampleRate: 48000, state: 'running', destination, audioWorklet: { addModule: vi.fn().mockResolvedValue(undefined) }, createMediaStreamSource: () => source, createGain: () => sink, close };
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn().mockResolvedValue({ getTracks: () => [track] }) } });
+    vi.stubGlobal('window', { AudioContext: vi.fn(function () { return context; }) });
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { return node; }));
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() });
+    const listener = new WakeListener(models, vi.fn());
+    await listener.start();
+    expect(source.connect).toHaveBeenCalledWith(node);
+    expect(node.connect).toHaveBeenCalledWith(sink);
+    expect(sink.gain.value).toBe(0);
+    expect(sink.connect).toHaveBeenCalledWith(destination);
+    listener.stop();
+    expect(sink.disconnect).toHaveBeenCalledOnce();
+    expect(track.stop).toHaveBeenCalledOnce();
+    expect(close).toHaveBeenCalledOnce();
+  });
+  it('releases an incomplete audio graph and starts afresh after a worklet failure', async () => {
+    const track = { stop: vi.fn() }, node = { port: { onmessage: null }, connect: vi.fn(), disconnect: vi.fn() };
+    const source = { connect: vi.fn(), disconnect: vi.fn() }, sink = { gain: { value: 1 }, connect: vi.fn(), disconnect: vi.fn() };
+    const addModule = vi.fn().mockRejectedValueOnce(new Error('not ready')).mockResolvedValue(undefined);
+    const context = { sampleRate: 48000, state: 'running', destination: {}, audioWorklet: { addModule }, createMediaStreamSource: () => source, createGain: () => sink, close: vi.fn().mockResolvedValue(undefined) };
+    const getUserMedia = vi.fn().mockResolvedValue({ getTracks: () => [track] });
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia } });
+    vi.stubGlobal('window', { AudioContext: vi.fn(function () { return context; }) });
+    vi.stubGlobal('AudioWorkletNode', vi.fn(function () { return node; }));
+    vi.stubGlobal('URL', { createObjectURL: vi.fn(() => 'blob:test'), revokeObjectURL: vi.fn() });
+    const listener = new WakeListener(models, vi.fn());
+    await expect(listener.start()).rejects.toThrow('not ready');
+    expect(listener.running).toBe(false);
+    expect(track.stop).toHaveBeenCalledTimes(1);
+    await listener.start();
+    expect(getUserMedia).toHaveBeenCalledTimes(2);
+    expect(listener.running).toBe(true);
+    listener.stop();
+  });
   it('a listener stopped while it starts lets go of the microphone and never listens', async () => {
     const track = { stop: vi.fn() };
     let grant: (s: unknown) => void = () => undefined;

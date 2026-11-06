@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.52.6 — Nexus reste à l'écoute en veille et referme l'orbe
+
+- **Le mot d'éveil garde son écoute active en veille.** Le traitement du micro est relié à une sortie muette : certains navigateurs pouvaient suspendre le graphe audio quand son résultat n'était relié à aucune sortie. Aucun son du micro n'est diffusé.
+- Si le module audio ne démarre pas, ses ressources sont libérées afin qu'une nouvelle tentative reconstruise réellement l'écoute.
+- **L'orbe se ferme après la conversation.** Une réponse lancée au toucher reste visible cinq secondes ; en mains libres, Nexus laisse le temps de poser une suite puis ferme en cas de silence ou de transcription vide. Les messages d'erreur restent visibles cinq secondes.
+- **La dictée de secours récupère le micro proprement** lorsque la transcription de Nexus n'est pas disponible, afin d'éviter deux écoutes concurrentes.
+
 ## 0.52.5 — Nexus entend mieux son nom
 
 - **Une détection adaptée à chaque mot enregistré.** Quand les enregistrements du mot sont suffisamment distincts du bruit appris, Nexus accepte une ressemblance moins forte si son second classifieur est très sûr de lui. Les profils où le bruit ressemble au mot gardent leur seuil précédent.

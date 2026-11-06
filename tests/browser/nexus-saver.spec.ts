@@ -15,6 +15,29 @@ async function busyHouse(page: Page) {
 }
 const box = (page: Page, selector: string) => page.locator('mp-nexus-view-v2').locator(selector).first().evaluate(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width }; });
 
+test('a wake opens Nexus over the screensaver and the finished conversation closes it', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.locator('button.rw', { hasText: 'Écran de veille' }).click();
+  await nexus.getByRole('button', { name: 'Aperçu' }).click();
+  await nexus.evaluate(async (element) => {
+    const view = element as unknown as { woke(): Promise<void>; talk(): Promise<void>; listenSignal(): Promise<void> };
+    view.talk = async () => undefined;
+    view.listenSignal = async () => undefined;
+    await view.woke();
+  });
+  await expect(nexus.locator('.saver')).toBeVisible();
+  await expect(nexus.locator('.svoice')).toBeVisible();
+  await nexus.evaluate((element) => {
+    const view = element as unknown as { handsFree: boolean; voiceState: string; followUp(): void };
+    view.handsFree = false; view.voiceState = 'idle'; view.followUp();
+  });
+  await page.clock.runFor(5100);
+  await expect(nexus.locator('.svoice')).toHaveCount(0);
+  await expect(nexus.locator('.saver')).toBeVisible();
+});
+
 for (const [name, size] of [['computer', { width: 1440, height: 900 }], ['landscape tablet', { width: 1180, height: 820 }], ['upright tablet', { width: 820, height: 1180 }], ['phone', { width: 390, height: 844 }]] as const) {
   test(`the screensaver lays out every widget beside the plan on a ${name}`, async ({ page }) => {
     await page.setViewportSize(size);

@@ -425,6 +425,12 @@ export class MPNexusView extends LitElement {
   }
   protected updated() {
     this.watchConnection();
+    // Every path back to the idle orb gets a deadline, including interrupted or empty conversations.
+    if (this.overlay === 'voice' && this.voiceState === 'idle') {
+      if (this.voiceCloseTimer === undefined) this.scheduleVoiceClose();
+    } else if (this.voiceCloseTimer !== undefined) {
+      clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
+    }
     if (this.voiceRelease && this.overlay !== 'voice') { this.voiceRelease(); this.voiceRelease = undefined; }
     queueMicrotask(() => this.keepWake());
     queueMicrotask(() => this.keepTimers());
@@ -1822,6 +1828,8 @@ export class MPNexusView extends LitElement {
     clearTimeout(this.voiceCloseTimer); this.voiceCloseTimer = undefined;
     const hass = this.hass;
     if (!hass) return;
+    // Do not treat the wait for transcription availability as an idle, finished conversation.
+    this.voiceState = 'thinking';
     this.speech?.stop(); this.speech = undefined;
     this.recorder?.cancel(); this.stopListening();
     audioSession('auto');

@@ -15,6 +15,27 @@ async function busyHouse(page: Page) {
 }
 const box = (page: Page, selector: string) => page.locator('mp-nexus-view-v2').locator(selector).first().evaluate(e => { const r = e.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom, width: r.width }; });
 
+test('the idle Nexus window closes without interrupting a new request', async ({ page }) => {
+  await page.clock.install();
+  await page.goto('/plus?v2');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.evaluate(element => {
+    const view = element as unknown as { overlay: string; voiceState: string };
+    view.overlay = 'voice'; view.voiceState = 'idle';
+  });
+  const voice = nexus.locator('.modal.voice');
+  await expect(voice).toBeVisible();
+  await page.clock.runFor(3000);
+  await nexus.evaluate(element => { (element as unknown as { voiceState: string }).voiceState = 'listening'; });
+  await expect(nexus.locator('.vorb.listening')).toBeVisible();
+  await page.clock.runFor(4000);
+  await expect(voice).toBeVisible();
+  await nexus.evaluate(element => { (element as unknown as { voiceState: string }).voiceState = 'idle'; });
+  await expect(nexus.locator('.vorb.idle')).toBeVisible();
+  await page.clock.runFor(5100);
+  await expect(voice).toHaveCount(0);
+});
+
 test('a wake opens Nexus over the screensaver and the finished conversation closes it', async ({ page }) => {
   await page.clock.install();
   await page.goto('/plus?v2');

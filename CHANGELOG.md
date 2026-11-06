@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.52.7 — La fenêtre Nexus se ferme vraiment
+
+- **La fenêtre de l'orbe se ferme après cinq secondes d'inactivité**, quel que soit le chemin qui l'a laissée sur « Touchez l'orbe pour parler » après une conversation. Cela fonctionne aussi lorsque Nexus est ouvert par-dessus l'écran de veille.
+- **Une nouvelle demande garde la fenêtre ouverte.** Le délai s'annule dès que Nexus écoute, réfléchit ou parle ; l'attente de disponibilité de la transcription est également considérée comme une opération en cours.
+
 ## 0.52.6 — Nexus reste à l'écoute en veille et referme l'orbe
 
 - **Le mot d'éveil garde son écoute active en veille.** Le traitement du micro est relié à une sortie muette : certains navigateurs pouvaient suspendre le graphe audio quand son résultat n'était relié à aucune sortie. Aucun son du micro n'est diffusé.

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.58.0 — Voix et sonnerie sur la sortie média Android
+
+- Sur Android, les réponses produites par une voix Home Assistant et les sonneries de minuteur ou de réveil utilisent le même lecteur média. Avec la voix de l’appareil choisie, Voix Nexus est utilisée automatiquement lorsqu’elle est disponible ; le choix Muette et les autres moteurs Home Assistant restent respectés.
+- L’effet hologramme est suspendu sur Android pour garder ce chemin média. L’aperçu vocal indique une erreur de lecture au lieu de rester silencieux si le lecteur ou le moteur Home Assistant échoue.
+- Le minuteur propose « Activer la sonnerie » si Android bloque sa lecture. Un bouton « Tester la sonnerie » est disponible dans Plus → Sur cet écran.
+- Une réponse vocale arrivée après le déclenchement d’un minuteur ne peut pas remplacer sa sonnerie ; annuler une écoute libère son micro immédiatement.
+- Tests automatisés avec lecteur Android simulé. Le choix de sortie et la connexion Bluetooth restent gérés par Android : le fonctionnement doit être vérifié sur la tablette et l’enceinte réelles.
+
 ## 0.57.0 — Détection par l’application Android
 
 - Dans le réglage du mot d’éveil sur un écran Android, l’option « Application Home Assistant Android » arrête l’écoute du navigateur MP Nexus et permet de choisir la notification du bon appareil.

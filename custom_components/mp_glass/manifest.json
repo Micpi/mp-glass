@@ -25,5 +25,5 @@
     "jsonschema==4.25.1",
     "numpy>=1.26"
   ],
-  "version": "0.57.0"
+  "version": "0.58.0"
 }

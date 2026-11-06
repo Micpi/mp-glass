@@ -1,7 +1,15 @@
 import { describe, expect, it, vi } from 'vitest';
-import { audioSession, micWhileSpeaking, LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+import { audioSession, mediaVoiceEngine, micWhileSpeaking, LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
 
 describe('the voice of Nexus', () => {
+  it('uses Nexus TTS for the Android device-voice default when it is available, and respects explicit choices', () => {
+    const hass = { entities: { 'tts.renamed': { entity_id: 'tts.renamed', platform: 'mp_glass' } }, states: { 'tts.renamed': { entity_id: 'tts.renamed', state: 'unknown', attributes: {} } } };
+    expect(mediaVoiceEngine(hass, { speak: 'device' }, true)).toBe('tts.renamed');
+    expect(mediaVoiceEngine(hass, { speak: 'device' }, false)).toBeUndefined();
+    expect(mediaVoiceEngine(hass, { speak: 'off' }, true)).toBeUndefined();
+    expect(mediaVoiceEngine(hass, { speak: 'ha', engine: 'tts.other' }, true)).toBe('tts.other');
+    expect(mediaVoiceEngine({ states: {} }, { speak: 'device' }, true)).toBeUndefined();
+  });
   it('releases the microphone for Android playback and does not change its audio session', () => {
     const session = { type: 'auto' };
     vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 14)', maxTouchPoints: 5, audioSession: session });
@@ -30,6 +38,17 @@ describe('the voice of Nexus', () => {
       await starting;
       expect(await recorder.done).toBeUndefined();
       expect(stop).toHaveBeenCalledOnce();
+    } finally { vi.unstubAllGlobals(); }
+  });
+  it('releases the active microphone immediately on cancellation, before the recorder stop event', async () => {
+    const stop = vi.fn();
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: async () => ({ getTracks: () => [{ stop }] }) } });
+    vi.stubGlobal('MediaRecorder', class { static isTypeSupported() { return true; } state = 'inactive'; ondataavailable = null; onstop = null; start() { this.state = 'recording'; } stop() { this.state = 'inactive'; } });
+    vi.stubGlobal('window', { clearTimeout, setTimeout });
+    try {
+      const recorder = new Recorder(); await recorder.start(); recorder.cancel();
+      expect(stop).toHaveBeenCalledOnce();
+      expect(await recorder.done).toBeUndefined();
     } finally { vi.unstubAllGlobals(); }
   });
   it('stops listening after a pause once someone spoke', () => {

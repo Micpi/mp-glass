@@ -2,6 +2,15 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'La lecture a été bloquée sur cet écran.': ['Playback was blocked on this screen.', 'Воспроизведение заблокировано на этом экране.'],
+  'Activer la sonnerie': ['Enable the ring', 'Включить сигнал'],
+  'Tester la sonnerie': ['Test the ring', 'Проверить сигнал'],
+  'Son de minuteur sur la sortie média de cet écran': ['Timer sound on this screen’s media output', 'Сигнал таймера через медиа-выход этого экрана'],
+  'Écoutez la sonnerie sur la sortie média de cet écran.': ['Listen for the ring on this screen’s media output.', 'Проверьте сигнал на медиа-выходе этого экрана.'],
+  'Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.': ['The voice could not play on this screen. Check the media output and volume.', 'Не удалось воспроизвести голос. Проверьте медиа-выход и громкость.'],
+  'Sur Android, Voix Nexus utilise la même sortie média que la sonnerie.': ['On Android, Nexus Voice uses the same media output as the ring.', 'На Android голос Nexus использует тот же медиа-выход, что и сигнал.'],
+  'Pour utiliser la sortie média avec la sonnerie, activez Voix Nexus dans Home Assistant.': ['To share the ring’s media output, enable Nexus Voice in Home Assistant.', 'Чтобы использовать тот же медиа-выход, включите голос Nexus в Home Assistant.'],
+  'Désactivé sur Android pour garder la sortie média.': ['Disabled on Android to keep the media output.', 'Отключено на Android для сохранения медиа-выхода.'],
   'Application Home Assistant Android': ['Home Assistant Android app', 'Приложение Home Assistant для Android'],
   'La détection est confiée à l’application Android.': ['Wake detection is handled by the Android app.', 'Распознавание фразы выполняет приложение Android.'],
   'La commande n’a pas pu être envoyée. Réessayez.': ['The command could not be sent. Try again.', 'Не удалось отправить команду. Попробуйте ещё раз.'],

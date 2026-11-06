@@ -35,7 +35,7 @@ import { replayRows, replayStates } from './replay';
 import type { HistoryRow } from '../history';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
-import { audioSession, canRecord, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
+import { audioSession, canRecord, mediaVoiceEngine, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
 import { askAssist, comfortSuggestions, diagnosticTarget, fold, nexusAgent, houseAlerts, houseSummary, wantsHouseSummary, roomOverview, roomOverviewRequest, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
@@ -264,6 +264,10 @@ export class MPNexusView extends LitElement {
   private timerSnap: TimerSnapshot = NO_TIMERS; private timerTick = 0;
   private timerFeed?: TimerFeed; private timerFeedFor?: object; private timerTicker?: number;
   private ringing?: { key: string; sound: ReturnType<typeof ringSound> };
+  private ringBlocked = false;
+  private ringTestNote = '';
+  private voiceSoundError = '';
+  private previewSequence = 0;
   /** The voice of Nexus: what it is doing, how loud it hears, what it heard, and how it speaks on this screen. */
   private voiceState: 'idle'|'listening'|'thinking'|'speaking' = 'idle';
   private voiceLevel = 0;
@@ -1878,15 +1882,17 @@ export class MPNexusView extends LitElement {
     const rings = this.timerSnap.ringing, key = rings.map(r => r.id).join(',');
     if (!rings.length) {
       this.ringing?.sound.stop(); this.ringing = undefined;
+      this.ringBlocked = false;
       if (this.overlay === 'ring') this.overlay = '';
       return;
     }
+    if (this.overlay === 'voice') this.endVoice();
     if (this.ringing?.key !== key) {
       this.ringing?.sound.stop();
-      this.ringing = { key, sound: ringSound(rings.some(r => r.kind === 'alarm') ? 'alarm' : 'timer') };
+      this.ringBlocked = false;
+      this.ringing = { key, sound: ringSound(rings.some(r => r.kind === 'alarm') ? 'alarm' : 'timer', blocked => { this.ringBlocked = blocked; this.requestUpdate(); }) };
     }
     if (this.overlay !== 'ring' && this.overlay !== 'enroll') {
-      if (this.overlay === 'voice') this.endVoice();
       this.overlay = 'ring';
     }
   }
@@ -1900,6 +1906,7 @@ export class MPNexusView extends LitElement {
         <div class="ringbell">${mpIcon(alarm ? 'bell' : 'clock', 40)}</div>
         <div class="said serif">${ring.label || (alarm ? tr('C’est l’heure !') : tr('Minuteur terminé'))}</div>
         ${rings.length > 1 ? html`<p class="muted small">${tr('{n} sonneries en cours', { n: rings.length })}</p>` : nothing}
+        ${this.ringBlocked ? html`<p class="note warn">${tr('La lecture a été bloquée sur cet écran.')}</p><button class="btn" @click=${() => this.ringing?.sound.retry()}>${tr('Activer la sonnerie')}</button>` : nothing}
         <button class="btn primary" @click=${() => { void stopRing(hass).catch(() => undefined); }}>${tr('Arrêter')}</button>
         <button class="btn" @click=${() => { for (const r of rings) void snoozeRing(hass, r, alarm ? 9 * 60 : 60).catch(() => undefined); }}>${alarm ? tr('Reporter de 9 min') : tr('+ 1 min')}</button>
       </div>`;
@@ -1990,7 +1997,7 @@ export class MPNexusView extends LitElement {
     this.recorder?.cancel(); this.stopListening();
     audioSession('auto');
     const turn = ++this.voiceTurn;
-    this.answer = undefined; this.voiceHeard = '';
+    this.answer = undefined; this.voiceHeard = ''; this.voiceSoundError = '';
     this.transcription ??= await canTranscribe(hass);
     if (turn !== this.voiceTurn) return;
     let text = '';
@@ -2069,8 +2076,11 @@ export class MPNexusView extends LitElement {
     else if (this.wakeListener) { this.wakeListener.paused = false; void this.wakeListener.mic(true); }
     if (turn !== this.voiceTurn) return;
     audioSession('playback');
-    try { this.speech = prefs.speak === 'ha' && prefs.engine ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
-    catch (error) { console.warn('MP Nexus: voice', error); this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
+    const engine = mediaVoiceEngine(hass, prefs);
+    const wanted = () => turn === this.voiceTurn && this.overlay === 'voice';
+    const failed = () => { if (wanted()) { this.voiceSoundError = tr('Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.'); this.requestUpdate(); } };
+    try { this.speech = engine ? await speakWithHomeAssistant(hass, text, language(), engine, prefs.speak === 'ha' ? prefs.voice : undefined, prefs.effect, failed, wanted) : speakOnDevice(text, locale(), prefs.voice); }
+    catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(); this.voiceState = 'idle'; this.scheduleVoiceClose(); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     await this.speech.done;
     audioSession('auto');
     if (turn !== this.voiceTurn) return;
@@ -2119,6 +2129,7 @@ export class MPNexusView extends LitElement {
         ${this.voiceHeard ? html`<div class="heard">« ${this.voiceHeard} »</div>` : nothing}
         ${this.answer && state !== 'thinking' ? html`<div class="said serif" aria-live="polite">${this.answer.text}</div>
           ${this.answer.touched?.length ? html`<div class="houses touched">${this.answer.touched.slice(0, 8).map(id => html`<button class="pill" @click=${() => { this.detail = id; }}>${mpIcon(entityIcon(id, states[id]), 13)}${[this.name(id), this.roomOfEntity(id)].filter(Boolean).join(' · ')}</button>`)}</div>` : nothing}` : nothing}
+        ${this.voiceSoundError ? html`<p class="note warn" role="alert">${this.voiceSoundError}</p>` : nothing}
       </div>`;
   }
   /** The choices this screen keeps for itself: who is home, comfort mode, silent night. */
@@ -2138,10 +2149,19 @@ export class MPNexusView extends LitElement {
       <label class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Annonces vocales')}</b><small>${tr('Nouvelles alertes persistantes, avec la voix de cet appareil.')}</small></div><select class="end" aria-label=${tr('Annonces vocales')} @change=${(e: Event) => { const mode = (e.target as HTMLSelectElement).value; this.announceMode = mode === 'alarm' || mode === 'all' ? mode : 'off'; this.announcements.reset(); try { localStorage.setItem('mp-nexus.announcements', this.announceMode); } catch { /* This screen keeps it until closed. */ } this.requestUpdate(); }}><option value="off" .selected=${this.announceMode === 'off'}>${tr('Aucune')}</option><option value="alarm" .selected=${this.announceMode === 'alarm'}>${tr('Alarmes')}</option><option value="all" .selected=${this.announceMode === 'all'}>${tr('Toutes les alertes')}</option></select></label>
       <label class="rw"><span class="ib">${mpIcon('home', 16)}</span><div><b>${tr('Pièce de cet écran')}</b><small>${tr('Utilisée pour les commandes vocales de lumière sans pièce précisée.')}</small></div><select class="end" aria-label=${tr('Pièce de cet écran')} @change=${(e: Event) => this.setPrefs({ screenArea: (e.target as HTMLSelectElement).value || undefined })}><option value="" .selected=${!this.prefs.screenArea}>${tr('Aucun')}</option>${this.areas.map(a => html`<option value=${a.id} .selected=${this.prefs.screenArea === a.id}>${a.name}</option>`)}</select></label>
       ${this.voiceChoice()}
+      ${this.voiceSoundError ? html`<p class="note warn" role="alert">${this.voiceSoundError}</p>` : nothing}
+      <button class="rw" @click=${() => this.testRing()}><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Tester la sonnerie')}</b><small>${tr('Son de minuteur sur la sortie média de cet écran')}</small></div></button>
+      ${this.ringTestNote ? html`<p class="note info" role="status">${this.ringTestNote}</p>` : nothing}
       <label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Temps pour continuer la conversation')}</b><small>${tr('Après une réponse, Nexus attend votre prochaine demande puis se ferme en cas de silence.')}</small></div><select class="end" aria-label=${tr('Temps pour continuer la conversation')} @change=${(e: Event) => { this.voicePrefs = { ...this.voicePrefs, followWait: Number((e.target as HTMLSelectElement).value) as 5|7|10|15 }; writeVoicePrefs(this.voicePrefs); }}>${[5, 7, 10, 15].map(n => html`<option value=${n} .selected=${(this.voicePrefs.followWait ?? 7) === n}>${n} s</option>`)}</select></label>
       ${this.tabletVolumeChoice()}
       ${this.wakeChoice()}
     </div>`;
+  }
+  private testRing() {
+    this.ringTestNote = tr('Écoutez la sonnerie sur la sortie média de cet écran.');
+    const sound = ringSound('timer', blocked => { if (blocked) { this.ringTestNote = tr('La lecture a été bloquée sur cet écran.'); this.requestUpdate(); } });
+    window.setTimeout(() => sound.stop(), 3000);
+    this.requestUpdate();
   }
 
   // ——— The wake word: heard on this screen, nothing leaves it before ———
@@ -2522,7 +2542,8 @@ export class MPNexusView extends LitElement {
       this.voiceList = undefined;
       writeVoicePrefs(this.voicePrefs);
     };
-    const listKey = prefs.speak === 'ha' ? `ha:${prefs.engine}` : prefs.speak === 'device' ? 'device' : '';
+    const androidMediaVoice = isAndroid() && prefs.speak === 'device' && !!hass && !!mediaVoiceEngine(hass, prefs);
+    const listKey = prefs.speak === 'ha' ? `ha:${prefs.engine}` : prefs.speak === 'device' && !androidMediaVoice ? 'device' : '';
     if (listKey && this.voiceList?.key !== listKey) {
       this.voiceList = { key: listKey, voices: [] };
       if (prefs.speak === 'device') {
@@ -2548,6 +2569,7 @@ export class MPNexusView extends LitElement {
         ${(this.voiceEngines ?? []).map(e => html`<option value=${`ha:${e.id}`} .selected=${value === `ha:${e.id}`}>${engineLabel(hass, e)}</option>`)}
         <option value="off" .selected=${value === 'off'}>${tr('Muette')}</option>
       </select></label>
+      ${isAndroid() && prefs.speak === 'device' ? html`<p class="note info">${hass && mediaVoiceEngine(hass, prefs) ? tr('Sur Android, Voix Nexus utilise la même sortie média que la sonnerie.') : tr('Pour utiliser la sortie média avec la sonnerie, activez Voix Nexus dans Home Assistant.')}</p>` : nothing}
       ${voices.length > 1 ? html`<label class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><b>${tr('Timbre')}</b><small>${tr('Une des voix proposées')}</small></div>
         <select class="end" aria-label=${tr('Timbre')} @change=${(e: Event) => set({ voice: (e.target as HTMLSelectElement).value || undefined })}>
           <option value="" .selected=${!prefs.voice}>${tr('Automatique')}</option>
@@ -2558,8 +2580,8 @@ export class MPNexusView extends LitElement {
           <option value="standard" .selected=${!butler}>${tr('Standard')}</option>
           <option value="majordome" .selected=${butler}>${tr('Majordome')}</option>
         </select></label>` : nothing}
-      ${prefs.speak !== 'off' ? html`<div class="rw"><span class="ib">${mpIcon('volume', 16)}</span><div><b>${tr('Effet hologramme')}</b><small>${prefs.speak === 'ha' ? tr('Une voix un peu irréelle, comme projetée') : tr('Avec une voix Home Assistant seulement')}</small></div>
-        <button class="end" role="switch" aria-checked=${holo} aria-label=${tr('Effet hologramme')} ?disabled=${prefs.speak !== 'ha'} @click=${() => set({ effect: holo ? undefined : 'holo' })}><span class=${`tgl ${holo ? '' : 'off'}`}></span></button></div>
+      ${prefs.speak !== 'off' ? html`<div class="rw"><span class="ib">${mpIcon('volume', 16)}</span><div><b>${tr('Effet hologramme')}</b><small>${isAndroid() ? tr('Désactivé sur Android pour garder la sortie média.') : prefs.speak === 'ha' ? tr('Une voix un peu irréelle, comme projetée') : tr('Avec une voix Home Assistant seulement')}</small></div>
+        <button class="end" role="switch" aria-checked=${holo && !isAndroid()} aria-label=${tr('Effet hologramme')} ?disabled=${prefs.speak !== 'ha' || isAndroid()} @click=${() => set({ effect: holo ? undefined : 'holo' })}><span class=${`tgl ${holo && !isAndroid() ? '' : 'off'}`}></span></button></div>
       <button class="rw" @click=${() => this.previewVoice()}><span class="ib">${mpIcon('play', 16)}</span><div><b>${tr('Écouter la voix')}</b><small>${tr('Une phrase, avec ces réglages')}</small></div><span class="end">${mpIcon('arrow', 16)}</span></button>` : nothing}`;
   }
   /** A sentence in the chosen voice, style and colour. */
@@ -2568,10 +2590,14 @@ export class MPNexusView extends LitElement {
     unlockAudio();
     this.speech?.stop();
     const text = butler ? tr('Bonjour Monsieur. Tout est en ordre dans la maison, à l’exception peut-être de la pile de linge.') : tr('Bonjour ! Je suis Nexus. Voici ma voix sur cet écran.');
-    const prefs = this.voicePrefs, hass = this.hass;
+    const prefs = this.voicePrefs, hass = this.hass, sequence = ++this.previewSequence;
+    this.voiceSoundError = '';
     void (async () => {
-      try { this.speech = prefs.speak === 'ha' && prefs.engine && hass ? await speakWithHomeAssistant(hass, text, language(), prefs.engine, prefs.voice, prefs.effect) : speakOnDevice(text, locale(), prefs.voice); }
-      catch (error) { console.warn('MP Nexus: voice', error); this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
+      const engine = hass ? mediaVoiceEngine(hass, prefs) : undefined;
+      const wanted = () => sequence === this.previewSequence && !this.ringing && this.isConnected;
+      const failed = () => { if (wanted()) { this.voiceSoundError = tr('Impossible de lire la voix sur cet écran. Vérifiez la sortie et le volume média.'); this.requestUpdate(); } };
+      try { this.speech = engine && hass ? await speakWithHomeAssistant(hass, text, language(), engine, prefs.speak === 'ha' ? prefs.voice : undefined, prefs.effect, failed, wanted) : speakOnDevice(text, locale(), prefs.voice); }
+      catch (error) { if (!wanted()) return; console.warn('MP Nexus: voice', error); if (isAndroid() && engine) { failed(); return; } this.speech = speakOnDevice(text, locale(), prefs.speak === 'device' ? prefs.voice : undefined); }
     })();
   }
 

@@ -395,12 +395,14 @@ export const nexusStyles = css`
 
   /* The plan on the whole screen. */
   .full{position:absolute;inset:0;z-index:20;background:var(--mp-panel-background,#061421);overflow:hidden;animation:fade .2s ease-out}
+  .full ~ .scrim{z-index:21}.full ~ .modal{z-index:22}
   .full .backdrop{z-index:0;filter:brightness(.55)}
   .full .fplan{position:absolute;inset:84px 2% 76px}
   .full .fplan mp-spatial-viewer{position:absolute;inset:0}
   .full .ftop{position:absolute;left:20px;right:20px;top:18px;z-index:3;display:flex;align-items:center;gap:16px}
   .full .ftop .ib{margin-left:auto;width:42px;height:42px}
   .full .fbot{position:absolute;left:50%;bottom:16px;transform:translateX(-50%);width:min(480px,92%);z-index:3}
+  .full .replay{padding:12px 16px;display:grid;gap:8px;border-radius:16px}.full .replay small{color:var(--t2)}.full .replay input{width:100%}.full .replay-actions{text-align:center;margin-top:8px;font-size:12px;color:var(--t2)}
   .full .fcard{position:absolute;left:20px;bottom:78px;width:min(380px,calc(100% - 40px));max-height:calc(100% - 180px);z-index:4;border-radius:calc(var(--mp-radius,22px) * 22 / 22)}
   :host([layout=phone]) .full .fplan{inset:120px 0 150px}
   :host([layout=phone]) .full .fcard{left:12px;right:12px;width:auto;bottom:76px;max-height:48%}

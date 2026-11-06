@@ -2,6 +2,8 @@ import type { HAState } from '../../shared/models';
 import { available } from '../../shared/capabilities';
 import { contactSensor, finite } from '../../shared/spatial-state';
 import type { Hass } from '../ha/client';
+import type { SpatialRoom } from '../../shared/spatial';
+import { roomEntityIds, roomTemperature } from '../../shared/spatial-state';
 
 /** What this screen remembers for itself: a wall tablet and a phone can each choose differently. */
 export interface NexusPrefs { people: boolean; comfort: boolean; quietNight: boolean; seen: string[]; screenArea?: string }
@@ -72,6 +74,39 @@ export function unseen(alerts: Alert[], prefs: NexusPrefs, now = new Date()) {
 
 /** Words without accents nor case, to find « cuisine » when « Cuisine » or « cuis » is typed. */
 export const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase();
+
+/** A deliberately narrow, read-only request to show a named room. An ambiguous name is never guessed. */
+export function roomOverviewRequest<T extends { room: SpatialRoom }>(text: string, rooms: T[]): { matches: T[] } | undefined {
+  const clean = fold(text).replace(/[’']/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const match = clean.match(/^(?:nexus )?(?:montre moi|affiche)(?: ce qui se passe (?:dans|au|en)| la piece| le plan (?:de|du|de la)| la situation (?:dans|de|du|de la))? (.+?)(?: s il te plait)?$/);
+  if (!match) return undefined;
+  const name = match[1]!.replace(/^(?:le |la |les |l |du |de la |de l )/, '').trim();
+  const matches = rooms.filter(p => fold(p.room.name).replace(/[’']/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim().replace(/^(?:le |la |les |l )/, '') === name);
+  return { matches };
+}
+
+/** Only report states actually present and available for the room; never infer why a condition occurred. */
+export function roomOverview(room: SpatialRoom, states: Record<string, HAState>, unit = '°C') {
+  const ids = roomEntityIds(room), known = ids.map(id => states[id]).filter((s): s is HAState => !!s && available(s));
+  return {
+    temperature: roomTemperature(room, states, unit),
+    lights: known.filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length,
+    open: known.filter(s => s.entity_id.startsWith('binary_sensor.') && contactSensor(s) && s.state === 'on').length,
+    climate: known.filter(s => s.entity_id.startsWith('climate.')).map(s => ({ id: s.entity_id, mode: s.state, action: typeof s.attributes.hvac_action === 'string' ? s.attributes.hvac_action : undefined })),
+    unavailable: ids.filter(id => !states[id] || !available(states[id])).length,
+    observed: known.length,
+  };
+}
+
+/** Suggestions require a real window, a sustained opening and an actively heating/cooling thermostat in the same plan room. */
+export function comfortSuggestions(rooms: SpatialRoom[], states: Record<string, HAState>, now = Date.now()) {
+  return rooms.flatMap(room => {
+    const known = roomEntityIds(room).map(id => states[id]).filter((s): s is HAState => !!s && available(s));
+    const windows = known.filter(s => s.entity_id.startsWith('binary_sensor.') && s.attributes.device_class === 'window' && s.state === 'on' && !!s.last_changed && Number.isFinite(Date.parse(s.last_changed)) && now - Date.parse(s.last_changed) >= 20 * 60_000);
+    const climates = known.filter(s => s.entity_id.startsWith('climate.') && ['heating', 'cooling'].includes(String(s.attributes.hvac_action)));
+    return windows.flatMap(window => climates.map(climate => ({ key: `${room.id}|${window.entity_id}|${window.last_changed}|${climate.entity_id}`, room: room.name, window: window.entity_id, climate: climate.entity_id, action: String(climate.attributes.hvac_action) })));
+  });
+}
 
 /** Only unqualified, unambiguous lighting commands receive the screen's room. */
 export function withScreenArea(text: string, lang: string, areaId: string | undefined, areas: { id: string; name: string }[]) {

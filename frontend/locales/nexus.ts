@@ -2,6 +2,20 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Revoir les dernières 24 h': ['Replay the last 24 hours', 'Посмотреть последние 24 часа'],
+  'Retour au direct': ['Back to live', 'Вернуться к текущему состоянию'],
+  'Historique du plan': ['Plan history', 'История плана'],
+  'Lecture seule · seuls les états enregistrés sont affichés.': ['Read-only · only recorded states are shown.', 'Только просмотр · показаны только записанные состояния.'],
+  'Historique indisponible.': ['History is unavailable.', 'История недоступна.'],
+  'Trop d’équipements sur ce plan pour revoir son historique.': ['Too many devices on this plan to replay its history.', 'На плане слишком много устройств для просмотра истории.'],
+  'Moment affiché': ['Displayed time', 'Отображаемое время'],
+  'Suggestion Nexus': ['Nexus suggestion', 'Совет Nexus'],
+  '{window} est ouverte depuis au moins 20 minutes ; {climate} chauffe dans la même pièce.': ['{window} has been open for at least 20 minutes; {climate} is heating in the same room.', '{window} открыто не менее 20 минут; {climate} обогревает ту же комнату.'],
+  '{window} est ouverte depuis au moins 20 minutes ; {climate} refroidit dans la même pièce.': ['{window} has been open for at least 20 minutes; {climate} is cooling in the same room.', '{window} открыто не менее 20 минут; {climate} охлаждает ту же комнату.'],
+  'Vérifier le climat': ['Check climate', 'Проверить климат'],
+  'Masquer cette suggestion': ['Dismiss this suggestion', 'Скрыть этот совет'],
+  'Relevés indépendants : certains compteurs peuvent mesurer les mêmes usages.': ['Independent readings: some meters may measure the same usage.', 'Отдельные показания: некоторые счётчики могут измерять одно и то же потребление.'],
+  'Compteurs d’énergie': ['Energy meters', 'Счётчики энергии'],
   'Batterie faible': ['Low battery', 'Низкий заряд батареи'],
   'Alerte': ['Alert', 'Оповещение'],
   'Aucune': ['None', 'Нет'],

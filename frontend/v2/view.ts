@@ -28,12 +28,14 @@ import { confirmation, isVoiceRoutineRequest, parseVoiceRoutine, voiceRoutineAut
 import { householdRequest } from './organization';
 import { AlertAnnouncements } from './announcements';
 import { withScreenArea } from './assist';
+import { replayRows, replayStates } from './replay';
+import type { HistoryRow } from '../history';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
-import { askAssist, diagnosticTarget, fold, nexusAgent, houseAlerts, houseSummary, wantsHouseSummary, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
+import { askAssist, comfortSuggestions, diagnosticTarget, fold, nexusAgent, houseAlerts, houseSummary, wantsHouseSummary, roomOverview, roomOverviewRequest, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
@@ -309,6 +311,9 @@ export class MPNexusView extends LitElement {
   private routineWhenRoom = '';
   private logbook?: LogEntry[] | 'error';
   private logbookAsked = false;
+  private replay?: { from: number; until: number; at: number; rows: Record<string, HistoryRow[]> } | 'loading' | 'error' | 'too-many';
+  private replayRequest = 0;
+  private ignoredSuggestions: string[] = (() => { try { const value: unknown = JSON.parse(localStorage.getItem('mp-nexus.suggestions.dismissed') ?? '[]'); return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string').slice(-100) : []; } catch { return []; } })();
   private backupState?: { ok: boolean; text: string };
   private lastExport = (() => { try { return Number(localStorage.getItem(EXPORT_KEY)) || 0; } catch { return 0; } })();
   private saver: SaverPrefs = readSaver();
@@ -568,10 +573,10 @@ export class MPNexusView extends LitElement {
     if (this.kind === 'lights') this.renderRoot.querySelector(`[data-room="${CSS.escape(roomId)}"]`)?.scrollIntoView({ behavior: 'smooth', block: 'start' });
   };
   private planDeselect = () => { if (this.kind !== 'area') this.room = ''; };
-  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string; layer?: PlanMode; spin?: number; ambiance?: (e: CustomEvent<{ mode: PlanMode; floorIds: string[]; modes?: PlanMode[] }>) => void }) {
+  private viewer(opts: { focus?: string; expandable?: boolean; quiet?: boolean; key: string; layer?: PlanMode; spin?: number; hass?: Hass; ambiance?: (e: CustomEvent<{ mode: PlanMode; floorIds: string[]; modes?: PlanMode[] }>) => void }) {
     const plan = this.plan;
     if (!plan) return nothing;
-    return keyed(`${opts.key}|${this.building}`, html`<mp-spatial-viewer bare ?quiet=${opts.quiet ?? false} ?expandable=${opts.expandable ?? false} .plan=${plan} .scope=${this.building} .hass=${this.hass} .areaHref=${this.areaHref}
+    return keyed(`${opts.key}|${this.building}`, html`<mp-spatial-viewer bare ?quiet=${opts.quiet ?? false} ?expandable=${opts.expandable ?? false} .plan=${plan} .scope=${this.building} .hass=${opts.hass ?? this.hass} .areaHref=${this.areaHref}
       .layer=${opts.layer ?? this.layer} .spin=${opts.spin ?? 0} .palette=${this.palette} .hiddenLayers=${this.appearance.hiddenLayers ?? []} .hiddenEntities=${this.setAside} .focusRoom=${opts.focus ?? this.room} @plan-ambiance=${opts.ambiance ?? this.planAmbiance} @room-select=${this.planRoom} @room-deselect=${this.planDeselect}
       @plan-expand=${() => { this.full = true; }}></mp-spatial-viewer>`);
   }
@@ -868,10 +873,17 @@ export class MPNexusView extends LitElement {
       ${this.head(this.projectName || tr('Ma maison'), this.greeting(), html`${this.whoStack()}${this.layout === 'desk' ? nothing : this.headerActions()}`)}
       <div class="body">
         ${this.appearance.showStats === false ? nothing : this.stats()}${this.houseButtons()}
+        ${this.comfortSuggestion()}
         ${this.plan ? html`<div class="plan3d">${this.viewer({ key: 'home', expandable: true })}</div>${this.layerButtons()}` : this.noPlan()}
         ${this.appearance.showScenes === false ? nothing : this.scenes()}
       </div>
     </section>`;
+  }
+  private comfortSuggestion() {
+    const suggestion = comfortSuggestions(this.placedAll.map(p => p.room), this.hass?.states ?? {}).find(s => !this.ignoredSuggestions.includes(s.key));
+    if (!suggestion) return nothing;
+    const explanation = suggestion.action === 'heating' ? tr('{window} est ouverte depuis au moins 20 minutes ; {climate} chauffe dans la même pièce.', { window: this.name(suggestion.window), climate: this.name(suggestion.climate) }) : tr('{window} est ouverte depuis au moins 20 minutes ; {climate} refroidit dans la même pièce.', { window: this.name(suggestion.window), climate: this.name(suggestion.climate) });
+    return html`<div class="live glass"><span class="ib">${mpIcon('sparkle', 16)}</span><div><b>${tr('Suggestion Nexus')} · ${suggestion.room}</b><small>${explanation}</small><div class="houses"><button class="pill" @click=${() => { this.sub = { type: 'climate', id: suggestion.climate }; }}>${tr('Vérifier le climat')}</button><button class="pill" @click=${() => { this.ignoredSuggestions = [...this.ignoredSuggestions, suggestion.key].slice(-100); try { localStorage.setItem('mp-nexus.suggestions.dismissed', JSON.stringify(this.ignoredSuggestions)); } catch { /* Dismissed until this page closes. */ } this.requestUpdate(); }}>${tr('Masquer cette suggestion')}</button></div></div></div>`;
   }
   private noPlan() {
     return html`<p class="empty">${tr('Ajoutez votre plan dans Studio → Plan 3D.')}${this.hass?.user?.is_admin ? html` <a style="color:var(--accent)" href="/mp-glass-settings">${tr('Ouvrir le Studio')}</a>` : nothing}</p>`;
@@ -1722,6 +1734,36 @@ export class MPNexusView extends LitElement {
       this.answer = { text: messages.join(' ') };
       return;
     }
+    const roomRequest = language() === 'fr' && this.spatial?.enabled ? roomOverviewRequest(text, this.placedAll) : undefined;
+    if (roomRequest && (roomRequest.matches.length || /ce qui se passe|la situation|la pi[eè]ce|le plan/i.test(text))) {
+      if (roomRequest.matches.length !== 1) {
+        this.answer = { text: roomRequest.matches.length ? 'Plusieurs pièces portent ce nom. Choisissez la pièce sur le plan pour éviter toute confusion.' : 'Je ne trouve pas cette pièce sur le plan.' };
+        return;
+      }
+      const placed = roomRequest.matches[0]!;
+      const house = planBuildings(this.spatial!).find(h => h.floors.some(f => f.id === placed.floor.id));
+      if (!house || house.floors.flatMap(f => f.rooms).filter(r => r.id === placed.room.id).length !== 1) {
+        this.answer = { text: 'Je ne peux pas repérer cette pièce sans ambiguïté sur le plan. Sélectionnez-la directement.' };
+        return;
+      }
+      this.stopReplay();
+      if (house) this.chooseHouse(house.building.id);
+      this.room = placed.room.id;
+      this.full = true;
+      if (this.saving) this.wake();
+      const report = roomOverview(placed.room, hass.states, hass.config?.unit_system?.temperature ?? '°C');
+      const details: string[] = [];
+      if (report.temperature) details.push(`température ${this.format(report.temperature.value)} ${report.temperature.unit}`);
+      if (report.lights) details.push(`${report.lights} lumière${report.lights > 1 ? 's allumées' : ' allumée'}`);
+      if (report.open) details.push(`${report.open} ouverture${report.open > 1 ? 's signalées ouvertes' : ' signalée ouverte'}`);
+      for (const climate of report.climate.slice(0, 2)) {
+        const action = climate.action === 'heating' ? 'chauffe' : climate.action === 'cooling' ? 'refroidit' : climate.action === 'idle' ? 'en attente' : undefined;
+        details.push(`${this.name(climate.id)} : ${action ?? stateLabel(climate.id, hass.states[climate.id])}`);
+      }
+      if (report.unavailable) details.push(`${report.unavailable} équipement${report.unavailable > 1 ? 's indisponibles' : ' indisponible'}`);
+      this.answer = { text: details.length ? `${placed.room.name} : ${details.join(' ; ')}.` : `${placed.room.name} est affiché sur le plan. Aucun état utile n’est disponible pour le moment.` };
+      return;
+    }
     const diagnosis = language() === 'fr' ? diagnosticTarget(text, hass.states) : undefined;
     if (diagnosis) {
       const unavailable = diagnosis.state === 'unavailable' || diagnosis.state === 'unknown';
@@ -2568,8 +2610,9 @@ export class MPNexusView extends LitElement {
     const bar = (value: number, max: number) => html`<i class="meter"><b style=${`width:${max ? Math.max(3, value / max * 100) : 0}%`}></b></i>`;
     return html`${this.head(tr('Énergie'), tr('En ce moment'), this.hass?.user?.is_admin ? html`<a class="pill" href="/energy">${tr('Tableau Énergie')}</a>` : nothing, this.back)}
       <div class="body">
-        ${power.length ? html`<div class="rlab">${tr('Puissance')}</div><div class="sg">${power.slice(0, 8).map(p => html`<button class="rw" @click=${() => { this.detail = p.id; }}><span class="ib">${mpIcon('gauge', 16)}</span><div style="flex:1"><b>${this.name(p.id)}</b>${bar(p.watts, power[0]!.watts)}</div><span class="end"><b>${watts(p.watts)}</b></span></button>`)}</div>` : nothing}
-        ${energy.length ? html`<div class="rlab">${tr('Consommation')}</div><div class="sg">${energy.slice(0, 8).map(e => html`<button class="rw" @click=${() => { this.detail = e.id; }}><span class="ib">${mpIcon('leaf', 16)}</span><div style="flex:1"><b>${this.name(e.id)}</b>${bar(e.kwh, energy[0]!.kwh)}</div><span class="end"><b>${this.format(e.kwh, 1)} kWh</b></span></button>`)}</div>` : nothing}
+        ${power.length || energy.length ? html`<p class="note info">${tr('Relevés indépendants : certains compteurs peuvent mesurer les mêmes usages.')}</p>` : nothing}
+        ${power.length ? html`<div class="rlab">${tr('Puissance')}</div><div class="sg">${power.slice(0, 8).map(p => html`<button class="rw" @click=${() => { this.detail = p.id; }}><span class="ib">${mpIcon('gauge', 16)}</span><div style="flex:1"><b>${this.name(p.id)}</b>${this.roomOfEntity(p.id) ? html`<small>${this.roomOfEntity(p.id)}</small>` : nothing}${bar(p.watts, power[0]!.watts)}</div><span class="end"><b>${watts(p.watts)}</b></span></button>`)}</div>` : nothing}
+        ${energy.length ? html`<div class="rlab">${tr('Compteurs d’énergie')}</div><div class="sg">${energy.slice(0, 8).map(e => html`<button class="rw" @click=${() => { this.detail = e.id; }}><span class="ib">${mpIcon('leaf', 16)}</span><div style="flex:1"><b>${this.name(e.id)}</b>${this.roomOfEntity(e.id) ? html`<small>${this.roomOfEntity(e.id)}</small>` : nothing}${bar(e.kwh, energy[0]!.kwh)}</div><span class="end"><b>${this.format(e.kwh, 1)} kWh</b></span></button>`)}</div>` : nothing}
         ${power.length || energy.length ? nothing : html`<p class="empty">${tr('Aucun capteur de puissance ou d’énergie pour le moment.')}</p>`}
       </div>`;
   }
@@ -3151,15 +3194,32 @@ export class MPNexusView extends LitElement {
   }
 
   // ——— The plan on the whole screen ———
+  private stopReplay() { this.replayRequest++; this.replay = undefined; this.requestUpdate(); }
+  private async startReplay() {
+    const hass = this.hass, plan = this.plan;
+    if (!hass || !plan) return;
+    const ids = [...new Set(plan.floors.flatMap(f => f.rooms.flatMap(roomEntityIds)))].filter(id => !!hass.states[id]);
+    if (!ids.length || ids.length > 250) { this.replay = ids.length ? 'too-many' : 'error'; this.requestUpdate(); return; }
+    const request = ++this.replayRequest, until = Date.now(), from = until - 86_400_000;
+    this.replay = 'loading'; this.requestUpdate();
+    try {
+      const answer = await hass.callWS<unknown>({ type: 'history/history_during_period', start_time: new Date(from).toISOString(), end_time: new Date(until).toISOString(), entity_ids: ids, include_start_time_state: true, minimal_response: false, no_attributes: false, significant_changes_only: false });
+      if (request !== this.replayRequest) return;
+      this.replay = { from, until, at: until, rows: replayRows(answer, ids) };
+    } catch { if (request === this.replayRequest) this.replay = 'error'; }
+    this.requestUpdate();
+  }
   private fullPlan(background: string) {
     const placed = this.room ? this.find(this.room) : undefined, floors = this.plan?.floors.length ?? 0;
+    const replay = typeof this.replay === 'object' ? this.replay : undefined;
+    const replayHass = replay && this.hass ? { ...this.hass, states: replayStates(replay.rows, replay.at) } : undefined;
     return html`<div class="full" role="dialog" aria-modal="true" aria-label=${tr('Plan 3D')}>
       <div class="backdrop" style=${background}></div>
-      <div class="fplan">${this.viewer({ key: 'full' })}</div>
-      <div class="ftop"><div><div class="lbl">${[this.projectName, floors > 1 ? tr('{n} niveau|{n} niveaux', { n: floors }) : ''].filter(Boolean).join(' · ')}</div><div class="serif" style="font-size:24px">${tr('Plan 3D')}</div></div>${this.houseButtons()}
-        <button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${() => { this.full = false; }}>${mpIcon('close', 18)}</button></div>
-      ${placed ? html`<section class="fcard panel glass">${this.roomCard(placed, 'float')}</section>` : nothing}
-      <div class="fbot">${this.layerButtons()}</div>
+      <div class="fplan" ?inert=${!!replay}>${this.viewer({ key: 'full', hass: replayHass })}</div>
+      <div class="ftop"><div><div class="lbl">${[this.projectName, floors > 1 ? tr('{n} niveau|{n} niveaux', { n: floors }) : ''].filter(Boolean).join(' · ')}</div><div class="serif" style="font-size:24px">${tr('Plan 3D')}</div></div>${this.replay ? nothing : this.houseButtons()}
+        <button class="ib" aria-label=${tr('Fermer')} title=${tr('Fermer')} @click=${() => { this.stopReplay(); this.full = false; }}>${mpIcon('close', 18)}</button></div>
+      ${placed && !replay ? html`<section class="fcard panel glass">${this.roomCard(placed, 'float')}</section>` : nothing}
+      <div class="fbot">${replay ? html`<div class="replay panel glass"><b>${tr('Historique du plan')} · ${new Intl.DateTimeFormat(locale(), { dateStyle: 'short', timeStyle: 'short' }).format(replay.at)}</b><small>${tr('Lecture seule · seuls les états enregistrés sont affichés.')}</small><input type="range" min=${replay.from} max=${replay.until} step="60000" .value=${String(replay.at)} aria-label=${tr('Moment affiché')} @input=${(e: Event) => { replay.at = Number((e.target as HTMLInputElement).value); this.requestUpdate(); }}><button class="pill" @click=${() => this.stopReplay()}>${tr('Retour au direct')}</button></div>` : html`${this.layerButtons()}<div class="replay-actions">${this.replay === 'loading' ? tr('Chargement…') : this.replay === 'error' ? tr('Historique indisponible.') : this.replay === 'too-many' ? tr('Trop d’équipements sur ce plan pour revoir son historique.') : nothing} <button class="pill" ?disabled=${this.replay === 'loading'} @click=${() => void this.startReplay()}>${tr('Revoir les dernières 24 h')}</button></div>`}</div>
     </div>`;
   }
 

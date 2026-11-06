@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.56.0 — Premiers pas vers la maison vivante
+
+- Demandez à Nexus « montre-moi ce qui se passe dans le salon » : le plan s’ouvre sur la pièce reconnue et Nexus résume ses états disponibles. Les pièces portant le même nom ne sont pas choisies au hasard ; aucune cause n’est inventée.
+- Le plan 3D plein écran permet de revoir les états enregistrés pendant les dernières 24 heures. Les états sans historique restent inconnus et les commandes du plan sont suspendues pendant la relecture. La disponibilité dépend de l’historique Home Assistant ; cette première version est limitée à 250 entités par maison.
+- Une suggestion signale une fenêtre ouverte depuis 20 minutes dans une pièce dont le chauffage ou la climatisation indique être réellement en action. Elle explique les mesures, ouvre les réglages de climat et peut être masquée sur l’écran, sans action automatique.
+- La page Énergie précise les pièces associées aux compteurs et rappelle que des capteurs peuvent mesurer les mêmes usages ; les compteurs d’énergie sont distingués de la puissance instantanée.
+
 ## 0.55.0 — Nexus au quotidien
 
 - Annonces vocales facultatives par écran pour les nouvelles alertes persistantes ; réglage alarmes ou toutes les alertes, avec respect de la nuit silencieuse.

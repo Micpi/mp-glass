@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HAState } from '../shared/models';
-import { askAssist, diagnosticTarget, fold, houseAlerts, houseSummary, wantsHouseSummary, nexusAgent, people, unseen, type NexusPrefs } from '../frontend/v2/assist';
+import { askAssist, comfortSuggestions, diagnosticTarget, fold, houseAlerts, houseSummary, wantsHouseSummary, nexusAgent, people, unseen, roomOverviewRequest, roomOverview, type NexusPrefs } from '../frontend/v2/assist';
 import type { Hass } from '../frontend/ha/client';
 
 const s = (entity_id: string, state: string, attributes: Record<string, unknown> = {}, last_changed = '2026-10-24T20:00:00Z'): HAState => ({ entity_id, state, attributes, last_changed });
@@ -9,6 +9,30 @@ const prefs: NexusPrefs = { people: true, comfort: false, quietNight: false, see
 const rooms: Record<string, string> = { 'binary_sensor.window': 'Chambre', 'climate.bedroom': 'Chambre', 'climate.kitchen': 'Cuisine' };
 
 describe('MP Nexus v2 who is home, alerts and search', () => {
+  it('recognises a room request only with a whole room name and reports ambiguity', () => {
+    const room = (id: string, name: string) => ({ room: { id, name, polygon: [] } });
+    const rooms = [room('salon', 'Salon'), room('bed1', 'Chambre'), room('bed2', 'Chambre')];
+    expect(roomOverviewRequest('Nexus, montre-moi ce qui se passe dans le salon', rooms)?.matches).toEqual([rooms[0]]);
+    expect(roomOverviewRequest('Montre-moi la chambre', rooms)?.matches).toHaveLength(2);
+    expect(roomOverviewRequest('Allume le salon', rooms)).toBeUndefined();
+    expect(roomOverviewRequest('Montre-moi le salon et la chambre', rooms)?.matches).toHaveLength(0);
+  });
+  it('reports only observed room states, including unknown devices and the actual HVAC action', () => {
+    const room = { id: 'salon', name: 'Salon', polygon: [], entityIds: ['light.a', 'climate.a', 'binary_sensor.a', 'sensor.missing'] };
+    const report = roomOverview(room, states(s('light.a', 'on'), s('climate.a', 'heat', { current_temperature: 21, hvac_action: 'idle' }), s('binary_sensor.a', 'on', { device_class: 'window' })));
+    expect(report).toMatchObject({ lights: 1, open: 1, unavailable: 1, observed: 3, temperature: { value: 21 }, climate: [{ id: 'climate.a', action: 'idle' }] });
+  });
+  it('suggests checking climate only for a sustained window and real heating or cooling in the same room', () => {
+    const room = { id: 'salon', name: 'Salon', polygon: [], entityIds: ['binary_sensor.a', 'climate.a'] };
+    const open = s('binary_sensor.a', 'on', { device_class: 'window' }, '2026-10-24T20:00:00Z');
+    const heating = s('climate.a', 'heat', { hvac_action: 'heating' });
+    const at = Date.parse('2026-10-24T20:21:00Z');
+    expect(comfortSuggestions([room], states(open, heating), at)).toHaveLength(1);
+    expect(comfortSuggestions([room], states(open, heating), at - 2 * 60_000)).toHaveLength(0);
+    expect(comfortSuggestions([room], states(open, s('climate.a', 'heat', { hvac_action: 'idle' })), at)).toHaveLength(0);
+    expect(comfortSuggestions([{ ...room, entityIds: ['climate.a'] }], states(open, heating), at)).toHaveLength(0);
+    expect(comfortSuggestions([room], states({ ...open, last_changed: undefined }, heating), at)).toHaveLength(0);
+  });
   it('recognises only explicit house summary requests', () => {
     expect(wantsHouseSummary('Nexus, résume-moi la maison')).toBe(true);
     expect(wantsHouseSummary('Fais-moi un bilan de la maison')).toBe(true);

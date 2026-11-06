@@ -2,6 +2,8 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.': ['Wake word paused after several wakes without a request. It resumes in a minute.', 'Фраза активации приостановлена после нескольких активаций без запроса. Она возобновится через минуту.'],
+  'Réactiver le mot d’éveil': ['Resume wake word', 'Возобновить фразу активации'],
   'Il apprend des réveils confirmés et de ceux fermés par erreur.': ['It learns from confirmed wakes and those closed by mistake.', 'Он учится на подтверждённых активациях и закрытых по ошибке.'],
   'Les réveils confirmés et ceux fermés par erreur servent à améliorer le mot.': ['Confirmed wakes and those closed by mistake help improve the word.', 'Подтверждённые и ошибочные активации помогают улучшить распознавание.'],
   'Revoir les dernières 24 h': ['Replay the last 24 hours', 'Посмотреть последние 24 часа'],

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.56.2 — Mot d’éveil et audio Android
+
+- Désactiver le mot d’éveil arrête immédiatement son écoute et ferme la conversation déclenchée par celui-ci. Un réveil en attente d’un verrou ne peut plus ouvrir Nexus après sa désactivation ; un ancien chargement ne peut pas le réactiver.
+- Après trois réveils sans demande en deux minutes, cet écran met le mot d’éveil en pause pendant une minute et libère le micro. Le bouton de l’orbe reste utilisable et les réglages permettent de réactiver le mot immédiatement.
+- Sur Android, Nexus libère le micro pendant sa réponse et ne modifie plus le type de session audio, afin de limiter les changements de route Bluetooth. L’interruption vocale pendant la réponse est donc indisponible sur Android ; le bouton reste utilisable.
+- Le routage et la connexion Bluetooth restent gérés par Android et l’enceinte : le résultat doit être vérifié sur la tablette et son haut-parleur.
+
 ## 0.56.1 — Un apprentissage plus fiable du mot Nexus
 
 - Un appel manqué ne peut plus être enregistré automatiquement comme bruit de fond : l’audio ambiant non étiqueté n’est plus utilisé pour entraîner le mot, y compris lorsqu’il provient d’un écran avec une ancienne version.

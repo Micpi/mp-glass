@@ -28,6 +28,7 @@ import { confirmation, isVoiceRoutineRequest, parseVoiceRoutine, voiceRoutineAut
 import { householdRequest } from './organization';
 import { AlertAnnouncements } from './announcements';
 import { withScreenArea } from './assist';
+import { WakeGuard } from './wake-guard';
 import { replayRows, replayStates } from './replay';
 import type { HistoryRow } from '../history';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
@@ -275,6 +276,9 @@ export class MPNexusView extends LitElement {
   private wakePeak = 0; private wakePeakAt = 0;
   private wakeListener?: WakeListener;
   private waking = false; private voiceRelease?: () => void;
+  private wakeGuard = new WakeGuard();
+  private wakeAttempt = false;
+  private wakeCooldownTimer?: number;
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
@@ -427,6 +431,7 @@ export class MPNexusView extends LitElement {
     removeEventListener(LOOK_CHANGED, this.lookChanged);
     removeEventListener('storage', this.lookChanged);
     clearTimeout(this.engineTimer); clearTimeout(this.flowTimer);
+    clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined;
     this.engineSession?.session.close(); this.engineSession = undefined;
     for (const type of ['pointerdown', 'keydown', 'wheel']) removeEventListener(type, this.activity);
     this.resize.disconnect();
@@ -1643,7 +1648,7 @@ export class MPNexusView extends LitElement {
     const bell = count ? tr('Alertes : {n} à voir', { n: count }) : tr('Alertes');
     const next = this.timerSnap.timers[0];
     const chip = next ? html`<button class="tchip" aria-label=${tr('Minuteurs et réveils')} title=${tr('Minuteurs et réveils')} @click=${() => { this.overlay = 'timers'; }}>${mpIcon(next.kind === 'alarm' ? 'bell' : 'clock', 15)}<span>${next.kind === 'alarm' && !next.snoozed ? clockLabel(next, locale()) : countdown(this.timerFeed?.left(next) ?? 0)}</span></button>` : nothing;
-    return html`${chip}<button class=${`ib orbb ${this.wakeState === 'armed' ? 'armed' : ''}`} aria-label=${tr('Parler à Nexus')} title=${this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : tr('Parler à Nexus')} @click=${() => this.openVoice()}><i class="orb"></i></button>
+    return html`${chip}<button class=${`ib orbb ${this.wakeState === 'armed' && !this.wakeGuard.remaining() ? 'armed' : ''}`} aria-label=${tr('Parler à Nexus')} title=${this.wakeGuard.remaining() ? tr('Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.') : this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : tr('Parler à Nexus')} @click=${() => this.openVoice()}><i class="orb"></i></button>
       <button class="ib" aria-label=${tr('Rechercher')} title=${tr('Rechercher')} @click=${() => this.openOverlay('search')}>${mpIcon('search', 17)}</button>
       <button class="ib bell" aria-label=${bell} title=${bell} @click=${() => this.openOverlay('alerts')}>${mpIcon('bell', 17)}${count ? html`<span class="bdg">${count > 9 ? '9+' : count}</span>` : nothing}</button>`;
   }
@@ -1652,6 +1657,11 @@ export class MPNexusView extends LitElement {
     if (which === 'search') void this.updateComplete.then(() => (this.renderRoot.querySelector('.srch input') as HTMLInputElement | null)?.focus());
   }
   private closeOverlay = () => {
+    if (this.overlay === 'voice' && this.wakeAttempt && this.handsFreeTurns === 0 && !this.voiceHeard && !this.answer) {
+      const wait = this.wakeGuard.unanswered();
+      if (wait) { clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = window.setTimeout(() => { this.wakeCooldownTimer = undefined; this.requestUpdate(); }, wait); }
+    }
+    this.wakeAttempt = false;
     // Closed while Nexus still waited for the request it was woken for: a false wake, which the word learns.
     if (this.overlay === 'voice' && this.handsFree && this.handsFreeTurns === 0 && this.voiceState === 'listening' && !this.voiceHeard) this.teachWake('cancelled');
     if (this.overlay === 'enroll') { this.enrollStop.stop?.(); this.enroll = undefined; }
@@ -2025,6 +2035,7 @@ export class MPNexusView extends LitElement {
       return;
     }
     this.teachWake('confirmed');
+    this.wakeAttempt = false; this.wakeGuard.reset(); clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined;
     this.voiceHeard = text; this.voiceState = 'thinking';
     await this.ask(text, true);
     // Read again: `ask` set it meanwhile, which the type checker cannot see.
@@ -2032,8 +2043,16 @@ export class MPNexusView extends LitElement {
     if (turn !== this.voiceTurn || !reply) return;
     await this.say(reply.text, turn);
   }
-  private voicePrefsChanged = (e: Event) => { const prefs = (e as CustomEvent<VoicePrefs>).detail; if (prefs && prefs !== this.voicePrefs) this.voicePrefs = { ...prefs }; };
-  private voicePrefsStored = (e: StorageEvent) => { if (e.key === null || e.key === 'mp-nexus.voice') this.voicePrefs = readVoicePrefs(); };
+  private applyVoicePrefs(prefs: VoicePrefs) {
+    this.voicePrefs = { ...prefs };
+    if (!prefs.wake) {
+      this.wakeGuard.reset(); clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined;
+      this.stopWake();
+      if (this.wakeAttempt && this.overlay === 'voice') { this.wakeAttempt = false; this.wakeLesson = undefined; this.closeOverlay(); }
+    }
+  }
+  private voicePrefsChanged = (e: Event) => { const prefs = (e as CustomEvent<VoicePrefs>).detail; if (prefs) this.applyVoicePrefs(prefs); };
+  private voicePrefsStored = (e: StorageEvent) => { if (e.key === null || e.key === 'mp-nexus.voice') this.applyVoicePrefs(readVoicePrefs()); };
   private async say(text: string, turn: number) {
     const hass = this.hass, prefs = this.voicePrefs;
     if (!hass || prefs.speak === 'off') { this.voiceState = 'idle'; this.followUp(); return; }
@@ -2142,9 +2161,11 @@ export class MPNexusView extends LitElement {
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
     if (this.wakeFor !== key) { this.stopWake(); this.wakeFor = key; void this.startWake(word!, ++this.wakeGen); return; }
     if (this.wakeListener) {
-      const busy = (this.overlay === 'voice' && (this.voiceState === 'listening' || this.voiceState === 'thinking' || (this.voiceState === 'speaking' && !micWhileSpeaking()))) || this.overlay === 'ring';
+      const cooldown = !!this.wakeGuard.remaining();
+      const busy = cooldown || (this.overlay === 'voice' && (this.voiceState === 'listening' || this.voiceState === 'thinking' || (this.voiceState === 'speaking' && !micWhileSpeaking()))) || this.overlay === 'ring';
       this.wakeListener.paused = busy;
-      if (!busy) void this.wakeListener.mic(true);
+      if (cooldown) void this.wakeListener.mic(false);
+      else if (!busy) void this.wakeListener.mic(true);
     }
   }
   /** Each start of the listening has its number: a start overtaken while it loaded (stopped, then started again) gives up. */
@@ -2156,9 +2177,11 @@ export class MPNexusView extends LitElement {
     try {
       const model = await wakeModel(hass, word, id => {
         // Removed from another screen, its twin of the same name took its place: this screen follows.
+        if (gen !== this.wakeGen || this.voicePrefs.wake !== word || !this.isConnected) return;
         word = id; this.voicePrefs = { ...this.voicePrefs, wake: id }; writeVoicePrefs(this.voicePrefs); this.wakeList = undefined;
         this.wakeFor = `${id}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
       }), voice = typeof model === 'object' && !(model instanceof Uint8Array);
+      if (gen !== this.wakeGen || !this.isConnected) return;
       const models = await loadWakeModels(model, undefined, this.voicePrefs.wakeSensitivity ?? 'normal');
       if (gen !== this.wakeGen || !this.isConnected) return;
       const listener = this.wakeListener = new WakeListener(models, () => { void this.woke(); });
@@ -2198,8 +2221,10 @@ export class MPNexusView extends LitElement {
       if (this.wakeListener !== wake) return;
       if (wake.running) { this.wakeState = 'armed'; removeEventListener('pointerdown', this.armWake); return; }
     } catch (error) {
+      if (this.wakeListener !== wake || !this.voicePrefs.wake) return;
       if ((error as { name?: string })?.name === 'NotAllowedError' || (error as { name?: string })?.name === 'NotFoundError') { this.wakeState = 'error'; return; }
     }
+    if (this.wakeListener !== wake || !this.voicePrefs.wake) return;
     this.wakeState = 'touch';
     addEventListener('pointerdown', this.armWake, { once: true });
   };
@@ -2211,6 +2236,8 @@ export class MPNexusView extends LitElement {
   }
   private wakeVisibility = () => { if (document.visibilityState !== 'visible') this.stopWake(); this.requestUpdate(); };
   private woke = async () => {
+    const listenerAtWake = this.wakeListener, generation = this.wakeGen, wordAtWake = this.voicePrefs.wake;
+    if (!listenerAtWake || !wordAtWake || this.wakeGuard.remaining()) return;
     // While Nexus speaks, its name cuts the answer short and it listens again.
     if (this.overlay === 'voice' && this.voiceState === 'speaking') { this.speech?.stop(); this.speech = undefined; this.voiceTurn++; }
     else if (this.overlay === 'voice' && this.voiceState !== 'idle') return;
@@ -2220,6 +2247,8 @@ export class MPNexusView extends LitElement {
     const release = await claimVoice();
     this.waking = false;
     if (!release) return;
+    if (generation !== this.wakeGen || this.wakeListener !== listenerAtWake || this.voicePrefs.wake !== wordAtWake || !this.isConnected || document.visibilityState !== 'visible') { release(); return; }
+    this.wakeAttempt = true;
     this.voiceRelease?.(); this.voiceRelease = release;
     const word = this.voicePrefs.wake, heard = this.wakeListener?.heard;
     this.wakeLesson = word && heard && this.voicePrefs.wakeLearn !== false && this.wakeList?.find(w => w.id === word)?.kind === 'voice' ? { word, heard } : undefined;
@@ -2232,6 +2261,7 @@ export class MPNexusView extends LitElement {
     const turn = ++this.voiceTurn;
     const listener = this.wakeListener;
     if (listener) { listener.paused = true; await listener.mic(false); }
+    if (turn !== this.voiceTurn || this.overlay !== 'voice' || !this.voicePrefs.wake) return;
     await this.listenSignal();
     if (turn !== this.voiceTurn || this.overlay !== 'voice') return;
     void this.talk();
@@ -2354,7 +2384,7 @@ export class MPNexusView extends LitElement {
     if (hass && !this.wakeList?.length) this.loadWakeList();
     const current = this.voicePrefs.wake ?? '';
     const custom = this.wakeList?.find(w => w.id === current && w.custom);
-    const status = this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : this.wakeState === 'loading' ? tr('Préparation…') : this.wakeState === 'touch' ? tr('Touchez l’écran pour activer le micro')
+    const status = this.wakeGuard.remaining() ? tr('Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.') : this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : this.wakeState === 'loading' ? tr('Préparation…') : this.wakeState === 'touch' ? tr('Touchez l’écran pour activer le micro')
       : this.wakeState === 'error' ? tr('Le mot d’éveil n’a pas pu démarrer.') : this.wakeState === 'gone' ? tr('Ce mot d’éveil a été retiré depuis un autre écran : choisissez-en un dans la liste.') : current ? tr('Le micro reste sur cet écran tant que le mot n’est pas entendu.') : tr('Dites-le pour parler à Nexus sans toucher l’écran');
     const change = (e: Event) => {
       const value = (e.target as HTMLSelectElement).value;
@@ -2396,6 +2426,7 @@ export class MPNexusView extends LitElement {
         ${labels.map(([w, label]) => html`<option value=${w.id} .selected=${current === w.id}>${label}</option>`)}
         ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
+      ${this.wakeGuard.remaining() ? html`<button class="btn" @click=${() => { this.wakeGuard.reset(); clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined; this.requestUpdate(); }}>${tr('Réactiver le mot d’éveil')}</button>` : nothing}
       ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
       ${current ? html`<div class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Bip d’écoute')}</b><small>${tr('Un petit son dit que Nexus vous écoute après son nom')}</small></div>
         <button class="end" role="switch" aria-checked=${this.voicePrefs.wakeChime !== false} aria-label=${tr('Bip d’écoute')} @click=${() => { this.voicePrefs = { ...this.voicePrefs, wakeChime: this.voicePrefs.wakeChime === false ? undefined : false }; writeVoicePrefs(this.voicePrefs); if (this.voicePrefs.wakeChime !== false) { unlockSound(); void listenTone(); } }}><span class=${`tgl ${this.voicePrefs.wakeChime !== false ? '' : 'off'}`}></span></button></div>` : nothing}

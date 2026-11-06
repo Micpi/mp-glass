@@ -1,7 +1,21 @@
 import { describe, expect, it, vi } from 'vitest';
-import { LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
+import { audioSession, micWhileSpeaking, LONGEST_MS, NOBODY_MS, PAUSE_MS, Recorder, readVoicePrefs, recordingFormat, shouldStop, VOICE_EVENT, writeVoicePrefs, type Endpoint } from '../frontend/v2/voice';
 
 describe('the voice of Nexus', () => {
+  it('releases the microphone for Android playback and does not change its audio session', () => {
+    const session = { type: 'auto' };
+    vi.stubGlobal('navigator', { userAgent: 'Mozilla/5.0 (Linux; Android 14)', maxTouchPoints: 5, audioSession: session });
+    try { expect(micWhileSpeaking()).toBe(false); audioSession('playback'); expect(session.type).toBe('auto'); }
+    finally { vi.unstubAllGlobals(); }
+  });
+  it('retains iPad playback routing and desktop interruption', () => {
+    const session = { type: 'auto' };
+    vi.stubGlobal('navigator', { userAgent: 'iPad', maxTouchPoints: 5, audioSession: session });
+    expect(micWhileSpeaking()).toBe(false); audioSession('playback'); expect(session.type).toBe('playback');
+    vi.stubGlobal('navigator', { userAgent: 'Desktop Chrome', maxTouchPoints: 0 });
+    expect(micWhileSpeaking()).toBe(true);
+    vi.unstubAllGlobals();
+  });
   it('releases a microphone granted after the recording was cancelled', async () => {
     let grant!: (stream: MediaStream) => void;
     const stop = vi.fn();

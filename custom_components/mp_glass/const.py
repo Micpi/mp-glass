@@ -1,6 +1,6 @@
 """MP Nexus constants."""
 
 DOMAIN = "mp_glass"
-VERSION = "0.56.1"
+VERSION = "0.56.2"
 MODULE_URL = f"/mp_glass_static/mp-glass.js?v={VERSION}"
 BOOTSTRAP_URL = f"/mp_glass_static/mp-glass-bootstrap.js?v={VERSION}"

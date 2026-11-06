@@ -192,12 +192,13 @@ export async function engineVoices(hass: Hass, engine: string, language: string)
 
 /**
  * Whether the page can keep hearing the wake word while Nexus speaks. iPhones and iPads cannot: a page that holds the
- * microphone plays sound quietly, in the earpiece. Computers and Android phones can, with the echo cancelled.
+ * microphone plays sound quietly, in the earpiece. Android releases it too while answering, to reduce audio route changes
+ * on Bluetooth devices. A computer can keep listening with echo cancellation.
  */
 export function micWhileSpeaking() {
   if (typeof navigator === 'undefined') return false;
   const ua = navigator.userAgent ?? '';
-  return !/iPhone|iPad|iPod/.test(ua) && !(/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
+  return !/Android|iPhone|iPad|iPod/.test(ua) && !(/Macintosh/.test(ua) && (navigator.maxTouchPoints ?? 0) > 1);
 }
 
 /** A request that is only the wake word (said again while Nexus listened): Nexus listens afresh instead of answering « Nexus ». */
@@ -212,6 +213,7 @@ export function onlyWakeWord(text: string, word: string) {
  * plays loud on the speaker even in a page that listens; « auto » again before listening.
  */
 export function audioSession(type: 'playback' | 'auto') {
+  if (typeof navigator === 'undefined' || !(/iPhone|iPad|iPod/.test(navigator.userAgent ?? '') || (/Macintosh/.test(navigator.userAgent ?? '') && (navigator.maxTouchPoints ?? 0) > 1))) return;
   const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
   if (!session || session.type === type) return;
   try { session.type = type; } catch { /* Not on this device. */ }

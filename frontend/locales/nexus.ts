@@ -2,6 +2,18 @@ import type { Messages } from './types';
 
 /** MP Nexus v2: its tabs, its pages, and the choice of interface in the Studio. */
 export const NEXUS = {
+  'Application Home Assistant Android': ['Home Assistant Android app', 'Приложение Home Assistant для Android'],
+  'La détection est confiée à l’application Android.': ['Wake detection is handled by the Android app.', 'Распознавание фразы выполняет приложение Android.'],
+  'La commande n’a pas pu être envoyée. Réessayez.': ['The command could not be sent. Try again.', 'Не удалось отправить команду. Попробуйте ещё раз.'],
+  'Commande envoyée. Vérifiez que la détection Android est arrêtée avant d’utiliser un autre moteur.': ['Command sent. Check that Android detection is stopped before using another engine.', 'Команда отправлена. Перед использованием другого механизма убедитесь, что распознавание Android остановлено.'],
+  'Vérifiez que la détection est arrêtée dans l’application Android.': ['Check that detection is stopped in the Android app.', 'Убедитесь, что распознавание остановлено в приложении Android.'],
+  'Choisissez cet appareil Android pour arrêter son écoute avant de changer de moteur.': ['Choose this Android device so its listening can be stopped before changing engines.', 'Выберите это устройство Android, чтобы остановить прослушивание перед сменой механизма.'],
+  'Commande envoyée. Vérifiez son application sur cet appareil.': ['Command sent. Check it was applied on this device.', 'Команда отправлена. Проверьте её выполнение на этом устройстве.'],
+  'Dans l’application Home Assistant : définissez-la comme assistant par défaut, puis choisissez le mot et Nexus comme assistant. Le mot personnalisé de MP Nexus ne peut pas être transféré automatiquement. La conversation s’ouvre dans Assist.': ['In the Home Assistant app: set it as the default assistant, then choose the wake word and Nexus as the assistant. The MP Nexus custom word cannot be transferred automatically. The conversation opens in Assist.', 'В приложении Home Assistant назначьте его помощником по умолчанию, затем выберите фразу активации и помощника Nexus. Пользовательскую фразу MP Nexus нельзя перенести автоматически. Разговор открывается в Assist.'],
+  'Appareil Android pour le mot d’éveil': ['Android wake-word device', 'Устройство Android для фразы активации'],
+  'Choisissez cet appareil Home Assistant, pas un autre écran.': ['Choose this Home Assistant device, not another screen.', 'Выберите это устройство Home Assistant, а не другой экран.'],
+  'Activer sur Android': ['Enable on Android', 'Включить на Android'],
+  'Désactiver sur Android': ['Disable on Android', 'Выключить на Android'],
   'Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.': ['Wake word paused after several wakes without a request. It resumes in a minute.', 'Фраза активации приостановлена после нескольких активаций без запроса. Она возобновится через минуту.'],
   'Réactiver le mot d’éveil': ['Resume wake word', 'Возобновить фразу активации'],
   'Il apprend des réveils confirmés et de ceux fermés par erreur.': ['It learns from confirmed wakes and those closed by mistake.', 'Он учится на подтверждённых активациях и закрытых по ошибке.'],

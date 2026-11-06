@@ -1,6 +1,7 @@
 import { applyAppearance } from '../appearance';
 import { LitElement, html, nothing, type TemplateResult } from 'lit';
 import { keyed } from 'lit/directives/keyed.js';
+import { live } from 'lit/directives/live.js';
 import { repeat } from 'lit/directives/repeat.js';
 import type { AppearanceConfig, HAState, NavigationConfig } from '../../shared/models';
 import { accentOf, ACCENTS, activeWallpaper, AMBIANCES, ambianceOf, cleanLook, cssImage, DEFAULT_WALLPAPER, deleteWallpaper, importedSource, isImported, isNight, libraryWallpaper, listWallpapers, prepareWallpaper, readScreenLook, SCREEN_LOOK_KEY, uploadWallpaper, WALLPAPERS, wallpaperSource, writeScreenLook, type ImportedWallpaper, type ScreenLook } from '../wallpapers';
@@ -29,6 +30,7 @@ import { householdRequest } from './organization';
 import { AlertAnnouncements } from './announcements';
 import { withScreenArea } from './assist';
 import { WakeGuard } from './wake-guard';
+import { isAndroid, setAndroidWake } from './native-wake';
 import { replayRows, replayStates } from './replay';
 import type { HistoryRow } from '../history';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
@@ -279,6 +281,8 @@ export class MPNexusView extends LitElement {
   private wakeGuard = new WakeGuard();
   private wakeAttempt = false;
   private wakeCooldownTimer?: number;
+  private nativeWakeBusy = false;
+  private nativeWakeNote = '';
   private wakeFor?: string;
   /** A conversation started by the wake word goes on without touching the screen, and closes by itself in silence. */
   private handsFree = false;
@@ -2045,7 +2049,7 @@ export class MPNexusView extends LitElement {
   }
   private applyVoicePrefs(prefs: VoicePrefs) {
     this.voicePrefs = { ...prefs };
-    if (!prefs.wake) {
+    if (!prefs.wake || prefs.nativeWake === 'android') {
       this.wakeGuard.reset(); clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined;
       this.stopWake();
       if (this.wakeAttempt && this.overlay === 'voice') { this.wakeAttempt = false; this.wakeLesson = undefined; this.closeOverlay(); }
@@ -2155,7 +2159,7 @@ export class MPNexusView extends LitElement {
   private wakeName() { return this.wakeList?.find(w => w.id === this.voicePrefs.wake)?.name ?? 'Nexus'; }
   /** Starts, follows or stops listening for the word as the choice, the page and the voice change. */
   private keepWake() {
-    const word = this.voicePrefs.wake, wanted = !!word && !!this.hass && canRecord() && document.visibilityState === 'visible' && this.overlay !== 'enroll';
+    const word = this.voicePrefs.wake, wanted = this.voicePrefs.nativeWake !== 'android' && !!word && !!this.hass && canRecord() && document.visibilityState === 'visible' && this.overlay !== 'enroll';
     if (!wanted) { if (this.wakeListener || this.wakeState !== 'off') this.stopWake(); return; }
     if (!this.wakeList) this.loadWakeList();
     const key = `${word}:${this.voicePrefs.wakeSensitivity ?? 'normal'}:${this.voicePrefs.wakeLearn !== false}`;
@@ -2335,7 +2339,7 @@ export class MPNexusView extends LitElement {
       const made = await createVoiceWord(hass, e.name, e.words, e.sentences, undefined, e.again);
       if (this.overlay !== 'enroll') return;
       this.wakeList = [{ id: made.id, name: made.name, custom: true, kind: 'voice' }, ...(this.wakeList ?? []).filter(w => w.id !== made.id)];
-      this.voicePrefs = { ...this.voicePrefs, wake: made.id };
+      this.voicePrefs = { ...this.voicePrefs, nativeWake: undefined, wake: made.id };
       writeVoicePrefs(this.voicePrefs);
       this.wakeFor = undefined;
       this.enroll = { ...e, step: 'done', id: made.id };
@@ -2380,19 +2384,28 @@ export class MPNexusView extends LitElement {
 
   private wakeChoice() {
     const hass = this.hass, admin = !!hass?.user?.is_admin;
-    if (!canRecord()) return nothing;
+    if (!canRecord() && !isAndroid()) return nothing;
     if (hass && !this.wakeList?.length) this.loadWakeList();
-    const current = this.voicePrefs.wake ?? '';
+    const native = this.voicePrefs.nativeWake === 'android';
+    const current = native ? '@android' : this.voicePrefs.wake ?? '';
     const custom = this.wakeList?.find(w => w.id === current && w.custom);
-    const status = this.wakeGuard.remaining() ? tr('Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.') : this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : this.wakeState === 'loading' ? tr('Préparation…') : this.wakeState === 'touch' ? tr('Touchez l’écran pour activer le micro')
+    const status = native ? tr('La détection est confiée à l’application Android.') : this.wakeGuard.remaining() ? tr('Mot d’éveil en pause après plusieurs réveils sans demande. Il reprend dans une minute.') : this.wakeState === 'armed' ? tr('À l’écoute de « {word} »', { word: this.wakeName() }) : this.wakeState === 'loading' ? tr('Préparation…') : this.wakeState === 'touch' ? tr('Touchez l’écran pour activer le micro')
       : this.wakeState === 'error' ? tr('Le mot d’éveil n’a pas pu démarrer.') : this.wakeState === 'gone' ? tr('Ce mot d’éveil a été retiré depuis un autre écran : choisissez-en un dans la liste.') : current ? tr('Le micro reste sur cet écran tant que le mot n’est pas entendu.') : tr('Dites-le pour parler à Nexus sans toucher l’écran');
-    const change = (e: Event) => {
+    const change = async (e: Event) => {
       const value = (e.target as HTMLSelectElement).value;
+      const paired = this.voicePrefs.nativeWakeService ?? this.voicePrefs.tabletVolume?.service;
+      let sentOff = false;
+      if (native && value !== '@android' && paired && hass) {
+        try { await setAndroidWake(hass, paired, false); sentOff = true; }
+        catch { this.nativeWakeNote = tr('La commande n’a pas pu être envoyée. Réessayez.'); this.requestUpdate(); (e.target as HTMLSelectElement).value = current; return; }
+      }
+      if (native && value && value !== '@android' && (!paired || !hass)) { this.nativeWakeNote = tr('Choisissez cet appareil Android pour arrêter son écoute avant de changer de moteur.'); this.requestUpdate(); (e.target as HTMLSelectElement).value = current; return; }
       if (value === '+') { (e.target as HTMLSelectElement).value = current; this.renderRoot.querySelector<HTMLInputElement>('input.wakefile')?.click(); return; }
       if (value === '*') { (e.target as HTMLSelectElement).value = current; this.startEnroll(); return; }
-      this.voicePrefs = { ...this.voicePrefs, wake: value || undefined };
+      this.nativeWakeNote = native && value !== '@android' ? sentOff ? tr('Commande envoyée. Vérifiez que la détection Android est arrêtée avant d’utiliser un autre moteur.') : tr('Vérifiez que la détection est arrêtée dans l’application Android.') : '';
+      this.voicePrefs = { ...this.voicePrefs, nativeWake: value === '@android' ? 'android' : undefined, wake: value && value !== '@android' ? value : undefined };
       writeVoicePrefs(this.voicePrefs);
-      if (value) unlockAudio();
+      if (value && value !== '@android') unlockAudio();
     };
     const add = async (e: Event) => {
       const input = e.target as HTMLInputElement, file = input.files?.[0];
@@ -2401,7 +2414,7 @@ export class MPNexusView extends LitElement {
       try {
         const word = await addWakeWord(hass, file);
         this.wakeList = [word, ...(this.wakeList ?? []).filter(w => w.id !== word.id)];
-        this.voicePrefs = { ...this.voicePrefs, wake: word.id };
+        this.voicePrefs = { ...this.voicePrefs, nativeWake: undefined, wake: word.id };
         writeVoicePrefs(this.voicePrefs);
       } catch (error) { this.wakeState = 'error'; console.warn('MP Nexus: wake word', error); }
     };
@@ -2421,19 +2434,37 @@ export class MPNexusView extends LitElement {
       this.wakeList = (this.wakeList ?? []).filter(w => !gone.has(w.id));
     };
     return html`<label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Mot d’éveil')}</b><small>${status}</small></div>
-      <select class="end" aria-label=${tr('Mot d’éveil')} @change=${change}>
+      <select class="end" aria-label=${tr('Mot d’éveil')} .value=${live(current)} @change=${change}>
         <option value="" .selected=${!current}>${tr('Aucun')}</option>
+        ${isAndroid() ? html`<option value="@android" .selected=${native}>${tr('Application Home Assistant Android')}</option>` : nothing}
         ${labels.map(([w, label]) => html`<option value=${w.id} .selected=${current === w.id}>${label}</option>`)}
         ${admin ? html`<option value="*">${tr('+ Créer un mot avec ma voix…')}</option><option value="+">${tr('Ajouter un mot entraîné (.onnx)')}</option>` : nothing}
       </select></label>
+      ${native ? this.nativeWakeChoice() : nothing}
+      ${this.nativeWakeNote ? html`<p class="note info" role="status">${this.nativeWakeNote}</p>` : nothing}
       ${this.wakeGuard.remaining() ? html`<button class="btn" @click=${() => { this.wakeGuard.reset(); clearTimeout(this.wakeCooldownTimer); this.wakeCooldownTimer = undefined; this.requestUpdate(); }}>${tr('Réactiver le mot d’éveil')}</button>` : nothing}
       ${custom?.kind === 'voice' ? this.voiceWordPrefs() : nothing}
-      ${current ? html`<div class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Bip d’écoute')}</b><small>${tr('Un petit son dit que Nexus vous écoute après son nom')}</small></div>
+      ${current && !native ? html`<div class="rw"><span class="ib">${mpIcon('bell', 16)}</span><div><b>${tr('Bip d’écoute')}</b><small>${tr('Un petit son dit que Nexus vous écoute après son nom')}</small></div>
         <button class="end" role="switch" aria-checked=${this.voicePrefs.wakeChime !== false} aria-label=${tr('Bip d’écoute')} @click=${() => { this.voicePrefs = { ...this.voicePrefs, wakeChime: this.voicePrefs.wakeChime === false ? undefined : false }; writeVoicePrefs(this.voicePrefs); if (this.voicePrefs.wakeChime !== false) { unlockSound(); void listenTone(); } }}><span class=${`tgl ${this.voicePrefs.wakeChime !== false ? '' : 'off'}`}></span></button></div>` : nothing}
       ${admin && custom?.kind === 'voice' ? html`<button class="rw" @click=${() => this.startEnroll({ id: custom.id, name: custom.name })}><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Réenregistrer « {word} »', { word: custom.name })}</b><small>${tr('Nouvelles prises de votre voix, mêmes réglages. Ce que la maison lui a appris est gardé.')}</small></div></button>` : nothing}
       ${admin ? html`<input class="wakefile" type="file" accept=".onnx" hidden @change=${add}>` : nothing}
       ${admin && custom && twins.length ? html`<button class="rw" @click=${keepOnly}><span class="ib">${mpIcon('check', 16)}</span><div><b>${tr('Garder seulement ce « {word} »', { word: custom.name })}</b><small>${tr('Retire les autres mots du même nom. Un écran qui en utilisait un devra choisir celui-ci.')}</small></div></button>` : nothing}
       ${admin && custom ? html`<button class="rw" @click=${remove}><span class="ib">${mpIcon('close', 16)}</span><div><b>${tr('Retirer « {word} »', { word: label })}</b></div></button>` : nothing}`;
+  }
+
+  private nativeWakeChoice() {
+    const hass = this.hass, service = this.voicePrefs.nativeWakeService ?? this.voicePrefs.tabletVolume?.service ?? '';
+    const services = [...new Set([...(this.tabletServices ?? []), ...(service ? [service] : [])])];
+    const send = async (enabled: boolean) => {
+      if (!hass || !service || this.nativeWakeBusy) return;
+      this.nativeWakeBusy = true; this.nativeWakeNote = ''; this.requestUpdate();
+      try { await setAndroidWake(hass, service, enabled); this.nativeWakeNote = tr('Commande envoyée. Vérifiez son application sur cet appareil.'); }
+      catch { this.nativeWakeNote = tr('La commande n’a pas pu être envoyée. Réessayez.'); }
+      finally { this.nativeWakeBusy = false; this.requestUpdate(); }
+    };
+    return html`<p class="note info">${tr('Dans l’application Home Assistant : définissez-la comme assistant par défaut, puis choisissez le mot et Nexus comme assistant. Le mot personnalisé de MP Nexus ne peut pas être transféré automatiquement. La conversation s’ouvre dans Assist.')}</p>
+      <label class="rw"><span class="ib">${mpIcon('user', 16)}</span><div><b>${tr('Appareil Android pour le mot d’éveil')}</b><small>${tr('Choisissez cet appareil Home Assistant, pas un autre écran.')}</small></div><select class="end" aria-label=${tr('Appareil Android pour le mot d’éveil')} @change=${(e: Event) => { this.voicePrefs = { ...this.voicePrefs, nativeWakeService: (e.target as HTMLSelectElement).value || undefined }; writeVoicePrefs(this.voicePrefs); }}><option value="" .selected=${!service}>${tr('Aucun')}</option>${services.map(id => html`<option value=${id} .selected=${service === id}>${id.replace(/^mobile_app_/, '').replace(/_/g, ' ')}</option>`)}</select></label>
+      <div class="acts"><button class="btn" ?disabled=${!service || !hass || this.nativeWakeBusy} @click=${() => void send(true)}>${tr('Activer sur Android')}</button><button class="btn" ?disabled=${!service || !hass || this.nativeWakeBusy} @click=${() => void send(false)}>${tr('Désactiver sur Android')}</button></div>`;
   }
 
   /** For a word made from the voice: how readily it wakes, and whether this screen teaches it what it hears. */
@@ -2483,7 +2514,7 @@ export class MPNexusView extends LitElement {
     }
     if (hass && !this.facts && !this.factsAsked && nexusAgent(hass)) { this.factsAsked = true; void this.refreshFacts(); }
     const value = prefs.speak === 'ha' && prefs.engine ? `ha:${prefs.engine}` : prefs.speak;
-    const keep = { wake: prefs.wake, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime, tabletVolume: prefs.tabletVolume, followWait: prefs.followWait };
+    const keep = { wake: prefs.wake, nativeWake: prefs.nativeWake, nativeWakeService: prefs.nativeWakeService, wakeSensitivity: prefs.wakeSensitivity, wakeLearn: prefs.wakeLearn, wakeChime: prefs.wakeChime, tabletVolume: prefs.tabletVolume, followWait: prefs.followWait };
     const set = (patch: Partial<VoicePrefs>) => { this.voicePrefs = { ...this.voicePrefs, ...patch }; writeVoicePrefs(this.voicePrefs); };
     const change = (e: Event) => {
       const v = (e.target as HTMLSelectElement).value;

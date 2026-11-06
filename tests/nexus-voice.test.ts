@@ -73,6 +73,14 @@ describe('the voice of Nexus', () => {
     store.set('mp-nexus.voice', '{"speak":"shout"}');
     expect(readVoicePrefs().speak).toBe('device');
   });
+  it('keeps the Android companion mode and rejects invalid device service names', () => {
+    const store = new Map<string, string>();
+    globalThis.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } } as unknown as Storage;
+    writeVoicePrefs({ speak: 'device', nativeWake: 'android', nativeWakeService: 'mobile_app_tablette' });
+    expect(readVoicePrefs()).toMatchObject({ nativeWake: 'android', nativeWakeService: 'mobile_app_tablette' });
+    store.set('mp-nexus.voice', '{"nativeWake":"android","nativeWakeService":"other.service"}');
+    expect(readVoicePrefs().nativeWakeService).toBeUndefined();
+  });
   it('tells every view of the dashboard when the voice changes', () => {
     const store = new Map<string, string>(), heard: unknown[] = [];
     globalThis.localStorage = { getItem: (k: string) => store.get(k) ?? null, setItem: (k: string, v: string) => { store.set(k, v); } } as unknown as Storage;

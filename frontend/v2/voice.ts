@@ -11,6 +11,8 @@ export interface VoicePrefs {
   /** The « hologram » colour of the butler, for Home Assistant voices (the device's voice cannot be processed). */
   effect?: 'holo';
   /** The wake word this screen listens for, if any. */ wake?: string;
+  /** Android Companion owns listening instead of the web page; commands target this explicitly paired device. */
+  nativeWake?: 'android'; nativeWakeService?: string;
   /** For a word made from the voice: how readily it wakes, and whether the screen teaches it what it hears. */
   wakeSensitivity?: 'high'|'normal'|'low'; wakeLearn?: boolean;
   /** The short tone that says Nexus is listening after its name (on unless turned off). */
@@ -26,6 +28,8 @@ export function readVoicePrefs(): VoicePrefs {
     return { speak: saved.speak === 'ha' || saved.speak === 'off' ? saved.speak : 'device', engine: typeof saved.engine === 'string' && saved.engine ? saved.engine : undefined,
       voice: typeof saved.voice === 'string' && saved.voice ? saved.voice.slice(0, 200) : undefined, effect: saved.effect === 'holo' ? 'holo' : undefined,
       wake: typeof saved.wake === 'string' && /^[a-z0-9_]{1,40}$/.test(saved.wake) ? saved.wake : undefined,
+      ...(saved.nativeWake === 'android' ? { nativeWake: 'android' as const } : {}),
+      ...(typeof saved.nativeWakeService === 'string' && /^mobile_app_[a-z0-9_]+$/.test(saved.nativeWakeService) ? { nativeWakeService: saved.nativeWakeService } : {}),
       wakeSensitivity: saved.wakeSensitivity === 'high' || saved.wakeSensitivity === 'low' ? saved.wakeSensitivity : undefined,
       wakeLearn: saved.wakeLearn === false ? false : undefined, wakeChime: saved.wakeChime === false ? false : undefined,
       followWait: saved.followWait === 5 || saved.followWait === 10 || saved.followWait === 15 ? saved.followWait : undefined,

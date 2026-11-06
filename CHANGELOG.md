@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.57.0 — Détection par l’application Android
+
+- Dans le réglage du mot d’éveil sur un écran Android, l’option « Application Home Assistant Android » arrête l’écoute du navigateur MP Nexus et permet de choisir la notification du bon appareil.
+- Les boutons demandent à l’application Home Assistant d’activer ou de désactiver sa détection. Home Assistant confirme l’envoi de la commande, pas sa réception ni sa prise en compte : vérifiez l’appareil.
+- La commande Android disponible ne transmet ni le mot personnalisé ni l’assistant choisi. L’application Home Assistant doit être définie comme assistant par défaut ; son mot et l’assistant Nexus se règlent dans Home Assistant. La conversation s’ouvre dans Assist, pas dans l’orbe MP Nexus.
+- Quitter ce mode demande l’arrêt de la détection sur l’appareil associé avant de lancer un autre moteur. La commande étant asynchrone, vérifiez sa prise en compte sur l’appareil.
+- Tests avec un service Android simulé ; fonctionnement réel, permissions, assistant sélectionné et comportement Bluetooth restent à vérifier sur la tablette.
+
 ## 0.56.2 — Mot d’éveil et audio Android
 
 - Désactiver le mot d’éveil arrête immédiatement son écoute et ferme la conversation déclenchée par celui-ci. Un réveil en attente d’un verrou ne peut plus ouvrir Nexus après sa désactivation ; un ancien chargement ne peut pas le réactiver.

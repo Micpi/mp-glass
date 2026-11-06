@@ -4,13 +4,13 @@ import { contactSensor, finite } from '../../shared/spatial-state';
 import type { Hass } from '../ha/client';
 
 /** What this screen remembers for itself: a wall tablet and a phone can each choose differently. */
-export interface NexusPrefs { people: boolean; comfort: boolean; quietNight: boolean; seen: string[] }
+export interface NexusPrefs { people: boolean; comfort: boolean; quietNight: boolean; seen: string[]; screenArea?: string }
 const PREFS_KEY = 'mp-nexus.prefs';
 const DEFAULTS: NexusPrefs = { people: true, comfort: false, quietNight: false, seen: [] };
 export function readPrefs(): NexusPrefs {
   try {
     const saved = JSON.parse(localStorage.getItem(PREFS_KEY) ?? '{}') as Partial<NexusPrefs>;
-    return { people: saved.people !== false, comfort: saved.comfort === true, quietNight: saved.quietNight === true, seen: Array.isArray(saved.seen) ? saved.seen.filter((s): s is string => typeof s === 'string').slice(-200) : [] };
+    return { people: saved.people !== false, comfort: saved.comfort === true, quietNight: saved.quietNight === true, seen: Array.isArray(saved.seen) ? saved.seen.filter((s): s is string => typeof s === 'string').slice(-200) : [], screenArea: typeof saved.screenArea === 'string' && /^[a-z0-9_]+$/.test(saved.screenArea) ? saved.screenArea : undefined };
   } catch { return { ...DEFAULTS }; }
 }
 export function writePrefs(prefs: NexusPrefs) {
@@ -72,6 +72,42 @@ export function unseen(alerts: Alert[], prefs: NexusPrefs, now = new Date()) {
 
 /** Words without accents nor case, to find « cuisine » when « Cuisine » or « cuis » is typed. */
 export const fold = (text: string) => text.normalize('NFD').replace(/[̀-ͯ]/g, '').toLocaleLowerCase();
+
+/** Only unqualified, unambiguous lighting commands receive the screen's room. */
+export function withScreenArea(text: string, lang: string, areaId: string | undefined, areas: { id: string; name: string }[]) {
+  if (!areaId || !lang.toLowerCase().startsWith('fr')) return text;
+  const area = areas.find(a => a.id === areaId);
+  if (!area || !area.name.trim() || areas.filter(a => fold(a.name.trim()) === fold(area.name.trim())).length !== 1) return text;
+  const clean = fold(text.trim()).replace(/[.!?]+$/, '').trim();
+  if (!/^(?:allume|allumer|eteins|eteindre) (?:la|les) lumieres?$/.test(clean)) return text;
+  return `${text.trim().replace(/[.!?]+$/, '').trim()} dans ${area.name.trim()}`;
+}
+
+/** Recognise an explicit request for a brief status, without intercepting unrelated actions. */
+export function wantsHouseSummary(text: string) {
+  const clean = fold(text).replace(/[’']/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  return /^(?:nexus )?(?:(?:resume|resumes) (?:moi )?(?:la )?maison|fais (?:moi )?(?:un )?(?:bilan|resume) (?:de |de la |pour la )?maison|(?:quel est |donne moi )?(?:l |le )?(?:etat|bilan|resume) (?:de |de la |du |pour la )?maison)(?: s il te plait)?$/.test(clean);
+}
+
+/** Counts only observed values; unknown or unavailable entities are not interpreted as healthy. */
+export function houseSummary(states: Record<string, HAState>, alerts: Alert[]) {
+  const all = Object.values(states);
+  const lights = all.filter(s => s.entity_id.startsWith('light.') && s.state === 'on').length;
+  const unavailable = all.filter(s => /^(light|switch|cover|climate|sensor|binary_sensor|lock|media_player)\./.test(s.entity_id) && (s.state === 'unavailable' || s.state === 'unknown')).length;
+  return { lights, unavailable, alerts };
+}
+
+/** Read-only diagnostic only when the exact friendly name identifies one device unambiguously. */
+export function diagnosticTarget(text: string, states: Record<string, HAState>): HAState | undefined {
+  const clean = (value: string) => fold(value).replace(/[’']/g, ' ').replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+  const query = ` ${clean(text)} `;
+  if (!/\bpourquoi\b/.test(query) || !/\b(?:marche|fonctionne|repond|allume|eteint|ouvre|ferme)\b/.test(query)) return undefined;
+  const found = Object.values(states).filter(s => {
+    const name = clean(String(s.attributes.friendly_name ?? ''));
+    return name.length >= 4 && /^(light|switch|cover|climate|media_player|fan|lock)\./.test(s.entity_id) && query.includes(` ${name} `);
+  });
+  return found.length === 1 ? found[0] : undefined;
+}
 
 /** Nexus, the assistant MP Nexus installs as a Home Assistant conversation agent, when this Home Assistant has it. */
 export function nexusAgent(hass: Pick<Hass, 'entities'> | undefined) {

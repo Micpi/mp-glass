@@ -54,6 +54,13 @@ class SentenceTests(unittest.TestCase):
         self.assertEqual(core.understand("réveille-moi à 7 heures et demie tous les jours")["days"], list(range(7)))
         self.assertEqual(core.understand("wake me up at 7:30 pm")["hour"], 19)
 
+    def test_tomorrow_reminder(self):
+        for text in ("rappelle-moi de sortir les poubelles demain à 19h", "Nexus rappelle-moi demain à 19h de sortir les poubelles"):
+            got = core.understand(text)
+            self.assertEqual((got["action"], got["hour"], got["minute"], got["label"], got["tomorrow"], got["reminder"]),
+                             ("set_alarm", 19, 0, "sortir les poubelles", True, True))
+        self.assertIsNone(core.understand("rappelle-moi de sortir les poubelles jeudi à 19h"))
+
     def test_cancel_and_list(self):
         self.assertEqual(core.understand("annule le minuteur")["action"], "cancel")
         self.assertTrue(core.understand("supprime tous les minuteurs")["all"])

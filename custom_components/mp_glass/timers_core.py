@@ -285,6 +285,26 @@ def understand(text):
         label = _label(_light(raw), True) if reminder else ""
         seconds = parse_duration(in_duration.group(1))
         return {"action": "start_timer", "seconds": min(seconds, MAX_TIMER_SECONDS), "label": label}
+    # A specific, unambiguous reminder for tomorrow is kept locally as a one-shot alarm.
+    # Match the full sentence: dates, repeating schedules and vague times must go to the assistant instead.
+    if reminder:
+        spoken = _light(raw).strip(" .,!?")
+        spoken = re.sub(r"^(?:(?:hey|ok|dis)\s+)?nexus\s*[, ]*", "", spoken)
+        spoken = re.sub(r"\s+(?:s il te plaît|s il vous plaît|stp|svp|merci)$", "", spoken).strip()
+        clock_text = r"\d{1,2}\s*(?:h(?:eures?)?|:)\s*\d{0,2}"
+        begin = r"(?:rappelle moi|rappelez moi|préviens moi|prévenez moi)"
+        patterns = (
+            rf"{begin}\s+de\s+(.+?)\s+demain\s+à\s+({clock_text})",
+            rf"{begin}\s+demain\s+à\s+({clock_text})\s+de\s+(.+)",
+        )
+        first = re.fullmatch(patterns[0], spoken)
+        second = re.fullmatch(patterns[1], spoken) if not first else None
+        if first or second:
+            label, when = first.groups() if first else (second.group(2), second.group(1))
+            clock = parse_clock(when)
+            if clock and len(label.strip()) >= 3:
+                return {"action": "set_alarm", "hour": clock[0], "minute": clock[1], "days": [], "tomorrow": True,
+                        "weekday": None, "label": label.strip()[:MAX_LABEL], "reminder": True}
     if wake_me or alarm_word:
         clock = parse_clock(t)
         if clock is None:

@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.54.0 — Nexus connaît mieux la maison
+
+- Un bilan vocal local résume les lumières allumées, les alertes et les équipements indisponibles selon les données du tableau de bord.
+- Un diagnostic vocal indique l’état Home Assistant d’un appareil clairement identifié, sans prétendre connaître la cause d’une panne.
+- Une tablette peut être associée à une pièce pour les commandes vocales génériques prises en charge.
+- Les rappels pour demain à une heure précise sont enregistrés localement comme réveils ponctuels avec leur libellé.
+
 ## 0.53.1 — Conversations plus fluides
 
 - Après une réponse en mains libres, Nexus accepte désormais jusqu’à 100 demandes successives sans répéter son nom, et ferme la fenêtre après une absence de réponse.

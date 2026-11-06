@@ -23,12 +23,13 @@ import './scene-editor';
 import { sceneIcon } from './scenes';
 import { listenTone, ringSound, unlockSound } from './sound';
 import { TabletVolume } from './tablet-volume';
+import { withScreenArea } from './assist';
 import { addFact, factsOf, lessonMarker, LESSON_TURNS, loadFacts, removeFact, setPersona as setPersonaWS, TOPICS, type FactsListing } from './facts';
 import { cancelTimer, clockLabel, countdown, EMPTY as NO_TIMERS, snoozeRing, stopRing, TimerFeed, type Ring, type TimerItem, type TimerSnapshot } from './timers';
 import { audioSession, canRecord, micWhileSpeaking, onlyWakeWord, claimVoice, canTranscribe, readVoicePrefs, Recorder, deviceVoices, engineVoices, speakOnDevice, speakWithHomeAssistant, speechEngines, transcribe, unlockAudio, writeVoicePrefs, VOICE_EVENT, type Speech, type VoicePrefs } from './voice';
 import { addWakeWord, wakeGone, wakeLabels, learnWake, loadWakeModels, removeWakeWord, WakeListener, wakeModel, wakeWords, type WakeWord } from './wake';
 import { createVoiceWord, recordSamples, SENTENCE_MS, speechSpan, WORD_MS, WORD_TIMES } from './wake-enroll';
-import { askAssist, fold, nexusAgent, houseAlerts, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
+import { askAssist, diagnosticTarget, fold, nexusAgent, houseAlerts, houseSummary, wantsHouseSummary, inQuietHours, people, QUIET_FROM, QUIET_TO, readPrefs, unseen, writePrefs, type Alert, type AlertLevel, type NexusPrefs, type Person } from './assist';
 import { automationId, automationOf, backupName, energySummary, projectTemplate, cycleStep, readSaver, routineReady, SAVER_DELAYS, SAVER_LAYER_SECONDS, SAVER_PHOTO_SECONDS, SAVER_SPIN, slideTransition, timerLeft, writeSaver, type Routine, type SaverContent, type SaverPhotos, type SaverPrefs, type SaverSpin, type SaverTransition, type SaverWidget } from './plus';
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
@@ -1653,12 +1654,32 @@ export class MPNexusView extends LitElement {
           : html`<p class="muted" style="margin:0">${nexus ? tr('Cherchez une pièce ou un appareil, ou parlez à Nexus :') : tr('Cherchez une pièce ou un appareil, ou parlez à Assist :')}</p><div class="houses">${[tr('Éteins tout au salon'), tr('Quelle température fait-il ?'), tr('Mets de la musique dans la cuisine')].map(text => html`<button class="pill" @click=${() => { this.query = text; void this.ask(text); }}>« ${text} »</button>`)}</div>`}
       </div>`;
   }
-  private async ask(text: string) {
+  private async ask(text: string, voice = false) {
     const hass = this.hass;
     if (!hass) return;
+    if (language() === 'fr' && wantsHouseSummary(text)) {
+      const report = houseSummary(hass.states, this.alerts);
+      const descriptions: Record<Alert['kind'], string> = { alarm: 'alarme détectée', open: 'ouvert', unlocked: 'serrure non verrouillée', battery: 'batterie faible', 'heating-open': 'chauffage ou climatisation en marche avec une ouverture', update: 'mise à jour disponible' };
+      const details = report.alerts.slice(0, 4).map(a => `${this.name(a.entity)} : ${descriptions[a.kind]}${a.room ? `, ${a.room}` : ''}`);
+      const messages = [report.lights ? `${report.lights} lumière${report.lights > 1 ? 's sont allumées' : ' est allumée'}.` : 'Aucune lumière allumée signalée.'];
+      if (details.length) messages.push(`Points à vérifier : ${details.join(' ; ')}${report.alerts.length > details.length ? ` ; et ${report.alerts.length - details.length} autre(s)` : ''}.`);
+      else messages.push('Aucune alerte détectée par les capteurs disponibles.');
+      if (report.unavailable) messages.push(`${report.unavailable} entité${report.unavailable > 1 ? 's sont indisponibles ou sans état' : ' est indisponible ou sans état'}.`);
+      this.answer = { text: messages.join(' ') };
+      return;
+    }
+    const diagnosis = language() === 'fr' ? diagnosticTarget(text, hass.states) : undefined;
+    if (diagnosis) {
+      const unavailable = diagnosis.state === 'unavailable' || diagnosis.state === 'unknown';
+      this.answer = { text: unavailable
+        ? `${this.name(diagnosis.entity_id)} est signalé sans état disponible par Home Assistant. Je ne peux pas déterminer la cause ; vérifiez son alimentation et sa connexion.`
+        : `Home Assistant indique pour ${this.name(diagnosis.entity_id)} : ${stateLabel(diagnosis.entity_id, diagnosis)}. Cet état seul ne permet pas de déterminer la cause du problème.` };
+      return;
+    }
     this.answer = { text: tr('Je réfléchis…') };
     try {
-      const reply = await askAssist(hass, text, language(), this.conversationId);
+      const query = voice ? withScreenArea(text, language(), this.prefs.screenArea, this.areas) : text;
+      const reply = await askAssist(hass, query, language(), this.conversationId);
       this.conversationId = reply.conversationId;
       this.answer = { text: reply.text || (reply.failed ? tr('Je n’ai pas compris.') : tr('C’est fait.')), touched: reply.touched };
     } catch (error) {
@@ -1889,7 +1910,7 @@ export class MPNexusView extends LitElement {
     }
     this.teachWake('confirmed');
     this.voiceHeard = text; this.voiceState = 'thinking';
-    await this.ask(text);
+    await this.ask(text, true);
     // Read again: `ask` set it meanwhile, which the type checker cannot see.
     const reply = this.answer as { text: string } | undefined;
     if (turn !== this.voiceTurn || !reply) return;
@@ -1974,6 +1995,7 @@ export class MPNexusView extends LitElement {
       ${row('user', tr('Qui est à la maison'), this.prefs.people ? tr('Affiché sur l’accueil') : tr('Masqué'), this.prefs.people, () => this.setPrefs({ people: !this.prefs.people }))}
       ${row('text', tr('Mode confort'), tr('Grand texte, contraste renforcé'), this.prefs.comfort, () => this.setPrefs({ comfort: !this.prefs.comfort }))}
       ${row('moon', tr('Nuit silencieuse'), tr('{from} – {to} · seules les alarmes comptent', { from: `${QUIET_FROM}:00`, to: `${QUIET_TO}:00` }), this.prefs.quietNight, () => this.setPrefs({ quietNight: !this.prefs.quietNight }))}
+      <label class="rw"><span class="ib">${mpIcon('home', 16)}</span><div><b>${tr('Pièce de cet écran')}</b><small>${tr('Utilisée pour les commandes vocales de lumière sans pièce précisée.')}</small></div><select class="end" aria-label=${tr('Pièce de cet écran')} @change=${(e: Event) => this.setPrefs({ screenArea: (e.target as HTMLSelectElement).value || undefined })}><option value="" .selected=${!this.prefs.screenArea}>${tr('Aucun')}</option>${this.areas.map(a => html`<option value=${a.id} .selected=${this.prefs.screenArea === a.id}>${a.name}</option>`)}</select></label>
       ${this.voiceChoice()}
       <label class="rw"><span class="ib">${mpIcon('mic', 16)}</span><div><b>${tr('Temps pour continuer la conversation')}</b><small>${tr('Après une réponse, Nexus attend votre prochaine demande puis se ferme en cas de silence.')}</small></div><select class="end" aria-label=${tr('Temps pour continuer la conversation')} @change=${(e: Event) => { this.voicePrefs = { ...this.voicePrefs, followWait: Number((e.target as HTMLSelectElement).value) as 5|7|10|15 }; writeVoicePrefs(this.voicePrefs); }}>${[5, 7, 10, 15].map(n => html`<option value=${n} .selected=${(this.voicePrefs.followWait ?? 7) === n}>${n} s</option>`)}</select></label>
       ${this.tabletVolumeChoice()}

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { HAState } from '../shared/models';
-import { askAssist, fold, houseAlerts, nexusAgent, people, unseen, type NexusPrefs } from '../frontend/v2/assist';
+import { askAssist, diagnosticTarget, fold, houseAlerts, houseSummary, wantsHouseSummary, nexusAgent, people, unseen, type NexusPrefs } from '../frontend/v2/assist';
 import type { Hass } from '../frontend/ha/client';
 
 const s = (entity_id: string, state: string, attributes: Record<string, unknown> = {}, last_changed = '2026-10-24T20:00:00Z'): HAState => ({ entity_id, state, attributes, last_changed });
@@ -9,6 +9,23 @@ const prefs: NexusPrefs = { people: true, comfort: false, quietNight: false, see
 const rooms: Record<string, string> = { 'binary_sensor.window': 'Chambre', 'climate.bedroom': 'Chambre', 'climate.kitchen': 'Cuisine' };
 
 describe('MP Nexus v2 who is home, alerts and search', () => {
+  it('recognises only explicit house summary requests', () => {
+    expect(wantsHouseSummary('Nexus, résume-moi la maison')).toBe(true);
+    expect(wantsHouseSummary('Fais-moi un bilan de la maison')).toBe(true);
+    expect(wantsHouseSummary('Éteins les lumières de la maison')).toBe(false);
+  });
+  it('counts reported lights and distinguishes unavailable devices from healthy ones', () => {
+    const input = states(s('light.a', 'on'), s('light.b', 'unavailable'), s('sensor.battery', 'unknown', { device_class: 'battery' }), s('light.c', 'off'));
+    expect(houseSummary(input, houseAlerts(input, () => undefined))).toEqual({ lights: 1, unavailable: 2, alerts: [] });
+  });
+  it('only diagnoses a uniquely named device and does not confuse an action with a question', () => {
+    const lamp = s('light.salon', 'unavailable', { friendly_name: 'Lumière salon' });
+    const input = states(lamp, s('light.kitchen', 'on', { friendly_name: 'Lumière cuisine' }));
+    expect(diagnosticTarget('Pourquoi la lumière salon ne fonctionne pas ?', input)).toBe(lamp);
+    expect(diagnosticTarget('Allume la lumière salon', input)).toBeUndefined();
+    expect(diagnosticTarget('Pourquoi la lumière ne fonctionne pas ?', input)).toBeUndefined();
+    expect(diagnosticTarget('Pourquoi lumière salon et lumière cuisine ne fonctionnent pas ?', input)).toBeUndefined();
+  });
   it('lists people at home first', () => {
     const list = people(states(s('person.jo', 'not_home', { friendly_name: 'Jo' }), s('person.ana', 'home', { friendly_name: 'Ana' }), s('person.max', 'home', { friendly_name: 'Max' })));
     expect(list.map(p => [p.name, p.home])).toEqual([['Ana', true], ['Max', true], ['Jo', false]]);

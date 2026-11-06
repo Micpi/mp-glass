@@ -83,10 +83,12 @@ class TimerRuntime:
         self._add(item)
         return item
 
-    def set_alarm(self, hour, minute, days=(), tomorrow=False, weekday=None, label=""):
+    def set_alarm(self, hour, minute, days=(), tomorrow=False, weekday=None, label="", reminder=False):
         ring = core.next_ring(dt_util.now(), int(hour), int(minute), tuple(days or ()), bool(tomorrow), weekday)
         item = {"id": uuid.uuid4().hex[:8], "kind": "alarm", "label": (label or "")[: core.MAX_LABEL], "hour": int(hour), "minute": int(minute),
                 "days": sorted(set(days or ())), "next": ring.timestamp()}
+        if reminder:
+            item["reminder"] = True
         self._add(item)
         return item
 
@@ -208,7 +210,8 @@ class TimerRuntime:
         now = dt_util.now()
         ring = dt_util.as_local(dt_util.utc_from_timestamp(item["next"]))
         days = core.say_days(item.get("days") or (), language)
-        return f"{'réveil' if fr else 'alarm'}{' ' + label if label else ''} {core.say_when(ring, now, language)}{', ' + days if days else ''}"
+        title = ("rappel" if fr else "reminder") if item.get("reminder") else ("réveil" if fr else "alarm")
+        return f"{title}{' : ' + label if label and item.get('reminder') else ' ' + label if label else ''} {core.say_when(ring, now, language)}{', ' + days if days else ''}"
 
 
 def runtime(hass):
@@ -257,7 +260,7 @@ def handle_sentence(hass, text, language="fr"):
     if action == "set_alarm":
         if rt.full():
             return "Il y a déjà trop de minuteurs et de réveils." if fr else "There are too many timers and alarms already."
-        item = rt.set_alarm(asked["hour"], asked["minute"], asked["days"], asked["tomorrow"], asked["weekday"], asked["label"])
+        item = rt.set_alarm(asked["hour"], asked["minute"], asked["days"], asked["tomorrow"], asked["weekday"], asked["label"], asked.get("reminder", False))
         return ("C'est réglé : " if fr else "Done: ") + rt.describe(item, language) + "."
     kind = asked["kind"]
     items = rt.find(kind, asked.get("label", ""), asked.get("when"))

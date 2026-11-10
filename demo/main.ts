@@ -19,6 +19,11 @@ const snapshot = home();
 // The first light of the fixture also tunes its white and its colour, so the detail window shows what such a light offers.
 const suspension = snapshot.states['light.circuit_0']!;
 snapshot.states['light.circuit_0'] = { ...suspension, attributes: { ...suspension.attributes, supported_color_modes: ['color_temp', 'hs'], color_temp_kelvin: 2700, min_color_temp_kelvin: 2000, max_color_temp_kelvin: 6500, rgb_color: [255, 190, 120] } };
+// The demo keeps its scenario from one page to the next, as Home Assistant keeps its dashboard: a link followed from a page with a scenario opens with it.
+if(!location.search&&document.referrer){
+  const from=new URL(document.referrer);
+  if(from.origin===location.origin&&from.search&&!location.pathname.startsWith('/mp-glass-settings'))location.replace(`${location.pathname}${from.search}`);
+}
 const params = new URLSearchParams(location.search);
 const spatial = params.has('spatial');
 const scenario = params.get('scenario') ?? 'residential';
@@ -94,6 +99,8 @@ function commanded(domain:string,service:string,data:Record<string,unknown>,old:
     if(service==='set_hvac_mode')return {...old,state:String(data.hvac_mode),attributes:{...attributes,hvac_action:({heat:'heating',cool:'cooling',dry:'drying',fan_only:'fan'} as Record<string,string>)[String(data.hvac_mode)]??'idle'}};
     return {...old,attributes};
   }
+  if(domain==='alarm_control_panel')return {...old,state:service==='alarm_disarm'?'disarmed':service.replace('alarm_arm_','armed_')};
+  if(domain==='lock')return {...old,state:service==='lock'?'locked':'unlocked'};
   if('brightness_pct' in data)attributes.brightness=Number(data.brightness_pct)*255/100;
   if('color_temp_kelvin' in data)attributes.color_temp_kelvin=Number(data.color_temp_kelvin);
   if('rgb_color' in data)attributes.rgb_color=data.rgb_color;
@@ -144,6 +151,13 @@ if (params.has('laundry')) hass.states = { ...hass.states,
   'sensor.cellier_washing_machine_program':{entity_id:'sensor.cellier_washing_machine_program',state:'Délicat',attributes:{friendly_name:'Cellier · Lave-linge · Programme'}},
 };
 const dashboard = MPDashboardComposer.compose(MPDiscoveryEngine.discover(snapshot,project),project, false, undefined, undefined, __MP_GLASS_VERSION__);
+// With ?security, what a house keeps watch with: an alarm, a camera, a lock and a gate.
+if(params.has('security')) hass.states={...hass.states,
+  'alarm_control_panel.maison':{entity_id:'alarm_control_panel.maison',state:'disarmed',attributes:{friendly_name:'Alarme de la maison',supported_features:1|2|4,code_arm_required:false}},
+  'camera.entree':{entity_id:'camera.entree',state:'idle',attributes:{friendly_name:'Entrée · Caméra',entity_picture:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 9"><rect width="16" height="9" fill="#1c3a52"/><rect y="6" width="16" height="3" fill="#2f5a3a"/><rect x="6" y="3" width="4" height="4" fill="#c9b08a"/></svg>')}},
+  'lock.entree':{entity_id:'lock.entree',state:'locked',attributes:{friendly_name:'Entrée · Serrure'}},
+  'cover.portail':{entity_id:'cover.portail',state:'closed',attributes:{friendly_name:'Portail',device_class:'gate',supported_features:3}},
+};
 // Room sensors only exist on the plan demo, after composition, so the dashboard cards stay the same.
 if(spatial) hass.states={...hass.states,
   'cover.salon':{entity_id:'cover.salon',state:'open',attributes:{friendly_name:'Salon · Volet baie',device_class:'shutter',current_position:65,supported_features:15}},

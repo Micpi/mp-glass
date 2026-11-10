@@ -160,8 +160,10 @@ test('a soundbar on the TV input shows a screen, and its home card opens the Mul
   await page.setViewportSize({ width: 1440, height: 1000 });
   await page.goto('/home?spatial&v2&sonos-tv');
   const nexus = page.locator('mp-nexus-view-v2');
-  const card = nexus.locator('.side .player-card', { hasText: 'Salon · Sonos Arc' });
-  await expect(card.locator('.art.tv .tv-glyph')).toBeVisible();
+  // The soundbar on the TV input and its television are one thing going on: one card, led by the television.
+  const card = nexus.locator('.side .player-card', { hasText: 'Salon · Téléviseur + Sonos Arc' });
+  await expect(nexus.locator('.side .player-card', { hasText: 'Sonos Arc' })).toHaveCount(1);
+  await expect(card).toContainText('Le Grand Bleu');
   await page.screenshot({ path: 'test-results/sonos-tv-home.png' });
   // Home Assistant handles the link itself; the demo would reload the page, so the test keeps the page and reads the link.
   await page.evaluate(() => window.addEventListener('click', event => { const link = event.composedPath().find(node => node instanceof HTMLAnchorElement) as HTMLAnchorElement | undefined; if (link) { event.preventDefault(); (window as unknown as { followed: string }).followed = new URL(link.href).pathname; } }, true));
@@ -174,7 +176,7 @@ test('a soundbar on the TV input shows a screen, and its home card opens the Mul
   await card.locator('b').click();
   await expect.poll(followed).toBe('/media');
   // The Multimédia page Home Assistant builds next opens on that player.
-  expect(await page.evaluate(() => (document.createElement('mp-nexus-view-v2') as unknown as { player: string }).player)).toBe('media_player.salon_sonos');
+  expect(await page.evaluate(() => (document.createElement('mp-nexus-view-v2') as unknown as { player: string }).player)).toBe('media_player.salon_tv');
   await page.goto('/media?spatial&v2&sonos-tv');
   await nexus.getByRole('button', { name: 'Salon · Sonos Arc' }).click();
   await expect(nexus.locator('.main .cover.tv .tv-glyph')).toBeVisible();

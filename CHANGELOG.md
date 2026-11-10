@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.59.0 — Un tableau de bord plus utile au quotidien
+
+- **Fiche pièce.** Toucher une pièce ouvre ses appareils par type (lumières, ouvrants, climat, multimédia), ses mesures et ses actions rapides (tout allumer ou éteindre, scènes de la pièce), y compris pour une pièce du plan qui n’a pas de zone Home Assistant. Depuis l’accueil, « Ouvrir la pièce » fonctionne aussi pour ces pièces.
+- **Tuiles de pièce.** Chaque tuile indique lumières allumées, température, ouvertures, position moyenne des volets et média en cours, ou le nombre d’équipements ; un bouton allume ou éteint les lumières de la pièce. Les tuiles sont plus grandes sur tablette et ordinateur.
+- **Raccourcis.** Jusqu’à douze appareils ou scènes, choisis par une étoile et propres à chaque écran, s’affichent en haut de l’accueil (Accueil → « Choisir mes raccourcis », ou Plus → Raccourcis).
+- **« En ce moment ».** Un téléviseur et sa barre de son, ou des enceintes groupées, ne donnent plus qu’une seule carte ; un lecteur n’apparaît jamais deux fois. La météo remonte sous les personnes présentes.
+- **Pastilles de l’accueil.** Elles nomment ce qu’elles comptent (« Volets 3/4 ouverts », « Ouvert : Chambre · Fenêtre ») et ouvrent la page ou le panneau correspondant.
+- **Scènes proposées.** Pour un administrateur, une maison avec peu de scènes se voit proposer Soirée, Cinéma, Nuit et Départ, construites à partir de ses appareils disponibles ; un toucher crée la scène, modifiable ensuite. « Ne plus proposer » les masque sur l’écran.
+- **Lumières.** Glisser le doigt le long d’une tuile règle la luminosité d’une lumière variable ; la tuile prend la couleur de l’ampoule et indique depuis combien de temps elle est allumée (au-delà d’une heure).
+- **Barre de navigation par écran.** Plus → Barre de navigation choisit jusqu’à quatre onglets entre Accueil et Plus, dont Climat, Ouvrants et Sécurité, qui s’ouvrent par-dessus la page en cours. Les pages retirées de la barre restent accessibles depuis Plus.
+- **Plan 3D.** L’aide « Glissez la maison… » ne s’affiche plus après trois manipulations du plan sur un écran. Sur l’accueil, le plan garde une hauteur minimale et la page défile.
+- **Téléphone.** Le nom de la maison s’affiche sur deux lignes au lieu d’être coupé, et les pastilles passent à la ligne.
+- **Sécurité.** « Accès & caméras » devient « Sécurité » : alarme avec activation et désactivation (une alarme à code garde son clavier), caméras rafraîchies toutes les dix secondes tant que le panneau est ouvert, ouvertures en cours, serrures, portails et derniers passages.
+- **Ranger.** Le bouton « Ranger » des pages Pièces et d’une pièce permet de déplacer les tuiles au doigt ; l’ordre est gardé sur l’écran. L’ordre des raccourcis se règle de la même façon.
+- Vérifié par 9 tests unitaires et 12 scénarios navigateur sur la démonstration. Le glissement tactile des tuiles, les caméras et l’alarme restent à confirmer sur une tablette et des équipements réels.
+
 ## 0.58.4 — Voix courte et musique Android
 
 - Sur Android, Voix Nexus est décodée hors ligne puis lue sur le lecteur média partagé en segments WAV d’au plus quatre secondes, dont la durée est connue avant le démarrage. Cela permet à Chromium de traiter chaque segment comme un son court, comme la sonnerie, afin de favoriser la baisse du média plutôt que sa mise en pause.

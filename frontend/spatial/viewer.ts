@@ -97,6 +97,11 @@ function shorten(name:string,room:string){
   return rest.replace(/^[\s·:|/–—-]+/,'')||name;
 }
 
+/** How many times the plan was handled on this screen before its hint stops showing. */
+export const PLAN_HINT_USES=3;
+const PLAN_HINT_KEY='mp-glass.plan-hint';
+export function planHintUses(){try{const n=Number(localStorage.getItem(PLAN_HINT_KEY)??0);return Number.isFinite(n)&&n>0?n:0;}catch{return 0;}}
+function countPlanHintUse(){try{localStorage.setItem(PLAN_HINT_KEY,String(planHintUses()+1));}catch{/* The hint simply shows again. */}}
 export class MPSpatialViewer extends LitElement {
   static properties = { plan:{attribute:false}, scope:{attribute:false}, hass:{attribute:false}, areaHref:{attribute:false}, preview:{type:Boolean,reflect:true}, bare:{type:Boolean,reflect:true}, layer:{attribute:false}, focusRoom:{attribute:false}, expandable:{type:Boolean}, quiet:{type:Boolean,reflect:true}, spin:{type:Number}, palette:{attribute:false}, hiddenLayers:{attribute:false}, hiddenEntities:{attribute:false}, floor:{state:true}, selected:{state:true}, error:{state:true}, walls:{state:true}, hand:{state:true}, topView:{state:true}, engaged:{state:true}, busy:{state:true}, mode:{state:true}, views:{state:true}, asking:{state:true}, pointed:{state:true}, opening:{state:true}, detail:{state:true}, equipment:{state:true}, equipmentFilter:{state:true}, placing:{attribute:false} };
   static styles = css`
@@ -339,6 +344,9 @@ export class MPSpatialViewer extends LitElement {
   private hand = (()=>{try{return localStorage.getItem('mp-glass.plan-hand')==='1';}catch{return false;}})();
   private topView = false;
   private engaged = false;
+  /** The hint on how to move the house is for newcomers: once the plan has been handled a few times on this screen, it stays away. */
+  private hintSpent = planHintUses() >= PLAN_HINT_USES;
+  private hintCounted = false;
   private busy = false;
   private mode:PlanMode='lights';
   /** View saved by the user for each floor, and the window that asks before replacing it. */
@@ -448,6 +456,7 @@ export class MPSpatialViewer extends LitElement {
     return JSON.stringify(this.shownFloors.map(f=>f.rooms.map(r=>[r.openings,r.media,r.laundry,this.laundryForRoom(r).map(unit=>unit.key),(r.openings??[]).flatMap(o=>o.entityIds??[]).map(id=>states[id]?.attributes.device_class)])));
   }
   protected async updated(changed: PropertyValues) {
+    if(this.engaged&&!this.hintCounted){this.hintCounted=true;countPlanHintUse();}
     this.edges();
     if(changed.has('hass')&&this.hass)this.updateLaundry(this.hass);
     const ask=this.renderRoot.querySelector<HTMLDialogElement>('dialog.ask');
@@ -941,7 +950,7 @@ export class MPSpatialViewer extends LitElement {
           ${this.expandable?html`<span class="sep"></span><button aria-label=${tr('Plan en plein écran')} title=${tr('Plan en plein écran')} @click=${()=>this.dispatchEvent(new CustomEvent('plan-expand'))}>${mpIcon('expand',18)}</button>`:nothing}
         </div>
         ${this.placing?html`<div class="picking glass" role="status"><span>${this.placing.prompt}</span><button @click=${this.cancelPick}>${tr('Annuler')}</button></div>`:nothing}
-        <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||!!this.error||!!this.placing}><span class="touch">${tr('Touchez la maison pour la manipuler')}</span><span class="fine">${tr('Glissez la maison pour la tourner · molette pour zoomer')}</span></p>
+        <p class="hint glass" style=${this.preview?'':'top:56px;bottom:auto;max-width:calc(100% - 100px)'} aria-hidden="true" ?hidden=${this.engaged||this.hintSpent||!!this.error||!!this.placing}><span class="touch">${tr('Touchez la maison pour la manipuler')}</span><span class="fine">${tr('Glissez la maison pour la tourner · molette pour zoomer')}</span></p>
       </div>
       <div class="rooms">
         <button class="more before" tabindex="-1" aria-hidden="true" title=${stacked?tr('Niveaux précédents'):tr('Pièces précédentes')} @click=${()=>this.scrollRooms(-1)}>${mpIcon('arrow',16)}</button>

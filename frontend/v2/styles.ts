@@ -67,24 +67,24 @@ export const nexusStyles = css`
   /* Navigation: a bar of tabs at the bottom, a rail on the left, or a header on top. */
   .tabbar{grid-area:nav;display:flex;justify-content:space-around;gap:2px;padding:8px;border-radius:calc(var(--mp-radius,22px) * 22 / 22);margin:0 0 14px}
   :host([layout=phone]) .tabbar{position:absolute;left:12px;right:12px;bottom:max(12px,env(safe-area-inset-bottom),var(--safe-area-inset-bottom,0px));z-index:8;margin:0}
-  .tabbar a{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);font-size:10px;color:var(--t2)}
-  .tabbar a span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-  .tabbar a[aria-current=page]{color:#fff;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+  .tabbar a,.tabbar button{flex:1 1 0;min-width:0;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 4px;border-radius:calc(var(--mp-radius,22px) * 12 / 22);font-size:10px;color:var(--t2)}
+  .tabbar a span:last-child,.tabbar button span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .tabbar a[aria-current=page],.tabbar button[aria-current=page]{color:#fff;background:color-mix(in srgb,var(--accent) 22%,transparent)}
   .rail{grid-area:nav;display:flex;flex-direction:column;align-items:center;gap:8px;padding:18px 0;background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 88.71%),100%),transparent);border-right:1px solid var(--mp-control-border,rgba(213,234,255,.12));backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px)}
-  .rail a{display:flex;flex-direction:column;align-items:center;gap:4px;width:76px;padding:10px 4px;border-radius:calc(var(--mp-radius,22px) * 14 / 22);font-size:10px;color:var(--t2);text-align:center}
-  .rail a[aria-current=page]{color:#fff;background:color-mix(in srgb,var(--accent) 22%,transparent)}
+  .rail a,.rail button{display:flex;flex-direction:column;align-items:center;gap:4px;width:76px;padding:10px 4px;border-radius:calc(var(--mp-radius,22px) * 14 / 22);font-size:10px;color:var(--t2);text-align:center}
+  .rail a[aria-current=page],.rail button[aria-current=page]{color:#fff;background:color-mix(in srgb,var(--accent) 22%,transparent)}
   .rail .logo{margin-bottom:14px}
   .logo{width:46px;height:46px;flex:0 0 auto;display:grid;place-items:center;border-radius:calc(var(--mp-radius,22px) * 14 / 22);background:rgba(255,212,92,.12);border:1px solid rgba(255,225,138,.3);color:#ffe175;font:italic 21px/1 "Bodoni MT",Didot,Georgia,serif;letter-spacing:-.1em;padding-right:.1em}
   .dhead{grid-area:head;display:flex;align-items:center;gap:20px;padding:0 16px;border-radius:calc(var(--mp-radius,22px) * 20 / 22);min-width:0}
   .dhead .brand b{display:block;font:20px/1.1 var(--mp-display-font,Georgia,serif);white-space:nowrap}
   .dhead .brand .lbl{margin-top:3px}
   .dhead nav{display:flex;gap:4px;padding:4px;border-radius:calc(var(--mp-radius,22px) * 14 / 22);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:color-mix(in srgb,var(--mp-tint,#12344f) clamp(0%,calc(var(--mp-opacity,.62) * 48.39%),100%),transparent);margin-left:24px;min-width:0}
-  .dhead nav a{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:calc(var(--mp-radius,22px) * 11 / 22);color:#dbe8f5;font-size:14px;border:1px solid transparent;white-space:nowrap}
-  .dhead nav a:hover{background:rgba(255,255,255,.06)}
-  .dhead nav a[aria-current=page]{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 55%,transparent),color-mix(in srgb,var(--accent) 40%,#0a2338));border-color:color-mix(in srgb,var(--accent) 70%,white)}
+  .dhead nav a,.dhead nav button{display:flex;align-items:center;gap:8px;padding:9px 14px;border-radius:calc(var(--mp-radius,22px) * 11 / 22);color:#dbe8f5;font-size:14px;border:1px solid transparent;white-space:nowrap}
+  .dhead nav a:hover,.dhead nav button:hover{background:rgba(255,255,255,.06)}
+  .dhead nav a[aria-current=page],.dhead nav button[aria-current=page]{background:linear-gradient(135deg,color-mix(in srgb,var(--accent) 55%,transparent),color-mix(in srgb,var(--accent) 40%,#0a2338));border-color:color-mix(in srgb,var(--accent) 70%,white)}
   .clock{margin-left:auto;text-align:right;flex:0 0 auto}.clock b{font:24px/1 var(--mp-display-font,Georgia,serif)}.clock small{display:flex;align-items:center;justify-content:flex-end;gap:6px;color:var(--t2);font-size:11px;margin-top:3px}
   .clock i{width:6px;height:6px;border-radius:50%;background:#79e6ae}.clock i.off{background:#ff9d7a}
-  @container (max-width:1320px){.dhead nav a{padding:9px 11px}.dhead nav{margin-left:8px}}
+  @container (max-width:1320px){.dhead nav a,.dhead nav button{padding:9px 11px}.dhead nav{margin-left:8px}}
 
   /* The plan, floating on the photo. */
   .plan3d{position:relative;flex:1 1 auto;min-height:220px}
@@ -504,4 +504,38 @@ export const nexusStyles = css`
   .hide-group summary::after{content:'›';font-size:18px;color:var(--t2);transition:transform .2s}.hide-group[open] summary::after{transform:rotate(90deg)}
   .hide-group .sg{border:0;border-top:1px solid var(--line);border-radius:0;background:none}
   .rw.off b{color:var(--t2);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--t2) 60%,transparent)}
+
+  /* Everyday use: shortcuts, a light slid along its tile, tiles put in order, rooms that act. */
+  .tabbar button,.rail button,.dhead nav button{font-family:inherit;cursor:pointer}
+  .short{display:grid;grid-template-columns:repeat(auto-fill,minmax(132px,1fr));gap:8px}
+  .short .tl .tap{min-height:72px;padding:10px}.short .tl .ti{width:28px;height:28px;margin-bottom:3px}
+  :host([layout=phone]) .short{display:flex;overflow-x:auto;scrollbar-width:none;margin:0 -16px;padding:0 16px}:host([layout=phone]) .short::-webkit-scrollbar{display:none}:host([layout=phone]) .short .tl{flex:0 0 132px}
+  .pill.addsc{align-self:flex-start;color:var(--accent);border-style:dashed}
+  .star{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;color:var(--t2)}.star.on{color:#ffd45c;background:rgba(255,212,92,.14)}.star:disabled{opacity:.35}
+  .tl.dimm{overflow:hidden}.tl.dimm .tap{touch-action:pan-y}
+  .tl.dimm::after{content:'';position:absolute;left:0;bottom:0;height:3px;width:var(--lvl,0%);background:var(--lamp,#ffe175);opacity:.9;pointer-events:none;transition:width .15s}
+  .tl.sliding::before{content:'';position:absolute;inset:0 auto 0 0;width:var(--lvl,0%);background:color-mix(in srgb,var(--lamp,#ffd24b) 30%,transparent);pointer-events:none}
+  .tl.sliding::after{transition:none}.tl.sliding small{color:#fff;font-weight:600}
+  .tl.on{background:radial-gradient(circle at 15% 10%,color-mix(in srgb,var(--lamp,#ffd24b) 28%,transparent),transparent 60%),rgba(40,45,50,.55);border-color:color-mix(in srgb,var(--lamp,#ffe18a) 45%,transparent)}
+  .tl.on .ti{color:var(--lamp,#ffe175);background:color-mix(in srgb,var(--lamp,#ffd859) 18%,transparent);box-shadow:0 0 18px color-mix(in srgb,var(--lamp,#ffc02d) 30%,transparent)}
+  .tl.arr,.rm.arr{touch-action:none;cursor:grab;border-style:dashed;user-select:none;-webkit-user-select:none}.tl.arr .tap{pointer-events:none}.tl.arr .more{pointer-events:none}
+  .tl.arr.dragging,.rm.arr.dragging{cursor:grabbing;border-color:var(--accent);background:color-mix(in srgb,var(--accent) 24%,transparent);box-shadow:0 10px 28px rgba(0,0,0,.35);transform:scale(1.03)}
+  .pill[aria-pressed=true]{border-color:color-mix(in srgb,var(--accent) 70%,white);background:color-mix(in srgb,var(--accent) 24%,transparent);color:#fff}
+  div.rm{position:relative;padding:0}
+  .rm .tap{display:flex;flex-direction:column;justify-content:space-between;gap:8px;width:100%;height:100%;min-height:inherit;padding:12px;border-radius:inherit;text-align:left;min-width:0}
+  .rm .nm{display:flex;align-items:center;gap:8px;min-width:0;padding-right:36px}
+  .rm .bd .q{color:var(--t2);border-color:transparent;background:transparent;padding-left:0}
+  .rm .pw{position:absolute;top:8px;right:8px;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;color:var(--t2);border:1px solid var(--mp-control-border,rgba(213,234,255,.12));background:rgba(6,22,37,.35)}
+  .rm .pw.on{color:#2b2204;background:linear-gradient(135deg,#ffe481,#ffc540);border-color:#ffea9d;box-shadow:0 0 18px rgba(255,192,45,.35)}
+  :host([layout=desk]) .rgrid,:host([layout=rail]) .rgrid{grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:12px}
+  :host([layout=desk]) .rm,:host([layout=rail]) .rm{min-height:132px}:host([layout=desk]) .rm b,:host([layout=rail]) .rm b{font-size:17px}
+  .quick .btn{flex:1 1 150px}.quick .btn.lit{color:#0a2338;background:linear-gradient(135deg,#ffe481,#ffc540);border-color:#ffea9d}
+  .sugg{display:flex;flex-direction:column;gap:8px}.sug{border-style:dashed;gap:6px}.sug small{color:var(--t2);font-weight:400;font-size:11px}.sug .plus{color:var(--accent);font-size:16px;line-height:1}
+  .alarm{align-items:flex-start}.alarm>div{flex:1}.alarm .houses{margin-top:8px}.alarm.armed .ib{color:#79e6ae}
+  /* On a phone the name of the house may take two lines, and its figures wrap rather than run off the screen. */
+  :host([layout=phone]) .hd .title{font-size:21px;white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical}
+  :host([layout=phone]) .stat{flex-wrap:wrap;overflow:visible;-webkit-mask:none}
+  /* The plan of the home page keeps its place whatever stands above it; the page scrolls instead. */
+  .plan3d.hero{min-height:380px;flex-shrink:0}:host([layout=phone]) .plan3d.hero{min-height:320px}
+  .short .tl b{white-space:normal;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.2;padding-right:22px}
 `;

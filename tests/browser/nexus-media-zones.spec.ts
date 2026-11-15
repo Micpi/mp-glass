@@ -74,3 +74,35 @@ test('the music is sorted on shelves, and a search sorts its answers by kind wit
   await expect(nexus.locator('.shelf-tile')).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+test('an input of the television opens the remote of the box that plays on it', async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/media?spatial&v2&tv-sources');
+  const nexus = page.locator('mp-nexus-view-v2');
+  await nexus.locator('.zone', { hasText: 'Téléviseur' }).click();
+  await nexus.getByRole('tab').last().click();
+  const sources = nexus.getByRole('radiogroup', { name: 'Source du téléviseur' });
+  await expect(sources.getByRole('radio')).toHaveText(['Canal+', 'Apple TV', 'Kaleidescape', 'Blu-ray']);
+  await expect(sources.getByRole('radio', { name: 'Canal+' })).toHaveAttribute('aria-checked', 'true');
+  // Apple TV is found by its name: the TV switches to it and the remote becomes the Apple TV's.
+  await sources.getByRole('radio', { name: 'Apple TV' }).click();
+  await expect(sources.getByRole('radio', { name: 'Apple TV' })).toHaveAttribute('aria-checked', 'true');
+  expect((await calls(page)).some(c => c.service === 'select_source' && JSON.stringify(c).includes('Apple TV'))).toBe(true);
+  await nexus.locator('.track-surface').focus();
+  await page.keyboard.press('ArrowUp');
+  expect(JSON.stringify(await calls(page))).toContain('apple_tv');
+  // The volume stays the television's.
+  await nexus.getByRole('button', { name: 'Monter le volume' }).click();
+  expect(JSON.stringify((await calls(page)).filter(c => String(JSON.stringify(c)).includes('volume')))).toContain('media_player.salon_tv');
+  // An input can be linked by hand to another box, and the choice is kept.
+  await sources.getByRole('radio', { name: 'Blu-ray' }).click();
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
+  await nexus.getByRole('combobox', { name: /Blu-ray/ }).selectOption({ label: 'Salon · Kaleidescape' });
+  await page.reload();
+  await nexus.locator('.zone', { hasText: 'Téléviseur' }).click();
+  await nexus.getByRole('tab').last().click();
+  await sources.getByRole('radio', { name: 'Blu-ray' }).click();
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
+  await expect(nexus.getByRole('combobox', { name: /Blu-ray/ })).toHaveValue('media_player.salon_kaleidescape');
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});

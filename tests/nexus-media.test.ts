@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, queueSignature, readMediaFavorites, remoteKeyboard, remoteProfile, remoteRoutes, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume } from '../frontend/v2/media';
+import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, sourceDevice, tvSources, queueSignature, readMediaFavorites, remoteKeyboard, remoteProfile, remoteRoutes, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume } from '../frontend/v2/media';
 import { serviceBrand } from '../frontend/v2/brands';
 import type { Hass } from '../frontend/ha/client';
 
@@ -162,5 +162,17 @@ describe('MP Nexus v2 media', () => {
     expect(calls.map(call => call.type)).toEqual(['mp_glass/music/status', 'mp_glass/music/library', 'mp_glass/music/search', 'mp_glass/music/queue', 'mp_glass/music/action']);
     expect(calls[3]).toMatchObject({ entity_id: 'media_player.living' });
     expect(JSON.stringify(calls)).not.toMatch(/token|8095|authorization/i);
+  });
+  it('finds the box behind an input of the television, unless the user linked it elsewhere', () => {
+    const player = (id: string, name: string, attributes: Record<string, unknown> = {}): HAState => ({ entity_id: id, state: 'on', attributes: { friendly_name: name, ...attributes } });
+    const states = Object.fromEntries([player('media_player.tv', 'Salon · Téléviseur', { source_list: ['Canal+', 'Apple TV', 'Apple TV', '', 'HDMI 3'] }), player('media_player.salon_apple_tv', 'Salon · Apple TV'), player('media_player.kaleido', 'Kaleidescape')].map(p => [p.entity_id, p]));
+    const players = Object.keys(states);
+    expect(tvSources(states['media_player.tv'])).toEqual(['Canal+', 'Apple TV', 'HDMI 3']);
+    expect(tvSources(undefined)).toEqual([]);
+    expect(sourceDevice(states, 'media_player.tv', 'Apple TV', players)).toBe('media_player.salon_apple_tv');
+    expect(sourceDevice(states, 'media_player.tv', 'Canal+', players)).toBeUndefined();
+    expect(sourceDevice(states, 'media_player.tv', 'Canal+', players, { 'Canal+': 'media_player.kaleido' })).toBe('media_player.kaleido');
+    expect(sourceDevice(states, 'media_player.tv', 'Apple TV', players, { 'Apple TV': 'tv' })).toBeUndefined();
+    expect(sourceDevice(states, 'media_player.tv', 'Apple TV', players, { 'Apple TV': 'media_player.gone' })).toBe('media_player.salon_apple_tv');
   });
 });

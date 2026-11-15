@@ -1,6 +1,11 @@
 /** The Multimédia page: where the house listens, what to play, which rooms play together. */
 export const MEDIA = {
   'Parcourir': ['Browse', 'Обзор'],
+  'Source du téléviseur': ['Television source', 'Источник телевизора'],
+  'Télécommande de « {source} »': ['Remote for “{source}”', 'Пульт для «{source}»'],
+  'Automatique': ['Automatic', 'Автоматически'],
+  'Automatique ({name})': ['Automatic ({name})', 'Автоматически ({name})'],
+  'Celle du téléviseur': ['The television’s own', 'Пульт телевизора'],
   'Groupes': ['Groups', 'Группы'],
   'Pièces et groupes': ['Rooms and groups', 'Комнаты и группы'],
   'Volume du groupe': ['Group volume', 'Громкость группы'],
@@ -32,6 +37,7 @@ export const MEDIA = {
 } as const;
 
 export const MEDIA_DE: Partial<Record<keyof typeof MEDIA, string>> = {
+  'Source du téléviseur': 'Fernsehquelle', 'Télécommande de « {source} »': 'Fernbedienung für „{source}“', 'Automatique': 'Automatisch', 'Automatique ({name})': 'Automatisch ({name})', 'Celle du téléviseur': 'Die des Fernsehers',
   'Parcourir': 'Entdecken', 'Groupes': 'Gruppen', 'Pièces et groupes': 'Räume und Gruppen', 'Volume du groupe': 'Gruppenlautstärke', 'Effacer la recherche': 'Suche löschen',
   'Ma musique': 'Meine Musik', 'Autres résultats': 'Weitere Ergebnisse', 'Ajout au groupe…': 'Wird zur Gruppe hinzugefügt…', 'Retrait du groupe…': 'Wird aus der Gruppe entfernt…',
   'Joue avec {room}': 'Spielt mit {room}', 'Dans un autre groupe : {group}': 'In einer anderen Gruppe: {group}', 'Joue autre chose : {title}': 'Spielt etwas anderes: {title}', 'Disponible': 'Verfügbar',
@@ -39,6 +45,7 @@ export const MEDIA_DE: Partial<Record<keyof typeof MEDIA, string>> = {
   'Pièce principale du groupe': 'Hauptraum der Gruppe', 'Pièce écoutée': 'Ausgewählter Raum', 'Autres lecteurs': 'Weitere Player', 'Choisir': 'Auswählen', 'Autres touches': 'Weitere Tasten', 'Navigation classique': 'Klassische Pfeiltasten', 'Mode de la télécommande': 'Fernbedienungsmodus', 'Glissez dans le sens voulu · Touchez pour OK': 'In die gewünschte Richtung wischen · Tippen für OK', 'Plus de touches': 'Weitere Tasten',
 };
 export const MEDIA_IT: Partial<Record<keyof typeof MEDIA, string>> = {
+  'Source du téléviseur': 'Sorgente del televisore', 'Télécommande de « {source} »': 'Telecomando per «{source}»', 'Automatique': 'Automatico', 'Automatique ({name})': 'Automatico ({name})', 'Celle du téléviseur': 'Quello del televisore',
   'Parcourir': 'Sfoglia', 'Groupes': 'Gruppi', 'Pièces et groupes': 'Stanze e gruppi', 'Volume du groupe': 'Volume del gruppo', 'Effacer la recherche': 'Cancella la ricerca',
   'Ma musique': 'La mia musica', 'Autres résultats': 'Altri risultati', 'Ajout au groupe…': 'Aggiunta al gruppo…', 'Retrait du groupe…': 'Rimozione dal gruppo…',
   'Joue avec {room}': 'Suona con {room}', 'Dans un autre groupe : {group}': 'In un altro gruppo: {group}', 'Joue autre chose : {title}': 'Riproduce altro: {title}', 'Disponible': 'Disponibile',

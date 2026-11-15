@@ -280,6 +280,15 @@ if (params.has('v2') && spatial) {
   // `?tv=samsungtv:Samsung` shows the remote another brand and integration would get.
   const [tvPlatform='apple_tv',tvMaker='Apple']=(params.get('tv')??'').split(':').filter(Boolean);
   for(const id of ['media_player.salon_tv','remote.salon_tv'])hass.entities[id]!.platform=tvPlatform;
+  // `?tv-sources` gives the television several inputs, each with its own box and remote.
+  if(params.has('tv-sources')){
+    const box=(id:string,name:string,platform:string,device:string,extra:Record<string,unknown>={})=>{hass.states[id]={entity_id:id,state:'on',attributes:{friendly_name:name,supported_features:all,...extra}};hass.entities![id]={entity_id:id,device_id:device,platform};};
+    hass.states['media_player.salon_tv']!.attributes={...hass.states['media_player.salon_tv']!.attributes,source:'Canal+',source_list:['Canal+','Apple TV','Kaleidescape','Blu-ray']};
+    box('media_player.salon_apple_tv','Salon · Apple TV','apple_tv','atv');
+    hass.states['remote.salon_apple_tv']={entity_id:'remote.salon_apple_tv',state:'on',attributes:{friendly_name:'Salon · Apple TV'}};hass.entities['remote.salon_apple_tv']={entity_id:'remote.salon_apple_tv',device_id:'atv',platform:'apple_tv'};
+    hass.devices={...hass.devices,atv:{id:'atv',manufacturer:'Apple',model:'Apple TV 4K',config_entries:['demo_atv'],primary_config_entry:'demo_atv'}};
+    box('media_player.salon_kaleidescape','Salon · Kaleidescape','kaleidescape','kal',{media_title:'Dune'});
+  }
   // `?tv-focus` plays a TV that waits for text, as Apple TV reports with its keyboard sensor.
   hass.states['binary_sensor.salon_tv_keyboard_focused']={entity_id:'binary_sensor.salon_tv_keyboard_focused',state:params.has('tv-focus')?'on':'off',attributes:{friendly_name:'Salon · Clavier actif'}};
   hass.entities['binary_sensor.salon_tv_keyboard_focused']={entity_id:'binary_sensor.salon_tv_keyboard_focused',device_id:'tv',platform:tvPlatform};

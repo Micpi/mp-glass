@@ -212,6 +212,11 @@ export const nexusStyles = css`
   /* The remote: the screen is the remote. A surface to slide on (or a classic pad), then volume, four keys, playback and a drawer for the rest. */
   .remote-body{gap:12px;width:min(100%,380px);flex:1 1 auto;min-height:0}
   .rc-head{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .rc-src{flex:0 0 auto;display:flex;gap:8px;overflow-x:auto;padding:2px 0 4px;scrollbar-width:none;margin:0 -2px}.rc-src::-webkit-scrollbar{display:none}
+  .rc-src button{flex:0 0 auto;display:inline-flex;align-items:center;gap:7px;min-height:36px;padding:0 14px;border-radius:99px;border:1px solid var(--rk-edge);background:var(--rk-face);color:var(--t2);font-size:13px;font-weight:600;transition:background .15s,color .15s,border-color .15s}
+  .rc-src button.on{background:color-mix(in srgb,var(--accent) 28%,transparent);border-color:color-mix(in srgb,var(--accent) 60%,transparent);color:#fff}
+  .rc-link{flex:0 0 auto;display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:6px 10px;font-size:12px;color:var(--t2)}
+  .rc-link select{flex:1 1 190px;min-width:0;min-height:36px;padding:0 10px;border-radius:12px;border:1px solid var(--rk-edge);background:var(--rk-face);color:var(--t1);font:inherit}
   .rc-modes{display:inline-flex;padding:3px;border-radius:99px;border:1px solid var(--rk-edge);background:var(--rk-face)}
   .rc-modes button{min-height:32px;padding:0 14px;border-radius:99px;font-size:12px;font-weight:600;color:var(--t2);transition:background .15s,color .15s}
   .rc-modes button[aria-checked=true]{background:color-mix(in srgb,var(--accent) 28%,transparent);color:#fff}.rc-modes button:disabled{opacity:.4;cursor:not-allowed}
@@ -225,6 +230,7 @@ export const nexusStyles = css`
   .rc-nav .arrow.u{top:6px;left:35%}.rc-nav .arrow.d{bottom:6px;left:35%}.rc-nav .arrow.l{left:6px;top:35%}.rc-nav .arrow.r{right:6px;top:35%}
   .rc-nav.classic{display:grid;place-items:center;aspect-ratio:auto;height:min(300px,44vh);background:radial-gradient(circle at 50% 50%,transparent 31%,rgba(255,255,255,.05) 31.5%,transparent 32.5%),linear-gradient(180deg,rgba(255,255,255,.08),rgba(255,255,255,.01)),var(--rk-face)}
   .rc-nav.classic .ring{position:relative;height:100%;aspect-ratio:1;max-width:100%}
+  .remote-body.srcs{gap:8px}.remote-body.srcs .rc-nav{min-height:200px;max-height:min(35vh,300px)}.remote-body.srcs .rc-nav.classic{height:min(250px,35vh)}
   .rc-vol{display:grid;grid-template-columns:auto auto minmax(0,1fr) auto auto;align-items:center;gap:8px;min-height:58px;padding:0 8px;border-radius:99px;border:1px solid var(--rk-edge);background:var(--rk-face);box-shadow:inset 0 1px 0 rgba(255,255,255,.12)}
   .rc-vol button{width:42px;height:42px;border-radius:50%;display:grid;place-items:center;color:#e6f0fa;transition:background .12s,color .12s}.rc-vol button:active:not(:disabled){background:var(--rk-glow);color:var(--accent)}.rc-vol button:disabled{opacity:.35}.rc-vol .mute.on{color:#ffcf6b}
   .rc-vol .lvl{position:relative;height:6px;border-radius:99px;background:rgba(255,255,255,.16)}.rc-vol .lvl i{position:absolute;left:0;top:0;bottom:0;border-radius:99px;background:linear-gradient(90deg,var(--accent),#b9dcff)}

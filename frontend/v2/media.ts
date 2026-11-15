@@ -248,6 +248,28 @@ export function trackpadAvailable(routes: Partial<Record<RemoteKey, RemoteRoute>
   return !!(routes.up && routes.down && routes.left && routes.right && routes.select);
 }
 
+/** The inputs a television offers (HDMI 1, Canal+, Apple TV…), as its integration lists them. */
+export function tvSources(state: HAState | undefined): string[] {
+  const list = state?.attributes.source_list;
+  return Array.isArray(list) ? [...new Set(list.map(value => String(value ?? '').trim()).filter(Boolean))] : [];
+}
+const plain = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/**
+ * The player whose remote belongs to an input of the television: the one the user linked,
+ * else the player that carries the input's name (« Apple TV » → media_player.salon_apple_tv).
+ * 'tv' means the television's own remote, whatever its name matches.
+ */
+export function sourceDevice(states: Record<string, HAState>, tv: string, source: string | undefined, players: readonly string[], links: Record<string, string> = {}): string | undefined {
+  if (!source) return undefined;
+  const link = links[source];
+  if (link === 'tv') return undefined;
+  if (link && link !== tv && players.includes(link)) return link;
+  const wanted = plain(source);
+  if (wanted.length < 3 || plain(String(states[tv]?.attributes.friendly_name ?? '')).includes(wanted)) return undefined;
+  const names = (id: string) => [id.split('.')[1] ?? '', String(states[id]?.attributes.friendly_name ?? '')].map(plain).filter(Boolean);
+  return players.find(id => id !== tv && names(id).some(name => name.includes(wanted)));
+}
+
 /** A stable signature for one selected queue item, including the identity fields HA exposes. */
 export function queueSignature(player: string, state: HAState | undefined) {
   const a = state?.attributes ?? {};

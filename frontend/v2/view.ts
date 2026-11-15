@@ -44,7 +44,7 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, displayMediaImage, elapsed, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, queueSignature, readMediaFavorites, DIGITS, remoteKeyboard, remoteProfile, remoteRoutes, remoteSystem, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type MusicResultKind, type NexusFavorite, type RemoteKey, type RemoteRoute, type Zone } from './media';
+import { browse, clockTime, displayMediaImage, elapsed, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, queueSignature, readMediaFavorites, DIGITS, remoteKeyboard, sourceDevice, tvSources, remoteProfile, remoteRoutes, remoteSystem, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type MusicResultKind, type NexusFavorite, type RemoteKey, type RemoteRoute, type Zone } from './media';
 import { serviceBrand } from './brands';
 import { connectedServices, engineSetup, engineStatus, entryVisible, formDefaults, MUSIC_SERVICES, MusicEngineSession, serviceLogo, type EngineStatus, type FlowEntry, type FlowStep, type MusicService, type ProviderInstance, type ProviderManifest } from './music-engine';
 
@@ -280,6 +280,8 @@ export class MPNexusView extends LitElement {
   /** The drawer open under the remote: the numbers, or the keyboard that types on the television. */
   private remoteExtra?: 'digits'|'keyboard';
   private remoteMore = false;
+  /** The input of the television just chosen on the remote, until the television itself reports it. */
+  private remoteSourcePick: Record<string, string> = {};
   private remoteText = '';
   /** The keyboard opens by itself while the television waits for text, unless it was closed during that wait. */
   private remoteFocusClosed = false;
@@ -734,6 +736,24 @@ export class MPNexusView extends LitElement {
   private remoteModeKey(player: string) { return `mp-nexus.trackpad:${this.hass?.user?.id ?? 'browser'}:${location.pathname}:${player}`; }
   private remoteTrackpad(player: string) { try { return localStorage.getItem(this.remoteModeKey(player)) !== 'off'; } catch { return true; } }
   private toggleRemoteTrackpad(player: string, enabled: boolean) { this.remotePointer = undefined; try { localStorage.setItem(this.remoteModeKey(player), enabled ? 'on' : 'off'); } catch { /* Current page choice still takes effect below. */ } this.requestUpdate(); }
+  private sourceLinksKey(tv: string) { return `mp-nexus.sources:${this.hass?.user?.id ?? 'browser'}:${location.pathname}:${tv}`; }
+  /** Which player's remote each input of a television opens, as the user linked them in this browser. */
+  private sourceLinks(tv: string): Record<string, string> {
+    try { const value = JSON.parse(localStorage.getItem(this.sourceLinksKey(tv)) ?? '{}'); return value && typeof value === 'object' ? value : {}; } catch { return {}; }
+  }
+  private linkSource(tv: string, source: string, device: string) {
+    const links = { ...this.sourceLinks(tv) };
+    if (device) links[source] = device; else delete links[source];
+    try { localStorage.setItem(this.sourceLinksKey(tv), JSON.stringify(links)); } catch { /* The choice still holds for this page below. */ }
+    this.remotePointer = undefined; this.requestUpdate();
+  }
+  /** Picks an input of the television: the television switches to it and the remote becomes the one of what plays there. */
+  private async pickSource(tv: string, source: string) {
+    if (this.mediaReadOnlyGuest) { this.mediaNotice = tr('Cet accès invité est en lecture seule.'); return; }
+    this.remoteSourcePick = { ...this.remoteSourcePick, [tv]: source };
+    this.remotePointer = undefined; this.remoteExtra = undefined; this.remoteMore = false; this.requestUpdate();
+    if (this.state(tv)?.attributes.source !== source) await this.mediaCall('select_source', { entity_id: tv, source });
+  }
   private remotePointerDown = (event: PointerEvent, player: string) => {
     event.stopPropagation();
     this.activity();
@@ -1765,16 +1785,25 @@ export class MPNexusView extends LitElement {
       ${playingNow.length > 1 ? html`<button class="btn" @click=${() => void this.mediaCall('media_pause', { entity_id: playingNow })}>${mpIcon('pause', 16)}${tr('Tout mettre en pause')}</button>` : nothing}`;
   }
   /** The remote of a television: the same arrows or trackpad for every brand, then the keys its brand and integration really have. */
-  private remote(id: string) {
-    const state = this.state(id), routes = remoteRoutes(this.hass, id), muted = state?.attributes.is_volume_muted === true;
+  private remote(tv: string) {
+    // A television with several inputs (Canal+, Apple TV, Kaleidescape, Blu-ray…) opens the remote of the one that plays.
+    const tvState = this.state(tv), sources = tvSources(tvState), reported = typeof tvState?.attributes.source === 'string' ? tvState.attributes.source : undefined;
+    if (this.remoteSourcePick[tv] !== undefined && this.remoteSourcePick[tv] === reported) delete this.remoteSourcePick[tv];
+    // Any media player can be a box behind the television, even one the dashboard does not list on its own.
+    const pool = Object.keys(this.hass?.states ?? {}).filter(p => p.startsWith('media_player.') && available(this.state(p))).sort((a, b) => this.name(a).localeCompare(this.name(b), locale()));
+    const active = this.remoteSourcePick[tv] ?? reported, links = this.sourceLinks(tv);
+    const device = sourceDevice(this.hass?.states ?? {}, tv, active, pool, links), id = device ?? tv;
+    const linkable = pool.filter(p => p !== tv);
+    const state = this.state(id), routes = remoteRoutes(this.hass, id), muted = tvState?.attributes.is_volume_muted === true;
     const profile = remoteProfile(this.hass, id), keyboard = remoteKeyboard(this.hass, id);
     const send = (key: RemoteKey) => { const route = routes[key]; if (route && !this.mediaReadOnlyGuest) { tap(); void this.remoteCall(route); } else if (this.mediaReadOnlyGuest) { this.mediaNotice = tr('Cet accès invité est en lecture seule.'); this.requestUpdate(); } };
-    const canTrackpad = trackpadAvailable(routes), trackpad = canTrackpad && this.remoteTrackpad(id);
-    const media = (service: string, data: Record<string, unknown> = {}) => { tap(); return this.call('media_player', service, { entity_id: id, ...data }); };
+    const canTrackpad = trackpadAvailable(routes), trackpad = canTrackpad && this.remoteTrackpad(tv);
+    const media = (service: string, data: Record<string, unknown> = {}, target = id) => { tap(); return this.call('media_player', service, { entity_id: target, ...data }); };
     /** A round key of the remote, its name written under it like on the real one. */
     const rkey = (label: string, icon: MPIconName, click: () => unknown, options: { cls?: string; disabled?: boolean; pressed?: boolean; text?: string } = {}) => html`<div class=${`rkey-wrap ${options.cls ?? ''}`}><button class="rkey" aria-label=${label} title=${label} aria-pressed=${options.pressed ?? nothing} ?disabled=${options.disabled} @click=${click}>${options.text ? html`<b>${options.text}</b>` : mpIcon(icon, 20)}</button><small>${label}</small></div>`;
-    const volume = mediaVolume(state), step = (by: number) => canMedia(state, 'volume_step') ? media(by > 0 ? 'volume_up' : 'volume_down') : volume !== undefined ? media('volume_set', { volume_level: Math.min(100, Math.max(0, volume + by)) / 100 }) : undefined;
-    const canStep = canMedia(state, 'volume_step') || (volume !== undefined && canMedia(state, 'volume_set'));
+    // The sound stays the television's, whichever box plays on it.
+    const volume = mediaVolume(tvState), step = (by: number) => canMedia(tvState, 'volume_step') ? media(by > 0 ? 'volume_up' : 'volume_down', {}, tv) : volume !== undefined ? media('volume_set', { volume_level: Math.min(100, Math.max(0, volume + by)) / 100 }, tv) : undefined;
+    const canStep = canMedia(tvState, 'volume_step') || (volume !== undefined && canMedia(tvState, 'volume_set'));
     const apps = (['netflix', 'youtube', 'prime'] as const).filter(k => routes[k]);
     const colors = (['red', 'green', 'yellow', 'blue'] as const).filter(k => routes[k]);
     const hasDigits = DIGITS.every(n => routes[n]);
@@ -1809,16 +1838,22 @@ export class MPNexusView extends LitElement {
     const spare = [...top, ...under].find(k => k !== 'power' && k !== 'back' && k !== 'home' && routes[k]);
     const dock = (['back', 'home', ...(spare ? [spare] : [])] as RemoteKey[]).filter(k => routes[k]);
     const drawerKeys = (['back', 'home', 'menu', ...top, ...under, ...REMOTE_SHORTCUTS.map(([k]) => k)] as RemoteSlot[]).filter((k, i, all): k is RemoteKey => k !== 'power' && all.indexOf(k) === i && !!routes[k] && !dock.includes(k) && k !== 'rewind' && k !== 'forward');
-    const hasRoutes = Object.keys(routes).length > 0, more = hasDigits || !!keyboard || colors.length > 0 || apps.length > 0 || drawerKeys.length > 0;
+    const hasRoutes = Object.keys(routes).length > 0, more = sources.length > 1 || hasDigits || !!keyboard || colors.length > 0 || apps.length > 0 || drawerKeys.length > 0;
     const open = this.remoteMore || extra !== undefined;
-    const mode = (value: boolean) => html`<button role="radio" aria-checked=${trackpad === value} ?disabled=${this.mediaReadOnlyGuest || (value && !canTrackpad)} title=${value && !canTrackpad ? tr('Le trackpad n’est pas pris en charge par ce lecteur.') : ''} @click=${() => this.toggleRemoteTrackpad(id, value)}>${value ? tr('Trackpad') : tr('Navigation classique')}</button>`;
+    const mode = (value: boolean) => html`<button role="radio" aria-checked=${trackpad === value} ?disabled=${this.mediaReadOnlyGuest || (value && !canTrackpad)} title=${value && !canTrackpad ? tr('Le trackpad n’est pas pris en charge par ce lecteur.') : ''} @click=${() => this.toggleRemoteTrackpad(tv, value)}>${value ? tr('Trackpad') : tr('Navigation classique')}</button>`;
     const arrow = (k: 'up'|'down'|'left'|'right', icon: MPIconName, label: string, cls: string) => html`<button class=${`arrow ${cls}`} aria-label=${label} title=${label} ?disabled=${!routes[k]} @click=${() => send(k)}>${mpIcon(icon, 28)}</button>`;
     const vol = volume ?? 0;
-    return html`<div class="remote-body">
+    const link = active !== undefined && sources.includes(active) ? html`<label class="rc-link"><span>${tr('Télécommande de « {source} »', { source: active })}</span>
+        <select aria-label=${tr('Télécommande de « {source} »', { source: active })} ?disabled=${this.mediaReadOnlyGuest} @change=${(e: Event) => this.linkSource(tv, active, (e.target as HTMLSelectElement).value)}>
+          <option value="" ?selected=${links[active] === undefined}>${device ? tr('Automatique ({name})', { name: this.playerLabel(device) }) : tr('Automatique')}</option>
+          <option value="tv" ?selected=${links[active] === 'tv'}>${tr('Celle du téléviseur')}</option>
+          ${linkable.map(p => html`<option value=${p} ?selected=${links[active] === p}>${this.playerLabel(p)}</option>`)}</select></label>` : nothing;
+    return html`<div class=${`remote-body ${sources.length > 1 ? 'srcs' : ''}`}>
+      ${sources.length > 1 ? html`<div class="rc-src" role="radiogroup" aria-label=${tr('Source du téléviseur')}>${sources.map(source => { const target = sourceDevice(this.hass?.states ?? {}, tv, source, pool, links); return html`<button role="radio" aria-checked=${source === active} class=${source === active ? 'on' : ''} @click=${() => void this.pickSource(tv, source)}>${mpIcon(target ? entityIcon(target, this.state(target)) : 'tv', 16)}<span>${source}</span></button>`; })}</div>` : nothing}
       <div class="rc-head">${profile ? html`<span class=${`remote-brand ${profile.tone}`}><b>${profile.brand && !profile.system.startsWith(profile.brand) ? profile.brand : profile.system}</b>${profile.brand && !profile.system.startsWith(profile.brand) ? html`<small>${profile.system}</small>` : nothing}</span>` : html`<span></span>`}
         ${hasRoutes ? html`<div class="rc-modes" role="radiogroup" aria-label=${tr('Mode de la télécommande')}>${mode(true)}${mode(false)}</div>` : nothing}</div>
       ${hasRoutes ? trackpad ? html`<div class="rc-nav" role="group" aria-label=${tr('Télécommande')}>
-          <div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}>
+          <div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, tv)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, tv, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}>
             <span class="edge u">${mpIcon('up', 20)}</span><span class="edge d">${mpIcon('down', 20)}</span><span class="edge l">${mpIcon('back', 20)}</span><span class="edge r">${mpIcon('arrow', 20)}</span>
             <div class="hint"><span class="rc-ok">OK</span><b>${tr('Glissez dans le sens voulu · Touchez pour OK')}</b></div></div></div>`
         : html`<div class="rc-nav classic" role="group" aria-label=${tr('Télécommande')}><div class="ring">
@@ -1826,7 +1861,7 @@ export class MPNexusView extends LitElement {
           <button class="rc-ok" aria-label=${tr('OK')} style="position:absolute;inset:33%;width:auto;height:auto" ?disabled=${!routes.select} @click=${() => send('select')}>OK</button></div></div>`
         : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips, Sony, Panasonic et Kodi.')}</p>`}
       <div class="rc-vol" role="group" aria-label=${tr('Volume')}>
-        <button class=${`mute ${muted ? 'on' : ''}`} aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} aria-pressed=${muted} ?disabled=${!canMedia(state, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 20)}</button>
+        <button class=${`mute ${muted ? 'on' : ''}`} aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} aria-pressed=${muted} ?disabled=${!canMedia(tvState, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted }, tv)}>${mpIcon(muted ? 'mute' : 'volume', 20)}</button>
         <button aria-label=${tr('Baisser le volume')} title=${tr('Baisser le volume')} ?disabled=${!canStep} @click=${() => step(-5)}>${mpIcon('minus', 20)}</button>
         <div class="lvl" role="presentation"><i style=${`width:${vol}%`}></i></div>
         <button aria-label=${tr('Monter le volume')} title=${tr('Monter le volume')} ?disabled=${!canStep} @click=${() => step(5)}>${mpIcon('plus', 20)}</button>
@@ -1842,6 +1877,7 @@ export class MPNexusView extends LitElement {
       </div>
       ${more ? html`<button class="rc-more" aria-expanded=${open} @click=${() => { this.remoteMore = !open; if (open) this.remoteExtra = undefined; this.requestUpdate(); }}><span>${tr('Plus de touches')}</span>${mpIcon('down', 16)}</button>` : nothing}
       ${open && more ? html`<div class="rc-sheet">
+        ${link}
         ${hasDigits || keyboard ? html`<div class="remote-tools">${hasDigits ? html`<button aria-pressed=${extra === 'digits'} @click=${() => drawer('digits')}>${mpIcon('grid', 15)}<span>123</span></button>` : nothing}${keyboard ? html`<button aria-pressed=${extra === 'keyboard'} @click=${() => drawer('keyboard')}>${mpIcon(keyboard.mode === 'search' ? 'search' : 'text', 15)}<span>${tr('Clavier')}</span></button>` : nothing}</div>` : nothing}
         ${extra === 'keyboard' && keyboard ? html`<form class="remote-keyboard" @submit=${type}>
           <input type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="250" .value=${this.remoteText} placeholder=${keyboard.mode === 'search' ? tr('Rechercher sur le téléviseur') : tr('Texte à taper sur le téléviseur')} aria-label=${tr('Clavier')} @input=${(e: Event) => { this.remoteText = (e.target as HTMLInputElement).value; }} @keydown=${(e: KeyboardEvent) => e.stopPropagation()}>

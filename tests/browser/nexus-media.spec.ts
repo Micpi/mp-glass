@@ -125,8 +125,8 @@ test('v2 draws the remote of the TV brand and types on televisions that take tex
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
-  await expect(nexus.locator('.remote-brand')).toContainText('TCL');
-  await expect(nexus.locator('.remote-brand')).toContainText('Google TV');
+  await expect(nexus.locator('.rc-title')).toContainText('TCL');
+  await expect(nexus.locator('.rc-title')).toContainText('Google TV');
   await nexus.getByRole('button', { name: 'Plus de touches' }).click();
   await expect(nexus.getByRole('button', { name: 'Rouge' })).toBeVisible();
   await nexus.getByRole('button', { name: 'Plus de touches' }).click();
@@ -146,7 +146,7 @@ test('v2 draws the remote of the TV brand and types on televisions that take tex
   await page.goto('/media?spatial&v2&tv=samsungtv:Samsung');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
-  await expect(nexus.locator('.remote-brand')).toContainText('Samsung');
+  await expect(nexus.locator('.rc-title')).toContainText('Samsung');
   await expect(nexus.getByRole('button', { name: 'Source' })).toBeVisible();
   await expect(nexus.getByRole('button', { name: 'Clavier' })).toHaveCount(0);
 });

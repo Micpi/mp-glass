@@ -195,7 +195,7 @@ function engineLabel(hass: Hass | undefined, e: { id: string; name: string }) {
 }
 
 export class MPNexusView extends LitElement {
-  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, voiceList:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteMore:{state:true}, remoteText:{state:true} };
+  static properties = { cards:{attribute:false}, badges:{attribute:false}, hass:{attribute:false}, layout:{state:true}, room:{state:true}, full:{state:true}, layer:{state:true}, shownLayer:{state:true}, layers:{state:true}, detail:{state:true}, languageOpen:{state:true}, floorFilter:{state:true}, player:{state:true}, online:{state:true}, mediaTab:{state:true}, browsing:{state:true}, queue:{state:true}, mediaFavorites:{state:true}, mediaNotice:{state:true}, mediaSearch:{state:true}, mediaResults:{state:true}, mediaSearching:{state:true}, sub:{state:true}, scenesOpen:{state:true}, prefs:{state:true}, overlay:{state:true}, voiceState:{state:true}, voiceLevel:{state:true}, voiceHeard:{state:true}, voicePrefs:{state:true}, voiceEngines:{state:true}, voiceList:{state:true}, wakeList:{state:true}, wakeState:{state:true}, wakeOld:{state:true}, timerSnap:{state:true}, timerTick:{state:true}, enroll:{state:true}, query:{state:true}, answer:{state:true}, listening:{state:true}, draft:{state:true}, routineState:{state:true}, logbook:{state:true}, backupState:{state:true}, saver:{state:true}, saving:{state:true}, guests:{state:true}, guestDraft:{state:true}, invitation:{state:true}, guestNote:{state:true}, network:{state:true}, access:{state:true}, engine:{state:true}, musicSources:{state:true}, musicFlow:{state:true}, musicServicesOpen:{state:true}, remoteExtra:{state:true}, remoteMore:{state:true}, remoteSourceMenu:{state:true}, remoteText:{state:true} };
   static styles = nexusStyles;
 
   cards: HTMLElement[] = [];
@@ -280,6 +280,8 @@ export class MPNexusView extends LitElement {
   /** The drawer open under the remote: the numbers, or the keyboard that types on the television. */
   private remoteExtra?: 'digits'|'keyboard';
   private remoteMore = false;
+  /** The list of inputs, open under the name of the remote. */
+  private remoteSourceMenu = false;
   /** The input of the television just chosen on the remote, until the television itself reports it. */
   private remoteSourcePick: Record<string, string> = {};
   private remoteText = '';
@@ -751,7 +753,7 @@ export class MPNexusView extends LitElement {
   private async pickSource(tv: string, source: string) {
     if (this.mediaReadOnlyGuest) { this.mediaNotice = tr('Cet accès invité est en lecture seule.'); return; }
     this.remoteSourcePick = { ...this.remoteSourcePick, [tv]: source };
-    this.remotePointer = undefined; this.remoteExtra = undefined; this.remoteMore = false; this.requestUpdate();
+    this.remotePointer = undefined; this.remoteExtra = undefined; this.remoteMore = false; this.remoteSourceMenu = false; this.requestUpdate();
     if (this.state(tv)?.attributes.source !== source) await this.mediaCall('select_source', { entity_id: tv, source });
   }
   private remotePointerDown = (event: PointerEvent, player: string) => {
@@ -1840,18 +1842,22 @@ export class MPNexusView extends LitElement {
     const drawerKeys = (['back', 'home', 'menu', ...top, ...under, ...REMOTE_SHORTCUTS.map(([k]) => k)] as RemoteSlot[]).filter((k, i, all): k is RemoteKey => k !== 'power' && all.indexOf(k) === i && !!routes[k] && !dock.includes(k) && k !== 'rewind' && k !== 'forward');
     const hasRoutes = Object.keys(routes).length > 0, more = sources.length > 1 || hasDigits || !!keyboard || colors.length > 0 || apps.length > 0 || drawerKeys.length > 0;
     const open = this.remoteMore || extra !== undefined;
-    const mode = (value: boolean) => html`<button role="radio" aria-checked=${trackpad === value} ?disabled=${this.mediaReadOnlyGuest || (value && !canTrackpad)} title=${value && !canTrackpad ? tr('Le trackpad n’est pas pris en charge par ce lecteur.') : ''} @click=${() => this.toggleRemoteTrackpad(tv, value)}>${value ? tr('Trackpad') : tr('Navigation classique')}</button>`;
+    const mode = (value: boolean) => html`<button role="radio" aria-checked=${trackpad === value} ?disabled=${this.mediaReadOnlyGuest || (value && !canTrackpad)} title=${value && !canTrackpad ? tr('Le trackpad n’est pas pris en charge par ce lecteur.') : ''} aria-label=${value ? tr('Trackpad') : tr('Navigation classique')} @click=${() => this.toggleRemoteTrackpad(tv, value)}>${mpIcon(value ? 'hand' : 'target', 16)}<span>${value ? tr('Trackpad') : tr('Flèches')}</span></button>`;
     const arrow = (k: 'up'|'down'|'left'|'right', icon: MPIconName, label: string, cls: string) => html`<button class=${`arrow ${cls}`} aria-label=${label} title=${label} ?disabled=${!routes[k]} @click=${() => send(k)}>${mpIcon(icon, 28)}</button>`;
     const vol = volume ?? 0;
+    // The remote is named after what it commands: the box behind the chosen input, else the television's own make.
+    const title = device ? this.playerLabel(device) : profile ? (profile.brand && !profile.system.startsWith(profile.brand) ? `${profile.brand} · ${profile.system}` : profile.system) : this.playerLabel(tv);
     const link = active !== undefined && sources.includes(active) ? html`<label class="rc-link"><span>${tr('Télécommande de « {source} »', { source: active })}</span>
         <select aria-label=${tr('Télécommande de « {source} »', { source: active })} ?disabled=${this.mediaReadOnlyGuest} @change=${(e: Event) => this.linkSource(tv, active, (e.target as HTMLSelectElement).value)}>
           <option value="" ?selected=${links[active] === undefined}>${device ? tr('Automatique ({name})', { name: this.playerLabel(device) }) : tr('Automatique')}</option>
           <option value="tv" ?selected=${links[active] === 'tv'}>${tr('Celle du téléviseur')}</option>
           ${linkable.map(p => html`<option value=${p} ?selected=${links[active] === p}>${this.playerLabel(p)}</option>`)}</select></label>` : nothing;
-    return html`<div class=${`remote-body ${sources.length > 1 ? 'srcs' : ''}`}>
-      ${sources.length > 1 ? html`<div class="rc-src" role="radiogroup" aria-label=${tr('Source du téléviseur')}>${sources.map(source => { const target = sourceDevice(this.hass?.states ?? {}, tv, source, pool, links); return html`<button role="radio" aria-checked=${source === active} class=${source === active ? 'on' : ''} @click=${() => void this.pickSource(tv, source)}>${mpIcon(target ? entityIcon(target, this.state(target)) : 'tv', 16)}<span>${source}</span></button>`; })}</div>` : nothing}
-      <div class="rc-head">${profile ? html`<span class=${`remote-brand ${profile.tone}`}><b>${profile.brand && !profile.system.startsWith(profile.brand) ? profile.brand : profile.system}</b>${profile.brand && !profile.system.startsWith(profile.brand) ? html`<small>${profile.system}</small>` : nothing}</span>` : html`<span></span>`}
-        ${hasRoutes ? html`<div class="rc-modes" role="radiogroup" aria-label=${tr('Mode de la télécommande')}>${mode(true)}${mode(false)}</div>` : nothing}</div>
+    return html`<div class="remote-body">
+      <div class="rc-head">
+        <button class="rc-title" aria-haspopup=${sources.length > 1 ? 'listbox' : nothing} aria-expanded=${sources.length > 1 ? this.remoteSourceMenu : nothing} ?disabled=${sources.length < 2} @click=${() => { this.remoteSourceMenu = !this.remoteSourceMenu; this.requestUpdate(); }}>
+          <span class="rt"><small>${sources.length > 1 && active ? active : tr('Télécommande')}</small><b>${title}</b></span>${sources.length > 1 ? mpIcon('down', 16) : nothing}</button>
+        ${hasRoutes ? html`<div class="rc-modes" role="radiogroup" aria-label=${tr('Mode de la télécommande')}>${mode(true)}${mode(false)}</div>` : nothing}
+        ${sources.length > 1 && this.remoteSourceMenu ? html`<div class="rc-menu" role="listbox" aria-label=${tr('Source du téléviseur')}>${sources.map(source => { const target = sourceDevice(this.hass?.states ?? {}, tv, source, pool, links); return html`<button role="option" aria-selected=${source === active} class=${source === active ? 'on' : ''} @click=${() => void this.pickSource(tv, source)}>${mpIcon(target ? entityIcon(target, this.state(target)) : 'tv', 17)}<span class="mt"><b>${source}</b><small>${target ? this.playerLabel(target) : tr('Télécommande du téléviseur')}</small></span>${source === active ? mpIcon('check', 15) : nothing}</button>`; })}</div>` : nothing}</div>
       ${hasRoutes ? trackpad ? html`<div class="rc-nav" role="group" aria-label=${tr('Télécommande')}>
           <div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, tv)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, tv, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}>
             <span class="edge u">${mpIcon('up', 20)}</span><span class="edge d">${mpIcon('down', 20)}</span><span class="edge l">${mpIcon('back', 20)}</span><span class="edge r">${mpIcon('arrow', 20)}</span>
@@ -1866,16 +1872,16 @@ export class MPNexusView extends LitElement {
         <div class="lvl" role="presentation"><i style=${`width:${vol}%`}></i></div>
         <button aria-label=${tr('Monter le volume')} title=${tr('Monter le volume')} ?disabled=${!canStep} @click=${() => step(5)}>${mpIcon('plus', 20)}</button>
         <small>${volume ?? ''}</small></div>
-      <div class="rc-dock" style=${`--n:${dock.length + 1}`}>
+      <div class="rc-dock" style=${`--n:${dock.length + 1 + (more ? 1 : 0)}`}>
         ${dock.map(k => { const [icon, label] = face(k); return html`<button aria-label=${label} @click=${() => send(k)}>${mpIcon(icon, 22)}<span>${label}</span></button>`; })}
         <button class=${`power ${on ? 'on' : ''}`} aria-label=${on ? tr('Éteindre') : tr('Allumer')} ?disabled=${!canMedia(state, on ? 'turn_off' : 'turn_on')} @click=${() => media(on ? 'turn_off' : 'turn_on')}>${mpIcon('power', 22)}<span>${on ? tr('Éteindre') : tr('Allumer')}</span></button>
+        ${more ? html`<button class="more" aria-expanded=${open} aria-label=${tr('Plus de touches')} title=${tr('Plus de touches')} @click=${() => { this.remoteMore = !open; if (open) this.remoteExtra = undefined; this.requestUpdate(); }}>${mpIcon('grid', 22)}<span>${tr('Plus')}</span></button>` : nothing}
       </div>
       <div class="rc-play" role="group" aria-label=${tr('Lecture')}>
         <button class="skip" aria-label=${ten ? tr('Reculer de 10 s') : tr('Reculer')} title=${ten ? tr('Reculer de 10 s') : tr('Reculer')} ?disabled=${!canJump(-10)} @click=${() => jump(-10)}>${mpIcon(ten ? 'rewind10' : 'rewind', 24)}</button>
         <button class="go" aria-label=${playing ? tr('Pause') : tr('Lecture')} title=${playing ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(playing ? 'pause' : 'play', 24)}</button>
         <button class="skip" aria-label=${ten ? tr('Avancer de 10 s') : tr('Avancer')} title=${ten ? tr('Avancer de 10 s') : tr('Avancer')} ?disabled=${!canJump(10)} @click=${() => jump(10)}>${mpIcon(ten ? 'forward10' : 'forward', 24)}</button>
       </div>
-      ${more ? html`<button class="rc-more" aria-expanded=${open} @click=${() => { this.remoteMore = !open; if (open) this.remoteExtra = undefined; this.requestUpdate(); }}><span>${tr('Plus de touches')}</span>${mpIcon('down', 16)}</button>` : nothing}
       ${open && more ? html`<div class="rc-sheet">
         ${link}
         ${hasDigits || keyboard ? html`<div class="remote-tools">${hasDigits ? html`<button aria-pressed=${extra === 'digits'} @click=${() => drawer('digits')}>${mpIcon('grid', 15)}<span>123</span></button>` : nothing}${keyboard ? html`<button aria-pressed=${extra === 'keyboard'} @click=${() => drawer('keyboard')}>${mpIcon(keyboard.mode === 'search' ? 'search' : 'text', 15)}<span>${tr('Clavier')}</span></button>` : nothing}</div>` : nothing}

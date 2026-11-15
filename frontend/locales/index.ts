@@ -10,14 +10,15 @@ import { APPEARANCE } from './appearance';
 import { SCENES } from './scenes';
 import { CUSTOMIZE } from './customize';
 import { DAILY, DAILY_DE, DAILY_IT } from './daily';
+import { MEDIA, MEDIA_DE, MEDIA_IT } from './media';
 import { DE } from './de';
 import { IT } from './it';
 
 /** Every French-keyed catalog, for tests that check consistent English and Russian translations. */
-export const CATALOGS = { DASHBOARD, DETAIL, STUDIO, PLAN, EDITOR, ZONES, LAUNDRY, NEXUS, APPEARANCE, SCENES, CUSTOMIZE, DAILY };
-export const CATALOG = { ...DASHBOARD, ...DETAIL, ...STUDIO, ...PLAN, ...EDITOR, ...ZONES, ...LAUNDRY, ...NEXUS, ...APPEARANCE, ...SCENES, ...CUSTOMIZE, ...DAILY };
+export const CATALOGS = { DASHBOARD, DETAIL, STUDIO, PLAN, EDITOR, ZONES, LAUNDRY, NEXUS, APPEARANCE, SCENES, CUSTOMIZE, DAILY, MEDIA };
+export const CATALOG = { ...DASHBOARD, ...DETAIL, ...STUDIO, ...PLAN, ...EDITOR, ...ZONES, ...LAUNDRY, ...NEXUS, ...APPEARANCE, ...SCENES, ...CUSTOMIZE, ...DAILY, ...MEDIA };
 /** German and Italian translations for the dashboard, device detail and core plan controls; untranslated messages fall back to English. */
 type ExtraMessages = Partial<Record<keyof typeof CATALOG, string>>;
-export const EXTRA_CATALOGS: Record<'de' | 'it', ExtraMessages> = { de: { ...DE, ...NEXUS_DE, ...DAILY_DE }, it: { ...IT, ...NEXUS_IT, ...DAILY_IT } };
+export const EXTRA_CATALOGS: Record<'de' | 'it', ExtraMessages> = { de: { ...DE, ...NEXUS_DE, ...DAILY_DE, ...MEDIA_DE }, it: { ...IT, ...NEXUS_IT, ...DAILY_IT, ...MEDIA_IT } };
 /** A French text of the interface: `tsc` refuses one missing from the catalog. */
 export type MessageKey = keyof typeof CATALOG;

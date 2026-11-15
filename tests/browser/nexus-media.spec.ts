@@ -12,8 +12,10 @@ test('v2 keeps per-screen favorites and can browse playable Music Assistant medi
   await nexus.getByRole('textbox', { name: 'Rechercher dans Music Assistant' }).fill('Moon Song');
   await nexus.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(nexus.getByRole('button', { name: 'Moon Song' })).toBeVisible();
-  await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toBeVisible();
+  // A search takes the page; closing it brings the library back.
+  await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toHaveCount(0);
   await nexus.getByRole('button', { name: 'Garder sur cet écran' }).first().click();
+  await nexus.locator('.sec').getByRole('button', { name: 'Fermer' }).click();
   await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toBeVisible();
   await expect(nexus.getByText('Favoris MP Nexus · cet écran')).toBeVisible();
   await expect(nexus.locator('.media-favorite')).toContainText('Moon Song');

@@ -86,6 +86,10 @@ const icons = {
   previous: '<path d="M18.5 5.5v13L9 12zM5.5 5.5v13"/>',
   volume: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
   mute: '<path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/>',
+  disc: '<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="2.6"/><path d="M12 6.2a5.8 5.8 0 0 1 5.8 5.8"/>',
+  radio: '<rect x="3" y="9" width="18" height="11" rx="2.5"/><path d="m7 9 9.5-5"/><circle cx="8.5" cy="14.5" r="2.3"/><path d="M14 13h4m-4 3h4"/>',
+  podcast: '<circle cx="12" cy="10.5" r="2.4"/><path d="M12 13v8M7.8 14.6a6 6 0 1 1 8.4 0M5 17.4a9.5 9.5 0 1 1 14 0"/>',
+  playlist: '<path d="M4 6h12M4 11h12M4 16h7"/><path d="M18 11v7"/><circle cx="16" cy="18" r="2"/><path d="m18 11 3 1.4"/>',
   pin: '<path d="M12 21s6.5-6.2 6.5-11.5a6.5 6.5 0 0 0-13 0C5.5 14.8 12 21 12 21z"/><circle cx="12" cy="9.5" r="2.3"/>',
 } as const;
 

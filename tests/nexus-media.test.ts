@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { HAState } from '../shared/models';
-import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, remoteKeyboard, remoteProfile, remoteRoutes, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable } from '../frontend/v2/media';
+import { clockTime, displayMediaImage, elapsed, groupOf, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, queueSignature, readMediaFavorites, remoteKeyboard, remoteProfile, remoteRoutes, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume } from '../frontend/v2/media';
 import { serviceBrand } from '../frontend/v2/brands';
 import type { Hass } from '../frontend/ha/client';
 
@@ -14,6 +14,33 @@ describe('MP Nexus v2 media', () => {
     const states = Object.fromEntries([state('media_player.a', { group_members: ['media_player.b', 'media_player.a', 'media_player.gone'] }), state('media_player.b')].map(s => [s.entity_id, s]));
     expect(groupOf(states, 'media_player.a')).toEqual(['media_player.a', 'media_player.b']);
     expect(groupOf(states, 'media_player.b')).toEqual(['media_player.b']);
+  });
+  it('counts rooms that play together as one zone, led by the player Home Assistant names first', () => {
+    const player = (id: string, group?: string[]): HAState => ({ entity_id: id, state: 'playing', attributes: group ? { group_members: group } : {} });
+    const group = ['media_player.salon', 'media_player.cuisine', 'media_player.gone'];
+    const states = { 'media_player.tv': player('media_player.tv'), 'media_player.cuisine': player('media_player.cuisine', group), 'media_player.salon': player('media_player.salon', group), 'media_player.terrasse': player('media_player.terrasse', ['media_player.terrasse']) };
+    const zones = zonesOf(states, ['media_player.tv', 'media_player.cuisine', 'media_player.salon', 'media_player.terrasse']);
+    expect(zones).toEqual([
+      { leader: 'media_player.tv', members: ['media_player.tv'] },
+      { leader: 'media_player.salon', members: ['media_player.salon', 'media_player.cuisine'] },
+      { leader: 'media_player.terrasse', members: ['media_player.terrasse'] },
+    ]);
+    expect(zoneOf(zones, 'media_player.cuisine')?.leader).toBe('media_player.salon');
+    expect(zoneOf(zones, 'media_player.none')).toBeUndefined();
+  });
+  it('moves every speaker of a zone by the same amount and keeps each within 0 and 100', () => {
+    expect(zoneVolume([32, 24])).toBe(28);
+    expect(zoneVolume([])).toBeUndefined();
+    expect(shiftVolumes({ a: 32, b: 24 }, 38)).toEqual({ a: 42, b: 34 });
+    expect(shiftVolumes({ a: 90, b: 10 }, 70)).toEqual({ a: 100, b: 30 });
+    expect(shiftVolumes({ a: 40, b: 4 }, 0)).toEqual({ a: 18, b: 0 });
+    expect(shiftVolumes({}, 50)).toEqual({});
+  });
+  it('reads the service of an item from its address and sorts search results by kind', () => {
+    expect([providerOf('spotify://track/1'), providerOf('deezer--ab12://album/2'), providerOf('library://track/3'), providerOf('https://radio.example/stream'), providerOf(undefined)]).toEqual(['spotify', 'deezer', undefined, undefined, undefined]);
+    const item = (media_content_type: string, title: string) => ({ media_content_type, title });
+    const groups = resultGroups([item('album', 'A'), item('track', 'T1'), item('artist', 'Ar'), item('track', 'T2'), item('audiobook', 'B')]);
+    expect(groups.map(group => [group.kind, group.items.map(i => i.title)])).toEqual([['track', ['T1', 'T2']], ['artist', ['Ar']], ['album', ['A']], ['other', ['B']]]);
   });
   it('moves the position on while a track plays, never past its end', () => {
     const at = '2026-10-24T20:00:00Z', now = Date.parse(at) + 30_000;

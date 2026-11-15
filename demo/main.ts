@@ -342,6 +342,31 @@ if (params.has('v2') && params.has('music')) {
   const wrapped=hass.callWS;
   hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='mp_glass/music/engine'?engine() as T:message.type==='mp_glass/music/engine/setup'?(phase='preparing',started=Date.now(),engine()) as T
     :message.type==='supervisor/api'?{session:'demo'} as T:wrapped<T>(message);
+  // `?music=ready` is a house whose music already works: two services connected, a library on every shelf, a search across services.
+  if(phase==='ready'){
+    providers.push({instance_id:'spotify--1',domain:'spotify',type:'music',name:'Spotify',status:'loaded'},{instance_id:'deezer--1',domain:'deezer',type:'music',name:'Deezer',status:'loaded'},{instance_id:'radiobrowser--1',domain:'radiobrowser',type:'music',name:'Radios',status:'loaded'});
+    const cover=(a:string,b:string)=>`data:image/svg+xml,${encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><defs><linearGradient id="g" x2="1" y2="1"><stop offset="0" stop-color="${a}"/><stop offset="1" stop-color="${b}"/></linearGradient></defs><rect width="10" height="10" fill="url(#g)"/><circle cx="6.8" cy="3.4" r="2.2" fill="#fff" opacity=".2"/><path d="M0 8c3-2 6-1 10-3v5H0z" fill="#000" opacity=".18"/></svg>`)}`;
+    const tones:[string,string][]=[['#ffb46b','#c14d7a'],['#7be0c4','#2c7f8f'],['#b9a4ff','#5a3fb0'],['#ffd38a','#d9734a'],['#65b5ff','#1d3f73'],['#ff9fb6','#7a2f8f'],['#ffe481','#a86a1a'],['#8fe3a1','#2d6e4f']];
+    const media=(type:string,uri:string,title:string,artist='',album='',duration?:number,index=0)=>({title,artist,album,media_content_id:uri,media_content_type:type,thumbnail:cover(...tones[index%tones.length]!),favorite:false,queue_item_id:'',duration,can_play:true,can_expand:false});
+    const shelves:Record<string,unknown[]>={
+      playlists:['Dîner entre amis','Réveil en douceur','Jazz du soir','Sport','Focus','Dimanche matin','Road trip','Soirée d’été'].map((t,i)=>media('playlist',`library://playlist/${i}`,t,['Spotify','Deezer','MP Nexus'][i%3],'',undefined,i)),
+      albums:[['Nuits d’été','Lumen Drift'],['Slow Tide','Maré'],['Paper Lights','Oslo Club'],['Riviera','Les Vagues'],['Golden Hour','Ada Stone'],['Atlas','Nord'],['Verre fumé','Cléo M.'],['Minuit','Lumen Drift']].map(([t,a],i)=>media('album',`library://album/${i}`,t!,a,'',undefined,i+1)),
+      artists:['Lumen Drift','Maré','Oslo Club','Ada Stone','Les Vagues','Nord','Cléo M.','Tapis Volant'].map((t,i)=>media('artist',`library://artist/${i}`,t,'','',undefined,i+2)),
+      tracks:[['Nuits d’été','Lumen Drift','Nuits d’été',214],['Moon Song','Lumen Drift','Minuit',187],['Slow Tide','Maré','Slow Tide',241],['Riviera','Les Vagues','Riviera',203],['Paper Lights','Oslo Club','Paper Lights',226],['Golden Hour','Ada Stone','Golden Hour',198],['Atlas','Nord','Atlas',262],['Verre fumé','Cléo M.','Verre fumé',175]].map(([t,a,al,d],i)=>media('track',`library://track/${i}`,String(t),String(a),String(al),Number(d),i+3)),
+      radio:['France Inter','FIP','TSF Jazz','Radio Nova','France Musique','Radio Meuh'].map((t,i)=>media('radio',`library://radio/${i}`,t,'','',undefined,i+4)),
+      podcasts:['Les Pieds sur terre','La Méthode scientifique','Transfert','Affaires sensibles'].map((t,i)=>media('podcast',`library://podcast/${i}`,t,'','',undefined,i+5)),
+    };
+    const found=(query:string)=>[media('track','spotify://track/moon','Moon Song','Lumen Drift','Minuit',187,1),media('track','deezer://track/moonlight','Moonlight Drive','Maré','Slow Tide',233,2),media('track','spotify://track/moonrise',`${query} (live)`,'Oslo Club','Paper Lights',251,3),
+      media('artist','spotify://artist/lumen','Lumen Drift','','',undefined,4),media('artist','deezer://artist/moon','Moon Hotel','','',undefined,5),
+      media('album','spotify://album/minuit','Minuit','Lumen Drift','',undefined,6),media('album','deezer://album/moon','Moonlight Sessions','Maré','',undefined,7),media('album','library://album/9','Clair de lune','Cléo M.','',undefined,0),
+      media('playlist','spotify://playlist/moon','Nuit étoilée','Spotify','',undefined,2),media('radio','radiobrowser://radio/fip','FIP','','',undefined,5)];
+    const bridged=hass.callWS;
+    hass.callWS=async<T>(message:Record<string,unknown>)=>message.type==='mp_glass/music/status'?{configured:true,connected:true,player_count:1} as T
+      :message.type==='mp_glass/music/library'?{kind:message.kind,offset:0,items:shelves[String(message.kind)]??[]} as T
+      :message.type==='mp_glass/music/search'?{items:found(String(message.query))} as T
+      :message.type==='mp_glass/music/queue'?{queue_id:'demo',current_index:0,items:[]} as T
+      :message.type==='mp_glass/music/action'?(calls.push({music:message.action,data:message.data}),{ok:true}) as T:bridged<T>(message);
+  }
   const flows=new Map<string,{domain:string;step:number}>();
   const step=(id:string)=>{const flow=flows.get(id)!;const name=flow.domain==='deezer'?'Deezer':'Spotify';
     if(flow.domain==='deezer')return flow.step?{flow_id:id,step_id:'finish',type:'finish',result:{instance_id:'deezer--1'}}:{flow_id:id,step_id:'user',type:'form',title:name,entries:[{key:'arl_token',type:'secure_string',label:'Clé ARL',required:true}],last_step:true};

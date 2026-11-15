@@ -44,7 +44,7 @@ import { automationId, automationOf, backupName, energySummary, projectTemplate,
 import { readProject, saveProject } from '../ha/client';
 import { parseProject, projectLogoMark } from '../../shared/project';
 import { createGuest, defaultUntil, endGuest, guestPassword, guestStatus, invite, listGuests, localInput, myAccess, networkCheck, qrCode, removeGuest, type Guest, type GuestDraft, type Invitation } from './guests';
-import { browse, clockTime, displayMediaImage, elapsed, groupOf, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, queueSignature, readMediaFavorites, DIGITS, remoteKeyboard, remoteProfile, remoteRoutes, remoteSystem, safeFavoriteContentId, safeFavoriteImage, searchMedia, toggleMediaFavorite, trackpadAvailable, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type NexusFavorite, type RemoteKey, type RemoteRoute } from './media';
+import { browse, clockTime, displayMediaImage, elapsed, isMusicAssistant, musicAction, musicAssistantFavoriteButton, musicBridgeSearch, musicLibrary, musicQueue, musicStatus, nextRepeat, providerOf, queueSignature, readMediaFavorites, DIGITS, remoteKeyboard, remoteProfile, remoteRoutes, remoteSystem, resultGroups, safeFavoriteContentId, safeFavoriteImage, searchMedia, shiftVolumes, toggleMediaFavorite, trackpadAvailable, zoneOf, zonesOf, zoneVolume, type BrowseItem, type MusicBridgeStatus, type MusicHubItem, type MusicLibraryKind, type MusicResultKind, type NexusFavorite, type RemoteKey, type RemoteRoute, type Zone } from './media';
 import { serviceBrand } from './brands';
 import { connectedServices, engineSetup, engineStatus, entryVisible, formDefaults, MUSIC_SERVICES, MusicEngineSession, serviceLogo, type EngineStatus, type FlowEntry, type FlowStep, type MusicService, type ProviderInstance, type ProviderManifest } from './music-engine';
 
@@ -118,9 +118,15 @@ const PAGE_LAYERS: Partial<Record<ViewKind, PlanMode>> = { lights: 'lights', med
 let mediaTab: MediaTab = 'play';
 /** The player last chosen, kept while the dashboard stays open, so a card of the home opens the Multimédia page on it. */
 let mediaPlayer = '';
-const MEDIA_TABS: Record<MediaTab, { label: 'Lecture'|'Pour vous'|'Pièces'|'Télécommande'; icon: MPIconName }> = {
-  play: { label: 'Lecture', icon: 'play' }, foryou: { label: 'Pour vous', icon: 'sparkle' }, rooms: { label: 'Pièces', icon: 'speaker' }, remote: { label: 'Télécommande', icon: 'remote' },
+const MEDIA_TABS: Record<MediaTab, { label: 'Lecture'|'Parcourir'|'Groupes'|'Télécommande'; icon: MPIconName }> = {
+  play: { label: 'Lecture', icon: 'play' }, foryou: { label: 'Parcourir', icon: 'grid' }, rooms: { label: 'Groupes', icon: 'speaker' }, remote: { label: 'Télécommande', icon: 'remote' },
 };
+/** The shelves of the household music, in the order people reach for them. */
+const MUSIC_SHELVES: { kind: MusicLibraryKind; label: 'Playlists'|'Albums'|'Artistes'|'Morceaux'|'Radios'|'Podcasts'; icon: MPIconName }[] = [
+  { kind: 'playlists', label: 'Playlists', icon: 'playlist' }, { kind: 'albums', label: 'Albums', icon: 'disc' }, { kind: 'artists', label: 'Artistes', icon: 'user' },
+  { kind: 'tracks', label: 'Morceaux', icon: 'music' }, { kind: 'radio', label: 'Radios', icon: 'radio' }, { kind: 'podcasts', label: 'Podcasts', icon: 'podcast' },
+];
+const RESULT_LABELS: Record<MusicResultKind | 'other', 'Playlists'|'Albums'|'Artistes'|'Morceaux'|'Radios'|'Podcasts'|'Autres résultats'> = { track: 'Morceaux', artist: 'Artistes', album: 'Albums', playlist: 'Playlists', radio: 'Radios', podcast: 'Podcasts', other: 'Autres résultats' };
 /** The keys some remotes have beside the arrows, in the order a remote shows them. */
 const REMOTE_SHORTCUTS: [RemoteKey, MPIconName, MessageKey][] = [
   ['input', 'tv', 'Source'], ['guide', 'clock', 'Guide TV'], ['info', 'info', 'Info'], ['apps', 'layers', 'Applis'], ['settings', 'tune', 'Réglages'],
@@ -251,6 +257,10 @@ export class MPNexusView extends LitElement {
   private musicBridge?: MusicBridgeStatus | 'loading';
   private musicBridgeConnection?: object;
   private musicKind: MusicLibraryKind = 'albums';
+  /** The shelf of the music opened on Parcourir; none shows its front page. */
+  private musicShelf?: MusicLibraryKind;
+  /** Rooms on their way into a group (true) or out of it (false), until Home Assistant reports it. */
+  private groupBusy = new Map<string, boolean>();
   private musicItems?: MusicHubItem[];
   private musicLoading = false;
   private musicLibraryRequest = 0;
@@ -762,7 +772,7 @@ export class MPNexusView extends LitElement {
       try { this.musicBridge = await musicStatus(hass); } catch { this.musicBridge = { configured: false, connected: false }; }
       this.requestUpdate();
     }
-    if (this.musicBridge !== 'loading' && this.musicBridge?.connected && !this.musicItems && !this.musicLoading) void this.loadMusicLibrary(this.musicKind);
+    if (this.musicBridge !== 'loading' && this.musicBridge?.connected && this.musicShelf && !this.musicItems && !this.musicLoading) void this.loadMusicLibrary(this.musicShelf);
   }
   private async loadMusicLibrary(kind: MusicLibraryKind) {
     const hass = this.hass;
@@ -1310,8 +1320,39 @@ export class MPNexusView extends LitElement {
     const players = this.players, states = this.hass?.states ?? {};
     return players.find(id => id === this.player) ?? players.find(id => mediaPlaying(states[id])) ?? players.find(id => mediaOn(states[id])) ?? players[0];
   }
-  /** The rooms a player sounds in: its own name, and those of the players grouped with it. */
-  private groupLabel(id: string) { return groupOf(this.hass?.states ?? {}, id).map(p => this.roomOf(p) ?? this.name(p)).join(' + '); }
+  /** Where the house listens: each player alone, or the rooms that play together counted as one. */
+  private get zones() { return zonesOf(this.hass?.states ?? {}, this.players); }
+  /** A zone named by its rooms: « Salon + Cuisine », or « Salon + 2 » when it holds more. */
+  private zoneLabel(zone: Zone) {
+    const names = zone.members.map(p => this.playerLabel(p));
+    return names.length > 2 ? `${names[0]} + ${names.length - 1}` : names.join(' + ');
+  }
+  /** The volume of each speaker of a zone that takes one. */
+  private zoneLevels(zone: Zone): Record<string, number> {
+    const states = this.hass?.states ?? {};
+    return Object.fromEntries(zone.members.filter(p => mediaVolume(states[p]) !== undefined && canMedia(states[p], 'volume_set')).map(p => [p, mediaVolume(states[p])!]));
+  }
+  private setZoneVolume(levels: Record<string, number>, target: number) {
+    for (const [player, level] of Object.entries(shiftVolumes(levels, target))) void this.mediaCall('volume_set', { entity_id: player, volume_level: level / 100 });
+  }
+  /** Shows another player: what was being browsed or searched belonged to the one before. */
+  private selectPlayer(id: string) {
+    this.player = mediaPlayer = id;
+    this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.remotePointer = undefined;
+    this.requestUpdate();
+  }
+  /** The zones of the house on one line, on every face of the page: first where to listen, then what. */
+  private zoneBar(zones: Zone[], id: string) {
+    const states = this.hass?.states ?? {};
+    return html`<div class="zones" role="group" aria-label=${tr('Lecteurs')}>${zones.map(zone => {
+      const lead = zone.members.find(p => mediaPlaying(states[p])) ?? zone.leader, state = states[lead], on = zone.members.includes(id);
+      const art = mediaOn(state) && !this.tvArtwork(state) ? zone.members.map(p => states[p]?.attributes.entity_picture).find(Boolean) : undefined;
+      return html`<button class="zone" aria-pressed=${on} @click=${() => this.selectPlayer(zone.leader)}>
+        <span class="za">${mpIcon(entityIcon(zone.leader, states[zone.leader]), 17)}${art ? this.mediaImage(art) : nothing}${zone.members.length > 1 ? html`<i>${zone.members.length}</i>` : nothing}</span>
+        <span class="zt"><b>${this.zoneLabel(zone)}</b><small>${nowPlaying(state) || stateLabel(lead, state)}</small></span>
+        ${mediaPlaying(state) ? html`<i class="eq"></i>` : nothing}</button>`;
+    })}</div>`;
+  }
   /** A player named by its room, and by its own name too when the room holds several. */
   private playerLabel(id: string) {
     const room = this.roomOf(id);
@@ -1327,13 +1368,14 @@ export class MPNexusView extends LitElement {
   private mediaMain() {
     const id = this.currentPlayer, state = id ? this.state(id) : undefined;
     if (!id) return html`<section class="main panel card glass">${this.head(tr('Multimédia'))}<div class="body">${this.hass?.user?.is_admin && this.engine !== undefined && this.engine !== 'error' && (this.engine === 'loading' || this.engine.phase !== 'unsupported') ? nothing : html`<p class="empty">${tr('Aucun lecteur multimédia détecté pour le moment.')}</p>`}${this.musicSetup()}</div></section>`;
-    const tabs = this.mediaTabs(id), tab = tabs.includes(this.mediaTab) ? this.mediaTab : 'play';
+    const tabs = this.mediaTabs(id), tab = tabs.includes(this.mediaTab) ? this.mediaTab : 'play', zones = this.zones;
     const media = (service: string, data: Record<string, unknown> = {}) => void this.mediaCall(service, { entity_id: id, ...data });
     const power = mediaOn(state) && canMedia(state, 'turn_off') ? html`<button class="ib" aria-label=${tr('Éteindre')} title=${tr('Éteindre')} @click=${() => media('turn_off')}>${mpIcon('power', 16)}</button>`
       : !mediaOn(state) && canMedia(state, 'turn_on') ? html`<button class="ib" aria-label=${tr('Allumer')} title=${tr('Allumer')} @click=${() => media('turn_on')}>${mpIcon('power', 16)}</button>` : nothing;
     return html`<section class="main panel card glass">
-      ${this.head(this.groupLabel(id), tr('Multimédia'), html`${power}<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('dots', 16)}</button>`)}
+      ${this.head(this.zoneLabel(zoneOf(zones, id) ?? { leader: id, members: [id] }), tr('Multimédia'), html`${power}<button class="ib" aria-label=${tr('Détails')} title=${tr('Détails')} @click=${() => { this.detail = id; }}>${mpIcon('dots', 16)}</button>`)}
       <div class="body">
+        ${zones.length > 1 ? this.zoneBar(zones, id) : nothing}
         ${tabs.length > 1 ? html`<div class="layers mtabs" role="tablist" aria-label=${tr('Multimédia')}>${tabs.map(t => html`<button role="tab" aria-selected=${t === tab} aria-pressed=${t === tab} @click=${() => { this.remotePointer = undefined; if (this.mediaTab === 'foryou' && t !== 'foryou') { this.browseRequest++; this.mediaSearchRequest++; this.browsing = undefined; this.mediaResults = undefined; } this.mediaTab = t; mediaTab = t; }}>${mpIcon(MEDIA_TABS[t].icon, 15)}<span>${tr(MEDIA_TABS[t].label)}</span></button>`)}</div>` : nothing}
         ${tab === 'play' ? this.playing(id) : tab === 'foryou' ? this.forYou(id) : tab === 'rooms' ? this.speakers(id) : this.remote(id)}
         ${this.mediaNotice ? html`<p class="note" role="alert">${this.mediaNotice}</p>` : nothing}
@@ -1342,9 +1384,9 @@ export class MPNexusView extends LitElement {
   }
   /** The immersive player: the cover, the track, where it stands, and its commands. */
   private playing(id: string) {
-    const state = this.state(id), duration = finite(state?.attributes.media_duration), at = elapsed(state);
+    const states = this.hass?.states ?? {}, state = this.state(id), duration = finite(state?.attributes.media_duration), at = elapsed(state);
     const progress = at !== undefined && duration ? Math.min(100, at / duration * 100) : undefined;
-    const volume = mediaVolume(state), muted = state?.attributes.is_volume_muted === true;
+    const muted = state?.attributes.is_volume_muted === true;
     const artist = String(state?.attributes.media_artist ?? state?.attributes.media_series_title ?? state?.attributes.media_album_name ?? '');
     const sourceName = String(state?.attributes.app_name ?? state?.attributes.source ?? '');
     const title = String(state?.attributes.media_title ?? '') || nowPlaying(state) || stateLabel(id, state);
@@ -1360,13 +1402,20 @@ export class MPNexusView extends LitElement {
       const box = (e.currentTarget as HTMLElement).getBoundingClientRect(), x = (e as PointerEvent).clientX;
       if (box.width) media('media_seek', { seek_position: Math.round(Math.min(1, Math.max(0, (x - box.left) / box.width)) * duration) });
     };
-    const others = this.players.filter(p => p !== id);
+    // Rooms that play together answer to one volume, like one speaker.
+    const zone = zoneOf(this.zones, id) ?? { leader: id, members: [id] }, levels = this.zoneLevels(zone), grouped = Object.keys(levels).length > 1;
+    const volume = grouped ? zoneVolume(Object.values(levels)) : mediaVolume(state);
+    const canVolume = grouped || canMedia(state, 'volume_set'), mutable = zone.members.filter(p => canMedia(states[p], 'volume_mute'));
+    const setVolume = (value: number) => grouped ? this.setZoneVolume(levels, value) : media('volume_set', { volume_level: value / 100 });
     return html`<div class="player">
       <div class=${`cover ${mediaPlaying(state) ? 'spin' : ''} ${this.tvArtwork(state) ? 'tv' : ''}`}>${this.tvArtwork(state) ? this.tvScreen(120) : this.mediaImage(state?.attributes.entity_picture, true)}</div>
       <div class="track"><div class="serif">${title}</div><div class="muted">${artist || stateLabel(id, state)}</div></div>
       ${sourceName ? html`<div class="playing-source">${this.mediaSourceBadge(sourceName)}<span>${sourceName}</span></div>` : nothing}
-      ${this.isMusicAssistantPlayer(id) && favoriteButton ? html`<button class="btn favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('sparkle', 15)}${tr('Favoris Music Assistant')}</button>` : nothing}
-      ${title && safeContentId ? html`<button class="btn favorite-current" aria-pressed=${saved} @click=${() => this.favoriteItem(favorite)}>${mpIcon(saved ? 'check' : 'plus', 15)}${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')}</button>` : nothing}
+      <div class="player-actions">
+        ${this.players.length > 1 ? html`<button class="pill out" aria-label=${tr('Pièces et groupes')} title=${tr('Pièces et groupes')} @click=${() => { this.mediaTab = mediaTab = 'rooms'; }}>${mpIcon('speaker', 14)}<span class="ol">${this.zoneLabel(zone)}</span>${mpIcon('arrow', 12)}</button>` : nothing}
+        ${this.isMusicAssistantPlayer(id) && favoriteButton ? html`<button class="pill favorite-current" ?disabled=${this.mediaReadOnlyGuest} aria-label=${tr('Ajouter le titre aux favoris Music Assistant')} title=${tr('Ajouter le titre aux favoris Music Assistant')} @click=${async () => { if (this.mediaReadOnlyGuest) return; try { await this.hass?.callService('button', 'press', { entity_id: favoriteButton }); this.mediaNotice = tr('Titre ajouté aux favoris Music Assistant.'); } catch { this.mediaNotice = tr('Impossible d’ajouter ce titre aux favoris Music Assistant.'); } }}>${mpIcon('heart', 14)}<span class="lb">${tr('Favoris Music Assistant')}</span></button>` : nothing}
+        ${title && safeContentId ? html`<button class="pill favorite-current" aria-pressed=${saved} aria-label=${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')} title=${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')} @click=${() => this.favoriteItem(favorite)}>${mpIcon(saved ? 'check' : 'plus', 14)}<span class="lb">${saved ? tr('Enregistré sur cet écran') : tr('Garder sur cet écran')}</span></button>` : nothing}
+      </div>
       ${progress === undefined ? nothing : html`<div class="seek"><div class=${`bar ${canMedia(state, 'seek') ? 'can' : ''}`} role=${canMedia(state, 'seek') ? 'slider' : 'progressbar'} tabindex=${canMedia(state, 'seek') ? 0 : -1} aria-label=${tr('Position')} aria-valuenow=${Math.round(progress)} aria-valuemin="0" aria-valuemax="100" aria-valuetext=${`${clockTime(at!)} / ${clockTime(duration!)}`} @click=${seek} @keydown=${(e: KeyboardEvent) => { if (!canMedia(state, 'seek') || duration === undefined) return; const delta = e.key === 'ArrowRight' || e.key === 'ArrowUp' ? 5 : e.key === 'ArrowLeft' || e.key === 'ArrowDown' ? -5 : 0; if (delta || e.key === 'Home' || e.key === 'End') { e.preventDefault(); media('media_seek', { seek_position: e.key === 'Home' ? 0 : e.key === 'End' ? duration : Math.max(0, Math.min(duration, (at ?? 0) + delta)) }); } }}><i style=${`width:${progress}%`}></i></div>
         <div class="times"><span>${clockTime(at!)}</span><span>${clockTime(duration!)}</span></div></div>`}
       <div class="ctl">
@@ -1376,14 +1425,13 @@ export class MPNexusView extends LitElement {
         <button aria-label=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('next', 22)}</button>
         ${canMedia(state, 'repeat_set') ? html`<button class="sm" aria-label=${tr('Répéter')} title=${repeat === 'one' ? tr('Répéter ce titre') : tr('Répéter')} aria-pressed=${repeat !== 'off'} @click=${() => media('repeat_set', { repeat: nextRepeat(repeat) })}>${mpIcon('repeat', 19)}${repeat === 'one' ? html`<small class="one">1</small>` : nothing}</button>` : html`<span class="sm"></span>`}
       </div>
-      ${volume !== undefined && canMedia(state, 'volume_set') ? html`<div class="vol">
-        <button class="ib" aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} ?disabled=${!canMedia(state, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 17)}</button>
-        <input type="range" min="0" max="100" .value=${String(Math.round(volume))} aria-label=${tr('Volume')} @change=${(e: Event) => media('volume_set', { volume_level: Number((e.target as HTMLInputElement).value) / 100 })}>
+      ${volume !== undefined && canVolume ? html`<div class="vol">
+        <button class="ib" aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} ?disabled=${!mutable.length} @click=${() => media('volume_mute', { entity_id: grouped ? mutable : id, is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 17)}</button>
+        <input type="range" min="0" max="100" .value=${String(Math.round(volume))} aria-label=${grouped ? tr('Volume du groupe') : tr('Volume')} title=${grouped ? tr('Volume du groupe') : tr('Volume')} @change=${(e: Event) => setVolume(Number((e.target as HTMLInputElement).value))}>
         <span class="muted" style="font-size:12px;min-width:38px;text-align:right">${Math.round(volume)} %</span></div>` : nothing}
       ${soundModes.length && canMedia(state, 'select_sound_mode') ? html`<label class="vol">${mpIcon('sliders', 18)}<select aria-label=${tr('Mode sonore')} @change=${(e: Event) => media('select_sound_mode', { sound_mode: (e.target as HTMLSelectElement).value })}>${soundModes.map(m => html`<option .selected=${m === state?.attributes.sound_mode} value=${m}>${m}</option>`)}</select><span></span></label>` : nothing}
       ${this.queue?.player === id && this.queue.next ? html`<div class="rlab">${tr('À suivre')}</div><div class="live glass"><span class="art">${this.mediaImage(this.queue.next.image)}</span><div><b>${this.queue.next.title}</b><small>${this.queue.next.artist}</small></div></div>` : nothing}
       ${this.musicQueueData?.player === id && this.musicQueueData.items.length ? this.musicQueuePanel() : nothing}
-      ${others.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...others].map(p => html`<button class="pill" aria-pressed=${p === id} @click=${() => { this.player = mediaPlayer = p; this.requestUpdate(); }}>${mpIcon(entityIcon(p, this.state(p)), 13)}${this.playerLabel(p)}${mediaPlaying(this.state(p)) ? html`<i class="eq"></i>` : nothing}</button>`)}</div>` : nothing}
     </div>`;
   }
   // ——— Music: the household engine, then the services connected to it ———
@@ -1565,46 +1613,67 @@ export class MPNexusView extends LitElement {
     else body = html`<p class="note" role="alert">${step.reason || tr('La connexion à {name} n’a pas abouti. Réessayez.', { name: service.name })}</p><button class="btn" @click=${() => this.closeFlow()}>${tr('Fermer')}</button>`;
     return html`<div class="music-flow glass">${head}${body}</div>`;
   }
-  /** Sources and apps to start in one touch, then the library the player offers to browse. */
+  /** What to play: a search, the favourites of this screen, the shelves of the music, the apps and inputs, then the services. */
   private forYou(id: string) {
     const state = this.state(id), tv = mediaIsTv(state);
-    const otherPlayers = this.players.filter(player => player !== id);
-    const currentArtwork = state?.attributes.entity_picture;
-    const currentTitle = nowPlaying(state);
     const sources = Array.isArray(state?.attributes.source_list) ? (state!.attributes.source_list as unknown[]).map(String) : [];
     const browsing = this.browsing, level = browsing?.player === id ? browsing.stack[browsing.stack.length - 1] : undefined;
     const playItem = (item: Pick<BrowseItem, 'media_content_id'|'media_content_type'>) => void this.mediaCall('play_media', { entity_id: id, media_content_id: item.media_content_id, media_content_type: item.media_content_type });
-    const target = this.musicTarget(id);
+    const target = this.musicTarget(id), bridged = this.musicBridge !== 'loading' && !!this.musicBridge?.connected;
     const addFavorite = (item: BrowseItem) => { const mediaId = safeFavoriteContentId(item.media_content_id); if (!mediaId) return; this.favoriteItem({ key: `${id}|${item.media_content_type}|${mediaId}`, title: item.title, artist: '', media_content_id: mediaId, media_content_type: item.media_content_type, ...(safeFavoriteImage(item.thumbnail, location.origin) ? { image: safeFavoriteImage(item.thumbnail, location.origin) } : {}), player: id }); };
-    return html`
-      ${this.musicSetup()}
-      ${target && target !== id ? html`<p class="muted music-target">${mpIcon('speaker', 13)}${tr('La musique choisie ici joue sur {player}.', { player: this.playerLabel(target) })}</p>` : nothing}
-      ${this.isMusicAssistantPlayer(id) || target ? html`<form class="media-search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
-        <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label><input id="mp-ma-search" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
-        <button class="btn" type="submit" ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('search', 15)}${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</button>
-      </form>` : nothing}
-      ${this.mediaResults && target ? html`<div class="rlab">${tr('Résultats')}</div>${this.mediaResults.length ? this.musicList(target, this.mediaResults) : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}`
-        : this.mediaResults ? html`<div class="rlab">${tr('Résultats Music Assistant')}</div>${this.mediaResults.length ? html`<div class="lib">${this.mediaResults.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon('plus', 14)}</button>` : nothing}</div>`)}</div>` : html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`}` : nothing}
-      ${target ? this.musicHub(target) : nothing}
-      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? html`<div class="music-connected">${mpIcon('check', 16)}<span><b>${tr('Musique')}</b><small>${tr('Connecté automatiquement · {n} lecteur|Connecté automatiquement · {n} lecteurs', { n: this.musicBridge.player_count ?? this.players.filter(player => this.isMusicAssistantPlayer(player)).length })}</small></span></div>` : nothing}
-      ${otherPlayers.length ? html`<div class="rlab">${tr('Lecteurs')}</div><div class="houses">${[id, ...otherPlayers].map(player => html`<button class="pill" aria-pressed=${player === id} @click=${() => { this.player = mediaPlayer = player; this.browsing = undefined; this.mediaResults = undefined; this.browseRequest++; this.mediaSearchRequest++; this.requestUpdate(); }}>${mpIcon(entityIcon(player, this.state(player)), 13)}${this.playerLabel(player)}${this.isMusicAssistantPlayer(player) ? html`<span>Music Assistant</span>` : nothing}</button>`)}</div>` : nothing}
-      ${currentTitle && currentArtwork ? html`<div class="rlab">${tr('En lecture')}</div><div class="live glass"><span class="art">${this.mediaImage(currentArtwork, true)}</span><div><b>${currentTitle}</b><small>${this.playerLabel(id)}</small></div></div>` : nothing}
-      <div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
-      ${this.mediaFavorites.length ? html`<div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
-        <button class="favorite-play" @click=${() => playItem(item)}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.image || (this.state(item.player)?.attributes.media_content_id === item.media_content_id ? this.state(item.player)?.attributes.entity_picture : undefined))}</span><span><b>${item.title}</b><small>${item.source ? this.mediaSourceBadge(item.source) : nothing}${item.artist || item.media_content_type}</small></span></button>
-        <button class="ib" aria-label=${tr('Retirer des favoris')} title=${tr('Retirer des favoris')} @click=${() => this.favoriteItem(item)}>${mpIcon('close', 15)}</button>
-      </div>`)}</div>` : html`<p class="empty">${tr('Gardez ici vos morceaux, albums et playlists préférés.')}</p>`}
-      ${sources.length && canMedia(state, 'select_source') ? html`<div class="rlab">${tv ? tr('Applis et entrées') : tr('Sources')}</div>
-        <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => void this.mediaCall('select_source', { entity_id: id, source: s })}>${this.mediaSourceBadge(s)}<b>${s}</b></button>`)}</div>` : nothing}
-      ${this.musicBridge !== 'loading' && this.musicBridge?.connected ? nothing : canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
+    const clear = () => { this.mediaSearchRequest++; this.mediaSearching = false; this.mediaSearch = ''; this.mediaResults = undefined; };
+    const where = target && target !== id ? html`<p class="muted music-target">${mpIcon('speaker', 13)}${tr('La musique choisie ici joue sur {player}.', { player: this.playerLabel(target) })}</p>` : nothing;
+    const search = this.isMusicAssistantPlayer(id) || target ? html`<form class="media-search" role="search" @submit=${(event: Event) => { event.preventDefault(); void this.searchMusicAssistant(id); }}>
+        <label class="sr" for="mp-ma-search">${tr('Rechercher dans Music Assistant')}</label>
+        <span class="inp">${mpIcon('search', 16)}<input id="mp-ma-search" type="text" inputmode="search" enterkeyhint="search" autocomplete="off" .value=${this.mediaSearch} placeholder=${tr('Titre, artiste, album ou radio')} @input=${(event: Event) => { this.mediaSearch = (event.target as HTMLInputElement).value; }}>
+          ${this.mediaSearch || this.mediaResults ? html`<button type="button" class="clr" aria-label=${tr('Effacer la recherche')} title=${tr('Effacer la recherche')} @click=${clear}>${mpIcon('close', 14)}</button>` : nothing}</span>
+        <button class="btn" type="submit" aria-label=${tr('Rechercher')} ?disabled=${this.mediaSearching || this.mediaReadOnlyGuest || !this.mediaSearch.trim()}>${mpIcon('arrow', 16)}<span class="lb">${this.mediaSearching ? tr('Recherche…') : tr('Rechercher')}</span></button>
+      </form>` : nothing;
+    // A search takes the page: its answers sorted by kind, and a way back.
+    if (this.mediaResults || this.mediaSearching) {
+      const found = this.mediaResults ?? [];
+      return html`${search}${where}
+        <div class="sec"><b>${tr('Résultats')}</b><button @click=${clear}>${tr('Fermer')}</button></div>
+        ${this.mediaSearching ? html`<p class="empty">${tr('Recherche…')}</p>` : !found.length ? html`<p class="empty">${tr('Aucun résultat pour cette recherche.')}</p>`
+          : target ? resultGroups(found as MusicHubItem[]).map(group => html`<div class="rlab">${tr(RESULT_LABELS[group.kind])}</div>${this.musicList(target, group.items, group.kind === 'track' || group.kind === 'other' ? 'rows' : group.kind === 'artist' ? 'faces' : 'strip')}`)
+            : html`<div class="lib">${found.map(item => html`<div class="li"><button class="library-open" ?disabled=${!item.can_play && !item.can_expand} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}><span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}</span><b>${item.title}</b></button>${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`}`;
+    }
+    // One shelf of the music, opened from the front page.
+    if (target && this.musicShelf) {
+      const shelf = this.musicShelf, items = this.musicItems ?? [];
+      return html`${search}${where}
+        <div class="shelf-head"><button class="ib" aria-label=${tr('Retour')} title=${tr('Retour')} @click=${() => { this.musicShelf = undefined; this.requestUpdate(); }}>${mpIcon('back', 16)}</button><b class="serif">${tr(MUSIC_SHELVES.find(s => s.kind === shelf)!.label)}</b>${this.musicLoading ? nothing : html`<small>${items.length}</small>`}</div>
+        <div class="houses music-kinds">${MUSIC_SHELVES.map(({ kind, label }) => html`<button class="pill" aria-pressed=${shelf === kind} @click=${() => this.openShelf(kind)}>${tr(label)}</button>`)}</div>
+        ${this.musicLoading ? html`<p class="empty">${tr('Chargement…')}</p>` : items.length ? this.musicList(target, items, shelf === 'tracks' ? 'rows' : shelf === 'artists' ? 'round' : 'grid') : html`<p class="empty">${tr('Aucun média dans cette section.')}</p>`}`;
+    }
+    const favorites = this.mediaFavorites.length ? html`<div class="sec"><b>${tr('Favoris MP Nexus · cet écran')}</b><span>${this.mediaFavorites.length}</span></div>
+      <div class="media-favorites">${this.mediaFavorites.map(item => html`<div class="media-favorite">
+        <button class="favorite-play" @click=${() => playItem(item)}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.image || (this.state(item.player)?.attributes.media_content_id === item.media_content_id ? this.state(item.player)?.attributes.entity_picture : undefined))}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${item.source ? this.mediaSourceBadge(item.source) : nothing}<span>${item.artist || item.source || item.media_content_type}</span></small></button>
+        <button class="favorite-remove" aria-label=${tr('Retirer des favoris')} title=${tr('Retirer des favoris')} @click=${() => this.favoriteItem(item)}>${mpIcon('close', 12)}</button>
+      </div>`)}</div>` : nothing;
+    const shelves = target ? html`<div class="sec"><b>${tr('Ma musique')}</b></div>
+      <div class="shelves">${MUSIC_SHELVES.map(({ kind, label, icon }) => html`<button class=${`shelf-tile k-${kind}`} @click=${() => this.openShelf(kind)}><span class="si">${mpIcon(icon, 20)}</span><b>${tr(label)}</b>${mpIcon('arrow', 13)}</button>`)}</div>` : nothing;
+    const inputs = sources.length && canMedia(state, 'select_source') ? html`<div class="sec"><b>${tv ? tr('Applis et entrées') : tr('Sources')}</b></div>
+      <div class="srcs">${sources.map(s => html`<button class="src" aria-pressed=${s === state?.attributes.source} @click=${() => void this.mediaCall('select_source', { entity_id: id, source: s })}>${this.mediaSourceBadge(s)}<b>${s}</b></button>`)}</div>` : nothing;
+    // Without the music engine, the player's own library, as Home Assistant browses it.
+    const library = bridged ? nothing : canMedia(state, 'browse_media') ? html`<div class="sec"><b>${level && browsing!.stack.length > 1 ? level.title : tr('Bibliothèque')}</b>${browsing && browsing.stack.length > 1 ? html`<button @click=${() => { this.browsing = { ...browsing, stack: browsing.stack.slice(0, -1) }; }}>${tr('Retour')}</button>` : nothing}</div>
         ${browsing?.player === id && browsing.state === 'loading' ? html`<p class="empty">${tr('Chargement…')}</p>`
           : browsing?.player === id && browsing.state === 'error' ? html`<p class="empty">${tr('La bibliothèque de ce lecteur ne répond pas.')} <button class="btn" @click=${() => { this.browsing = undefined; }}>${tr('Réessayer')}</button></p>`
             : level?.children?.length ? html`${!level.children.some(item => displayMediaImage(item.thumbnail)) ? html`<p class="media-art-hint">${tr('Ce dossier ne fournit aucune pochette. Ouvrez un album ou choisissez un lecteur Music Assistant pour voir les pochettes disponibles.')}</p>` : nothing}<div class="lib">${level.children.map(item => html`<div class="li">
               <button class="library-open" ?disabled=${!item.can_expand && !item.can_play} @click=${() => item.can_expand ? void this.browseInto(id, item) : item.can_play ? playItem(item) : undefined}>
                 <span class="th">${mpIcon(item.can_expand ? 'grid' : 'music', 20)}${this.mediaImage(item.thumbnail)}${item.can_play ? html`<i class="pl">${mpIcon('play', 14)}</i>` : nothing}</span><b>${item.title}</b></button>
       ${item.can_play && safeFavoriteContentId(item.media_content_id) ? html`<button class="favorite-add" aria-label=${tr('Garder sur cet écran')} title=${tr('Garder sur cet écran')} @click=${() => addFavorite(item)}>${mpIcon(this.mediaFavorites.some(saved => saved.key === `${id}|${item.media_content_type}|${item.media_content_id}`) ? 'check' : 'plus', 14)}</button>` : nothing}</div>`)}</div>`
-              : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}`;
+              : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`}` : sources.length || target ? nothing : html`<p class="empty">${tr('Rien à parcourir sur ce lecteur.')}</p>`;
+    // The services come first while there is something to do about them, and last once they simply work.
+    const services = this.musicSetup(), settled = this.musicSettled;
+    return html`${settled ? nothing : services}${search}${where}${favorites}${shelves}${inputs}${library}${settled ? services : nothing}`;
   }
+  /** The music engine runs and at least one service is connected: nothing left to set up. */
+  private get musicSettled() {
+    const engine = this.engine, sources = this.musicSources;
+    return typeof engine === 'object' && engine.phase === 'ready' && !this.musicFlow && !this.musicServicesOpen && typeof sources === 'object' && connectedServices(sources.providers, sources.manifests).length > 0;
+  }
+  private openShelf(kind: MusicLibraryKind) { this.musicShelf = kind; void this.loadMusicLibrary(kind); this.requestUpdate(); }
   /**
    * The Music Assistant player that plays what is picked on this one: itself, else the Music Assistant twin of the
    * same speaker (same name), else the first one. Music from the services only plays through Music Assistant.
@@ -1616,20 +1685,18 @@ export class MPNexusView extends LitElement {
     const name = this.playerLabel(id).trim().toLowerCase();
     return own.find(player => this.playerLabel(player).trim().toLowerCase() === name) ?? own.find(player => this.hass?.entities?.[player]?.device_id && this.hass?.entities?.[player]?.device_id === this.hass?.entities?.[id]?.device_id) ?? own[0];
   }
-  private musicList(id: string, items: MusicHubItem[]) {
-    return html`<div class="lib music-hub">${items.map(item => html`<div class="li music-item">
-        <button class="library-open" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon('music', 20)}${this.mediaImage(item.thumbnail)}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${item.artist || item.album || item.media_content_type}</small></button>
-        <div class="media-item-actions"><button aria-label=${tr('Lire ensuite')} title=${tr('Lire ensuite')} @click=${() => void this.musicItemAction(id, item, 'play_next')}>${mpIcon('next', 13)}</button><button aria-label=${tr('Ajouter à la file')} title=${tr('Ajouter à la file')} @click=${() => void this.musicItemAction(id, item, 'add')}>${mpIcon('plus', 13)}</button></div>
+  /** Music to play in one touch: covers in a grid or on one line, round faces for artists, rows for tracks. */
+  private musicList(id: string, items: MusicHubItem[], look: 'grid'|'strip'|'round'|'faces'|'rows' = 'grid') {
+    const badge = (item: MusicHubItem) => { const provider = providerOf(item.media_content_id), brand = provider ? serviceBrand(provider.replace(/_/g, ' ')) : undefined; return brand ? html`<span class=${`source-logo tiny ${brand.tone}`} title=${provider!}><img src=${brand.image} alt=""></span>` : nothing; };
+    const round = look === 'round' || look === 'faces';
+    const more = (item: MusicHubItem) => html`<div class="media-item-actions">${look === 'rows' ? html`<button aria-label=${tr('Lire ensuite')} title=${tr('Lire ensuite')} @click=${() => void this.musicItemAction(id, item, 'play_next')}>${mpIcon('next', 13)}</button>` : html`<span></span>`}<button aria-label=${tr('Ajouter à la file')} title=${tr('Ajouter à la file')} @click=${() => void this.musicItemAction(id, item, 'add')}>${mpIcon('plus', 13)}</button></div>`;
+    if (look === 'rows') return html`<div class="tracks">${items.map(item => html`<div class="trk">
+        <button class="trk-play" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon('music', 18)}${this.mediaImage(item.thumbnail)}</span><span class="tt"><b>${item.title}</b><small>${badge(item)}<span>${[item.artist, item.album].filter(Boolean).join(' · ') || item.media_content_type}</span></small></span>${item.duration ? html`<time>${clockTime(item.duration)}</time>` : nothing}</button>
+        ${more(item)}</div>`)}</div>`;
+    return html`<div class=${`lib music-hub ${look === 'faces' ? 'strip round' : look}`}>${items.map(item => html`<div class="li music-item">
+        <button class="library-open" @click=${() => void this.musicItemAction(id, item, 'play_now')}><span class="th">${mpIcon(round ? 'user' : 'music', 20)}${this.mediaImage(item.thumbnail)}<i class="pl">${mpIcon('play', 14)}</i></span><b>${item.title}</b><small>${badge(item)}<span>${item.artist || item.album || ''}</span></small></button>
+        ${more(item)}
       </div>`)}</div>`;
-  }
-  private musicHub(id: string) {
-    const kinds: { kind: MusicLibraryKind; label: Parameters<typeof tr>[0] }[] = [
-      { kind: 'albums', label: 'Albums' }, { kind: 'artists', label: 'Artistes' }, { kind: 'tracks', label: 'Morceaux' },
-      { kind: 'playlists', label: 'Playlists' }, { kind: 'radio', label: 'Radios' }, { kind: 'podcasts', label: 'Podcasts' },
-    ];
-    return html`<div class="sec"><b>${tr('Ma bibliothèque')}</b><span>${this.musicItems?.length ?? 0}</span></div>
-      <div class="houses music-kinds">${kinds.map(({ kind, label }) => html`<button class="pill" aria-pressed=${this.musicKind === kind} @click=${() => void this.loadMusicLibrary(kind)}>${tr(label)}</button>`)}</div>
-      ${this.musicLoading ? html`<p class="empty">${tr('Chargement…')}</p>` : this.musicItems?.length ? this.musicList(id, this.musicItems) : html`<p class="empty">${tr('Aucun média dans cette section.')}</p>`}`;
   }
   private musicQueuePanel() {
     const queue = this.musicQueueData!;
@@ -1647,22 +1714,54 @@ export class MPNexusView extends LitElement {
       this.browsing = { player, stack: [...stack, level], state: 'ready' };
     } catch { if (request === this.browseRequest && player === this.currentPlayer) this.browsing = { player, stack, state: 'error' }; }
   }
-  /** Every player of the house: its volume, what it plays, and whether it plays with the one chosen. */
+  /** Adds a room to the zone or takes it out, and shows it as moving until Home Assistant says it is done. */
+  private groupToggle(leader: string, player: string, join: boolean) {
+    this.groupBusy.set(player, join);
+    window.setTimeout(() => { if (this.groupBusy.delete(player)) this.requestUpdate(); }, 8000);
+    void (join ? this.mediaCall('join', { entity_id: leader, group_members: [player] }) : this.mediaCall('unjoin', { entity_id: player })).then(ok => { if (!ok) this.groupBusy.delete(player); this.requestUpdate(); });
+    this.requestUpdate();
+  }
+  /** Which rooms play together: the zone being listened to, a tick on each room that plays with it, and one volume for each. */
   private speakers(id: string) {
-    const states = this.hass?.states ?? {}, current = states[id], group = groupOf(states, id);
-    const groups = canMedia(current, 'grouping');
-    const playing = this.players.filter(p => mediaPlaying(states[p]) && canMedia(states[p], 'pause'));
-    return html`<div class="sg">${[id, ...this.players.filter(p => p !== id)].map(p => {
-      const s = states[p], volume = mediaVolume(s), joined = group.includes(p), self = p === id;
-      return html`<div class="spk">
-        <button class="rw" @click=${() => { this.player = mediaPlayer = p; this.mediaTab = 'play'; mediaTab = 'play'; this.requestUpdate(); }}><span class="ib" style=${self ? 'color:var(--accent)' : ''}>${mpIcon(entityIcon(p, s), 16)}</span><div><b>${this.playerLabel(p)}</b><small>${[stateLabel(p, s), mediaOn(s) ? nowPlaying(s) : ''].filter(Boolean).join(' · ')}</small></div>
-          <span class="end">${self ? html`<span class="pill">${tr('Ce lecteur')}</span>` : nothing}</span></button>
-        ${groups && !self && canMedia(s, 'grouping') ? html`<button class="end" role="switch" aria-checked=${joined} aria-label=${tr('Jouer ensemble')} title=${tr('Jouer ensemble')} @click=${() => joined ? this.call('media_player', 'unjoin', { entity_id: p }) : this.call('media_player', 'join', { entity_id: id, group_members: [p] })}><span class=${`tgl ${joined ? '' : 'off'}`}></span></button>` : nothing}
-        ${volume !== undefined && canMedia(s, 'volume_set') ? html`<label class="vol mini">${mpIcon('volume', 15)}<input type="range" min="0" max="100" .value=${String(volume)} aria-label=${tr('Volume')} @change=${(e: Event) => this.call('media_player', 'volume_set', { entity_id: p, volume_level: Number((e.target as HTMLInputElement).value) / 100 })}><span class="muted">${volume} %</span></label>` : nothing}
-      </div>`;
-    })}</div>
-    ${groups ? html`<p class="muted" style="font-size:12px;margin:0">${tr('Activez une pièce pour qu’elle joue la même musique que {room}.', { room: this.roomOf(id) ?? this.name(id) })}</p>` : nothing}
-    ${playing.length ? html`<button class="btn" @click=${() => this.call('media_player', 'media_pause', { entity_id: playing })}>${mpIcon('pause', 16)}${tr('Tout mettre en pause')}</button>` : nothing}`;
+    const states = this.hass?.states ?? {}, zones = this.zones, zone = zoneOf(zones, id) ?? { leader: id, members: [id] };
+    const leader = zone.leader, lead = states[leader], canGroup = canMedia(lead, 'grouping');
+    const groupable = canGroup ? this.players.filter(p => p !== leader && canMedia(states[p], 'grouping')) : [];
+    const others = this.players.filter(p => p !== leader && !groupable.includes(p));
+    for (const [player, join] of [...this.groupBusy]) if (zone.members.includes(player) === join) this.groupBusy.delete(player);
+    const levels = this.zoneLevels(zone), master = zoneVolume(Object.values(levels)), several = Object.keys(levels).length > 1;
+    const playingNow = this.players.filter(p => mediaPlaying(states[p]) && canMedia(states[p], 'pause'));
+    const free = groupable.filter(p => !zone.members.includes(p)), joined = zone.members.filter(p => p !== leader);
+    const room = this.roomOf(leader) ?? this.name(leader), art = mediaOn(lead) && !this.tvArtwork(lead) ? zone.members.map(p => states[p]?.attributes.entity_picture).find(Boolean) : undefined;
+    const slider = (p: string) => { const s = states[p], volume = mediaVolume(s); return volume !== undefined && canMedia(s, 'volume_set') ? html`<label class="vol mini">${mpIcon('volume', 15)}<input type="range" min="0" max="100" .value=${String(volume)} aria-label=${`${tr('Volume')} · ${this.playerLabel(p)}`} @change=${(e: Event) => void this.mediaCall('volume_set', { entity_id: p, volume_level: Number((e.target as HTMLInputElement).value) / 100 })}><span class="muted">${volume} %</span></label>` : nothing; };
+    const tick = (p: string) => {
+      const s = states[p], inside = zone.members.includes(p), moving = this.groupBusy.get(p), elsewhere = !inside ? zoneOf(zones, p) : undefined;
+      const status = moving === true ? tr('Ajout au groupe…') : moving === false ? tr('Retrait du groupe…') : inside ? tr('Joue avec {room}', { room })
+        : elsewhere && elsewhere.members.length > 1 ? tr('Dans un autre groupe : {group}', { group: this.zoneLabel(elsewhere) }) : mediaPlaying(s) ? tr('Joue autre chose : {title}', { title: nowPlaying(s) ?? stateLabel(p, s) }) : tr('Disponible');
+      return html`<div class=${`grp ${inside ? 'in' : ''} ${moving !== undefined ? 'moving' : ''}`}>
+        <button class="grp-tick" role="checkbox" aria-checked=${moving ?? inside} aria-label=${this.playerLabel(p)} ?disabled=${moving !== undefined || this.mediaReadOnlyGuest} @click=${() => this.groupToggle(leader, p, !inside)}>
+          <span class="ck">${(moving ?? inside) ? mpIcon('check', 15) : mpIcon('plus', 15)}</span><span class="gt"><b>${this.playerLabel(p)}</b><small>${status}</small></span></button>
+        ${inside ? slider(p) : nothing}</div>`;
+    };
+    return html`
+      <div class="zone-card glass">
+        <span class=${`art ${this.tvArtwork(lead) ? 'tv' : ''}`}>${this.tvArtwork(lead) ? this.tvScreen(30) : art ? this.mediaImage(art) : mpIcon(entityIcon(leader, lead), 20)}</span>
+        <div class="zc"><small class="lbl">${zone.members.length > 1 ? tr('{n} pièces jouent ensemble', { n: zone.members.length }) : tr('Écoute en cours')}</small><b>${this.zoneLabel(zone)}</b><small>${nowPlaying(lead) || stateLabel(leader, lead)}</small></div>
+        ${canMedia(lead, 'pause') || canMedia(lead, 'play') ? html`<button class="ib round" aria-label=${mediaPlaying(lead) ? tr('Pause') : tr('Lecture')} @click=${() => void this.mediaCall('media_play_pause', { entity_id: leader })}>${mpIcon(mediaPlaying(lead) ? 'pause' : 'play', 20)}</button>` : nothing}
+        ${several && master !== undefined ? html`<label class="vol zone-vol"><span class="vl">${tr('Volume du groupe')}</span><input type="range" min="0" max="100" .value=${String(master)} aria-label=${tr('Volume du groupe')} @change=${(e: Event) => this.setZoneVolume(levels, Number((e.target as HTMLInputElement).value))}><span class="muted">${master} %</span></label>` : nothing}
+      </div>
+      ${canGroup ? html`
+        <div class="sec"><b>${tr('Pièces')}</b>${free.length > 1 || (free.length === 1 && joined.length) ? html`<button @click=${() => { for (const p of free) this.groupToggle(leader, p, true); }}>${tr('Jouer partout')}</button>` : joined.length > 1 ? html`<button @click=${() => { for (const p of joined) this.groupToggle(leader, p, false); }}>${tr('Tout séparer')}</button>` : nothing}</div>
+        <div class="grps">
+          <div class="grp in lead"><div class="grp-tick"><span class="ck">${mpIcon('check', 15)}</span><span class="gt"><b>${this.playerLabel(leader)}</b><small>${zone.members.length > 1 ? tr('Pièce principale du groupe') : tr('Pièce écoutée')}</small></span></div>${slider(leader)}</div>
+          ${groupable.length ? [...joined.filter(p => groupable.includes(p)), ...free].map(tick) : nothing}
+        </div>
+        ${groupable.length ? html`<p class="hint">${tr('Cochez une pièce pour qu’elle joue la même chose que {room}. Décochez-la pour qu’elle reprenne son indépendance.', { room })}</p>` : html`<p class="hint">${tr('Aucune autre enceinte de la maison ne peut se grouper avec celle-ci.')}</p>`}`
+        : html`<p class="hint">${tr('Ce lecteur joue seul : il ne se groupe pas avec les enceintes.')}</p>`}
+      ${others.length ? html`<div class="sec"><b>${canGroup ? tr('Autres lecteurs') : tr('Lecteurs')}</b></div>
+        <div class="grps">${zones.filter(z => z.members.some(p => others.includes(p))).map(z => { const p = z.leader, s = states[z.members.find(m => mediaPlaying(states[m])) ?? p]; return html`<div class="grp other">
+          <button class="grp-tick" @click=${() => this.selectPlayer(p)}><span class="ck">${mpIcon(entityIcon(p, states[p]), 15)}</span><span class="gt"><b>${this.zoneLabel(z)}</b><small>${nowPlaying(s) || stateLabel(p, s)}</small></span><span class="go">${tr('Choisir')}${mpIcon('arrow', 12)}</span></button>
+          ${z.members.length === 1 ? slider(p) : nothing}</div>`; })}</div>` : nothing}
+      ${playingNow.length > 1 ? html`<button class="btn" @click=${() => void this.mediaCall('media_pause', { entity_id: playingNow })}>${mpIcon('pause', 16)}${tr('Tout mettre en pause')}</button>` : nothing}`;
   }
   /** The remote of a television: the same arrows or trackpad for every brand, then the keys its brand and integration really have. */
   private remote(id: string) {
@@ -1708,39 +1807,43 @@ export class MPNexusView extends LitElement {
     const jump = (by: number) => routes[by < 0 ? 'rewind' : 'forward'] ? send(by < 0 ? 'rewind' : 'forward') : canSeek ? media('media_seek', { seek_position: Math.max(0, Math.min(duration ?? Infinity, at! + by)) }) : undefined;
     const ten = layout.skip === 'ten' || !routes.rewind;
     const canJump = (by: number) => !!routes[by < 0 ? 'rewind' : 'forward'] || canSeek;
+    const wide = (k: RemoteKey) => { const [icon, label] = face(k); return html`<button class=${`rwide k-${k}`} @click=${() => send(k)}>${mpIcon(icon, 18)}<span>${label}</span></button>`; };
     return html`<div class="remote-body">
-      ${mediaIsTv(state) || Object.keys(routes).length ? html`<div class="remote-mode">${profile ? html`<span class=${`remote-brand ${profile.tone}`}>${mpIcon('tv', 14)}<b>${profile.brand && !profile.system.startsWith(profile.brand) ? profile.brand : profile.system}</b>${profile.brand && !profile.system.startsWith(profile.brand) ? html`<small>${profile.system}</small>` : nothing}</span>` : nothing}<span>${tr('Trackpad')}</span><button role="switch" aria-checked=${trackpad} aria-label=${tr('Trackpad')} ?disabled=${!canTrackpad || this.mediaReadOnlyGuest} title=${canTrackpad ? tr('Trackpad') : tr('Le trackpad n’est pas pris en charge par ce lecteur.')} @click=${() => this.toggleRemoteTrackpad(id, !trackpad)}><span class=${`tgl ${trackpad ? '' : 'off'}`}></span></button></div>` : nothing}
-      <div class="rtop">
-        ${top.map(k => k === 'power' ? rkey(on ? tr('Éteindre') : tr('Allumer'), 'power', () => media(on ? 'turn_off' : 'turn_on'), { cls: `power ${on ? 'on' : ''}`, disabled: !canMedia(state, on ? 'turn_off' : 'turn_on') }) : rkey(face(k)[1], face(k)[0], () => send(k)))}
-      </div>
-      ${Object.keys(routes).length ? html`<div class=${`pad ${trackpad ? 'tracking' : ''}`} role="group" aria-label=${tr('Télécommande')}>
-        ${trackpad ? html`<div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}><span>${mpIcon('hand', 22)}</span><b>${tr('Glissez pour naviguer · Touchez pour OK')}</b></div>` : html`${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}`}
-      </div>` : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips, Sony, Panasonic et Kodi.')}</p>`}
-      ${under.length ? html`<div class="remote-under" style=${`--n:${under.length}`}>${under.map(k => { const [icon, label] = face(k); return html`<button class=${`rwide k-${k}`} @click=${() => send(k)}>${mpIcon(icon, 19)}<span>${label}</span></button>`; })}</div>` : nothing}
-      <div class="remote-transport" role="group" aria-label=${tr('Lecture')}>
-        <button class="rskip" aria-label=${ten ? tr('Reculer de 10 s') : tr('Reculer')} title=${ten ? tr('Reculer de 10 s') : tr('Reculer')} ?disabled=${!canJump(-10)} @click=${() => jump(-10)}>${mpIcon(ten ? 'rewind10' : 'rewind', 26)}<small>${ten ? '−10 s' : tr('Reculer')}</small></button>
-        <button class="rplay" aria-label=${playing ? tr('Pause') : tr('Lecture')} title=${playing ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(playing ? 'pause' : 'play', 28)}</button>
-        <button class="rskip" aria-label=${ten ? tr('Avancer de 10 s') : tr('Avancer')} title=${ten ? tr('Avancer de 10 s') : tr('Avancer')} ?disabled=${!canJump(10)} @click=${() => jump(10)}>${mpIcon(ten ? 'forward10' : 'forward', 26)}<small>${ten ? '+10 s' : tr('Avancer')}</small></button>
-      </div>
-      <div class="rkeys">
-        <div class="rk" role="group" aria-label=${tr('Volume')}><button aria-label=${tr('Monter le volume')} title=${tr('Monter le volume')} ?disabled=${!canStep} @click=${() => step(5)}>${mpIcon('plus', 20)}</button><small>${tr('Volume')}</small><button aria-label=${tr('Baisser le volume')} title=${tr('Baisser le volume')} ?disabled=${!canStep} @click=${() => step(-5)}>${mpIcon('minus', 20)}</button></div>
-        <div class="rc">
-          ${rkey(muted ? tr('Rétablir le son') : tr('Couper le son'), muted ? 'mute' : 'volume', () => media('volume_mute', { is_volume_muted: !muted }), { cls: muted ? 'muted' : '', disabled: !canMedia(state, 'volume_mute'), pressed: muted })}
+      <div class="remote-shell">
+        ${mediaIsTv(state) || Object.keys(routes).length ? html`<div class="remote-mode">${profile ? html`<span class=${`remote-brand ${profile.tone}`}><b>${profile.brand && !profile.system.startsWith(profile.brand) ? profile.brand : profile.system}</b>${profile.brand && !profile.system.startsWith(profile.brand) ? html`<small>${profile.system}</small>` : nothing}</span>` : nothing}<span>${tr('Trackpad')}</span><button role="switch" aria-checked=${trackpad} aria-label=${tr('Trackpad')} ?disabled=${!canTrackpad || this.mediaReadOnlyGuest} title=${canTrackpad ? tr('Trackpad') : tr('Le trackpad n’est pas pris en charge par ce lecteur.')} @click=${() => this.toggleRemoteTrackpad(id, !trackpad)}><span class=${`tgl ${trackpad ? '' : 'off'}`}></span></button></div>` : nothing}
+        <div class="rtop">
+          ${top.map(k => k === 'power' ? rkey(on ? tr('Éteindre') : tr('Allumer'), 'power', () => media(on ? 'turn_off' : 'turn_on'), { cls: `power ${on ? 'on' : ''}`, disabled: !canMedia(state, on ? 'turn_off' : 'turn_on') }) : rkey(face(k)[1], face(k)[0], () => send(k)))}
         </div>
-        ${layout.channels ? html`<div class="rk" role="group" aria-label=${tr('Chaîne')}><button aria-label=${tr('Suivant')} title=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('up', 20)}</button><small>${tr('Chaîne')}</small><button aria-label=${tr('Précédent')} title=${tr('Précédent')} ?disabled=${!canMedia(state, 'previous_track')} @click=${() => media('media_previous_track')}>${mpIcon('down', 20)}</button></div>` : html`<span class="rk-space"></span>`}
+        ${Object.keys(routes).length ? html`<div class=${`pad ${trackpad ? 'tracking' : ''}`} role="group" aria-label=${tr('Télécommande')}>
+          ${trackpad ? html`<div class="track-surface" role="button" tabindex="0" aria-label=${tr('Trackpad télécommande')} @pointerdown=${(e: PointerEvent) => this.remotePointerDown(e, id)} @pointermove=${this.remotePointerMove} @pointerup=${(e: PointerEvent) => this.remotePointerUp(e, id, send)} @pointercancel=${this.remotePointerCancel} @lostpointercapture=${this.remotePointerCancel} @touchstart=${this.remoteTouchBoundary} @touchmove=${this.remoteTouchMove} @touchend=${this.remoteTouchBoundary} @touchcancel=${this.remoteTouchBoundary} @click=${this.remoteClick} @keydown=${(e: KeyboardEvent) => { const k: Partial<Record<string, RemoteKey>> = { ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right', Enter: 'select', ' ': 'select' }; const key = k[e.key]; if (key) { e.preventDefault(); e.stopPropagation(); if (!e.repeat) send(key); } }}><span>${mpIcon('hand', 22)}</span><b>${tr('Glissez pour naviguer · Touchez pour OK')}</b></div>` : html`${key('up', 'up', tr('Haut'), 'n')}${key('left', 'back', tr('Gauche'), 'w')}${key('select', '', tr('OK'), 'ok')}${key('right', 'arrow', tr('Droite'), 'e')}${key('down', 'down', tr('Bas'), 's')}`}
+        </div>` : html`<p class="empty">${tr('Aucune touche fléchée pour ce téléviseur : elles apparaissent avec les intégrations Apple TV, Android TV, Roku, Samsung, LG webOS, Philips, Sony, Panasonic et Kodi.')}</p>`}
+        ${under.length ? html`<div class="remote-under" style=${`--n:${under.length}`}>${under.map(wide)}</div>` : nothing}
+        <div class="remote-transport" role="group" aria-label=${tr('Lecture')}>
+          <button class="rskip" aria-label=${ten ? tr('Reculer de 10 s') : tr('Reculer')} title=${ten ? tr('Reculer de 10 s') : tr('Reculer')} ?disabled=${!canJump(-10)} @click=${() => jump(-10)}>${mpIcon(ten ? 'rewind10' : 'rewind', 24)}</button>
+          <button class="rplay" aria-label=${playing ? tr('Pause') : tr('Lecture')} title=${playing ? tr('Pause') : tr('Lecture')} ?disabled=${!canMedia(state, 'pause') && !canMedia(state, 'play')} @click=${() => media('media_play_pause')}>${mpIcon(playing ? 'pause' : 'play', 24)}</button>
+          <button class="rskip" aria-label=${ten ? tr('Avancer de 10 s') : tr('Avancer')} title=${ten ? tr('Avancer de 10 s') : tr('Avancer')} ?disabled=${!canJump(10)} @click=${() => jump(10)}>${mpIcon(ten ? 'forward10' : 'forward', 24)}</button>
+        </div>
+        <div class=${`rkeys ${layout.channels ? 'two' : ''}`}>
+          <div class="rk" role="group" aria-label=${tr('Volume')}><button aria-label=${tr('Baisser le volume')} title=${tr('Baisser le volume')} ?disabled=${!canStep} @click=${() => step(-5)}>${mpIcon('minus', 20)}</button>
+            <button class=${`rmute ${muted ? 'muted' : ''}`} aria-label=${muted ? tr('Rétablir le son') : tr('Couper le son')} title=${muted ? tr('Rétablir le son') : tr('Couper le son')} aria-pressed=${muted} ?disabled=${!canMedia(state, 'volume_mute')} @click=${() => media('volume_mute', { is_volume_muted: !muted })}>${mpIcon(muted ? 'mute' : 'volume', 18)}${volume !== undefined ? html`<small>${volume}</small>` : nothing}</button>
+            <button aria-label=${tr('Monter le volume')} title=${tr('Monter le volume')} ?disabled=${!canStep} @click=${() => step(5)}>${mpIcon('plus', 20)}</button></div>
+          ${layout.channels ? html`<div class="rk" role="group" aria-label=${tr('Chaîne')}><button aria-label=${tr('Précédent')} title=${tr('Précédent')} ?disabled=${!canMedia(state, 'previous_track')} @click=${() => media('media_previous_track')}>${mpIcon('down', 20)}</button><small>${tr('Chaîne')}</small><button aria-label=${tr('Suivant')} title=${tr('Suivant')} ?disabled=${!canMedia(state, 'next_track')} @click=${() => media('media_next_track')}>${mpIcon('up', 20)}</button></div>` : nothing}
+        </div>
+        ${hasDigits || keyboard || colors.length ? html`<div class="remote-extras">
+          ${hasDigits || keyboard ? html`<div class="remote-tools">${hasDigits ? html`<button aria-pressed=${extra === 'digits'} @click=${() => drawer('digits')}>${mpIcon('grid', 15)}<span>123</span></button>` : nothing}${keyboard ? html`<button aria-pressed=${extra === 'keyboard'} @click=${() => drawer('keyboard')}>${mpIcon(keyboard.mode === 'search' ? 'search' : 'text', 15)}<span>${tr('Clavier')}</span></button>` : nothing}</div>` : nothing}
+          ${colors.length ? html`<div class="remote-colors" role="group" aria-label=${tr('Touches de couleur')}>${colors.map(k => html`<button class=${k} aria-label=${tr(COLOR_NAMES[k])} title=${tr(COLOR_NAMES[k])} @click=${() => send(k)}><i></i></button>`)}</div>` : nothing}
+        </div>` : nothing}
+        ${extra === 'keyboard' && keyboard ? html`<form class="remote-keyboard" @submit=${type}>
+          <input type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="250" .value=${this.remoteText} placeholder=${keyboard.mode === 'search' ? tr('Rechercher sur le téléviseur') : tr('Texte à taper sur le téléviseur')} aria-label=${tr('Clavier')} @input=${(e: Event) => { this.remoteText = (e.target as HTMLInputElement).value; }} @keydown=${(e: KeyboardEvent) => e.stopPropagation()}>
+          <button class="btn primary" type="submit" ?disabled=${!this.remoteText.trim()}>${mpIcon('arrow', 16)}${tr('Envoyer')}</button>
+          ${keyboard.enter ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.enter!)}>${mpIcon('check', 16)}${tr('Valider')}</button>` : nothing}
+          ${keyboard.clear ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.clear!)}>${mpIcon('close', 16)}${tr('Effacer')}</button>` : nothing}
+          <small>${focused ? tr('Le téléviseur attend du texte.') + ' ' : ''}${keyboard.mode === 'search' ? tr('Le texte part directement dans la recherche du téléviseur.') : tr('Le texte s’écrit dans le champ ouvert sur le téléviseur.')}</small>
+        </form>` : nothing}
+        ${extra === 'digits' ? html`<div class="remote-digits" role="group" aria-label=${tr('Pavé numérique')}>${DIGITS.map(n => html`<button class=${`rkey ${n === '0' ? 'zero' : ''}`} @click=${() => send(n)}><b>${n}</b></button>`)}</div>` : nothing}
       </div>
-      ${hasDigits || keyboard ? html`<div class="remote-tools">${hasDigits ? html`<button aria-pressed=${extra === 'digits'} @click=${() => drawer('digits')}>${mpIcon('grid', 16)}<span>123</span></button>` : nothing}${keyboard ? html`<button aria-pressed=${extra === 'keyboard'} @click=${() => drawer('keyboard')}>${mpIcon(keyboard.mode === 'search' ? 'search' : 'text', 16)}<span>${tr('Clavier')}</span></button>` : nothing}</div>` : nothing}
-      ${extra === 'keyboard' && keyboard ? html`<form class="remote-keyboard" @submit=${type}>
-        <input type="text" enterkeyhint="send" autocomplete="off" autocapitalize="off" spellcheck="false" maxlength="250" .value=${this.remoteText} placeholder=${keyboard.mode === 'search' ? tr('Rechercher sur le téléviseur') : tr('Texte à taper sur le téléviseur')} aria-label=${tr('Clavier')} @input=${(e: Event) => { this.remoteText = (e.target as HTMLInputElement).value; }} @keydown=${(e: KeyboardEvent) => e.stopPropagation()}>
-        <button class="btn primary" type="submit" ?disabled=${!this.remoteText.trim()}>${mpIcon('arrow', 16)}${tr('Envoyer')}</button>
-        ${keyboard.enter ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.enter!)}>${mpIcon('check', 16)}${tr('Valider')}</button>` : nothing}
-        ${keyboard.clear ? html`<button class="btn" type="button" @click=${() => guarded(keyboard.clear!)}>${mpIcon('close', 16)}${tr('Effacer')}</button>` : nothing}
-        <small>${focused ? tr('Le téléviseur attend du texte.') + ' ' : ''}${keyboard.mode === 'search' ? tr('Le texte part directement dans la recherche du téléviseur.') : tr('Le texte s’écrit dans le champ ouvert sur le téléviseur.')}</small>
-      </form>` : nothing}
-      ${extra === 'digits' ? html`<div class="remote-digits" role="group" aria-label=${tr('Pavé numérique')}>${DIGITS.map(n => html`<button class=${`rkey ${n === '0' ? 'zero' : ''}`} @click=${() => send(n)}><b>${n}</b></button>`)}</div>` : nothing}
-      ${colors.length ? html`<div class="remote-colors" role="group" aria-label=${tr('Touches de couleur')}>${colors.map(k => html`<button class=${k} aria-label=${tr(COLOR_NAMES[k])} title=${tr(COLOR_NAMES[k])} @click=${() => send(k)}><i></i></button>`)}</div>` : nothing}
-      ${apps.length ? html`<div class="remote-apps">${apps.map(k => { const brand = serviceBrand(APP_NAMES[k]); return html`<button class=${`remote-app ${k}`} @click=${() => send(k)}>${brand ? html`<span class=${`source-logo ${brand.tone}`}><img src=${brand.image} alt=""></span>` : html`<span class="source-logo prime"><b>prime</b></span>`}<small>${APP_NAMES[k]}</small></button>`; })}</div>` : nothing}
-      ${rest.length ? html`<div class="remote-shortcuts">${rest.map(k => { const [icon, label] = face(k); return rkey(label, icon, () => send(k)); })}</div>` : nothing}
+      ${apps.length ? html`<div class="rlab">${tr('Applis')}</div><div class="remote-apps">${apps.map(k => { const brand = serviceBrand(APP_NAMES[k]); return html`<button class=${`remote-app ${k}`} @click=${() => send(k)}>${brand ? html`<span class=${`source-logo ${brand.tone}`}><img src=${brand.image} alt=""></span>` : html`<span class="source-logo prime"><b>prime</b></span>`}<small>${APP_NAMES[k]}</small></button>`; })}</div>` : nothing}
+      ${rest.length ? html`<div class="rlab">${tr('Autres touches')}</div><div class="remote-shortcuts">${rest.map(k => { const [icon, label] = face(k); return rkey(label, icon, () => send(k)); })}</div>` : nothing}
     </div>`;
   }
   /** What Music Assistant plays next on a player, the one integration that tells it. */

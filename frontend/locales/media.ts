@@ -25,6 +25,10 @@ export const MEDIA = {
   'Autres lecteurs': ['Other players', 'Другие плееры'],
   'Choisir': ['Choose', 'Выбрать'],
   'Autres touches': ['More keys', 'Другие кнопки'],
+  'Navigation classique': ['Classic pad', 'Кнопки-стрелки'],
+  'Mode de la télécommande': ['Remote mode', 'Режим пульта'],
+  'Glissez dans le sens voulu · Touchez pour OK': ['Slide the way you want · Tap for OK', 'Проведите в нужную сторону · Нажмите для OK'],
+  'Plus de touches': ['More keys', 'Другие кнопки'],
 } as const;
 
 export const MEDIA_DE: Partial<Record<keyof typeof MEDIA, string>> = {
@@ -32,12 +36,12 @@ export const MEDIA_DE: Partial<Record<keyof typeof MEDIA, string>> = {
   'Ma musique': 'Meine Musik', 'Autres résultats': 'Weitere Ergebnisse', 'Ajout au groupe…': 'Wird zur Gruppe hinzugefügt…', 'Retrait du groupe…': 'Wird aus der Gruppe entfernt…',
   'Joue avec {room}': 'Spielt mit {room}', 'Dans un autre groupe : {group}': 'In einer anderen Gruppe: {group}', 'Joue autre chose : {title}': 'Spielt etwas anderes: {title}', 'Disponible': 'Verfügbar',
   '{n} pièces jouent ensemble': '{n} Räume spielen zusammen', 'Écoute en cours': 'Aktuelle Wiedergabe', 'Jouer partout': 'Überall abspielen', 'Tout séparer': 'Alle trennen',
-  'Pièce principale du groupe': 'Hauptraum der Gruppe', 'Pièce écoutée': 'Ausgewählter Raum', 'Autres lecteurs': 'Weitere Player', 'Choisir': 'Auswählen', 'Autres touches': 'Weitere Tasten',
+  'Pièce principale du groupe': 'Hauptraum der Gruppe', 'Pièce écoutée': 'Ausgewählter Raum', 'Autres lecteurs': 'Weitere Player', 'Choisir': 'Auswählen', 'Autres touches': 'Weitere Tasten', 'Navigation classique': 'Klassische Pfeiltasten', 'Mode de la télécommande': 'Fernbedienungsmodus', 'Glissez dans le sens voulu · Touchez pour OK': 'In die gewünschte Richtung wischen · Tippen für OK', 'Plus de touches': 'Weitere Tasten',
 };
 export const MEDIA_IT: Partial<Record<keyof typeof MEDIA, string>> = {
   'Parcourir': 'Sfoglia', 'Groupes': 'Gruppi', 'Pièces et groupes': 'Stanze e gruppi', 'Volume du groupe': 'Volume del gruppo', 'Effacer la recherche': 'Cancella la ricerca',
   'Ma musique': 'La mia musica', 'Autres résultats': 'Altri risultati', 'Ajout au groupe…': 'Aggiunta al gruppo…', 'Retrait du groupe…': 'Rimozione dal gruppo…',
   'Joue avec {room}': 'Suona con {room}', 'Dans un autre groupe : {group}': 'In un altro gruppo: {group}', 'Joue autre chose : {title}': 'Riproduce altro: {title}', 'Disponible': 'Disponibile',
   '{n} pièces jouent ensemble': '{n} stanze suonano insieme', 'Écoute en cours': 'In ascolto', 'Jouer partout': 'Riproduci ovunque', 'Tout séparer': 'Separa tutto',
-  'Pièce principale du groupe': 'Stanza principale del gruppo', 'Pièce écoutée': 'Stanza in ascolto', 'Autres lecteurs': 'Altri lettori', 'Choisir': 'Scegli', 'Autres touches': 'Altri tasti',
+  'Pièce principale du groupe': 'Stanza principale del gruppo', 'Pièce écoutée': 'Stanza in ascolto', 'Autres lecteurs': 'Altri lettori', 'Choisir': 'Scegli', 'Autres touches': 'Altri tasti', 'Navigation classique': 'Frecce classiche', 'Mode de la télécommande': 'Modalità del telecomando', 'Glissez dans le sens voulu · Touchez pour OK': 'Scorri nella direzione voluta · Tocca per OK', 'Plus de touches': 'Altri tasti',
 };

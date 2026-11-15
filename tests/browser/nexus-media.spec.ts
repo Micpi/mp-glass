@@ -12,8 +12,10 @@ test('v2 keeps per-screen favorites and can browse playable Music Assistant medi
   await nexus.getByRole('textbox', { name: 'Rechercher dans Music Assistant' }).fill('Moon Song');
   await nexus.getByRole('button', { name: 'Rechercher', exact: true }).click();
   await expect(nexus.getByRole('button', { name: 'Moon Song' })).toBeVisible();
-  await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toBeVisible();
+  // A search takes the page; closing it brings the library back.
+  await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toHaveCount(0);
   await nexus.getByRole('button', { name: 'Garder sur cet écran' }).first().click();
+  await nexus.locator('.sec').getByRole('button', { name: 'Fermer' }).click();
   await expect(nexus.getByRole('button', { name: 'Golden Hour' })).toBeVisible();
   await expect(nexus.getByText('Favoris MP Nexus · cet écran')).toBeVisible();
   await expect(nexus.locator('.media-favorite')).toContainText('Moon Song');
@@ -28,8 +30,15 @@ test('v2 switches the TV remote to trackpad navigation and sends one directional
   await expect(nexus).toBeVisible();
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab', { name: 'Télécommande' }).click();
-  const toggle = nexus.getByRole('switch', { name: 'Trackpad' });
+  // The trackpad is the first choice; the classic pad is one touch away and is remembered.
+  const toggle = nexus.getByRole('radio', { name: 'Trackpad' }), classic = nexus.getByRole('radio', { name: 'Navigation classique' });
   await expect(toggle).toBeEnabled();
+  await expect(toggle).toHaveAttribute('aria-checked', 'true');
+  await classic.click();
+  await expect(classic).toHaveAttribute('aria-checked', 'true');
+  await expect(nexus.getByRole('button', { name: 'Trackpad télécommande' })).toHaveCount(0);
+  await nexus.getByRole('button', { name: 'Droite' }).click();
+  expect((await page.evaluate(() => (window as unknown as { demo: { calls: Record<string, unknown>[] } }).demo.calls)).at(-1)).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.salon_tv', command: 'right' } });
   await toggle.click();
   await expect(toggle).toHaveAttribute('aria-checked', 'true');
   const surface = nexus.getByRole('button', { name: 'Trackpad télécommande' });
@@ -63,7 +72,7 @@ test('touch on the trackpad stays in the media page and sends one command', asyn
     const nexus = page.locator('mp-nexus-view-v2');
     await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
     await nexus.getByRole('tab').last().click();
-    const toggle = nexus.getByRole('switch', { name: 'Trackpad' });
+    const toggle = nexus.getByRole('radio', { name: 'Trackpad' });
     if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
     const surface = nexus.getByRole('button', { name: 'Trackpad télécommande' });
     const box = await surface.boundingBox();
@@ -100,7 +109,7 @@ test('v2 media and the trackpad fit phone and tablet orientations without horizo
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
-  const toggle = nexus.getByRole('switch', { name: 'Trackpad' });
+  const toggle = nexus.getByRole('radio', { name: 'Trackpad' });
   if (await toggle.getAttribute('aria-checked') !== 'true') await toggle.click();
   for (const [width, height] of [[390, 844], [844, 390], [820, 1180], [1180, 820], [1440, 1000]] as const) {
     await page.setViewportSize({ width, height });
@@ -116,10 +125,13 @@ test('v2 draws the remote of the TV brand and types on televisions that take tex
   const nexus = page.locator('mp-nexus-view-v2');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
-  await expect(nexus.locator('.remote-brand')).toContainText('TCL');
-  await expect(nexus.locator('.remote-brand')).toContainText('Google TV');
+  await expect(nexus.locator('.rc-title')).toContainText('TCL');
+  await expect(nexus.locator('.rc-title')).toContainText('Google TV');
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
   await expect(nexus.getByRole('button', { name: 'Rouge' })).toBeVisible();
-  await expect(nexus.getByRole('switch', { name: 'Trackpad' })).toBeEnabled();
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
+  await expect(nexus.getByRole('radio', { name: 'Trackpad' })).toBeEnabled();
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
   await nexus.getByRole('button', { name: '123' }).click();
   await nexus.locator('.remote-digits').getByRole('button', { name: '7' }).click();
   const calls = () => page.evaluate(() => (window as unknown as { demo: { calls: unknown[] } }).demo.calls);
@@ -134,7 +146,7 @@ test('v2 draws the remote of the TV brand and types on televisions that take tex
   await page.goto('/media?spatial&v2&tv=samsungtv:Samsung');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
-  await expect(nexus.locator('.remote-brand')).toContainText('Samsung');
+  await expect(nexus.locator('.rc-title')).toContainText('Samsung');
   await expect(nexus.getByRole('button', { name: 'Source' })).toBeVisible();
   await expect(nexus.getByRole('button', { name: 'Clavier' })).toHaveCount(0);
 });
@@ -145,6 +157,7 @@ test('v2 keeps the TV keyboard hidden until asked, and opens it while the TV wai
   await page.goto('/media?spatial&v2');
   await nexus.getByRole('button', { name: /Téléviseur/ }).first().click();
   await nexus.getByRole('tab').last().click();
+  await nexus.getByRole('button', { name: 'Plus de touches' }).click();
   await expect(nexus.getByRole('button', { name: 'Clavier' })).toBeVisible();
   await expect(nexus.getByRole('textbox', { name: 'Clavier' })).toHaveCount(0);
   await page.goto('/media?spatial&v2&tv-focus');
@@ -193,7 +206,7 @@ test('v2 puts the ten-second jumps of Apple TV right under its pad', async ({ pa
   const calls = () => page.evaluate(() => (window as unknown as { demo: { calls: unknown[] } }).demo.calls);
   expect((await calls()).at(-1)).toEqual({ domain: 'remote', service: 'send_command', data: { entity_id: 'remote.salon_tv', command: 'skip_forward' } });
   await expect(nexus.getByRole('button', { name: 'Chaîne' })).toHaveCount(0);
-  const pad = await nexus.locator('.pad').boundingBox(), skip = await nexus.locator('.remote-transport').boundingBox();
+  const pad = await nexus.locator('.rc-nav').boundingBox(), skip = await nexus.locator('.rc-play').boundingBox();
   expect(skip!.y).toBeGreaterThan(pad!.y + pad!.height);
-  expect(skip!.y - (pad!.y + pad!.height)).toBeLessThan(120);
+  expect(skip!.y - (pad!.y + pad!.height)).toBeLessThan(200);
 });

@@ -159,6 +159,52 @@ export function groupOf(states: Record<string, HAState>, playerId: string): stri
   return list.includes(playerId) ? [playerId, ...list.filter(id => id !== playerId)] : [playerId, ...list];
 }
 
+/** A listening zone: one player alone, or the players Home Assistant reports as playing together, their leader first. */
+export interface Zone { leader: string; members: string[] }
+/** The zones of the house, in the order of its players: grouped players count once, under the one that leads them. */
+export function zonesOf(states: Record<string, HAState>, players: readonly string[]): Zone[] {
+  const seen = new Set<string>(), zones: Zone[] = [];
+  for (const id of players) {
+    if (seen.has(id)) continue;
+    const raw = states[id]?.attributes.group_members;
+    const listed = Array.isArray(raw) ? raw.map(String).filter(member => states[member]) : [];
+    const group = listed.includes(id) && listed.length > 1 ? listed : [id];
+    const members = group.filter(member => !seen.has(member));
+    members.forEach(member => seen.add(member));
+    zones.push({ leader: members[0]!, members });
+  }
+  return zones;
+}
+/** The zone a player belongs to. */
+export const zoneOf = (zones: readonly Zone[], id: string) => zones.find(zone => zone.members.includes(id));
+/** One volume for a whole zone: the mean of its speakers, in percent. */
+export function zoneVolume(levels: readonly number[]) {
+  return levels.length ? Math.round(levels.reduce((sum, level) => sum + level, 0) / levels.length) : undefined;
+}
+/** Moving the zone volume moves every speaker by the same amount, so the balance between rooms is kept. */
+export function shiftVolumes(levels: Record<string, number>, target: number): Record<string, number> {
+  const current = zoneVolume(Object.values(levels));
+  if (current === undefined) return {};
+  const by = Math.max(0, Math.min(100, target)) - current;
+  return Object.fromEntries(Object.entries(levels).map(([id, level]) => [id, Math.max(0, Math.min(100, Math.round(level + by)))]));
+}
+/** The service an item comes from, read from its address: `spotify://track/1`, `deezer--ab12://album/2`. The household library has none. */
+export function providerOf(contentId: string | undefined) {
+  const scheme = /^([a-z][a-z0-9_]*)(?:--[a-z0-9]+)?:\/\//i.exec(contentId ?? '')?.[1]?.toLowerCase();
+  return !scheme || ['library', 'http', 'https', 'builtin', 'media-source'].includes(scheme) ? undefined : scheme;
+}
+export type MusicResultKind = 'artist'|'album'|'track'|'playlist'|'radio'|'podcast';
+const RESULT_ORDER: readonly MusicResultKind[] = ['track', 'artist', 'album', 'playlist', 'radio', 'podcast'];
+/** Search results sorted the way music apps show them: by kind, each kind in the order the services answered. */
+export function resultGroups<T extends { media_content_type: string }>(items: readonly T[]): { kind: MusicResultKind | 'other'; items: T[] }[] {
+  const groups = new Map<MusicResultKind | 'other', T[]>();
+  for (const item of items) {
+    const kind = (RESULT_ORDER as readonly string[]).includes(item.media_content_type) ? item.media_content_type as MusicResultKind : 'other';
+    groups.set(kind, [...(groups.get(kind) ?? []), item]);
+  }
+  return [...RESULT_ORDER, 'other' as const].filter(kind => groups.has(kind)).map(kind => ({ kind, items: groups.get(kind)! }));
+}
+
 /** Where a track stands now: the position Home Assistant last reported, moved on by the time it has played since. */
 export function elapsed(state: HAState | undefined, now = Date.now()) {
   const position = finite(state?.attributes.media_position);
@@ -200,6 +246,28 @@ export const musicAction = (hass: Hass, action: string, data: Record<string, unk
 /** A device must expose an explicit integration route before it can receive remote gestures. */
 export function trackpadAvailable(routes: Partial<Record<RemoteKey, RemoteRoute>>) {
   return !!(routes.up && routes.down && routes.left && routes.right && routes.select);
+}
+
+/** The inputs a television offers (HDMI 1, Canal+, Apple TV…), as its integration lists them. */
+export function tvSources(state: HAState | undefined): string[] {
+  const list = state?.attributes.source_list;
+  return Array.isArray(list) ? [...new Set(list.map(value => String(value ?? '').trim()).filter(Boolean))] : [];
+}
+const plain = (text: string) => text.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().replace(/[^a-z0-9]+/g, '');
+/**
+ * The player whose remote belongs to an input of the television: the one the user linked,
+ * else the player that carries the input's name (« Apple TV » → media_player.salon_apple_tv).
+ * 'tv' means the television's own remote, whatever its name matches.
+ */
+export function sourceDevice(states: Record<string, HAState>, tv: string, source: string | undefined, players: readonly string[], links: Record<string, string> = {}): string | undefined {
+  if (!source) return undefined;
+  const link = links[source];
+  if (link === 'tv') return undefined;
+  if (link && link !== tv && players.includes(link)) return link;
+  const wanted = plain(source);
+  if (wanted.length < 3 || plain(String(states[tv]?.attributes.friendly_name ?? '')).includes(wanted)) return undefined;
+  const names = (id: string) => [id.split('.')[1] ?? '', String(states[id]?.attributes.friendly_name ?? '')].map(plain).filter(Boolean);
+  return players.find(id => id !== tv && names(id).some(name => name.includes(wanted)));
 }
 
 /** A stable signature for one selected queue item, including the identity fields HA exposes. */
